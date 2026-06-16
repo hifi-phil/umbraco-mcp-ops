@@ -17,7 +17,8 @@
 # Pass --live to actually delete.
 #
 # Requires: gh (authenticated), jq, curl.
-# Env: SLACK_WEBHOOK_URL (optional — if unset the summary is printed, not posted).
+# Env: SLACK_WEBHOOK_URL (optional extra delivery). The summary is always printed to
+#      stdout, so a routine can relay it to Slack via the Claude integration instead.
 
 set -euo pipefail
 
@@ -156,7 +157,8 @@ summary+=$'\n\n'"_Kept ${KEPT_COUNT} branch(es) with open PRs untouched._"
 
 echo ""
 echo "== Summary =="
-post_to_slack "$summary"
+echo "$summary"
+post_to_slack "$summary"   # extra delivery if SLACK_WEBHOOK_URL is set; otherwise relay this stdout to Slack
 
 echo ""
 echo "Done."

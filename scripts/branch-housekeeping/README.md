@@ -33,7 +33,9 @@ This triple guard means a config typo can never delete `main`/`dev`.
 ./branch-housekeeping.sh --live
 ```
 
-Output goes to stdout and, if `SLACK_WEBHOOK_URL` is set, to that Slack channel.
+The full summary is always printed to stdout. If `SLACK_WEBHOOK_URL` is set, it is
+*also* posted to that webhook's channel — but the weekly routine instead relays the
+printed summary to Slack via the Claude Slack integration, so no webhook is required.
 
 ## Adding a repo
 
@@ -45,10 +47,11 @@ Edit `housekeeping.config` and add a line:
 
 ## How the weekly routine uses it
 
-A weekly Claude routine clones this repo and runs:
+A weekly Claude routine clones this repo, runs:
 
 ```bash
 bash scripts/branch-housekeeping/branch-housekeeping.sh --live
 ```
 
-with `SLACK_WEBHOOK_URL` set to the `#umbraco-mcp-housekeeping` webhook.
+and posts the printed summary to the `#umbraco-mcp-housekeeping` Slack channel via the
+Claude Slack integration.
