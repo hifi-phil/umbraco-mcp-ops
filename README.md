@@ -17,9 +17,15 @@ Each tool gets its own folder under `scripts/<tool>/` and reuses `lib/`.
 
 ## Requirements
 
-- [`gh`](https://cli.github.com/) — authenticated, with permission to delete branches on the target repos.
-- `jq`, `curl`.
-- `SLACK_WEBHOOK_URL` — a Slack incoming-webhook URL (optional; if unset, summaries print to stderr instead of posting).
+- `curl`, `jq` — both pre-installed on the Claude Code on the web runners these
+  routines execute on.
+- `GH_TOKEN` — a GitHub token with access to the target repos (metadata +
+  pull-requests read to classify branches, contents write to delete them). The
+  runner injects one automatically. The GitHub CLI (`gh`) is intentionally **not**
+  required — it isn't installed on the runners, so the scripts call the GitHub
+  REST API directly.
+- `SLACK_WEBHOOK_URL` — a Slack incoming-webhook URL (optional; if unset, the
+  summary is printed to stdout and a routine relays it to Slack instead).
 
 ## Tools
 
