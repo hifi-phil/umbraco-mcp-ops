@@ -27,6 +27,32 @@ Each tool gets its own folder under `scripts/<tool>/` and reuses `lib/`.
 - `SLACK_WEBHOOK_URL` — a Slack incoming-webhook URL (optional; if unset, the
   summary is printed to stdout and a routine relays it to Slack instead).
 
+## Authentication
+
+These tools talk to repos in the **Umbraco org**, and you do **not** need a
+personal access token (PAT) to run them.
+
+They are designed to run inside **Claude Code on the web**. There, outbound
+HTTPS goes through the runner's egress proxy, which authenticates calls to
+`api.github.com` itself using the **Claude GitHub App installed on the Umbraco
+org**. The `GH_TOKEN` environment variable the runner sets is only the literal
+placeholder `proxy-injected` — the real credential is injected proxy-side, so
+the `Authorization` header the scripts send is effectively ignored for GitHub.
+(`GH_TOKEN` being non-empty is all the scripts check before starting.)
+
+What this means in practice:
+
+- **No PAT, no secret to configure.** Nothing to paste into environment
+  variables. Branch deletion works because the org's GitHub App grants
+  `contents: write` (plus `pull_requests: read` and `metadata: read`).
+- **Run it on the web, not externally.** The only place a real token would be
+  needed is running these scripts somewhere *without* that proxy — a laptop or a
+  generic CI runner. Since the repos live in the Umbraco org (where individual
+  PATs may not be available), run the routine inside Claude Code on the web,
+  where auth is handled for you.
+- Adjusting which repos/permissions are reachable is a GitHub-App-installation
+  decision made by an **Umbraco org owner**, not a per-user token setting.
+
 ## Tools
 
 | Tool | What it does |
