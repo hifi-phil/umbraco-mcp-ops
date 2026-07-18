@@ -1,5 +1,5 @@
 ---
-name: ai-issue-loop
+name: mcp-issue-loop
 description: >-
   Work through the open GitHub issues labelled `ready-for-ai` in an Umbraco MCP
   repo, one git worktree + subagent per issue (max 3 in parallel), driving each
@@ -12,7 +12,7 @@ description: >-
   issues", "run the issue loop", "pick up the AI-ready backlog".
 ---
 
-# ai-issue-loop
+# mcp-issue-loop
 
 A durable loop that turns the `ready-for-ai` GitHub backlog into merged PRs.
 

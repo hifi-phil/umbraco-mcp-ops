@@ -11,8 +11,8 @@
   },
   "plugins": [
     {
-      "name": "ai-issue-loop",
-      "source": "./plugins/ai-issue-loop",
+      "name": "mcp-issue-loop",
+      "source": "./plugins/mcp-issue-loop",
       "description": "Work through GitHub issues labelled ready-for-ai in an Umbraco MCP repo, one worktree + subagent per issue (max 3 parallel), driving each to a CI-green PR, then responding to review feedback until approved and merged. Repo-agnostic; runs locally or as a scheduled cloud routine.",
       "version": "1.0.0",
       "category": "workflow",
@@ -21,7 +21,7 @@
         "email": "pjw@umbraco.com",
         "url": "https://github.com/hifi-phil"
       },
-      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/ai-issue-loop",
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/mcp-issue-loop",
       "keywords": [
         "umbraco",
         "mcp",
