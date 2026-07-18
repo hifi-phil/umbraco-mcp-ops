@@ -71,11 +71,18 @@ What this means in practice:
 
 ## Plugins (Claude Code marketplace)
 
+> **New here?** Read [`docs/self-learning-system.md`](docs/self-learning-system.md) — the
+> single setup & operations guide (the flywheel, the **label matrix** showing which
+> labels go on which repos, GitHub-App permissions, and how to drive each loop).
+
 Install from this repo inside Claude Code:
 
 ```
 /plugin marketplace add hifi-phil/umbraco-mcp-ops
 /plugin install mcp-issue-loop@umbraco-mcp-ops
+/plugin install merge-flow@umbraco-mcp-ops
+/plugin install release-flow@umbraco-mcp-ops
+/reload-plugins
 ```
 
 | Plugin | What it does |
