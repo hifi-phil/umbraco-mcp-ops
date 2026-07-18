@@ -53,7 +53,7 @@ One proto-learning per distinct lesson; don't bundle unrelated observations.
   "lesson": "One-line statement of what should change or be remembered.",
   "detail": "What happened, in enough detail to act on later without the transcript.",
   "fix": "What resolved it this time (empty if unresolved / blocked).",
-  "guessedHome": "repo-claude-md",
+  "guessedHome": "mcp-repo",
   "modelTier": "sonnet",
   "phase": "build"
 }
@@ -68,15 +68,16 @@ One proto-learning per distinct lesson; don't bundle unrelated observations.
 | `lesson` | One-line actionable takeaway. |
 | `detail` | Self-contained description — the transcript will be gone. |
 | `fix` | How it was resolved this run (empty if blocked/unresolved). |
-| `guessedHome` | Best guess at the final home (Loop B decides for real): `repo-claude-md`, `project-local-skill`, `shared-mcp-skills`, `loop-self`, `unsure`. |
+| `guessedHome` | Best guess at the final home (Loop B decides for real): `mcp-repo`, `shared-mcp-skills`, `loop-self`, `unsure`. |
 | `modelTier` | The model tier the subagent ran on (`opus`/`sonnet`/`haiku`) — signal for triage. |
 | `phase` | `build`, `review-response`, or `orchestrator`. |
 
-`guessedHome` heuristic (matches the loop's routing):
-- true only of this repo → `repo-claude-md` (if global + cross-cutting) or
-  `project-local-skill` (if specific/detailed — keep `CLAUDE.md` lean),
-- would help a *different* MCP repo → `shared-mcp-skills`,
-- about how the loop itself behaves → `loop-self`,
+`guessedHome` heuristic (`sourceRepo` is **any** Umbraco MCP repo, not a specific one):
+- affects only *that* MCP — a domain-specific quirk of its content/collections →
+  `mcp-repo` (Loop B files an issue on that MCP repo; in `notes`, hint whether it
+  belongs in `CLAUDE.md` or a project-local skill),
+- would help a *different* MCP repo / recurring pattern → `shared-mcp-skills`,
+- about how the loop / orchestrator itself behaves → `loop-self`,
 - not sure → `unsure` (Loop B will decide).
 
 ## How it's filed (analyzer → hook)
