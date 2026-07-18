@@ -53,8 +53,13 @@ PROMPT="$(sed -e "s#{{TRANSCRIPT}}#$TRANSCRIPT#g" \
               -e "s#{{OPS_REPO}}#$OPS_REPO#g" "$PROMPT_FILE")"
 
 log "analyzing $TRANSCRIPT"
-OUT="$(claude -p "$PROMPT" --model sonnet --allowedTools "Read,Grep" 2>>"$LOG")" || {
-  log "analyzer invocation failed"; exit 0; }
+if [ -n "${MCP_ISSUE_LOOP_ANALYZER_OUT:-}" ]; then
+  # Test seam: inject a canned analyzer response instead of calling the model.
+  OUT="$MCP_ISSUE_LOOP_ANALYZER_OUT"
+else
+  OUT="$(claude -p "$PROMPT" --model sonnet --allowedTools "Read,Grep" 2>>"$LOG")" || {
+    log "analyzer invocation failed"; exit 0; }
+fi
 
 # The analyzer outputs a single JSON object (optionally fenced). Strip fences.
 JSON="$(printf '%s' "$OUT" | sed -e 's/^```json//' -e 's/^```//' -e 's/```$//' | jq -c . 2>/dev/null)"
@@ -77,6 +82,11 @@ fi
 
 # --- File it ---------------------------------------------------------------
 BODY="$(printf '```json\n%s\n```\n\n**Notes:** %s\n' "$(printf '%s' "$RECORD" | jq .)" "$NOTES")"
+if [ -n "${MCP_ISSUE_LOOP_DRY_RUN:-}" ]; then
+  log "DRY_RUN — would file title: $TITLE"
+  log "DRY_RUN — would file body: $(printf '%s' "$BODY" | tr '\n' '|')"
+  exit 0
+fi
 if URL="$(gh issue create --repo "$OPS_REPO" --label "$LABEL" --title "$TITLE" --body "$BODY" 2>>"$LOG")"; then
   log "filed proto-learning: $URL"
 else
