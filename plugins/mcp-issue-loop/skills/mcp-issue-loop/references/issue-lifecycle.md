@@ -122,13 +122,21 @@ If a check fails: read the failing log (`gh run view --job <id> --log-failed`),
 reproduce locally in your worktree, fix the root cause, push, and re-watch. A CI
 failure is a real regression, never "flaky-until-proven". **Cap: at most 8
 green-it attempts, and never re-push an identical fix that already failed.** If
-CI still isn't green after that, stop — return a blocked report with the last
-failing log; do not loop indefinitely.
+CI still isn't green after that, stop with a blocked report (last failing log);
+do not loop indefinitely.
 
-When CI is green, **return** a structured report to the orchestrator:
-`{ issue, worktreeName, worktreePath, branch, prNumber, status: "pr-open-green" }`.
-Leave the worktree on disk (do **not** remove it) — the review phase reuses it.
-Do not wait for the human review; that's the orchestrator's job.
+When CI is green (or you've hit the cap and are blocking), **return** the
+structured report to the orchestrator:
+`{ issue, worktreeName, worktreePath, branch, prNumber, model, tier, status }`
+(`status`: `pr-open-green` or `blocked` with the reason). Leave the worktree on
+disk (do **not** remove it) — the review phase reuses it. Do not wait for the
+human review; that's the orchestrator's job.
+
+> **Learnings are captured automatically — you do nothing here.** When you finish,
+> a `SubagentStop` hook analyses this transcript off the critical path and files
+> a `proto-learning` issue if something worth improving happened (see
+> [Capturing learnings](../SKILL.md#capturing-learnings-compounding)). Just do
+> the work well and return; the capture is not your responsibility.
 
 ---
 
@@ -169,8 +177,17 @@ gh pr edit {PR} --repo <repo> --add-reviewer <reviewer>
 # or: gh api ... to re-request; a fresh push often re-triggers review anyway
 ```
 
-### 5. Re-green CI, then return
+### 5. Re-green CI
 
-Watch CI as in build step 7. Once green, **return** to the orchestrator:
-`{ prNumber, status: "changes-addressed-green" }`. The orchestrator resumes
-watching for the human's next review or approval.
+Watch CI as in build step 7 (same 8-attempt cap). Get it back to green before
+returning.
+
+### 6. Return
+
+**Return** to the orchestrator: `{ prNumber, status:
+"changes-addressed-green" }`. The orchestrator resumes watching for the human's
+next review or approval.
+
+> **Capture is automatic.** The `SubagentStop` hook analyses this transcript when
+> you finish and files a `proto-learning` issue if the feedback revealed a
+> systemic lesson. You don't file anything.

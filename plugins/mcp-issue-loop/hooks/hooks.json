@@ -1,0 +1,27 @@
+{
+  "description": "Async proto-learning capture. SubagentStop analyzes each finished issue subagent's transcript; SessionEnd analyzes the orchestration session once at the end for loop-level learnings. Both run off the critical path, only act on mcp-issue-loop runs, and file proto-learning issues when something worth improving happened.",
+  "hooks": {
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/capture-proto-learning.sh\" subagent",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/capture-proto-learning.sh\" orchestrator",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
