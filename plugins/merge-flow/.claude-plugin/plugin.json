@@ -1,0 +1,22 @@
+{
+  "name": "merge-flow",
+  "version": "1.0.0",
+  "description": "Guardrail loop that merges PRs labelled `auto-merge` — but only once they are approved, CI-green, conflict-free, and on the right base. Replaces error-prone manual merges: it never merges on an unmet gate, and drives each PR to a clean merge (branch deleted) or flags the blocker. Uses /goal so a merge job is provably finished. Repo-agnostic; runs locally or as a scheduled cloud routine.",
+  "author": {
+    "name": "Phil W",
+    "email": "pjw@umbraco.com",
+    "url": "https://github.com/hifi-phil"
+  },
+  "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/merge-flow",
+  "license": "MIT",
+  "keywords": [
+    "pull-request",
+    "merge",
+    "auto-merge",
+    "ci",
+    "guardrail",
+    "review",
+    "automation",
+    "cloud-routine"
+  ]
+}

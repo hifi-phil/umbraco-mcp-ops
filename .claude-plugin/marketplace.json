@@ -38,7 +38,7 @@
       "name": "release-flow",
       "source": "./plugins/release-flow",
       "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions. Bundles release-and-branching and sync-dev.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
@@ -55,6 +55,29 @@
         "pull-request",
         "dev-sync",
         "workflow"
+      ]
+    },
+    {
+      "name": "merge-flow",
+      "source": "./plugins/merge-flow",
+      "description": "Guardrail loop that merges PRs labelled auto-merge only once approved, CI-green, conflict-free, and on the right base — replacing error-prone manual merges. Uses /goal so a merge job is provably finished. Repo-agnostic; local or scheduled cloud routine.",
+      "version": "1.0.0",
+      "category": "workflow",
+      "author": {
+        "name": "Phil W",
+        "email": "pjw@umbraco.com",
+        "url": "https://github.com/hifi-phil"
+      },
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/merge-flow",
+      "keywords": [
+        "pull-request",
+        "merge",
+        "auto-merge",
+        "ci",
+        "guardrail",
+        "review",
+        "automation",
+        "cloud-routine"
       ]
     }
   ]
