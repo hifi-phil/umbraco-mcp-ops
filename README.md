@@ -80,7 +80,7 @@ Install from this repo inside Claude Code:
 
 | Plugin | What it does |
 |--------|--------------|
-| [`mcp-issue-loop`](plugins/mcp-issue-loop/) | Works the open `ready-for-ai` issues in an Umbraco MCP repo — one worktree + subagent per issue (max 3 parallel), each driven to a CI-green PR following the established MCP skills, then iterated against review feedback until you approve and it merges. Repo-agnostic; runs locally or as a scheduled cloud routine. |
+| [`mcp-issue-loop`](plugins/mcp-issue-loop/) | Works the open `ready-for-ai` issues in an Umbraco MCP repo — one worktree + subagent per issue (max 3 parallel), each driven to a CI-green PR following the established MCP skills, then iterated against review feedback until you approve and it merges. Also ships the **self-learning loop**: capture hooks file `proto-learning` issues here, and the `triage-learnings` skill (Loop B) periodically routes each one to the repo that owns it — a tracked issue on the specific MCP repo it affects (domain-specific learnings only), a gated PR to the shared `umbraco-mcp-skills` (`Umbraco-MCP-Base`) for generalizable ones, or a `loop-improvement` issue here for the loop itself. Loop B files issues to owning repos and only drafts PRs for the shared tooling. Repo-agnostic; runs locally or as a scheduled cloud routine. |
 | [`release-flow`](plugins/release-flow/) | Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (`dev` + `main`) vs main-only and follows the matching conventions for branch naming, squash vs merge-commit, cutting a release, tagging, and syncing back to `dev`. Bundles the `release-and-branching` and `sync-dev` skills. |
 
 > **Note:** `mcp-issue-loop` drives local worktrees, builds, and integration tests,
