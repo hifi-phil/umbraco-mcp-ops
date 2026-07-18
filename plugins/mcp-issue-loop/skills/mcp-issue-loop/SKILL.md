@@ -209,22 +209,35 @@ hand back if any trips:**
 
 ## Capturing learnings (compounding)
 
-The loop feeds its own improvement. As work happens, it emits **proto-learnings**
-— raw observations that *something is worth improving somewhere*. This skill only
-**captures** them; a separate scheduled routine (Loop B) triages them into PRs.
-Never fix skills or `CLAUDE.md` inline from here.
+The loop feeds its own improvement by emitting **proto-learnings** — raw
+observations that *something is worth improving somewhere* — which a separate
+scheduled routine (Loop B) later triages into PRs. This half only **captures**;
+nothing here (or in any subagent) ever edits skills or `CLAUDE.md` inline.
 
-- **Subagents** file proto-learnings as their final step — see the build and
-  review-response playbooks and the [schema](references/proto-learning-schema.md).
-- **You (orchestrator)** file proto-learnings for **loop-level** observations that
-  no single subagent can see: a backstop that tripped, a class of issue that
-  consistently needed `opus`, review-round churn, a recurring blocker. Do this at
-  hand-back (`phase: "orchestrator"`).
-- Proto-learnings are **GitHub issues labelled `proto-learning` on
-  `hifi-phil/umbraco-mcp-ops`** (the plugin is read-only and may run on a
-  stateless runner, so it can't store them itself).
-- **Signal, not noise:** file one only when something non-obvious happened; file
-  nothing for a clean run. One proto-learning per distinct lesson.
+**Capture is fully automatic and hook-driven — neither you nor the subagents file
+anything by hand.** Two async hooks (shipped by this plugin) do it off the
+critical path:
+
+- **`SubagentStop`** → after each issue subagent finishes, a read-only analyzer
+  reads its transcript and files a `proto-learning` issue if something non-obvious
+  happened at the **issue level** (a diagnosed CI failure, a repeated mistake, an
+  unclear/missing pattern, a repo gotcha, a blocker).
+- **`SessionEnd`** → once, at the end of the orchestration session, an analyzer
+  reads *this* session's transcript and files **loop-level** learnings you're the
+  only one positioned to reveal: a backstop that tripped, a class of issue that
+  consistently needed `opus`, review-round churn, a recurring blocker.
+
+Properties that make this the capture mechanism (vs. self-reporting): it **can't
+be skipped** (fires even if a subagent crashes), it's **unbiased** (a fresh
+analyzer reads the transcript, not the agent grading itself), and it's **off the
+critical path**. Proto-learnings are **GitHub issues labelled `proto-learning` on
+`hifi-phil/umbraco-mcp-ops`** — the plugin is read-only and may run on a stateless
+runner, so it can't store them itself. The analyzers enforce **signal, not
+noise**: one issue only when something non-obvious happened; nothing for a clean
+run. See `hooks/` and the [schema](references/proto-learning-schema.md).
+
+So: **do the work well and let the hooks capture.** Your only capture-related duty
+is *not* to fix learnings inline — leave that to Loop B.
 
 ## Rules
 

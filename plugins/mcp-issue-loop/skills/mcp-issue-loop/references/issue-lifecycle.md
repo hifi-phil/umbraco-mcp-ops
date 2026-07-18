@@ -125,22 +125,18 @@ green-it attempts, and never re-push an identical fix that already failed.** If
 CI still isn't green after that, stop with a blocked report (last failing log);
 do not loop indefinitely.
 
-Either way — CI green or blocked — proceed to step 8 before returning.
-
-### 8. Capture a proto-learning, then return
-
-However this run ended (green or blocked), **before you return** decide whether
-anything worth improving happened — a CI failure you had to diagnose, a repeated
-mistake, an unclear/missing pattern, a repo-specific gotcha, or a blocker. If so,
-file **one** `proto-learning` issue on `hifi-phil/umbraco-mcp-ops` per the
-[schema](proto-learning-schema.md) (`phase: "build"`). If the issue went cleanly
-by-the-book and taught nothing, **file nothing** — silence is correct.
-
-Then **return** the structured report to the orchestrator:
+When CI is green (or you've hit the cap and are blocking), **return** the
+structured report to the orchestrator:
 `{ issue, worktreeName, worktreePath, branch, prNumber, model, tier, status }`
 (`status`: `pr-open-green` or `blocked` with the reason). Leave the worktree on
 disk (do **not** remove it) — the review phase reuses it. Do not wait for the
 human review; that's the orchestrator's job.
+
+> **Learnings are captured automatically — you do nothing here.** When you finish,
+> a `SubagentStop` hook analyses this transcript off the critical path and files
+> a `proto-learning` issue if something worth improving happened (see
+> [Capturing learnings](../SKILL.md#capturing-learnings-compounding)). Just do
+> the work well and return; the capture is not your responsibility.
 
 ---
 
@@ -186,15 +182,12 @@ gh pr edit {PR} --repo <repo> --add-reviewer <reviewer>
 Watch CI as in build step 7 (same 8-attempt cap). Get it back to green before
 returning.
 
-### 6. Capture a proto-learning, then return
+### 6. Return
 
-If the review feedback revealed a **systemic** lesson — a pattern the reviewer
-keeps flagging, a convention missing from the skills or `CLAUDE.md`, a gotcha the
-build phase should have caught — file **one** `proto-learning` issue per the
-[schema](proto-learning-schema.md) (`phase: "review-response"`, `category`
-usually `review-feedback`). Skip it for a one-off nit that carries no reusable
-lesson.
-
-Then **return** to the orchestrator: `{ prNumber, status:
+**Return** to the orchestrator: `{ prNumber, status:
 "changes-addressed-green" }`. The orchestrator resumes watching for the human's
 next review or approval.
+
+> **Capture is automatic.** The `SubagentStop` hook analyses this transcript when
+> you finish and files a `proto-learning` issue if the feedback revealed a
+> systemic lesson. You don't file anything.

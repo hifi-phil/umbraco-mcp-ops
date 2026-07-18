@@ -11,6 +11,12 @@ Because the plugin is read-only once installed (and absent on stateless runners)
 proto-learnings can't be stored in the skill. They are filed as **GitHub issues
 on the ops repo** `hifi-phil/umbraco-mcp-ops`, labelled `proto-learning`.
 
+**Capture is automatic — this file is the contract, not a manual checklist.** The
+plugin's `SubagentStop`/`SessionEnd` hooks run a read-only analyzer over the
+finished transcript; the analyzer applies the rules below and emits a decision,
+and the hook files the issue. Nobody files by hand. This doc tells the analyzer
+(a) when a learning is worth filing and (b) the exact record shape to emit.
+
 ## When to file — and when not to
 
 **File one when something non-obvious happened** that a future run (or the skills)
@@ -73,25 +79,18 @@ One proto-learning per distinct lesson; don't bundle unrelated observations.
 - about how the loop itself behaves → `loop-self`,
 - not sure → `unsure` (Loop B will decide).
 
-## Filing it
+## How it's filed (analyzer → hook)
 
-The issue loop runs on a dev machine, so `gh` is available:
+You (the analyzer) do **not** file anything — you have read-only tools. Emit a
+single JSON object and the hook (`hooks/capture-proto-learning.sh`) files it:
 
-```bash
-gh issue create \
-  --repo hifi-phil/umbraco-mcp-ops \
-  --label proto-learning \
-  --title "[proto-learning] <source-repo>#<issue>: <lesson>" \
-  --body "$(cat <<'BODY'
 ```json
-{ ... the record above ... }
+{"file":true,"title":"[proto-learning] <source-repo>#<issue>: <lesson>","record":{ ...the record fields above... },"notes":"optional freeform context"}
 ```
 
-**Notes:** optional freeform context.
-BODY
-)"
-```
+To capture nothing, emit `{"file":false}`.
 
-A quick `gh issue list --repo hifi-phil/umbraco-mcp-ops --label proto-learning
---search "<keywords>"` before filing avoids an obvious exact duplicate — but don't
-over-invest; deduping and clustering is Loop B's job, not yours.
+The hook then creates the issue (title from `.title`, body = the fenced `record`
+JSON followed by **Notes:**), and skips an obvious exact-title duplicate itself.
+Deeper deduping and clustering is Loop B's job, not the analyzer's — when in
+doubt about whether a learning is worth it, err toward `{"file":false}`.
