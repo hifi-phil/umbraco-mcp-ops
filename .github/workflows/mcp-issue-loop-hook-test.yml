@@ -1,17 +1,17 @@
 name: mcp-issue-loop hook test
 
 # Deterministic, hermetic test of the proto-learning capture hook.
-# No `claude`, no `gh`, no network — just bash + jq. Runs on every PR/push
-# that touches the plugin's hooks.
+# No `claude`, no `gh`, no network — just bash + jq, a few seconds.
+# Runs on EVERY PR and every push to main (no `paths` filter): the test is
+# cheap, and a path filter only reliably matches on the `opened` event, so a PR
+# that adds hooks/ changes in a later push can slip through ungated. Running
+# unconditionally trades a few wasted seconds on unrelated PRs for a gate that
+# never silently skips.
 
 on:
   pull_request:
-    paths:
-      - "plugins/mcp-issue-loop/hooks/**"
   push:
     branches: [main]
-    paths:
-      - "plugins/mcp-issue-loop/hooks/**"
   workflow_dispatch:
 
 jobs:
