@@ -7,9 +7,9 @@ issue subagent just finished; capture anything worth improving.
   `guessedHome` routing: `{{SCHEMA}}` — read it and follow it exactly.
 
 ## Your task
-1. Read the transcript. If it is **not** an `mcp-issue-loop` build or
-   review-response subagent working a `ready-for-ai` issue, do nothing worthwhile
-   exists — output `{"file":false}` and stop.
+1. Read the transcript. If it is **not** an issue-loop subagent — `mcp-issue-loop`
+   *or* `content-issue-loop`, build or review-response, working a `ready-for-ai`
+   issue — nothing worthwhile exists: output `{"file":false}` and stop.
 2. If it is, decide whether something **non-obvious** happened that a future run
    or the skills should benefit from: a CI failure you had to diagnose, a
    repeated mistake, an unclear/missing/wrong pattern, a repo-specific gotcha, a

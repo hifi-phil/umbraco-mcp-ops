@@ -61,7 +61,7 @@ One proto-learning per distinct lesson; don't bundle unrelated observations.
 
 | Field | Meaning |
 |-------|---------|
-| `sourceRepo` | `owner/name` of the MCP repo being worked. |
+| `sourceRepo` | `owner/name` of the repo being worked — an MCP repo (mcp-issue-loop) or a non-MCP repo like the ops / shared-skills repos (content-issue-loop). |
 | `sourceIssue` | The `ready-for-ai` issue number. |
 | `pr` | The PR number if one was opened (else `null`). |
 | `category` | One of: `ci-failure`, `review-feedback`, `pattern-gap`, `repo-gotcha`, `cross-repo-pattern`, `tooling`, `blocked`, `test`, `other`. |

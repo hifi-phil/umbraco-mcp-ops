@@ -14,7 +14,7 @@
       "name": "mcp-issue-loop",
       "source": "./plugins/mcp-issue-loop",
       "description": "Work through GitHub issues labelled ready-for-ai in an Umbraco MCP repo, one worktree + subagent per issue (max 3 parallel), driving each to a CI-green PR, then responding to review feedback until approved and merged. Repo-agnostic; runs locally or as a scheduled cloud routine.",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
