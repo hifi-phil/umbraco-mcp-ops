@@ -207,6 +207,25 @@ hand back if any trips:**
 - **Label / issue changes** — if the `ready-for-ai` label is removed or the issue
   is closed mid-flight, drop it from the loop immediately.
 
+## Capturing learnings (compounding)
+
+The loop feeds its own improvement. As work happens, it emits **proto-learnings**
+— raw observations that *something is worth improving somewhere*. This skill only
+**captures** them; a separate scheduled routine (Loop B) triages them into PRs.
+Never fix skills or `CLAUDE.md` inline from here.
+
+- **Subagents** file proto-learnings as their final step — see the build and
+  review-response playbooks and the [schema](references/proto-learning-schema.md).
+- **You (orchestrator)** file proto-learnings for **loop-level** observations that
+  no single subagent can see: a backstop that tripped, a class of issue that
+  consistently needed `opus`, review-round churn, a recurring blocker. Do this at
+  hand-back (`phase: "orchestrator"`).
+- Proto-learnings are **GitHub issues labelled `proto-learning` on
+  `hifi-phil/umbraco-mcp-ops`** (the plugin is read-only and may run on a
+  stateless runner, so it can't store them itself).
+- **Signal, not noise:** file one only when something non-obvious happened; file
+  nothing for a clean run. One proto-learning per distinct lesson.
+
 ## Rules
 
 - **Never touch an issue without the `ready-for-ai` label.** The label is the
@@ -227,6 +246,9 @@ hand back if any trips:**
   and the `release-and-branching` skill — obey those.
 - **Recap as you go.** After each dispatch, each subagent completion, each merge,
   give a one-line status (queue depth, in-flight issues, PRs awaiting review).
+- **Capture, never fix.** Learnings are filed as `proto-learning` issues (see
+  [Capturing learnings](#capturing-learnings-compounding)); the triage routine
+  turns them into PRs. Do not edit skills or `CLAUDE.md` from inside this loop.
 
 ## Running on a cloud instance (later)
 
