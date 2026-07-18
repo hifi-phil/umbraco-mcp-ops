@@ -1,6 +1,6 @@
 {
   "name": "release-flow",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions for branch naming, squash vs merge-commit, cutting a release, tagging, and syncing back to dev. Bundles release-and-branching and sync-dev.",
   "author": {
     "name": "Phil W",
