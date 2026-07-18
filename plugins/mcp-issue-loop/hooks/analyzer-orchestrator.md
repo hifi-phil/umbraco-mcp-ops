@@ -9,9 +9,9 @@ could see.
   `{{SCHEMA}}` — read it and follow it exactly.
 
 ## Your task
-1. Read the transcript. If this session did **not** run the `mcp-issue-loop`
-   orchestration (no backlog gathered, no issue subagents dispatched), output
-   `{"file":false}` and stop.
+1. Read the transcript. If this session did **not** run an issue-loop orchestration
+   (`mcp-issue-loop` or `content-issue-loop` — no backlog gathered, no issue
+   subagents dispatched), output `{"file":false}` and stop.
 2. Look **only** for loop-level signals, e.g.:
    - a safety backstop tripped (CI-green cap, review-round cap, no-progress),
    - a class of issue that consistently needed a higher model tier,

@@ -45,7 +45,7 @@ fi
 
 # --- Cheap pre-filter: only act on mcp-issue-loop runs ---------------------
 # Avoids spawning an analyzer for unrelated subagents/sessions.
-if ! grep -qiE 'mcp-issue-loop|ready-for-ai' "$TRANSCRIPT" 2>/dev/null; then
+if ! grep -qiE 'mcp-issue-loop|content-issue-loop|ready-for-ai' "$TRANSCRIPT" 2>/dev/null; then
   log "transcript has no loop signature — skipping"; exit 0
 fi
 
