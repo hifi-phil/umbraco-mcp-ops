@@ -5,9 +5,10 @@ description: >-
   the umbraco-mcp-ops repo into pull requests. Reads the captured proto-learnings,
   dedupes and clusters them, applies a promotion threshold, and opens a gated PR to
   the right home for each cluster: the worked repo's CLAUDE.md (kept lean), a
-  project-local skill, the shared umbraco-mcp-skills (Umbraco-MCP-Base), or the
-  mcp-issue-loop skill itself. Nothing auto-merges; discarded learnings are closed
-  with a reason. Designed to run unattended as a scheduled cloud routine on a web
+  project-local skill, or the shared umbraco-mcp-skills (Umbraco-MCP-Base). Learnings
+  about the loop/orchestrator itself are promoted into `loop-improvement` issues on
+  the ops repo instead of skill-editing PRs. Nothing auto-merges; discarded learnings
+  are closed with a reason. Designed to run unattended as a scheduled cloud routine on a web
   runner (uses the GitHub REST API, not `gh`). Trigger on "triage the learnings",
   "triage proto-learnings", "run loop B", "process the learning backlog".
 ---
@@ -58,7 +59,7 @@ different Umbraco MCP repo benefit?"*
 | `repo-claude-md` | the learning's `sourceRepo` (e.g. `umbraco/Umbraco-CMS-MCP-Editor`) | Genuinely global to that repo **and** cross-cutting. Keep `CLAUDE.md` lean — a terse line/section, not an essay. |
 | `project-local-skill` | the learning's `sourceRepo`, under `.claude/skills/` | Specific/detailed and true only of that repo — keep it out of the always-loaded `CLAUDE.md`. |
 | `shared-mcp-skills` | `umbraco/Umbraco-MCP-Base` (the `umbraco-mcp-skills` source) | Recurs across repos / would help any MCP repo. **Requires the promotion threshold.** |
-| `loop-self` | `hifi-phil/umbraco-mcp-ops` (this skill) | About how the loop itself behaves. |
+| `loop-self` | `hifi-phil/umbraco-mcp-ops` — as a **tracked issue, not a PR** | About how the loop / orchestrator itself behaves. **Do not draft a skill-editing PR** (the loop must not rewrite its own definition unreviewed). Promote the cluster into a `loop-improvement` issue for a human to frame and action — see Step 4. |
 | *discard* | — | Not actionable, stale, or wrong → close the issue with a reason, no PR. |
 
 ## Step 1 — gather the inbox
@@ -93,7 +94,22 @@ whenever they're actionable.
 
 ## Step 4 — route & draft each cluster
 
-Assign each cluster a home from the routing table. For each cluster that gets a PR:
+Assign each cluster a home from the routing table.
+
+**`loop-self` clusters are the exception — they become a tracked issue, not a PR.**
+Rather than editing the `mcp-issue-loop` skill directly, promote the cluster into
+one **`loop-improvement`** issue on `hifi-phil/umbraco-mcp-ops` so a human frames and
+actions the change to the loop:
+
+1. Create a `loop-improvement` issue: a clear title, what the loop does today vs.
+   what should change, and why — written as an actionable work item.
+2. Cite provenance: link the source `proto-learning` issue numbers and their
+   occurrence count.
+3. **Close** each source proto-learning with a comment linking the new
+   `loop-improvement` issue (the learning is preserved in it, so closing is safe —
+   unlike the PR path, there's no risk of a rejected PR losing it).
+
+For every **other** home, open a PR:
 
 1. **Detect the target repo's branch model** with the `release-and-branching`
    skill (gitflow `dev`+`main` → base `dev`; main-only → base `main`). The Editor
@@ -120,11 +136,15 @@ Every PR body must cite its evidence so the reviewer approves facts, not vibes:
 
 ## Step 6 — mark processed
 
-For each source issue that made it into a PR: **comment** with the PR link and add
-the **`triaged`** label (so the next run skips it) — but **leave it open** until the
-PR merges, so a rejected PR doesn't silently lose the learning. For a **discarded**
-learning: close the issue with a one-line reason. Never close an issue just because
-you opened a PR for it.
+- **PR homes** (`repo-claude-md`, `project-local-skill`, `shared-mcp-skills`): for
+  each source issue that made it into a PR, **comment** with the PR link and add the
+  **`triaged`** label (so the next run skips it) — but **leave it open** until the PR
+  merges, so a rejected PR doesn't silently lose the learning. Never close a
+  proto-learning just because you opened a PR for it.
+- **`loop-self`**: already handled in Step 4 — the source proto-learnings are
+  **closed**, pointing at the new `loop-improvement` issue (the learning lives there
+  now).
+- **Discarded**: close the issue with a one-line reason.
 
 ## Caps & guardrails
 
