@@ -1,0 +1,23 @@
+name: mcp-issue-loop hook test
+
+# Deterministic, hermetic test of the proto-learning capture hook.
+# No `claude`, no `gh`, no network — just bash + jq. Runs on every PR/push
+# that touches the plugin's hooks.
+
+on:
+  pull_request:
+    paths:
+      - "plugins/mcp-issue-loop/hooks/**"
+  push:
+    branches: [main]
+    paths:
+      - "plugins/mcp-issue-loop/hooks/**"
+  workflow_dispatch:
+
+jobs:
+  hook-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run capture-hook tests
+        run: bash plugins/mcp-issue-loop/hooks/test/run.sh

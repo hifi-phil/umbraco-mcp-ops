@@ -8,6 +8,12 @@
 # worth improving happened. If so, files ONE `proto-learning` issue on the ops
 # repo. The analyzer has no write tools; this script does the deterministic
 # `gh issue create`. Runs off the critical path (hook is async).
+#
+# Env knobs (ops + test):
+#   MCP_ISSUE_LOOP_DRY_RUN=1      log the intended issue instead of filing (no gh)
+#   MCP_ISSUE_LOOP_ANALYZER_OUT   inject a canned analyzer decision (skip `claude`)
+#   MCP_ISSUE_LOOP_LOG            override the log file path
+#   MCP_ISSUE_LOOP_CAPTURE=1      re-entry guard (set internally; do not set by hand)
 set -uo pipefail
 
 SCOPE="${1:-subagent}"
@@ -15,9 +21,8 @@ OPS_REPO="hifi-phil/umbraco-mcp-ops"
 LABEL="proto-learning"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SCHEMA="$PLUGIN_ROOT/skills/mcp-issue-loop/references/proto-learning-schema.md"
-LOG_DIR="${HOME}/.cache/mcp-issue-loop"
-LOG="$LOG_DIR/capture.log"
-mkdir -p "$LOG_DIR" 2>/dev/null || true
+LOG="${MCP_ISSUE_LOOP_LOG:-${HOME}/.cache/mcp-issue-loop/capture.log}"
+mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
 log() { printf '%s [%s] %s\n' "$(date -u +%FT%TZ 2>/dev/null || echo now)" "$SCOPE" "$*" >>"$LOG" 2>/dev/null || true; }
 
 # --- Re-entry guard --------------------------------------------------------
@@ -28,9 +33,9 @@ if [ -n "${MCP_ISSUE_LOOP_CAPTURE:-}" ]; then exit 0; fi
 export MCP_ISSUE_LOOP_CAPTURE=1
 
 # --- Preconditions ---------------------------------------------------------
-for bin in jq claude gh; do
-  command -v "$bin" >/dev/null 2>&1 || { log "missing $bin — skipping capture"; exit 0; }
-done
+# jq is always needed; `claude` only when actually analyzing (not when a canned
+# response is injected), `gh` only when actually filing (checked at those points).
+command -v jq >/dev/null 2>&1 || { log "missing jq — skipping capture"; exit 0; }
 
 EVENT="$(cat)"
 TRANSCRIPT="$(printf '%s' "$EVENT" | jq -r '.transcript_path // empty' 2>/dev/null)"
@@ -57,6 +62,7 @@ if [ -n "${MCP_ISSUE_LOOP_ANALYZER_OUT:-}" ]; then
   # Test seam: inject a canned analyzer response instead of calling the model.
   OUT="$MCP_ISSUE_LOOP_ANALYZER_OUT"
 else
+  command -v claude >/dev/null 2>&1 || { log "missing claude — skipping capture"; exit 0; }
   OUT="$(claude -p "$PROMPT" --model sonnet --allowedTools "Read,Grep" 2>>"$LOG")" || {
     log "analyzer invocation failed"; exit 0; }
 fi
@@ -74,6 +80,18 @@ RECORD="$(printf '%s' "$JSON" | jq '.record // {}')"
 NOTES="$(printf '%s' "$JSON" | jq -r '.notes // ""')"
 [ -n "$TITLE" ] || { log "no title in analyzer output — skipping"; exit 0; }
 
+BODY="$(printf '```json\n%s\n```\n\n**Notes:** %s\n' "$(printf '%s' "$RECORD" | jq .)" "$NOTES")"
+
+# --- Dry-run: log the intended issue and stop (no gh, fully hermetic) -------
+if [ -n "${MCP_ISSUE_LOOP_DRY_RUN:-}" ]; then
+  log "DRY_RUN — would file title: $TITLE"
+  log "DRY_RUN — would file body: $(printf '%s' "$BODY" | tr '\n' '|')"
+  exit 0
+fi
+
+# --- Filing needs gh from here on ------------------------------------------
+command -v gh >/dev/null 2>&1 || { log "missing gh — skipping capture"; exit 0; }
+
 # --- Dedup: skip an obvious exact-title match already open -----------------
 if gh issue list --repo "$OPS_REPO" --label "$LABEL" --state open --search "$TITLE" \
      --json title --jq '.[].title' 2>/dev/null | grep -qxF "$TITLE"; then
@@ -81,12 +99,6 @@ if gh issue list --repo "$OPS_REPO" --label "$LABEL" --state open --search "$TIT
 fi
 
 # --- File it ---------------------------------------------------------------
-BODY="$(printf '```json\n%s\n```\n\n**Notes:** %s\n' "$(printf '%s' "$RECORD" | jq .)" "$NOTES")"
-if [ -n "${MCP_ISSUE_LOOP_DRY_RUN:-}" ]; then
-  log "DRY_RUN — would file title: $TITLE"
-  log "DRY_RUN — would file body: $(printf '%s' "$BODY" | tr '\n' '|')"
-  exit 0
-fi
 if URL="$(gh issue create --repo "$OPS_REPO" --label "$LABEL" --title "$TITLE" --body "$BODY" 2>>"$LOG")"; then
   log "filed proto-learning: $URL"
 else

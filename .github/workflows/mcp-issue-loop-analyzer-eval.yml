@@ -1,0 +1,57 @@
+name: mcp-issue-loop analyzer eval
+
+# MANUAL canary for the live analyzer. NOT a merge gate — it costs tokens, needs
+# a secret, and the model's judgment is non-deterministic. Run it after editing
+# an analyzer prompt or the output contract to confirm the real `claude -p` call
+# still returns a parseable decision (dry-run — nothing is filed).
+#
+# Requires repo secret ANTHROPIC_API_KEY. The Claude Code CLI install step below
+# is best-effort; adjust it if the canonical install command changes.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  analyzer-eval:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preflight — secret present
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY secret is not set — add it in repo settings to run this eval."
+            exit 1
+          fi
+
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          command -v claude || { echo "::error::claude CLI not on PATH after install"; exit 1; }
+          claude --version || true
+
+      - name: Run live analyzer (dry-run)
+        env:
+          PLUGIN_ROOT: plugins/mcp-issue-loop
+        run: |
+          set -uo pipefail
+          export CLAUDE_PLUGIN_ROOT="$PWD/$PLUGIN_ROOT"
+          LOG="$(mktemp)"
+          FIX="$PLUGIN_ROOT/hooks/test/fixtures/loop-build.jsonl"
+          printf '{"transcript_path":"%s","hook_event_name":"SubagentStop","session_id":"eval"}\n' "$PWD/$FIX" \
+            | env MCP_ISSUE_LOOP_LOG="$LOG" MCP_ISSUE_LOOP_DRY_RUN=1 \
+                bash "$PLUGIN_ROOT/hooks/capture-proto-learning.sh" subagent
+          echo "--- analyzer log ---"; cat "$LOG"
+          if grep -qF "analyzer output not JSON" "$LOG"; then
+            echo "::error::Analyzer returned non-JSON — the output contract or prompt has drifted."; exit 1
+          fi
+          if grep -qF "analyzer invocation failed" "$LOG"; then
+            echo "::error::claude -p invocation failed (auth / CLI / network)."; exit 1
+          fi
+          if grep -qE "DRY_RUN — would file title:|analyzer decided SKIP" "$LOG"; then
+            echo "OK — analyzer reached a clean, parseable decision."
+          else
+            echo "::error::Analyzer produced no recognizable decision — investigate the log above."; exit 1
+          fi
