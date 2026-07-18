@@ -33,6 +33,29 @@
         "automation",
         "cloud-routine"
       ]
+    },
+    {
+      "name": "release-flow",
+      "source": "./plugins/release-flow",
+      "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions. Bundles release-and-branching and sync-dev.",
+      "version": "1.0.0",
+      "category": "workflow",
+      "author": {
+        "name": "Phil W",
+        "email": "pjw@umbraco.com",
+        "url": "https://github.com/hifi-phil"
+      },
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/release-flow",
+      "keywords": [
+        "git",
+        "gitflow",
+        "branching",
+        "release",
+        "tagging",
+        "pull-request",
+        "dev-sync",
+        "workflow"
+      ]
     }
   ]
 }

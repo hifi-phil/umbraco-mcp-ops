@@ -1,0 +1,54 @@
+# Example: tag + GitHub Release when the version on the release branch changes.
+#
+# Copy to .github/workflows/release-tag.yml in the target repo, then adjust two things:
+#   1. `branches:` — the branch a release lands on (main-only: main; gitflow: main).
+#   2. the "Read version" step — swap the version source for the repo's stack.
+#
+# Idempotent: it computes v<version> from the manifest and skips if that tag already
+# exists, so it only actually tags + releases when the version is bumped.
+
+name: release-tag
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write        # push tags + create releases
+
+jobs:
+  tag-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so we can see whether the tag already exists
+
+      # --- Read the version. This example reads Node's package.json.
+      # --- Swap this single step for your stack, e.g.:
+      # ---   .NET     : grep <Version> from the .csproj / Directory.Build.props
+      # ---   Python   : read [project].version from pyproject.toml
+      # ---   Rust     : read package.version from Cargo.toml
+      # ---   anything : a plain VERSION file -> $(cat VERSION)
+      - name: Read version
+        id: v
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether tag already exists
+        id: check
+        run: |
+          if git rev-parse "v${{ steps.v.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create tag + GitHub Release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="v${{ steps.v.outputs.version }}"
+          git tag "$VERSION"
+          git push origin "$VERSION"
+          gh release create "$VERSION" --title "$VERSION" --generate-notes

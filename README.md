@@ -81,6 +81,7 @@ Install from this repo inside Claude Code:
 | Plugin | What it does |
 |--------|--------------|
 | [`ai-issue-loop`](plugins/ai-issue-loop/) | Works the open `ready-for-ai` issues in an Umbraco MCP repo — one worktree + subagent per issue (max 3 parallel), each driven to a CI-green PR following the established MCP skills, then iterated against review feedback until you approve and it merges. Repo-agnostic; runs locally or as a scheduled cloud routine. |
+| [`release-flow`](plugins/release-flow/) | Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (`dev` + `main`) vs main-only and follows the matching conventions for branch naming, squash vs merge-commit, cutting a release, tagging, and syncing back to `dev`. Bundles the `release-and-branching` and `sync-dev` skills. |
 
 > **Note:** `ai-issue-loop` drives local worktrees, builds, and integration tests,
 > so it runs on a developer machine (or a runner with the full .NET/Umbraco
