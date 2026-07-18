@@ -1,0 +1,38 @@
+{
+  "name": "umbraco-mcp-ops",
+  "owner": {
+    "name": "Phil W",
+    "email": "pjw@umbraco.com"
+  },
+  "metadata": {
+    "description": "Cross-repo ops tooling and autonomous workflows for the Umbraco MCP repos — issue automation, branch housekeeping, and the self-learning loop that feeds improvements back into the repos and shared skills.",
+    "version": "1.0.0",
+    "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops"
+  },
+  "plugins": [
+    {
+      "name": "ai-issue-loop",
+      "source": "./plugins/ai-issue-loop",
+      "description": "Work through GitHub issues labelled ready-for-ai in an Umbraco MCP repo, one worktree + subagent per issue (max 3 parallel), driving each to a CI-green PR, then responding to review feedback until approved and merged. Repo-agnostic; runs locally or as a scheduled cloud routine.",
+      "version": "1.0.0",
+      "category": "workflow",
+      "author": {
+        "name": "Phil W",
+        "email": "pjw@umbraco.com",
+        "url": "https://github.com/hifi-phil"
+      },
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/ai-issue-loop",
+      "keywords": [
+        "umbraco",
+        "mcp",
+        "github-issues",
+        "worktree",
+        "subagent",
+        "ci",
+        "pull-request",
+        "automation",
+        "cloud-routine"
+      ]
+    }
+  ]
+}

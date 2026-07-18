@@ -4,16 +4,26 @@ Private cross-repo operations tooling for the Umbraco MCP repositories. Scripts 
 act on *several* repos via the GitHub API rather than belonging to any one product, so
 they live in their own home and are run on a schedule (Claude routines) or by hand.
 
+This repo is also a **Claude Code plugin marketplace** — the interactive
+workflows that drive the MCP repos are distributed as installable plugins
+(see [Plugins](#plugins-claude-code-marketplace)).
+
 ## Layout
 
 ```
-lib/                       # shared helpers reused across tools
+.claude-plugin/
+  marketplace.json         # marketplace manifest listing the plugins below
+plugins/
+  ai-issue-loop/           # plugin: autonomous ready-for-ai issue loop
+lib/                       # shared helpers reused across scripts
   slack.sh                 #   post_to_slack() — posts to the $SLACK_WEBHOOK_URL channel
 scripts/
   branch-housekeeping/     # weekly: delete merged branches, flag ambiguous ones on Slack
 ```
 
-Each tool gets its own folder under `scripts/<tool>/` and reuses `lib/`.
+Each script tool gets its own folder under `scripts/<tool>/` and reuses `lib/`.
+Each plugin gets its own folder under `plugins/<plugin>/` and is listed in
+`.claude-plugin/marketplace.json`.
 
 ## Requirements
 
@@ -58,3 +68,20 @@ What this means in practice:
 | Tool | What it does |
 |------|--------------|
 | [`branch-housekeeping`](scripts/branch-housekeeping/) | Weekly sweep: deletes branches whose PR was merged, keeps open-PR branches, and posts ambiguous branches to Slack for review. |
+
+## Plugins (Claude Code marketplace)
+
+Install from this repo inside Claude Code:
+
+```
+/plugin marketplace add hifi-phil/umbraco-mcp-ops
+/plugin install ai-issue-loop@umbraco-mcp-ops
+```
+
+| Plugin | What it does |
+|--------|--------------|
+| [`ai-issue-loop`](plugins/ai-issue-loop/) | Works the open `ready-for-ai` issues in an Umbraco MCP repo — one worktree + subagent per issue (max 3 parallel), each driven to a CI-green PR following the established MCP skills, then iterated against review feedback until you approve and it merges. Repo-agnostic; runs locally or as a scheduled cloud routine. |
+
+> **Note:** `ai-issue-loop` drives local worktrees, builds, and integration tests,
+> so it runs on a developer machine (or a runner with the full .NET/Umbraco
+> toolchain), not the lightweight web runners the `scripts/` routines target.
