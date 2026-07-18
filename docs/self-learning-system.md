@@ -5,34 +5,46 @@ autonomously *and* feed their own improvement back in. This guide is the single
 place that explains **how it fits together**, **how to set it up**, and **how to
 use it**. Each loop also self-documents in its own `SKILL.md`; this is the map.
 
-## The flywheel
+## 1. The development process
+
+How one unit of work flows from an issue to a shipped release — the forward path:
+
+```mermaid
+flowchart LR
+    ISSUE["ready-for-ai<br/>issue"] --> CODE["mcp-issue-loop /<br/>content-issue-loop<br/>(code the change)"]
+    CODE --> PR["PR<br/>CI green"]
+    PR --> REVIEW{"human<br/>review"}
+    REVIEW -->|"approve + label auto-merge"| MERGE["merge-flow<br/>(gated merge)"]
+    MERGE --> MERGED["merged to dev"]
+    MERGED --> REL["release-loop<br/>(human-initiated)"]
+    REL --> SHIP["release on main<br/>+ tag + GitHub Release"]
+```
+
+**Human gates on this path:** the **review** before merge (`merge-flow` won't merge
+without approval + green CI), and a **publish gate** inside `release-loop` before
+anything irreversible. The loops automate the mistake-prone mechanics; you keep the
+"ship this" decisions.
+
+## 2. The self-learning loop
+
+What the *same* loop runs emit as a byproduct, and how it compounds back into the
+development process above:
 
 ```mermaid
 flowchart TD
-    ISSUE["ready-for-ai issue<br/>on an MCP repo"] --> LOOP["mcp-issue-loop<br/>(worktree + subagent per issue)"]
-    LOOP --> PR["PR, CI green"]
-    PR --> REVIEW{"human review"}
-    REVIEW -->|approve + label auto-merge| MERGE["merge-flow<br/>(gated: approved + green + clean)"]
-    MERGE --> MAIN["merged"]
-
-    LOOP -. "SubagentStop / SessionEnd hooks<br/>(read-only analyzer)" .-> PROTO["proto-learning issues<br/>(this repo: umbraco-mcp-ops)"]
-    PROTO --> TRIAGE["triage-learnings (Loop B)<br/>weekly, dedupe + threshold"]
+    LOOP["a loop run<br/>(mcp-issue-loop / content-issue-loop)"] -. "SubagentStop / SessionEnd hooks<br/>(read-only analyzer)" .-> PROTO["proto-learning issues<br/>(umbraco-mcp-ops)"]
+    PROTO --> TRIAGE["triage-learnings (Loop B)<br/>weekly · dedupe + threshold"]
     TRIAGE -->|domain-specific| MREPO["issue on that MCP repo"]
     TRIAGE -->|generalizable| SHARED["PR to Umbraco-MCP-Base<br/>(shared umbraco-mcp-skills)"]
-    TRIAGE -->|about the loop| LOOPIMP["loop-improvement issue<br/>(this repo)"]
-
-    MREPO -. "human adds ready-for-ai" .-> ISSUE
-    LOOPIMP -. "human adds ready-for-ai" .-> CONTENT["content-issue-loop<br/>(non-MCP repos)"]
-    CONTENT --> PR
-
-    RELEASE["release-loop<br/>(human-initiated)"] -.-> MAIN
+    TRIAGE -->|about the loop| LOOPIMP["loop-improvement issue<br/>(umbraco-mcp-ops)"]
+    MREPO -. "human adds ready-for-ai" .-> BACK(["← re-enters the development process<br/>as a ready-for-ai issue"])
+    LOOPIMP -. "human adds ready-for-ai" .-> BACK
 ```
 
-**Two human gates, everywhere:** (1) a proto-learning or loop-improvement issue
-only re-enters a loop when a **human adds `ready-for-ai`**; (2) every PR is merged
-only after **human approval** (via `merge-flow`), and every release **pauses for
-human approval before publish** (via `release-loop`). The loops automate the
-mistake-prone mechanics; humans keep the "act on this / ship this" decisions.
+**The compounding gate:** a proto-learning or loop-improvement issue only re-enters
+the development process when a **human adds `ready-for-ai`** — nothing self-triggers.
+Generalizable lessons instead become a drafted PR to the shared skills, so every MCP
+repo benefits next time.
 
 ## The loops at a glance
 
@@ -133,7 +145,7 @@ Not wired yet. Planned: a **weekly `triage-learnings`** routine and a **periodic
 and not scheduled. See the individual skills' "Running as a scheduled routine"
 sections; the routine wiring itself is set up separately.
 
-## Release-loop lifecycle
+## 3. Release-loop lifecycle (detail)
 
 ```mermaid
 flowchart LR
