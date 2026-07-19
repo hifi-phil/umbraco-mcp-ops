@@ -28,9 +28,9 @@ couldn't be**. No half-done merges.
 
 For every GitHub action — listing PRs, reading reviews, checking CI, merging,
 deleting the branch — **use the `github-ops` skill**, which owns the local-vs-web
-mechanism. The `gh` commands in the steps below are illustrative; `github-ops` has
-the right command/tool for the environment. Scheduled-routine wiring is set up
-separately (see [Running as a routine](#running-as-a-scheduled-routine)).
+mechanism (this skill names the operation; `github-ops` has the command/tool).
+Scheduled-routine wiring is set up separately (see
+[Running as a routine](#running-as-a-scheduled-routine)).
 
 > **`github-ops` must be installed for this loop to run.**
 
