@@ -83,6 +83,7 @@ Install from this repo inside Claude Code:
 /plugin install merge-flow@umbraco-mcp-ops
 /plugin install release-flow@umbraco-mcp-ops
 /plugin install github-ops@umbraco-mcp-ops
+/plugin install dependabot-rollup@umbraco-mcp-ops
 /reload-plugins
 ```
 
@@ -92,6 +93,7 @@ Install from this repo inside Claude Code:
 | [`release-flow`](plugins/release-flow/) | Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (`dev` + `main`) vs main-only and follows the matching conventions for branch naming, squash vs merge-commit, cutting a release, tagging, and syncing back to `dev`. Bundles `release-and-branching`, `sync-dev`, and **`release-loop`** — a guardrail loop that drives a release end-to-end (cut release branch → bump → CI-green PR to `main`), pauses for human approval before the irreversible publish, then syncs `main` back to `dev`. Uses `/goal`. |
 | [`merge-flow`](plugins/merge-flow/) | Guardrail loop that merges PRs labelled `auto-merge` — but only once they're approved, CI-green (polled, never `--auto`), conflict-free, and on the right base. Replaces error-prone manual merges; drives each to a clean merge (branch deleted) or flags the blocker. Uses `/goal`. Repo-agnostic; local or scheduled cloud routine. |
 | [`github-ops`](plugins/github-ops/) | Shared reference the other loops point at for GitHub work in **both** environments — `gh` CLI + `git` locally, the **GitHub MCP server** (`mcp__github__*`) on Claude web / in routines. One operation catalog, two reference files; keeps the dual path in one place instead of duplicated across skills. |
+| [`dependabot-rollup`](plugins/dependabot-rollup/) | Roll every open Dependabot **security** PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Includes a generator for per-repo cloud-routine config. Repo-agnostic; safe to run unattended (weekly routine). |
 
 > **Note:** `mcp-issue-loop` drives local worktrees, builds, and integration tests,
 > so it runs on a developer machine (or a runner with the full .NET/Umbraco
