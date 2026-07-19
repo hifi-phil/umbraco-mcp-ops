@@ -1,19 +1,26 @@
 ---
-description: Roll every open Dependabot SECURITY update (excluding semver-major bumps) into a single chore branch + PR, drive it to green CI with /goal, close (and delete the branch of) the individual Dependabot PRs the rollup supersedes, and notify only when everything is done. Repo-agnostic; safe to run unattended as a scheduled cloud routine.
-argument-hint: "[base branch — defaults to 'dev' if it exists on origin, else the repo default branch]"
+name: dependabot-rollup
+description: >-
+  Roll every open Dependabot SECURITY update (excluding semver-major bumps) into a
+  single chore branch + PR, drive it to green CI with /goal, close (and delete the
+  branch of) the individual Dependabot PRs the rollup supersedes, and notify only when
+  everything is done. Repo-agnostic; safe to run unattended (locally or as a scheduled
+  routine). Invoke as `/dependabot-rollup [base branch]`, or trigger whenever you need
+  to consolidate a repo's open Dependabot security PRs into one verified rollup PR.
+  Requires the `github-ops` skill for all GitHub-API work.
 ---
 
-# /dependabot-rollup
+# dependabot-rollup
 
 Consolidate all **open Dependabot security updates** into one `chore/` branch + PR against the base branch, verify it to green CI, delete (close + delete-branch) the individual Dependabot PRs the rollup supersedes, and notify the human **only when everything is done**.
 
-Built to run **unattended on a schedule** (including in a cloud worker). It must be a quiet no-op when there is nothing to do, and it must never lose work: individual Dependabot PRs are closed **only after** the rollup PR's CI is fully green.
+Built to run **unattended on a schedule** (locally via a Desktop scheduled task, or as a cloud routine). It must be a quiet no-op when there is nothing to do, and it must never lose work: individual Dependabot PRs are closed **only after** the rollup PR's CI is fully green.
 
-ARGUMENTS: $ARGUMENTS — an optional base branch. If omitted, use `dev` when it exists on `origin`, otherwise the repository's default branch (detect via `github-ops` → *Detect base branch*).
+Invoke as `/dependabot-rollup [base branch]`. The optional base branch defaults to `dev` when it exists on `origin`, otherwise the repository's default branch (detect via `github-ops` → *Detect base branch*).
 
 ## GitHub access & environment
 
-- **GitHub-API operations** (list Dependabot PRs, list Dependabot alerts, get/create/update/close PRs, CI status, read failing logs) go through the **`github-ops`** skill — `gh` locally, the GitHub MCP server on Claude web. **`github-ops` must be available for this command to run.** The steps name the *operation*; `github-ops` has the command/tool.
+- **GitHub-API operations** (list Dependabot PRs, list Dependabot alerts, get/create/update/close PRs, CI status, read failing logs) go through the **`github-ops`** skill — `gh` locally, the GitHub MCP server on Claude web. **`github-ops` must be available for this skill to run.** The steps name the *operation*; `github-ops` has the command/tool.
 - **Working-tree operations** (merging the include branches, reconciling lockfiles, `npm install`, building) use `git` + the ecosystem toolchain directly — these are **not** GitHub-API calls, so they need a **clone + the repo's toolchain** in the environment (e.g. the DotNet/Node cloud env), not just API access.
 
 ## Guardrails (read first)
@@ -32,7 +39,7 @@ Confirm GitHub access is available (`github-ops` — its mechanism is present), 
 
 ```bash
 git fetch origin --prune
-# BASE = $ARGUMENTS if set; else 'dev' if `git rev-parse --verify origin/dev` succeeds; else default branch
+# BASE = the base-branch argument if set; else 'dev' if `git rev-parse --verify origin/dev` succeeds; else default branch
 git switch "$BASE" && git pull --ff-only origin "$BASE"
 ```
 
