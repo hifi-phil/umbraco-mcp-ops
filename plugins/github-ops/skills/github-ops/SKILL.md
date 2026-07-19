@@ -55,8 +55,10 @@ files cover the **same** list — keep them in sync.
 | Close an issue | triage |
 | List PRs (by label / state) | merge-flow |
 | Get a PR (review decision, mergeable, base) | merge-flow, all loops |
-| Get PR reviews | merge-flow |
+| Get PR reviews + review comments | merge-flow, review-response |
 | **Get PR CI / check-run status** | every loop (the merge gate) |
+| **Read a failing check's log** | every loop (diagnosing a red CI run) |
+| Re-request review / add reviewer | review-response |
 | Create a PR | all loops |
 | **Merge a PR (+ delete branch)** | merge-flow |
 | Create a branch | triage (shared-skills), content-issue-loop |

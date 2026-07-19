@@ -28,8 +28,9 @@ Auth is the MCP server's connected GitHub App — no token to paste. Mirror of
 |-----------|------|
 | List by label / state | `list_pull_requests` |
 | Get (review decision, mergeable, base) | `pull_request_read` (`method: "get"`) |
-| Get reviews | `pull_request_read` (`method: "get_reviews"`) |
+| Get reviews + review comments | `pull_request_read` (`method: "get_reviews"`; and `get_review_comments`) |
 | **CI / check-run status** | `pull_request_read` (`method: "get_check_runs"`; also `get_status`) — poll until non-pending |
+| **Read a failing check's log** | `get_job_logs` (failed job for the PR's run); the check-run entries from `get_check_runs` give the job/run IDs |
 | Create | `create_pull_request` |
 | **Merge** | `merge_pull_request` (pass the merge method; branch deletion may not be exposed — see Notes) |
 | Update branch (bring up to date) | `update_pull_request_branch` |

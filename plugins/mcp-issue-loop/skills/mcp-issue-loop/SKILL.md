@@ -39,7 +39,7 @@ Step 2 and only clear it when the whole backlog is done (or you abort).
 
 | Thing | How to resolve | Default |
 |-------|----------------|---------|
-| Repo | `gh repo view --json nameWithOwner -q .nameWithOwner` | current repo |
+| Repo | identify the current repo (github-ops → *Detect base branch / repo*) | current repo |
 | AI label | fixed | `ready-for-ai` |
 | Base branch | detect via the `release-and-branching` skill (gitflow → `dev`) | `dev` |
 | Concurrency cap | fixed | **3** |
@@ -49,12 +49,14 @@ family. Confirm the repo looks like one (has `src/umbraco-api/tools/`, a
 `CLAUDE.md`, worktree hooks in `.claude/settings.json`). If it doesn't, stop and
 say so — the build playbook's MCP/test conventions won't apply.
 
+**GitHub operations** (list issues, open/merge PRs, check CI, read failing logs,
+etc.) go through the **`github-ops`** skill — name the *operation*, never a raw `gh`
+command. **`github-ops` must be installed for this loop to run.**
+
 ## Step 1 — gather the backlog
 
-```bash
-gh issue list --repo <repo> --label ready-for-ai --state open \
-  --json number,title,body,labels --limit 100
-```
+**List** the open issues labelled `ready-for-ai` on the repo (github-ops → *List
+issues by label / state*), reading each one's number/title/body.
 
 - No matching issues → report "nothing labelled `ready-for-ai` is open" and stop.
   (If the label doesn't exist yet on the repo, say so — someone has to create and
@@ -105,16 +107,9 @@ Keep dispatching until the queue is empty and all build subagents have returned.
 Now every buildable issue has an open PR. For each PR, the human reviews it and
 you respond. This phase is cheap waiting punctuated by short bursts of work.
 
-**Watch for reviews.** Poll the open PRs for new review activity. Prefer a single
-poller over per-PR monitors:
-
-```bash
-# one line per PR whose review state or head has changed since last poll
-for pr in <prNumbers>; do
-  gh pr view "$pr" --repo <repo> \
-    --json number,reviewDecision,reviews,mergeStateStatus,statusCheckRollup
-done
-```
+**Watch for reviews.** Poll each open PR for new review activity — its review
+decision, review state, and CI/merge status (github-ops → *Get a PR* + *Get PR CI /
+check-run status*).
 
 Drive the wait with `ScheduleWakeup` (dynamic `/loop`) at a long interval
 (e.g. 1200s+) rather than busy-polling — a human review can take hours or days.

@@ -20,8 +20,9 @@ is `owner/name`. Mirror of [`github-mcp.md`](github-mcp.md) — keep both in syn
 |-----------|---------|
 | List by label / state | `gh pr list --repo <repo> --label <label> --state open --json number,title,baseRefName` |
 | Get (review decision, mergeable, base) | `gh pr view <n> --repo <repo> --json reviewDecision,mergeable,mergeStateStatus,baseRefName,headRefName` |
-| Get reviews | `gh pr view <n> --repo <repo> --json reviews` (or `gh api repos/<repo>/pulls/<n>/reviews`) |
+| Get reviews + review comments | `gh pr view <n> --repo <repo> --json reviews,comments`; inline comments: `gh api repos/<repo>/pulls/<n>/comments` |
 | **CI / check-run status** | `gh pr checks <n> --repo <repo>` (add `--watch` to block until done) |
+| **Read a failing check's log** | `gh run view --repo <repo> --job <id> --log-failed` (get `<id>` from `gh pr checks`) |
 | Create | `gh pr create --repo <repo> --base <base> --head <head> --title "<t>" --body "<b>"` |
 | **Merge (+ delete branch)** | `gh pr merge <n> --repo <repo> --squash --delete-branch` (or `--merge` per convention) |
 | Re-request review | `gh pr edit <n> --repo <repo> --add-reviewer <user>` |
