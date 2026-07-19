@@ -10,9 +10,9 @@ description: >-
   learnings about the loop itself. Loop B files issues to owning repos and only
   drafts PRs for the shared tooling — it never hand-edits a product repo. Nothing
   auto-merges; discarded learnings are closed with a reason. Runs locally or as a
-  scheduled cloud routine; GitHub work goes through the `github-ops` skill (gh CLI
-  locally, the GitHub MCP server on the web). Trigger on "triage the learnings",
-  "triage proto-learnings", "run loop B", "process the learning backlog".
+  scheduled cloud routine; GitHub work goes through the required `github-ops` skill.
+  Trigger on "triage the learnings", "triage proto-learnings", "run loop B",
+  "process the learning backlog".
 ---
 
 # triage-learnings (Loop B)
@@ -36,19 +36,11 @@ product repo's content is edited unreviewed.
 
 ## Runtime & auth
 
-Runs both **locally** (dev machine) and as an **unattended scheduled routine on
-Claude web**. For every GitHub operation below — listing/creating/commenting/
-labelling/closing issues, creating branches, pushing files, opening PRs — **follow
-the [`github-ops`](../../../github-ops/skills/github-ops/SKILL.md) skill**, which maps
-each to the right mechanism for the environment:
+Runs both locally and as a scheduled routine on Claude web. **For every GitHub
+operation, use the `github-ops` skill** — it owns the local-vs-web mechanism, so this
+skill just names the *operation* and never restates or hard-codes how to do it.
 
-- **Local:** `gh` CLI + `git`.
-- **Claude web / routine:** the **GitHub MCP server** (`mcp__github__*`) — no `gh`
-  there; and **no local clone** (create the branch + push file contents via the MCP
-  tools). Auth is the MCP server's connected app — no token to paste.
-
-Don't hard-code `gh`, `curl`/REST, or a `git clone` here — defer the mechanism to
-`github-ops`. (Steps below name the *operation*; `github-ops` has the command/tool.)
+> **`github-ops` must be installed for this loop to run.**
 
 ## Config (resolve once)
 
@@ -126,8 +118,7 @@ All GitHub actions below use `github-ops` for the concrete command/tool.
    main-only → base `main`).
 2. **Create a branch** (`chore/proto-learning-<slug>`) and **push** the **smallest**
    edit to the `umbraco-mcp-skills` skill that *should have* surfaced the lesson
-   (often `add-tool` / `mcp-patterns` / an integration-test skill). Per `github-ops`:
-   local → `git`; web → push file contents via the MCP tools (no clone).
+   (often `add-tool` / `mcp-patterns` / an integration-test skill).
 3. **Open the PR** against the detected base.
 
 **`loop-self` (→ `loop-improvement` issue on the ops repo):**
@@ -169,5 +160,5 @@ Schedule this skill weekly as a Claude Code cloud routine (see the `schedule`
 skill). The routine wakes, runs Steps 1–5 against the current inbox, routes up to 10
 clusters, and stops — issues sit in their owning repos and any shared PR sits for
 review. Because capture is continuous and triage is periodic, a weekly cadence keeps
-the inbox from growing without flooding anyone. On the web, GitHub work goes through
-the GitHub MCP server (`github-ops`) — `gh` is absent there.
+the inbox from growing without flooding anyone. All GitHub work goes through the
+`github-ops` skill.

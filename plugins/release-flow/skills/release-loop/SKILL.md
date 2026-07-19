@@ -28,9 +28,8 @@ This loop **orchestrates**, it doesn't reinvent: it drives the
 uses this plugin's `release-tag.yml` / `sync-main-to-dev.yml` automation, and
 [`sync-dev`](../sync-dev/SKILL.md) for the back-merge. If the target repo ships its
 own release skill (e.g. `umbraco-mcp-skills:release` for version-bump + changelog),
-use it for that step. For GitHub actions (PRs, CI status, merge, tag/Release),
-follow the [`github-ops`](../../../github-ops/skills/github-ops/SKILL.md) skill —
-normally the dev-machine `gh` path, since a release is human-initiated.
+use it for that step. For GitHub actions (PRs, CI status, merge, tag/Release), use
+the **`github-ops`** skill (required for this loop to run).
 
 ## Input & preconditions
 
