@@ -9,7 +9,12 @@ Consolidate all **open Dependabot security updates** into one `chore/` branch + 
 
 Built to run **unattended on a schedule** (including in a cloud worker). It must be a quiet no-op when there is nothing to do, and it must never lose work: individual Dependabot PRs are closed **only after** the rollup PR's CI is fully green.
 
-ARGUMENTS: $ARGUMENTS — an optional base branch. If omitted, use `dev` when it exists on `origin`, otherwise the repository's default branch (`gh repo view --json defaultBranchRef`).
+ARGUMENTS: $ARGUMENTS — an optional base branch. If omitted, use `dev` when it exists on `origin`, otherwise the repository's default branch (detect via `github-ops` → *Detect base branch*).
+
+## GitHub access & environment
+
+- **GitHub-API operations** (list Dependabot PRs, list Dependabot alerts, get/create/update/close PRs, CI status, read failing logs) go through the **`github-ops`** skill — `gh` locally, the GitHub MCP server on Claude web. **`github-ops` must be available for this command to run.** The steps name the *operation*; `github-ops` has the command/tool.
+- **Working-tree operations** (merging the include branches, reconciling lockfiles, `npm install`, building) use `git` + the ecosystem toolchain directly — these are **not** GitHub-API calls, so they need a **clone + the repo's toolchain** in the environment (e.g. the DotNet/Node cloud env), not just API access.
 
 ## Guardrails (read first)
 
@@ -23,8 +28,9 @@ ARGUMENTS: $ARGUMENTS — an optional base branch. If omitted, use `dev` when it
 
 ### 1. Resolve base branch & preflight
 
+Confirm GitHub access is available (`github-ops` — its mechanism is present), then set up the working tree:
+
 ```bash
-gh auth status
 git fetch origin --prune
 # BASE = $ARGUMENTS if set; else 'dev' if `git rev-parse --verify origin/dev` succeeds; else default branch
 git switch "$BASE" && git pull --ff-only origin "$BASE"
@@ -34,18 +40,14 @@ If the working tree is dirty or you can't safely land on `$BASE`, stop and repor
 
 ### 2. Discover & classify
 
-```bash
-# Open Dependabot PRs
-gh pr list --state open --app dependabot --json number,title,headRefName,url --limit 100
+Via `github-ops`:
 
-# Packages with an open security alert
-gh api repos/:owner/:repo/dependabot/alerts --paginate \
-  --jq '.[] | select(.state=="open") | .dependency.package.name' | sort -u
-```
+- **List the open Dependabot PRs** (→ *List open Dependabot PRs*) — number, title, head branch, url.
+- **List open Dependabot security alerts** (→ *List Dependabot security alerts*) and collect the alerting package names.
 
-If the alerts API returns **403 / permission denied** (the token may lack `security_events` scope — common in unattended/cloud runs), **stop and report that limitation**. Do not guess which PRs are security.
+If listing alerts fails with a **permission error** (the connected app / token lacks Dependabot-alerts read — common in unattended/cloud runs), **stop and report that limitation**. Do not guess which PRs are security.
 
-For each open Dependabot PR, parse the package(s) and `from → to` versions from the title (use `gh pr view <n>` for multi-package bundles), then classify:
+For each open Dependabot PR, parse the package(s) and `from → to` versions from the title (get the PR via `github-ops` → *Get a PR* for multi-package bundles), then classify:
 
 - **INCLUDE** — has an open security alert **and** no major bump.
 - **DEFER-MAJOR** — security but crosses a major (or a bundle containing any major). Reported, never merged.
@@ -55,12 +57,9 @@ If **INCLUDE is empty**: print the classification summary and **stop** (quiet no
 
 ### 3. Reuse or create the rollup branch/PR (idempotent)
 
-A previous run may have left an open rollup PR:
-
-```bash
-gh pr list --state open --base "$BASE" --json number,headRefName,url \
-  | grep chore/dependabot-security-rollup
-```
+A previous run may have left an open rollup PR — **list the open PRs on `$BASE`**
+(`github-ops` → *List PRs by label / state*) and look for a
+`chore/dependabot-security-rollup-*` head branch.
 
 - If one exists, check it out, rebase onto latest `$BASE`, and **update** it — do not open a second.
 - Otherwise: `git switch -c chore/dependabot-security-rollup-$(date +%Y-%m-%d)`.
@@ -94,10 +93,9 @@ git push -u origin HEAD
 
 ### 6. Open (or update) the rollup PR
 
-```bash
-gh pr create --base "$BASE" --title "chore(deps): security rollup ($(date +%Y-%m-%d))" --body "<body>"
-# or: gh pr edit <n> --body "<regenerated body>"
-```
+**Create the rollup PR** against `$BASE` (`github-ops` → *Create a PR*), or if one
+already exists, **update its body** (→ *Update a PR's body*). Title:
+`chore(deps): security rollup (<date>)`.
 
 Body lists, per included package: name, `from → to`, highest open advisory severity; a **Deferred (major — handle separately)** section with each DEFER-MAJOR PR number + link; and a **Supersedes** line referencing every INCLUDE PR number.
 
@@ -109,16 +107,11 @@ Body lists, per included package: name, `from → to`, highest open advisory sev
 /goal rollup PR #<ROLLUP> targets <BASE>, all its CI checks are green, and every superseded Dependabot PR is closed with its branch deleted
 ```
 
-Then work the loop until the goal is met:
+Then work the loop until the goal is met (GitHub actions via `github-ops`):
 
-- Poll `gh pr checks <ROLLUP> --watch` (blocks until checks settle) rather than busy-waiting.
-- On any failure: `gh run view --job <id> --log-failed`, fix the root cause in code, commit, push, re-poll. Treat a CI failure as a real regression to fix — never hand a red PR to the human.
-- **Only once CI is fully green**, close each superseded Dependabot PR and delete its branch (part of meeting the goal):
-
-```bash
-gh pr close <n> --comment "Superseded by #<ROLLUP> — rolled into the security rollup." --delete-branch
-gh pr view <n> --json state    # verify closed
-```
+- Poll the rollup PR's **CI / check-run status** (→ *Get PR CI / check-run status*) until it settles, rather than busy-waiting.
+- On any failure: **read the failing check's log** (→ *Read a failing check's log*), fix the root cause in code, commit, push, re-poll. Treat a CI failure as a real regression to fix — never hand a red PR to the human.
+- **Only once CI is fully green**, **close each superseded Dependabot PR** (→ *Close a PR without merging (+ comment, delete branch)*) with a comment like `Superseded by #<ROLLUP> — rolled into the security rollup.`, then confirm it's closed (→ *Get a PR*). Deleting the merged branch is best-effort — if the environment can't delete it, `branch-housekeeping` will reap it.
 
 The goal is not met — and you must not notify the human — until CI is green **and** every superseded PR is closed. Use `/goal clear` if you abort.
 

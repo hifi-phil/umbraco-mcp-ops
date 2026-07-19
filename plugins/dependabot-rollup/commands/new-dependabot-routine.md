@@ -20,7 +20,14 @@ ARGUMENTS: $ARGUMENTS
 
 ### 1. Resolve inputs
 - Parse `<owner/repo>`; fail early if missing.
-- **Base branch:** if not given, check `gh api repos/<owner/repo>/branches/dev` — if it exists use `dev`, else `gh repo view <owner/repo> --json defaultBranchRef --jq .defaultBranchRef.name`.
+- **Base branch:** if not given, detect via `github-ops` → *Detect base branch* (`dev` if it exists, else the repo default).
+
+> **⚠️ Pending the routine skill-loading test.** `dependabot-rollup` now depends on the
+> `github-ops` skill, so the old **self-contained inlining** below no longer works —
+> the routine must have the `umbraco-mcp-ops` marketplace (at least `dependabot-rollup`
+> + `github-ops`) available. Whether a routine *can* load our marketplace skills is
+> being verified; until confirmed, treat the plugin-delivered variant as the intended
+> path and this generator's "inline for self-containment" guidance as stale.
 - **Cron:** default `0 8 * * 1` unless `--cron` given. Compute the human-readable local time (Europe/London) for the summary.
 
 ### 2. Build the self-contained routine prompt

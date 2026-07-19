@@ -1,6 +1,6 @@
 {
   "name": "dependabot-rollup",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Roll every open Dependabot security PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Includes a generator that produces per-repo cloud-routine config + manual setup instructions. Repo-agnostic and safe to run unattended.",
   "author": {
     "name": "Phil W",

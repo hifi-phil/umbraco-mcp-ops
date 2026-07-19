@@ -19,13 +19,17 @@ is `owner/name`. Mirror of [`github-mcp.md`](github-mcp.md) — keep both in syn
 | Operation | Command |
 |-----------|---------|
 | List by label / state | `gh pr list --repo <repo> --label <label> --state open --json number,title,baseRefName` |
+| List open Dependabot PRs | `gh pr list --repo <repo> --state open --app dependabot --json number,title,headRefName,url --limit 100` |
 | Get (review decision, mergeable, base) | `gh pr view <n> --repo <repo> --json reviewDecision,mergeable,mergeStateStatus,baseRefName,headRefName` |
 | Get reviews + review comments | `gh pr view <n> --repo <repo> --json reviews,comments`; inline comments: `gh api repos/<repo>/pulls/<n>/comments` |
 | **CI / check-run status** | `gh pr checks <n> --repo <repo>` (add `--watch` to block until done) |
 | **Read a failing check's log** | `gh run view --repo <repo> --job <id> --log-failed` (get `<id>` from `gh pr checks`) |
 | Create | `gh pr create --repo <repo> --base <base> --head <head> --title "<t>" --body "<b>"` |
 | **Merge (+ delete branch)** | `gh pr merge <n> --repo <repo> --squash --delete-branch` (or `--merge` per convention) |
+| Update a PR's body | `gh pr edit <n> --repo <repo> --body "<body>"` |
+| **Close without merging (+ comment, delete branch)** | `gh pr close <n> --repo <repo> --comment "<why>" --delete-branch` |
 | Re-request review | `gh pr edit <n> --repo <repo> --add-reviewer <user>` |
+| List Dependabot security alerts | `gh api repos/<repo>/dependabot/alerts --paginate --jq '.[] \| select(.state=="open")'` (needs `security_events` scope) |
 
 ## Branches & files (for a content PR)
 
