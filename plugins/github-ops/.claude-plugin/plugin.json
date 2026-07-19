@@ -1,6 +1,6 @@
 {
   "name": "github-ops",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Shared reference for doing GitHub work two ways — locally with the `gh` CLI + `git`, and on Claude web / in scheduled routines with the GitHub MCP server (`mcp__github__*`). One operation catalog, two reference files; the other loop plugins point here instead of each re-explaining the dual path.",
   "author": {
     "name": "Phil W",

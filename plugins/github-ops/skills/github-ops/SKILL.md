@@ -54,6 +54,8 @@ files cover the **same** list — keep them in sync.
 | Add / remove a label on an issue | triage, merge-flow |
 | Close an issue | triage |
 | List PRs (by label / state) | merge-flow |
+| List a repo's open Dependabot PRs | dependabot-rollup |
+| List Dependabot security alerts | dependabot-rollup |
 | Get a PR (review decision, mergeable, base) | merge-flow, all loops |
 | Get PR reviews + review comments | merge-flow, review-response |
 | **Get PR CI / check-run status** | every loop (the merge gate) |
@@ -61,6 +63,8 @@ files cover the **same** list — keep them in sync.
 | Re-request review / add reviewer | review-response |
 | Create a PR | all loops |
 | **Merge a PR (+ delete branch)** | merge-flow |
+| Update a PR's body | dependabot-rollup |
+| **Close a PR without merging (+ comment, delete branch)** | dependabot-rollup |
 | Create a branch | triage (shared-skills), content-issue-loop |
 | Create / update / push file(s) | triage (shared-skills), content-issue-loop |
 | Get file contents | any |
