@@ -73,6 +73,7 @@ Inside Claude Code:
 /plugin install merge-flow@umbraco-mcp-ops
 /plugin install release-flow@umbraco-mcp-ops
 /plugin install github-ops@umbraco-mcp-ops
+/plugin install dependabot-rollup@umbraco-mcp-ops
 /reload-plugins
 ```
 
@@ -154,10 +155,23 @@ per-user token).
 
 ## Scheduled routines
 
-Not wired yet. Planned: a **weekly `triage-learnings`** routine and a **periodic
-`merge-flow`** routine (both web-runner, REST). `release-loop` is human-initiated
-and not scheduled. See the individual skills' "Running as a scheduled routine"
-sections; the routine wiring itself is set up separately.
+Full inventory of cross-repo routines in this repo:
+
+| Routine | Cadence | Status |
+|---------|---------|--------|
+| `branch-housekeeping` (`scripts/`) | weekly | **live** |
+| `dependabot-rollup` (plugin) | weekly | **live** (re-point to this marketplace after the move — see below) |
+| `triage-learnings` | weekly | **to wire** |
+| `merge-flow` | periodic (~hourly) | **to wire** |
+
+`release-loop`, `mcp-issue-loop`, and `content-issue-loop` are human-initiated and
+not scheduled. The web routines do GitHub work via the GitHub MCP server (see
+`github-ops`); `branch-housekeeping` is the bash/`curl` exception. Routine wiring is
+set up separately — see each skill's "Running as a scheduled routine" section.
+
+> **`dependabot-rollup` was moved here from the `umbraco-cc-plugins` marketplace.**
+> Its existing weekly cloud routine still points at the old marketplace — re-point it
+> to `dependabot-rollup@umbraco-mcp-ops` (part of the routine-setup pass).
 
 ## 3. Release-loop lifecycle (detail)
 
