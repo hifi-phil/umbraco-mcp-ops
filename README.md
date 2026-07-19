@@ -82,6 +82,7 @@ Install from this repo inside Claude Code:
 /plugin install mcp-issue-loop@umbraco-mcp-ops
 /plugin install merge-flow@umbraco-mcp-ops
 /plugin install release-flow@umbraco-mcp-ops
+/plugin install github-ops@umbraco-mcp-ops
 /reload-plugins
 ```
 
@@ -90,6 +91,7 @@ Install from this repo inside Claude Code:
 | [`mcp-issue-loop`](plugins/mcp-issue-loop/) | Works the open `ready-for-ai` issues in an Umbraco MCP repo — one worktree + subagent per issue (max 3 parallel), each driven to a CI-green PR following the established MCP skills, then iterated against review feedback until you approve and it merges. Also ships the **self-learning loop**: capture hooks file `proto-learning` issues here, and the `triage-learnings` skill (Loop B) periodically routes each one to the repo that owns it — a tracked issue on the specific MCP repo it affects (domain-specific learnings only), a gated PR to the shared `umbraco-mcp-skills` (`Umbraco-MCP-Base`) for generalizable ones, or a `loop-improvement` issue here for the loop itself. Loop B files issues to owning repos and only drafts PRs for the shared tooling. Also ships **`content-issue-loop`** — the lightweight sibling of the MCP loop that works `ready-for-ai` issues on repos *without* the Umbraco toolchain (this ops repo, `Umbraco-MCP-Base`, docs/plugins), doing skill/plugin/script/markdown edits; it's the converter for the `loop-improvement` issues triage files here. Repo-agnostic; runs locally or as a scheduled cloud routine. |
 | [`release-flow`](plugins/release-flow/) | Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (`dev` + `main`) vs main-only and follows the matching conventions for branch naming, squash vs merge-commit, cutting a release, tagging, and syncing back to `dev`. Bundles `release-and-branching`, `sync-dev`, and **`release-loop`** — a guardrail loop that drives a release end-to-end (cut release branch → bump → CI-green PR to `main`), pauses for human approval before the irreversible publish, then syncs `main` back to `dev`. Uses `/goal`. |
 | [`merge-flow`](plugins/merge-flow/) | Guardrail loop that merges PRs labelled `auto-merge` — but only once they're approved, CI-green (polled, never `--auto`), conflict-free, and on the right base. Replaces error-prone manual merges; drives each to a clean merge (branch deleted) or flags the blocker. Uses `/goal`. Repo-agnostic; local or scheduled cloud routine. |
+| [`github-ops`](plugins/github-ops/) | Shared reference the other loops point at for GitHub work in **both** environments — `gh` CLI + `git` locally, the **GitHub MCP server** (`mcp__github__*`) on Claude web / in routines. One operation catalog, two reference files; keeps the dual path in one place instead of duplicated across skills. |
 
 > **Note:** `mcp-issue-loop` drives local worktrees, builds, and integration tests,
 > so it runs on a developer machine (or a runner with the full .NET/Umbraco

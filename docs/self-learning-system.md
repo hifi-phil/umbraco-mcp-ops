@@ -57,6 +57,10 @@ repo benefits next time.
 | `merge-flow` | merge-flow | Merge PRs labelled `auto-merge` once approved + green + clean | Local or runner | label `auto-merge` |
 | `release-loop` | release-flow | Drive a release end-to-end with a human gate before publish | Dev machine | "release X.Y.Z" |
 
+Not a loop, but every loop above depends on it: **`github-ops`** — the shared how-to
+for GitHub work in both environments (`gh` CLI locally, the GitHub MCP server on the
+web). The loops defer all GitHub commands/tools to it.
+
 ## Setup
 
 ### 1. Install the plugins
@@ -68,6 +72,7 @@ Inside Claude Code:
 /plugin install mcp-issue-loop@umbraco-mcp-ops
 /plugin install merge-flow@umbraco-mcp-ops
 /plugin install release-flow@umbraco-mcp-ops
+/plugin install github-ops@umbraco-mcp-ops
 /reload-plugins
 ```
 
@@ -101,21 +106,29 @@ gh label create auto-merge   --repo umbraco/<MCP-repo> --color 0e8a16
 (The ops-repo labels already exist; the per-MCP-repo ones are created as you enable
 the loop on each.)
 
-### 3. GitHub App permissions (for scheduled routines)
+### 3. GitHub access & permissions
 
-Run **locally** and your `gh` login covers everything — nothing to configure.
+GitHub work follows the **`github-ops`** skill, which uses the mechanism the
+environment offers:
 
-Run as a **scheduled cloud routine** (web runner) and auth is proxy-injected via the
-Claude GitHub App — no token to paste — **but the App must grant, across both
+- **Locally:** the `gh` CLI + `git` — your `gh` login covers everything, nothing to
+  configure.
+- **Claude web / scheduled routines:** the **GitHub MCP server** (`mcp__github__*`) —
+  `gh` is not available there. Auth is the MCP server's connected GitHub App; no token
+  to paste.
+
+For the scheduled routines to act, that **connected app must grant, across both
 `hifi-phil/umbraco-mcp-ops` and the `umbraco/*` repos:**
 
 - `issues: write` — triage creates/labels/closes issues
 - `pull_requests: write` — triage/merge-flow open and merge PRs
-- `contents: write` — push branches, delete merged branches
+- `contents: write` — create branches, push files
 
-`branch-housekeeping` only needed `contents: write` + `pull_requests: read`, so this
-is a **broader grant** — confirm/expand it before scheduling. That's a
-GitHub-App-installation decision (you / an org owner), not a per-user token.
+`branch-housekeeping` (a bash script, not a Claude skill) is the exception — it calls
+the REST API with `curl` + a proxy-injected token and only needs `contents: write` +
+`pull_requests: read`. The Claude-driven routines need the broader grant above —
+confirm/expand it before scheduling (a GitHub-App-installation decision, not a
+per-user token).
 
 ## Using the loops
 
@@ -134,9 +147,10 @@ GitHub-App-installation decision (you / an org owner), not a per-user token.
 
 - **Dev machine:** `gh` available; `mcp-issue-loop` *must* run here (Umbraco
   toolchain, worktree DB hooks, `npm run test:all`). `release-loop` too (human-run).
-- **Web runner (scheduled):** `gh` is **absent** — routines use the GitHub REST API
-  with proxy-injected auth (like `scripts/branch-housekeeping/`). `triage-learnings`
-  and `merge-flow` are authored for this path.
+- **Web runner (scheduled):** `gh` is **absent** — routines do GitHub work through
+  the **GitHub MCP server** (`mcp__github__*`), per `github-ops`. `triage-learnings`
+  and `merge-flow` run here. (The bash `scripts/` — e.g. `branch-housekeeping` — are
+  the separate case that uses `curl`/REST directly.)
 
 ## Scheduled routines
 

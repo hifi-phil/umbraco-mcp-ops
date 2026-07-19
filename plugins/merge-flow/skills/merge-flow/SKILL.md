@@ -6,8 +6,9 @@ description: >-
   review with no unresolved change-requests, CI actually green (polled, never
   trusting `--auto`), no conflicts, and the expected base branch. On any unmet
   gate it comments the blocker and moves on rather than merging. Replaces
-  error-prone manual merges. Repo-agnostic; runs locally (`gh`) or as a scheduled
-  cloud routine (REST). Uses `/goal` so a merge job is provably finished. Trigger
+  error-prone manual merges. Repo-agnostic; runs locally or as a scheduled cloud
+  routine (GitHub work via `github-ops` — gh CLI locally, the GitHub MCP server on
+  the web). Uses `/goal` so a merge job is provably finished. Trigger
   on "merge the ready PRs", "run merge-flow", "auto-merge approved PRs", "merge the
   auto-merge queue".
 ---
@@ -25,13 +26,18 @@ couldn't be**. No half-done merges.
 
 ## Runtime & auth
 
-Same as the other ops loops:
+For every GitHub action — listing PRs, reading reviews, checking CI, merging,
+deleting the branch — **follow the [`github-ops`](../../../github-ops/skills/github-ops/SKILL.md)
+skill**, which picks the mechanism by environment:
 
-- **Local:** `gh` works; uses your login.
-- **Scheduled cloud routine:** GitHub **REST** (not `gh`), proxy-injected
-  `GH_TOKEN`. Needs **`pull_requests: write` + `contents: write`** on the target
-  repos (see the shared GitHub-App-permissions note in `triage-learnings`).
-- The scheduled-routine wiring is set up separately (see [Running as a routine](#running-as-a-scheduled-routine)).
+- **Local:** `gh` CLI.
+- **Claude web / scheduled routine:** the **GitHub MCP server** (`mcp__github__*`) —
+  no `gh` there; auth is the MCP server's connected app (needs `pull_requests: write`
+  on the target repos).
+
+The `gh` commands shown in the steps below are the **local** form; on the web use the
+`github-ops` GitHub-MCP equivalent for the same operation. The scheduled-routine
+wiring is set up separately (see [Running as a routine](#running-as-a-scheduled-routine)).
 
 ## Config
 
@@ -47,8 +53,8 @@ Same as the other ops loops:
 ```
 gh pr list --repo <repo> --label auto-merge --state open --json number,title,baseRefName
 ```
-(REST equivalent on a runner: `GET /repos/{repo}/pulls?state=open` then filter by
-label.) No candidates → report "nothing to merge" and stop.
+(On the web, the `github-ops` GitHub-MCP equivalent — list PRs, filter by the
+`auto-merge` label.) No candidates → report "nothing to merge" and stop.
 
 ## Step 2 — verify EVERY gate (this is the whole point)
 
@@ -99,5 +105,5 @@ requested) so the loop stops re-poking it — say which in the comment.
 
 Point it at the repos you want auto-merged and schedule it (e.g. every 30–60 min)
 as a Claude Code cloud routine — it wakes, drains the `auto-merge` queue through the
-gates, and stops. Author it for the REST path so it runs on a web runner where `gh`
-is absent. *(Routine wiring is done separately.)*
+gates, and stops. On the web, GitHub work goes through the GitHub MCP server
+(`github-ops`) — `gh` is absent there. *(Routine wiring is done separately.)*
