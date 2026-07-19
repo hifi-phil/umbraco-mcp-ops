@@ -9,10 +9,10 @@ description: >-
   cross-repo/generalizable ones, or a `loop-improvement` issue on the ops repo for
   learnings about the loop itself. Loop B files issues to owning repos and only
   drafts PRs for the shared tooling — it never hand-edits a product repo. Nothing
-  auto-merges; discarded learnings are closed with a reason. Designed to run
-  unattended as a scheduled cloud routine on a web runner (uses the GitHub REST API,
-  not `gh`). Trigger on "triage the learnings", "triage proto-learnings", "run loop
-  B", "process the learning backlog".
+  auto-merges; discarded learnings are closed with a reason. Runs locally or as a
+  scheduled cloud routine; GitHub work goes through the required `github-ops` skill.
+  Trigger on "triage the learnings", "triage proto-learnings", "run loop B",
+  "process the learning backlog".
 ---
 
 # triage-learnings (Loop B)
@@ -36,18 +36,11 @@ product repo's content is edited unreviewed.
 
 ## Runtime & auth
 
-Designed to run as an **unattended scheduled routine on a Claude Code web runner**,
-so:
+Runs both locally and as a scheduled routine on Claude web. **For every GitHub
+operation, use the `github-ops` skill** — it owns the local-vs-web mechanism, so this
+skill just names the *operation* and never restates or hard-codes how to do it.
 
-- **Use the GitHub REST API, not `gh`** — `gh` isn't installed on the runners.
-  Auth is the proxy-injected `GH_TOKEN` (send `Authorization: Bearer $GH_TOKEN`);
-  `curl` + `jq` are available. This mirrors `scripts/branch-housekeeping/`.
-- Creating issues and comments is pure REST (`POST /repos/{owner}/{repo}/issues`,
-  `.../comments`). For the one path that edits files (a shared-skills PR), **clone
-  the target repo with git**, edit normally, push, and open the PR via REST
-  (`POST /repos/{owner}/{repo}/pulls`).
-- Running locally on a dev machine is fine too — `gh` works there — but author the
-  routine for the REST path so it survives on a runner.
+> **`github-ops` must be installed for this loop to run.**
 
 ## Config (resolve once)
 
@@ -79,13 +72,12 @@ lesson, or hold it (leave the proto-learning open) rather than mis-filing.
 
 ## Step 1 — gather the inbox
 
-```
-GET /repos/hifi-phil/umbraco-mcp-ops/issues?labels=proto-learning&state=open&per_page=100
-```
-(filter out any also carrying `triaged`). For each issue, parse the fenced ```json
-record from the body (see the [schema](../mcp-issue-loop/references/proto-learning-schema.md)).
-Skip malformed ones with a comment asking for a reformat. If the inbox is empty,
-report "nothing to triage" and stop.
+**List** the open `proto-learning` issues on `hifi-phil/umbraco-mcp-ops` (via
+`github-ops`), filtering out any also carrying `triaged`. For each, parse the fenced
+```json record from the body (see the
+[schema](../mcp-issue-loop/references/proto-learning-schema.md)). Skip malformed ones
+with a comment asking for a reformat. If the inbox is empty, report "nothing to
+triage" and stop.
 
 ## Step 2 — cluster & dedupe
 
@@ -110,10 +102,12 @@ Loop-self clusters are not threshold-gated — route them whenever they're actio
 
 Assign each cluster a home from the routing table, then:
 
+All GitHub actions below use `github-ops` for the concrete command/tool.
+
 **`mcp-repo` (domain-specific → issue on that MCP repo):**
 1. Confirm the lesson truly affects only `sourceRepo`. If it would help another MCP
    repo, re-route to `shared-mcp-skills` instead.
-2. `POST /repos/{sourceRepo}/issues` — a clear title (prefix `[from-learnings] `),
+2. **Create an issue** on `sourceRepo` — a clear title (prefix `[from-learnings] `),
    what should change and why, and — from the analyzer's `notes` — a hint whether it
    belongs in that repo's `CLAUDE.md` (keep lean) or a project-local skill. Let that
    repo's process decide the final placement.
@@ -122,14 +116,14 @@ Assign each cluster a home from the routing table, then:
 **`shared-mcp-skills` (generalizable → PR to Umbraco-MCP-Base):**
 1. Detect the base branch via `release-and-branching` (`Umbraco-MCP-Base` is
    main-only → base `main`).
-2. Clone, branch (`chore/proto-learning-<slug>`), and make the **smallest** edit to
-   the `umbraco-mcp-skills` skill that *should have* surfaced the lesson (often
-   `add-tool` / `mcp-patterns` / an integration-test skill).
-3. Push and open the PR via REST against the detected base.
+2. **Create a branch** (`chore/proto-learning-<slug>`) and **push** the **smallest**
+   edit to the `umbraco-mcp-skills` skill that *should have* surfaced the lesson
+   (often `add-tool` / `mcp-patterns` / an integration-test skill).
+3. **Open the PR** against the detected base.
 
 **`loop-self` (→ `loop-improvement` issue on the ops repo):**
-1. `POST /repos/hifi-phil/umbraco-mcp-ops/issues` with label `loop-improvement`: a
-   clear title, what the loop does today vs. what should change, and why.
+1. **Create an issue** on `hifi-phil/umbraco-mcp-ops` with label `loop-improvement`:
+   a clear title, what the loop does today vs. what should change, and why.
 2. Do **not** draft a PR editing the `mcp-issue-loop` skill — a human frames the
    change.
 
@@ -166,5 +160,5 @@ Schedule this skill weekly as a Claude Code cloud routine (see the `schedule`
 skill). The routine wakes, runs Steps 1–5 against the current inbox, routes up to 10
 clusters, and stops — issues sit in their owning repos and any shared PR sits for
 review. Because capture is continuous and triage is periodic, a weekly cadence keeps
-the inbox from growing without flooding anyone. Author the routine for the REST path
-(above) so it runs on a web runner where `gh` is absent.
+the inbox from growing without flooding anyone. All GitHub work goes through the
+`github-ops` skill.

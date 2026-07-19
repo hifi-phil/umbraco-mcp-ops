@@ -43,6 +43,10 @@ structural — do not restate or re-derive it:
   (8) and review-round (5) caps, the no-progress guard, label/issue-change handling.
 - **Capturing learnings** — automatic via the same `SubagentStop`/`SessionEnd`
   hooks (this skill's subagents are recognised too). You file nothing by hand.
+- **GitHub operations** — use the **`github-ops`** skill (required); it owns the
+  local-vs-web mechanism. Note: step 1's worktree is the dev-machine path — on the
+  web there's no working tree, so `github-ops` creates the branch and pushes files
+  via the API instead.
 
 Only the **per-issue build playbook** changes. Use the one below in place of
 mcp-issue-loop's build/review-response playbooks.

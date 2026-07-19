@@ -28,7 +28,8 @@ This loop **orchestrates**, it doesn't reinvent: it drives the
 uses this plugin's `release-tag.yml` / `sync-main-to-dev.yml` automation, and
 [`sync-dev`](../sync-dev/SKILL.md) for the back-merge. If the target repo ships its
 own release skill (e.g. `umbraco-mcp-skills:release` for version-bump + changelog),
-use it for that step.
+use it for that step. For GitHub actions (PRs, CI status, merge, tag/Release), use
+the **`github-ops`** skill (required for this loop to run).
 
 ## Input & preconditions
 
@@ -50,8 +51,9 @@ use it for that step.
 2. Bump the repo's **version-file list** (from its `CLAUDE.md`) and update the
    changelog — use the repo's own release skill if it has one.
 3. Push and open a PR **`release/<version>` → `main`**, ready for review.
-4. Drive CI green (poll `gh pr checks`; the 8-attempt fix cap and "never trust
-   `--auto`" rule from the issue loop apply). Fix failures on the release branch.
+4. Drive CI green — poll the PR's check-run status (github-ops → *Get PR CI /
+   check-run status*); the 8-attempt fix cap and "never trust an auto-merge" rule
+   from the issue loop apply. Fix failures on the release branch.
 
 ## Step 2 — HUMAN GATE (before anything irreversible)
 

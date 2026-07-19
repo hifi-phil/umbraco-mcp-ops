@@ -6,8 +6,9 @@ description: >-
   review with no unresolved change-requests, CI actually green (polled, never
   trusting `--auto`), no conflicts, and the expected base branch. On any unmet
   gate it comments the blocker and moves on rather than merging. Replaces
-  error-prone manual merges. Repo-agnostic; runs locally (`gh`) or as a scheduled
-  cloud routine (REST). Uses `/goal` so a merge job is provably finished. Trigger
+  error-prone manual merges. Repo-agnostic; runs locally or as a scheduled cloud
+  routine; GitHub work goes through the required `github-ops` skill. Uses `/goal`
+  so a merge job is provably finished. Trigger
   on "merge the ready PRs", "run merge-flow", "auto-merge approved PRs", "merge the
   auto-merge queue".
 ---
@@ -25,13 +26,13 @@ couldn't be**. No half-done merges.
 
 ## Runtime & auth
 
-Same as the other ops loops:
+For every GitHub action — listing PRs, reading reviews, checking CI, merging,
+deleting the branch — **use the `github-ops` skill**, which owns the local-vs-web
+mechanism (this skill names the operation; `github-ops` has the command/tool).
+Scheduled-routine wiring is set up separately (see
+[Running as a routine](#running-as-a-scheduled-routine)).
 
-- **Local:** `gh` works; uses your login.
-- **Scheduled cloud routine:** GitHub **REST** (not `gh`), proxy-injected
-  `GH_TOKEN`. Needs **`pull_requests: write` + `contents: write`** on the target
-  repos (see the shared GitHub-App-permissions note in `triage-learnings`).
-- The scheduled-routine wiring is set up separately (see [Running as a routine](#running-as-a-scheduled-routine)).
+> **`github-ops` must be installed for this loop to run.**
 
 ## Config
 
@@ -44,40 +45,35 @@ Same as the other ops loops:
 
 ## Step 1 — find candidates
 
-```
-gh pr list --repo <repo> --label auto-merge --state open --json number,title,baseRefName
-```
-(REST equivalent on a runner: `GET /repos/{repo}/pulls?state=open` then filter by
-label.) No candidates → report "nothing to merge" and stop.
+**List open PRs** filtered by the `auto-merge` label (github-ops → *List PRs by
+label / state*). No candidates → report "nothing to merge" and stop.
 
 ## Step 2 — verify EVERY gate (this is the whole point)
 
 For each candidate, all must hold — if any fails, **do not merge** (go to Step 4):
 
-1. **Approved.** `reviewDecision == APPROVED`. No `CHANGES_REQUESTED` and no
-   unresolved review threads. A bare comment is not approval.
-2. **CI genuinely green.** Poll `gh pr checks <n>` until no check is pending, then
-   require **every** check `pass`. **Never use `gh pr merge --auto`** — this org has
-   no branch protection, so `--auto` would merge without a real green gate (see the
-   wait-for-CI rule). Wait up to a sane cap (e.g. 15 min); if still pending, treat
-   as not-yet-mergeable and leave it for the next run.
-3. **Mergeable / no conflicts.** `mergeable == MERGEABLE` and `mergeStateStatus` is
-   not `DIRTY`/`BLOCKED`. If `BEHIND`, update the branch from base first, then
-   re-check CI (a rebase/merge restarts checks).
+1. **Approved.** Get the PR's review decision (github-ops → *Get a PR*): it must be
+   approved, with no changes-requested and no unresolved review threads. A bare
+   comment is not approval.
+2. **CI genuinely green.** Poll the PR's check-run status (github-ops → *Get PR CI /
+   check-run status*) until nothing is pending, then require **every** check to pass.
+   **Never rely on an auto-merge that bypasses this gate** — this org has no branch
+   protection, so an auto-merge would land without a real green gate (see the
+   wait-for-CI rule). Wait up to a sane cap (e.g. 15 min); if still pending, treat as
+   not-yet-mergeable and leave it for the next run.
+3. **Mergeable / no conflicts.** The PR must report mergeable with no conflicts (get
+   it via github-ops → *Get a PR*). If it's behind its base, update the branch first,
+   then re-check CI (that restarts checks).
 4. **Right base.** The PR targets the expected integration branch (gitflow → `dev`;
    main-only → `main`). A PR into `main` on a gitflow repo is a **release** merge —
    that's `release-loop`'s job, not this one; skip it here.
 
 ## Step 3 — merge
 
-Merge with the repo's convention (detect via `release-and-branching`: gitflow
-usually squash-into-`dev`; main-only per that repo) and delete the branch:
-
-```
-gh pr merge <n> --repo <repo> --squash --delete-branch    # or --merge per convention
-```
-Comment confirming the merge. On the merge itself failing, report it — never retry
-a force.
+**Merge the PR and delete its branch** (github-ops → *Merge a PR (+ delete branch)*)
+using the repo's convention — detect it via `release-and-branching` (gitflow usually
+squash-into-`dev`; main-only per that repo). Comment confirming the merge. If the
+merge itself fails, report it — never retry a force.
 
 ## Step 4 — when a gate fails
 
@@ -99,5 +95,5 @@ requested) so the loop stops re-poking it — say which in the comment.
 
 Point it at the repos you want auto-merged and schedule it (e.g. every 30–60 min)
 as a Claude Code cloud routine — it wakes, drains the `auto-merge` queue through the
-gates, and stops. Author it for the REST path so it runs on a web runner where `gh`
-is absent. *(Routine wiring is done separately.)*
+gates, and stops. All GitHub work goes through the `github-ops` skill.
+*(Routine wiring is done separately.)*

@@ -1,0 +1,21 @@
+{
+  "name": "github-ops",
+  "version": "1.0.0",
+  "description": "Shared reference for doing GitHub work two ways — locally with the `gh` CLI + `git`, and on Claude web / in scheduled routines with the GitHub MCP server (`mcp__github__*`). One operation catalog, two reference files; the other loop plugins point here instead of each re-explaining the dual path.",
+  "author": {
+    "name": "Phil W",
+    "email": "pjw@umbraco.com",
+    "url": "https://github.com/hifi-phil"
+  },
+  "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/github-ops",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "gh-cli",
+    "github-mcp",
+    "pull-request",
+    "issues",
+    "reference",
+    "dual-path"
+  ]
+}

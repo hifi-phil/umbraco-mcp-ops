@@ -101,10 +101,10 @@ fix was non-trivial.
 ### 6. Commit, push, open the PR
 
 Commit with a clear message (end it with the repo's required
-`Co-Authored-By` trailer if `CLAUDE.md` specifies one). Push the branch to
-`origin`. Open a PR against the **base branch** (`dev` for gitflow repos — defer
-to the `release-and-branching` skill), linking the issue (`Closes #{NUMBER}`) so
-the merge closes it. Open it **ready for review** (not draft) — the human needs
+`Co-Authored-By` trailer if `CLAUDE.md` specifies one). Push the branch, then
+open a PR (github-ops → *Create a PR*) against the **base branch** (`dev` for
+gitflow repos — defer to the `release-and-branching` skill), linking the issue
+(`Closes #{NUMBER}`) so the merge closes it. Open it **ready for review** (not draft) — the human needs
 to be able to review and approve it; that review is the acceptance gate.
 
 Include in the PR body: what changed, which skills/agents were used, test
@@ -112,14 +112,11 @@ results, and a note that security + code review ran clean.
 
 ### 7. Drive CI green — then return
 
-Watch the PR's checks and **do not return until CI is green**:
+Poll the PR's check-run status and **do not return until CI is green** (github-ops →
+*Get PR CI / check-run status*).
 
-```bash
-gh pr checks {PR} --repo <repo> --watch
-```
-
-If a check fails: read the failing log (`gh run view --job <id> --log-failed`),
-reproduce locally in your worktree, fix the root cause, push, and re-watch. A CI
+If a check fails: read the failing check's log (github-ops → *Read a failing check's
+log*), reproduce locally in your worktree, fix the root cause, push, and re-poll. A CI
 failure is a real regression, never "flaky-until-proven". **Cap: at most 8
 green-it attempts, and never re-push an identical fix that already failed.** If
 CI still isn't green after that, stop with a blocked report (last failing log);
@@ -153,13 +150,10 @@ with all its state (DB, port, node_modules) intact.
 
 ### 2. Read the review
 
-```bash
-gh pr view {PR} --repo <repo> --json reviews,comments
-gh api repos/<repo>/pulls/{PR}/comments   # inline review comments
-```
-
-List every requested change. If any comment is unclear, reply on the thread
-asking for clarification and return — don't guess at what the reviewer meant.
+Read the PR's reviews and inline review comments (github-ops → *Get PR reviews +
+review comments*). List every requested change. If any comment is unclear, reply on
+the thread asking for clarification and return — don't guess at what the reviewer
+meant.
 
 ### 3. Address, re-review, re-test
 
@@ -170,12 +164,8 @@ rules as the build playbook). Re-run `npm run test:all`. Re-run
 ### 4. Push, reply, re-request
 
 Commit and push. Reply to each review thread noting how it was addressed (or
-resolve it). Re-request review from the reviewer:
-
-```bash
-gh pr edit {PR} --repo <repo> --add-reviewer <reviewer>
-# or: gh api ... to re-request; a fresh push often re-triggers review anyway
-```
+resolve it). Re-request review from the reviewer (github-ops → *Re-request review /
+add reviewer*) — a fresh push often re-triggers review anyway.
 
 ### 5. Re-green CI
 
