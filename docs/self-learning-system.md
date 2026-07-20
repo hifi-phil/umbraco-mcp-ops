@@ -14,16 +14,17 @@ flowchart LR
     ISSUE["ready-for-ai<br/>issue"] --> CODE["mcp-issue-loop /<br/>content-issue-loop<br/>(code the change)"]
     CODE --> PR["PR<br/>CI green"]
     PR --> REVIEW{"human<br/>review"}
-    REVIEW -->|"approve + label auto-merge"| MERGE["merge-flow<br/>(gated merge)"]
+    REVIEW -->|"label auto-merge"| MERGE["merge-flow<br/>(gated merge)"]
     MERGE --> MERGED["merged to dev"]
-    MERGED --> REL["release-loop<br/>(human-initiated)"]
+    MERGED --> REL["auto-release-loop<br/>(label an issue auto-release)"]
     REL --> SHIP["release on main<br/>+ tag + GitHub Release"]
 ```
 
-**Human gates on this path:** the **review** before merge (`merge-flow` won't merge
-without approval + green CI), and a **publish gate** inside `release-loop` before
-anything irreversible. The loops automate the mistake-prone mechanics; you keep the
-"ship this" decisions.
+**Human gates on this path:** the **`auto-merge` label** before merge (`merge-flow`
+won't merge a PR that isn't labelled + green + clean), and the **`auto-release` label**
+to start a release (`auto-release-loop` then ships it once CI is green — the deliberate
+label is the decision; there's no separate publish pause). The loops automate the
+mistake-prone mechanics; you keep the "ship this" decisions.
 
 ## 2. The self-learning loop
 
@@ -54,8 +55,8 @@ repo benefits next time.
 | `content-issue-loop` | mcp-issue-loop | Same, for repos **without** the toolchain (this repo, `Umbraco-MCP-Base`, docs) | Dev machine or runner | "work the ready ops issues" |
 | capture hooks | mcp-issue-loop | After each subagent, analyze the transcript and file `proto-learning` issues | Wherever the loop runs | automatic (`SubagentStop`/`SessionEnd`) |
 | `triage-learnings` | mcp-issue-loop | Route proto-learnings → MCP-repo issue / shared-skills PR / loop-improvement issue | Web runner (scheduled) | "triage the learnings" |
-| `merge-flow` | merge-flow | Merge PRs labelled `auto-merge` once approved + green + clean | Local or runner | label `auto-merge` |
-| `release-loop` | release-flow | Drive a release end-to-end with a human gate before publish | Dev machine | "release X.Y.Z" |
+| `merge-flow` | merge-flow | Merge PRs labelled `auto-merge` once green + conflict-free (the label is the approval) | Cloud routine (weekdays) | label `auto-merge` |
+| `auto-release-loop` | release-flow | Cut branch, drive CI green, publish + tag + Release, sync `dev` — CI-gated, no approval pause | Cloud routine (Issue: Labeled) | label an issue `auto-release` |
 
 Not a loop, but every loop above depends on it: **`github-ops`** — the shared how-to
 for GitHub work in both environments (`gh` CLI locally, the GitHub MCP server on the
@@ -164,17 +165,19 @@ per-user token).
 - **Triage learnings:** run `triage-learnings` (or let the weekly routine do it).
   It files issues to owning repos and drafts PRs only for the shared skills. You
   then decide which of its issues to promote to `ready-for-ai`.
-- **Release:** run `release-loop` with a version. It prepares the release and
-  **stops for your approval** before publishing, then syncs `main` back to `dev`.
+- **Release:** open an issue titled `release <version>` and label it `auto-release`.
+  `auto-release-loop` cuts the branch, bumps, drives CI green, then (CI is the gate —
+  no approval pause) publishes + tags + Release and syncs `main`→`dev`, pushing you at
+  start + completion.
 
 ## Runtime: dev machine vs web runner
 
 - **Dev machine:** `gh` available; `mcp-issue-loop` *must* run here (Umbraco
-  toolchain, worktree DB hooks, `npm run test:all`). `release-loop` too (human-run).
-- **Web runner (scheduled):** `gh` is **absent** — routines do GitHub work through
-  the **GitHub MCP server** (`mcp__github__*`), per `github-ops`. `triage-learnings`
-  and `merge-flow` run here. (The bash `scripts/` — e.g. `branch-housekeeping` — are
-  the separate case that uses `curl`/REST directly.)
+  toolchain, worktree DB hooks, `npm run test:all`).
+- **Web runner (event/scheduled):** `gh` is **absent** — routines do GitHub work through
+  the **GitHub MCP server** (`mcp__github__*`), per `github-ops`. `triage-learnings`,
+  `merge-flow`, and `auto-release-loop` run here. (The bash `scripts/` — e.g.
+  `branch-housekeeping` — are the separate case that uses `curl`/REST directly.)
 
 ## Scheduled routines
 
@@ -183,12 +186,14 @@ Full inventory of cross-repo routines in this repo:
 | Routine | Cadence | Status |
 |---------|---------|--------|
 | `branch-housekeeping` (`scripts/`) | weekly | **live** |
-| `dependabot-rollup` (skill) | weekly | **to wire** |
+| `merge-flow` | on `auto-merge` label (event) | **to wire** |
+| `auto-release-loop` | on `auto-release` label (event) | **to wire** |
+| `dependabot-rollup` (skill) | weekly | **to wire** (pending Dependabot-alerts grant) |
 | `triage-learnings` | weekly | **to wire** |
-| `merge-flow` | periodic (~hourly) | **to wire** |
 
-`release-loop`, `mcp-issue-loop`, and `content-issue-loop` are human-initiated and
-not scheduled. The web routines do GitHub work via the GitHub MCP server (see
+`mcp-issue-loop` and `content-issue-loop` are human-initiated and not scheduled.
+`auto-release-loop` is **event-triggered** (a routine on Issue: Labeled → `auto-release`),
+not on a cron. The web routines do GitHub work via the GitHub MCP server (see
 `github-ops`); `branch-housekeeping` is the bash/`curl` exception.
 
 Wiring a cloud routine is two steps: (1) ensure the environment's **setup script**

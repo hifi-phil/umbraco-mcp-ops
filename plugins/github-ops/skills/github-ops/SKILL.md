@@ -5,7 +5,7 @@ description: >-
   locally with the `gh` CLI + `git`, and on Claude web / in scheduled routines with
   the GitHub MCP server (`mcp__github__*`, no `gh` there). One operation catalog,
   two reference files (one per mechanism). Other skills — mcp-issue-loop,
-  content-issue-loop, triage-learnings, merge-flow, release-loop — point here instead
+  content-issue-loop, triage-learnings, merge-flow, auto-release-loop — point here instead
   of each re-explaining the dual path. Load this whenever a loop needs to touch
   GitHub (list/create issues, open/merge PRs, check CI, push files) and you need the
   concrete command/tool for the current environment.
