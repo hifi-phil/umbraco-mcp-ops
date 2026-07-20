@@ -8,9 +8,10 @@ description: >-
   tag, publish), and afterwards finishes autonomously by syncing main back to dev.
   Reuses release-and-branching for conventions and the release-tag / sync-main-to-dev
   automation. Uses `/goal` so a release is provably complete (no forgotten tag or
-  un-synced dev). Sends a Claude push notification when it reaches the approval gate
-  and when the release is complete. Trigger on "do a release", "release X.Y.Z", "cut a
-  release", "run release-loop".
+  un-synced dev). Suggests the next version for you to confirm, and sends a Claude push
+  notification at each point it needs you — the version choice, the approval gate, and
+  on completion. Trigger on "do a release", "release X.Y.Z", "cut a release", "run
+  release-loop".
 ---
 
 # release-loop
@@ -34,7 +35,14 @@ the **`github-ops`** skill (required for this loop to run).
 
 ## Input & preconditions
 
-- **Version** — the target `<version>` (e.g. `17.5.1`). Ask if not given.
+- **Version.** If a version is given, use it. If not, **suggest the next version**:
+  read the current version (the repo's version files / latest tag) and apply the
+  repo's release convention via `release-and-branching` (e.g. next patch, or the
+  active channel's next pre-release), then **confirm with the human via
+  AskUserQuestion** — the suggested version as the recommended option, plus an option
+  to enter a different one. **Push-notify** (PushNotification tool) that a version
+  decision is awaited, including the suggestion, so the run can be kicked off and left.
+  Fall back to a plain in-session question if AskUserQuestion / push aren't available.
 - **Detect the branch model** via `release-and-branching`. This loop is written for
   **gitflow** (`dev` + `main`) — the MCP repos. For a main-only repo, there's no
   release-branch/back-merge dance; defer entirely to `release-and-branching`.
