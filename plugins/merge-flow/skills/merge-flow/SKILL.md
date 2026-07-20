@@ -101,9 +101,17 @@ requested) so the loop stops re-poking it — say which in the comment.
 - The `auto-merge` label must be applied **deliberately by a maintainer after review** —
   that act is the human gate, so control who can apply it.
 
-## Running as a scheduled routine
+## Running as a routine
 
-Point it at the repos you want auto-merged and schedule it (e.g. every 30–60 min)
-as a Claude Code cloud routine — it wakes, drains the `auto-merge` queue through the
-gates, and stops. All GitHub work goes through the `github-ops` skill.
-*(Routine wiring is done separately.)*
+**Primary: event-triggered.** Set up a routine with trigger **PR: Labeled**, filtered to
+**Labels is one of `auto-merge`**, so labelling a PR fires this **immediately** — it
+gate-checks the current `auto-merge` PR(s) and merges the eligible ones. This is the
+cheapest shape (it only fires when you label — no idle runs) and the most responsive.
+The skill queries for all `auto-merge` PRs, so a single-PR event just runs one pass of
+the same loop; nothing changes for one-at-a-time.
+
+**Optional backstop:** a low-frequency poll (e.g. once or twice a weekday) catches a PR
+whose CI went green *after* its event run's CI-wait timed out. Not needed if you label
+after CI is green.
+
+All GitHub work goes through the `github-ops` skill. *(Routine wiring is done separately.)*
