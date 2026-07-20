@@ -60,8 +60,8 @@
     {
       "name": "merge-flow",
       "source": "./plugins/merge-flow",
-      "description": "Guardrail loop that merges PRs labelled auto-merge only once approved, CI-green, conflict-free, and on the right base — replacing error-prone manual merges. Uses /goal so a merge job is provably finished. Repo-agnostic; local or scheduled cloud routine.",
-      "version": "1.1.0",
+      "description": "Guardrail loop that merges PRs labelled auto-merge — the maintainer's deliberate go-signal (the human approval, since you can't review-approve your own PR) — only once they are also CI-green, conflict-free, on the right base, and free of an unresolved 'changes requested'. Replaces error-prone manual merges. Uses /goal so a merge job is provably finished. Repo-agnostic; local or scheduled cloud routine.",
+      "version": "1.2.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
