@@ -79,6 +79,30 @@ Inside Claude Code:
 
 Re-run the install (or `/plugin` update) + `/reload-plugins` after a version bump.
 
+This marketplace install is **local only** — it works on a dev machine and in a
+Desktop scheduled task (the plugin is on disk). It does **not** work in a **cloud**
+session/routine: the startup installer can't authenticate a clone of this **private**
+marketplace, so a settings-declared plugin silently fails to install (`ListPlugins`
+comes back empty). `/plugin` isn't available in cloud either.
+
+### 1b. Cloud / web delivery — upload skill zips
+
+For **cloud** sessions and routines, deliver each skill by **uploading its zip to the
+Claude Desktop app's skills directory** (account-synced — it then appears in cloud
+runs). Zip the skill folder so the archive root is the skill dir (`<skill>/SKILL.md`,
+plus `references/` if any):
+
+```bash
+cd plugins/<plugin>/skills
+COPYFILE_DISABLE=1 zip -r -X <skill>.zip <skill>
+```
+
+Upload at minimum **`github-ops`** (every loop depends on it, by name) plus whichever
+loops you want to run in cloud — e.g. **`dependabot-rollup`**, **`triage-learnings`**,
+**`merge-flow`**. `mcp-issue-loop` is **not** a cloud candidate (needs worktrees +
+`npm run test:all` + a live Umbraco — local/Desktop only). Uploaded skills are a
+**copy**, so re-upload after changing a skill; the repo stays the source of truth.
+
 ### 2. Labels
 
 The system is label-driven. Create the labels on the repos that need them:
@@ -160,18 +184,19 @@ Full inventory of cross-repo routines in this repo:
 | Routine | Cadence | Status |
 |---------|---------|--------|
 | `branch-housekeeping` (`scripts/`) | weekly | **live** |
-| `dependabot-rollup` (plugin) | weekly | **live** (re-point to this marketplace after the move — see below) |
+| `dependabot-rollup` (skill) | weekly | **to wire** (upload the skill zip, then create the routine) |
 | `triage-learnings` | weekly | **to wire** |
 | `merge-flow` | periodic (~hourly) | **to wire** |
 
 `release-loop`, `mcp-issue-loop`, and `content-issue-loop` are human-initiated and
 not scheduled. The web routines do GitHub work via the GitHub MCP server (see
-`github-ops`); `branch-housekeeping` is the bash/`curl` exception. Routine wiring is
-set up separately — see each skill's "Running as a scheduled routine" section.
+`github-ops`); `branch-housekeeping` is the bash/`curl` exception.
 
-> **`dependabot-rollup` was moved here from the `umbraco-cc-plugins` marketplace.**
-> Its existing weekly cloud routine still points at the old marketplace — re-point it
-> to `dependabot-rollup@umbraco-mcp-ops` (part of the routine-setup pass).
+Wiring a cloud routine is two steps: (1) **upload the skill zips** it needs (§1b —
+always `github-ops`, plus the loop's own skill); (2) **create the routine** pointing
+at the target repo with a prompt that invokes the skill, e.g. `Run /dependabot-rollup`
+for the dependabot rollup. There is no marketplace to re-point — cloud runs off the
+uploaded skills, not `/plugin install`.
 
 ## 3. Release-loop lifecycle (detail)
 

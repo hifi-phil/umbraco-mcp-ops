@@ -1,0 +1,4 @@
+# Skill upload artifacts — zipped skill dirs for the Desktop app skills-dir upload.
+# The skill source under plugins/**/skills/<name>/ is the source of truth; the zip is
+# a throwaway build artifact (re-created with `zip -r -X <name>.zip <name>`).
+plugins/**/skills/*.zip
