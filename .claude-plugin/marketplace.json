@@ -37,8 +37,8 @@
     {
       "name": "release-flow",
       "source": "./plugins/release-flow",
-      "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions. Bundles release-and-branching and sync-dev.",
-      "version": "1.2.0",
+      "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions. Bundles release-and-branching and sync-dev. release-loop sends a Claude push notification at the approval gate and on completion.",
+      "version": "1.3.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
