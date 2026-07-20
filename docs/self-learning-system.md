@@ -103,6 +103,12 @@ loops you want to run in cloud — e.g. **`dependabot-rollup`**, **`triage-learn
 `npm run test:all` + a live Umbraco — local/Desktop only). Uploaded skills are a
 **copy**, so re-upload after changing a skill; the repo stays the source of truth.
 
+You don't have to hand-zip: on every merge to `main`, the **Azure Pipeline**
+(`azure-pipelines.yml`) builds these four skills into versioned zips
+(`<skill>-<version>.zip`) and publishes them as the **`skill-zips`** pipeline artifact
+(with a `skill-versions.txt` manifest). Download that artifact from the ADO run and
+upload the zips — the version in the filename tells you exactly what you're shipping.
+
 ### 2. Labels
 
 The system is label-driven. Create the labels on the repos that need them:

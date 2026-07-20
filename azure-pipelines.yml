@@ -1,0 +1,68 @@
+# Build + publish the cloud-upload skill zips as versioned pipeline artifacts.
+#
+# These are the skills uploaded to the Claude Desktop app's skills directory for use
+# in cloud sessions/routines (see docs/self-learning-system.md §1b). CI builds them so
+# uploads always use a known-good, versioned build instead of a hand-zipped folder.
+#
+# One-time ADO setup: create a pipeline in Azure DevOps pointing at this GitHub repo
+# (Pipelines → New → GitHub → this repo → "Existing Azure Pipelines YAML file" →
+# /azure-pipelines.yml). That creates the GitHub service connection ADO uses to fetch
+# the repo. No secrets needed — the zips are published as pipeline artifacts on the run.
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - plugins/github-ops/skills/github-ops/**
+      - plugins/dependabot-rollup/skills/dependabot-rollup/**
+      - plugins/mcp-issue-loop/skills/triage-learnings/**
+      - plugins/merge-flow/skills/merge-flow/**
+      - azure-pipelines.yml
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+    fetchDepth: 1
+
+  - script: |
+      set -euo pipefail
+      STAGING="$(Build.ArtifactStagingDirectory)"
+      MANIFEST="$STAGING/skill-versions.txt"
+      : > "$MANIFEST"
+
+      # Cloud-upload set only. skill-name | owning plugin dir
+      # (a skill's version is its owning plugin's plugin.json version).
+      SKILLS="\
+      github-ops|plugins/github-ops
+      dependabot-rollup|plugins/dependabot-rollup
+      triage-learnings|plugins/mcp-issue-loop
+      merge-flow|plugins/merge-flow"
+
+      while IFS='|' read -r skill plugin; do
+        skill="$(echo "$skill" | xargs)"; plugin="$(echo "$plugin" | xargs)"
+        [ -n "$skill" ] || continue
+        ver="$(jq -r '.version' "$plugin/.claude-plugin/plugin.json")"
+        skilldir="$plugin/skills/$skill"
+        if [ ! -d "$skilldir" ]; then
+          echo "##vso[task.logissue type=error]missing skill dir: $skilldir"
+          exit 1
+        fi
+        # Clean archive: skill dir at the zip root (<skill>/SKILL.md [+ references/]).
+        ( cd "$plugin/skills" && zip -r -X "$STAGING/${skill}-${ver}.zip" "$skill" >/dev/null )
+        echo "${skill} ${ver}" >> "$MANIFEST"
+        echo "packaged ${skill} v${ver} -> ${skill}-${ver}.zip"
+      done <<< "$SKILLS"
+
+      echo "----- staged artifacts -----"; ls -la "$STAGING"
+      echo "----- skill versions -----";   cat "$MANIFEST"
+    displayName: Package cloud-upload skill zips
+
+  - publish: $(Build.ArtifactStagingDirectory)
+    artifact: skill-zips
+    displayName: Publish skill zips (+ skill-versions.txt)
