@@ -8,7 +8,9 @@ description: >-
   tag, publish), and afterwards finishes autonomously by syncing main back to dev.
   Reuses release-and-branching for conventions and the release-tag / sync-main-to-dev
   automation. Uses `/goal` so a release is provably complete (no forgotten tag or
-  un-synced dev). Trigger on "do a release", "release X.Y.Z", "cut a release", "run
+  un-synced dev). Suggests the next version for you to confirm, and sends a Claude push
+  notification at each point it needs you — the version choice, the approval gate, and
+  on completion. Trigger on "do a release", "release X.Y.Z", "cut a release", "run
   release-loop".
 ---
 
@@ -33,7 +35,14 @@ the **`github-ops`** skill (required for this loop to run).
 
 ## Input & preconditions
 
-- **Version** — the target `<version>` (e.g. `17.5.1`). Ask if not given.
+- **Version.** If a version is given, use it. If not, **suggest the next version**:
+  read the current version (the repo's version files / latest tag) and apply the
+  repo's release convention via `release-and-branching` (e.g. next patch, or the
+  active channel's next pre-release), then **confirm with the human via
+  AskUserQuestion** — the suggested version as the recommended option, plus an option
+  to enter a different one. **Push-notify** (PushNotification tool) that a version
+  decision is awaited, including the suggestion, so the run can be kicked off and left.
+  Fall back to a plain in-session question if AskUserQuestion / push aren't available.
 - **Detect the branch model** via `release-and-branching`. This loop is written for
   **gitflow** (`dev` + `main`) — the MCP repos. For a main-only repo, there's no
   release-branch/back-merge dance; defer entirely to `release-and-branching`.
@@ -65,6 +74,11 @@ one decision the loop must not make itself.
   define). CI must also be green.
 - While waiting, the loop is dormant on this `/goal` — same shape as the issue
   loop's review wait. Do **not** proceed on CI-green alone.
+- **Notify at the gate.** As soon as prep is done and CI is green, send the human a
+  **Claude push notification** (the `PushNotification` tool) with the release PR link,
+  so they can step away during the CI wait and be pinged when it needs approval. Don't
+  rely on a Slack post *as the maintainer* — it won't notify them; a push does. If no
+  push mechanism is available, fall back to a clear in-session REVIEW-NEEDED message.
 
 ## Step 3 — publish (after approval)
 
@@ -81,6 +95,11 @@ Merge `main` back into `dev` so `dev` carries the version bump + any release fix
 via the `sync-main-to-dev.yml` automation if installed, else open/complete the
 back-merge yourself (then `sync-dev` to land it locally). **The `/goal` is not met
 until `dev` is synced** — this is the step manual releases most often forget.
+
+Once `dev` is synced and the release is fully shipped, send a final **Claude push
+notification** (the `PushNotification` tool): `Released v<version> — merged to main,
+tagged v<version>, GitHub Release published, dev synced.` (Fall back to an in-session
+summary if no push mechanism is available.)
 
 ## Guardrails
 
