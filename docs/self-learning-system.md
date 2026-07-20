@@ -79,29 +79,28 @@ Inside Claude Code:
 
 Re-run the install (or `/plugin` update) + `/reload-plugins` after a version bump.
 
-This marketplace install is **local only** — it works on a dev machine and in a
-Desktop scheduled task (the plugin is on disk). It does **not** work in a **cloud**
-session/routine: the startup installer can't authenticate a clone of this **private**
-marketplace, so a settings-declared plugin silently fails to install (`ListPlugins`
-comes back empty). `/plugin` isn't available in cloud either.
+This `/plugin install` is **local only** (a dev machine, or a Desktop scheduled task —
+the plugin is on disk). Cloud sessions/routines don't read your machine's plugins.
 
-### 1b. Cloud / web delivery — upload skill zips
+### 1b. Cloud / web delivery — the `cloud-skill-sync` setup script
 
-For **cloud** sessions and routines, deliver each skill by **uploading its zip to the
-Claude Desktop app's skills directory** (account-synced — it then appears in cloud
-runs). Zip the skill folder so the archive root is the skill dir (`<skill>/SKILL.md`,
-plus `references/` if any):
+Cloud routines load skills from the session's skills dir. Deliver them there with the
+[`cloud-skill-sync`](../scripts/cloud-skill-sync/) **environment setup script**: paste
+[`scripts/cloud-skill-sync/cloud-skill-sync.sh`](../scripts/cloud-skill-sync/cloud-skill-sync.sh)
+into the cloud environment's **Setup script** field. On build it clones this (public)
+repo and copies the listed skills into `$HOME/.claude/skills`, so any routine in that
+environment can invoke them.
 
-```bash
-cd plugins/<plugin>/skills
-COPYFILE_DISABLE=1 zip -r -X <skill>.zip <skill>
-```
-
-Upload at minimum **`github-ops`** (every loop depends on it, by name) plus whichever
-loops you want to run in cloud — e.g. **`dependabot-rollup`**, **`triage-learnings`**,
-**`merge-flow`**. `mcp-issue-loop` is **not** a cloud candidate (needs worktrees +
-`npm run test:all` + a live Umbraco — local/Desktop only). Uploaded skills are a
-**copy**, so re-upload after changing a skill; the repo stays the source of truth.
+- **No per-repo marketplace marker, no committed skill files, no manual upload, no
+  token** — the public clone is anonymous, and the runner's egress proxy stays free for
+  the routine's own GitHub work.
+- Include at least **`github-ops`** (every loop references it by name) plus whichever
+  loops you want in cloud — e.g. **`dependabot-rollup`**, **`triage-learnings`**,
+  **`merge-flow`** (edit the script's `SKILLS` list). `mcp-issue-loop` is **not** a
+  cloud candidate (needs worktrees + `npm run test:all` + a live Umbraco — local only).
+- **Refresh after a skill change:** bump `VERSION` in the script and re-save (the env
+  snapshot is cached ~7 days; changing the source repo alone doesn't bust it). The repo
+  stays the source of truth.
 
 ### 2. Labels
 
@@ -184,7 +183,7 @@ Full inventory of cross-repo routines in this repo:
 | Routine | Cadence | Status |
 |---------|---------|--------|
 | `branch-housekeeping` (`scripts/`) | weekly | **live** |
-| `dependabot-rollup` (skill) | weekly | **to wire** (upload the skill zip, then create the routine) |
+| `dependabot-rollup` (skill) | weekly | **to wire** |
 | `triage-learnings` | weekly | **to wire** |
 | `merge-flow` | periodic (~hourly) | **to wire** |
 
@@ -192,11 +191,12 @@ Full inventory of cross-repo routines in this repo:
 not scheduled. The web routines do GitHub work via the GitHub MCP server (see
 `github-ops`); `branch-housekeeping` is the bash/`curl` exception.
 
-Wiring a cloud routine is two steps: (1) **upload the skill zips** it needs (§1b —
-always `github-ops`, plus the loop's own skill); (2) **create the routine** pointing
-at the target repo with a prompt that invokes the skill, e.g. `Run /dependabot-rollup`
-for the dependabot rollup. There is no marketplace to re-point — cloud runs off the
-uploaded skills, not `/plugin install`.
+Wiring a cloud routine is two steps: (1) ensure the environment's **setup script**
+delivers the skills it needs — the [`cloud-skill-sync`](../scripts/cloud-skill-sync/)
+script, with at least `github-ops` plus the loop's own skill in its `SKILLS` list (§1b);
+(2) **create the routine** pointing at the target repo with a prompt that invokes the
+skill, e.g. `Run /dependabot-rollup` for the dependabot rollup. Cloud runs off the
+skills delivered by the setup script, not `/plugin install`.
 
 ## 3. Release-loop lifecycle (detail)
 
