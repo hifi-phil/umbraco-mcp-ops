@@ -2,15 +2,15 @@
 name: merge-flow
 description: >-
   Guardrail loop for merging pull requests safely. Finds open PRs labelled
-  `auto-merge` and merges each — but only after verifying every gate: an approving
-  review with no unresolved change-requests, CI actually green (polled, never
-  trusting `--auto`), no conflicts, and the expected base branch. On any unmet
-  gate it comments the blocker and moves on rather than merging. Replaces
-  error-prone manual merges. Repo-agnostic; runs locally or as a scheduled cloud
-  routine; GitHub work goes through the required `github-ops` skill. Uses `/goal`
-  so a merge job is provably finished. Trigger
-  on "merge the ready PRs", "run merge-flow", "auto-merge approved PRs", "merge the
-  auto-merge queue".
+  `auto-merge` — the maintainer's deliberate go-signal, which stands in for a review
+  approval (GitHub forbids approving your own PR, and loop-authored PRs are often
+  yours) — and merges each only after verifying every remaining gate: CI actually
+  green (polled, never trusting `--auto`), no conflicts, the expected base branch, and
+  no unresolved "changes requested". On any unmet gate it comments the blocker and
+  moves on rather than merging. Replaces error-prone manual merges. Repo-agnostic;
+  runs locally or as a scheduled cloud routine; GitHub work goes through the required
+  `github-ops` skill. Uses `/goal` so a merge job is provably finished. Trigger on
+  "merge the ready PRs", "run merge-flow", "auto-merge the queue".
 ---
 
 # merge-flow
@@ -52,9 +52,14 @@ label / state*). No candidates → report "nothing to merge" and stop.
 
 For each candidate, all must hold — if any fails, **do not merge** (go to Step 4):
 
-1. **Approved.** Get the PR's review decision (github-ops → *Get a PR*): it must be
-   approved, with no changes-requested and no unresolved review threads. A bare
-   comment is not approval.
+1. **Human approval = the `auto-merge` label.** The merge stays human-gated: a
+   maintainer must deliberately apply the `auto-merge` label after reviewing the PR,
+   and that label is the human approval signal this loop requires. (A GitHub review
+   "approve" is not used as the signal, because a maintainer cannot approve a PR they
+   authored — and these PRs are commonly authored by the maintainer or the loop.) The
+   label being present (Step 1) satisfies this gate. As an added safeguard, check
+   reviews (github-ops → *Get a PR*): an unresolved **"changes requested"** is a human
+   veto — do not merge despite the label.
 2. **CI genuinely green.** Poll the PR's check-run status (github-ops → *Get PR CI /
    check-run status*) until nothing is pending, then require **every** check to pass.
    **Never rely on an auto-merge that bypasses this gate** — this org has no branch
@@ -85,11 +90,16 @@ requested) so the loop stops re-poking it — say which in the comment.
 
 ## Guardrails
 
-- **Never merge without approved + green + mergeable + correct base.** No exceptions.
+- **Never merge without the `auto-merge` label + green + mergeable + correct base.**
+  No exceptions — the label is the required human approval; the other three are
+  machine-verified.
+- **An unresolved "changes requested" review vetoes the merge** even with the label —
+  a human "no" outranks it.
 - **Never `--auto`, never force-merge, never merge a PR into `main` on a gitflow repo**
   (that's a release).
 - **≤ 10 merges per run**; log any deferred.
-- The `auto-merge` label is the *only* trigger — approval alone never merges.
+- The `auto-merge` label must be applied **deliberately by a maintainer after review** —
+  that act is the human gate, so control who can apply it.
 
 ## Running as a scheduled routine
 
