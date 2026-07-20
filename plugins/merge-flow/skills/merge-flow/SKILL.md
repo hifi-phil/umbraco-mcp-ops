@@ -71,7 +71,7 @@ For each candidate, all must hold — if any fails, **do not merge** (go to Step
    then re-check CI (that restarts checks).
 4. **Right base.** The PR targets the expected integration branch (gitflow → `dev`;
    main-only → `main`). A PR into `main` on a gitflow repo is a **release** merge —
-   that's `release-loop`'s job, not this one; skip it here.
+   that's `auto-release-loop`'s job, not this one; skip it here.
 
 ## Step 3 — merge
 

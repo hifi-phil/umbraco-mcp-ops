@@ -37,7 +37,7 @@
     {
       "name": "release-flow",
       "source": "./plugins/release-flow",
-      "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions. Bundles release-and-branching, sync-dev, release-loop (human-gated, push-notified), and auto-release (issue+label-triggered, CI-gated release with no approval pause).",
+      "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions. Bundles release-and-branching, sync-dev, and auto-release-loop (issue+label-triggered, CI-gated release — no approval pause, Claude push notifications).",
       "version": "1.4.0",
       "category": "workflow",
       "author": {

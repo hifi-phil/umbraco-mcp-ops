@@ -1,7 +1,7 @@
 {
   "name": "release-flow",
   "version": "1.4.0",
-  "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions for branch naming, squash vs merge-commit, cutting a release, tagging, and syncing back to dev. Bundles release-and-branching, sync-dev, release-loop (human-gated release), and auto-release (issue-triggered, CI-gated release with no approval pause).",
+  "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions for branch naming, squash vs merge-commit, cutting a release, tagging, and syncing back to dev. Bundles release-and-branching, sync-dev, and auto-release-loop (issue+label-triggered, CI-gated release with no approval pause and Claude push notifications).",
   "author": {
     "name": "Phil W",
     "email": "pjw@umbraco.com",

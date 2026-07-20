@@ -1,33 +1,33 @@
 ---
-name: auto-release
+name: auto-release-loop
 description: >-
   Event-triggered, CI-gated release with NO mid-flow human approval. When an issue
   titled `release <version>` is labelled `auto-release`, this cuts the release branch,
   bumps version files + changelog, opens the PR to main, drives CI green, then — with
   CI as the only gate — publishes (merge, tag, GitHub Release) and syncs main back to
-  dev, commenting + closing the triggering issue. The deliberate act of labelling the
-  issue is the human decision; CI-green is the quality gate. For gitflow repos.
-  Requires the github-ops skill. Trigger from a routine on Issue: Labeled = auto-release,
-  or run manually as "auto-release <version>".
+  dev, commenting + closing the triggering issue. Sends a Claude push notification at
+  start and on completion. The deliberate act of labelling the issue is the human
+  decision; CI-green is the quality gate. For gitflow repos. Requires the github-ops
+  skill. Trigger from a routine on Issue: Labeled = auto-release, or run manually as
+  "auto-release-loop <version>".
 ---
 
-# auto-release
+# auto-release-loop
 
-The un-gated sibling of [`release-loop`](../release-loop/SKILL.md). Where `release-loop`
-**pauses for a human to approve** before publishing, `auto-release` treats two
-deliberate signals as the go-ahead: (1) a maintainer opened an issue naming the version
+The release loop: **issue-triggered and CI-gated, with no mid-flow human approval.** Two
+deliberate signals are the go-ahead: (1) a maintainer opened an issue naming the version
 and applied the **`auto-release`** label, and (2) **CI on the release PR is green**.
-There is **no mid-flow approval** — by design, for fast beta/pre-release cycles.
+That's it — no approval pause — by design, for fast beta/pre-release cycles.
 
 > **Publishing is irreversible.** Once CI is green this ships with no further human
 > look, and a published package version can't be cleanly un-published (you'd ship a
-> follow-up). Use `auto-release` only where CI-green is a sufficient gate; use
-> `release-loop` when you want the approval pause.
+> follow-up). Use this only where **CI-green is a sufficient gate** — the deliberate
+> `auto-release` label is the one human decision.
 
 ## Trigger & input
 
 - Fired by a routine on **Issue: Labeled → `auto-release`** (instant), or run manually
-  as "auto-release <version>".
+  as "auto-release-loop <version>".
 - **Version** = parsed from the triggering issue's **title** (e.g.
   `release 18.0.0-beta3` → `18.0.0-beta3`). If the title has no clear
   `release <version>`, **comment on the issue asking for one and stop** — never guess a
@@ -49,7 +49,8 @@ There is **no mid-flow approval** — by design, for fast beta/pre-release cycle
 2. Bump the repo's **version-file list** (from its `CLAUDE.md`) and the changelog — use
    the repo's own release skill if it has one (e.g. `umbraco-mcp-skills:release`).
 3. Push and open a PR **`release/<version>` → `main`**, referencing the triggering issue
-   (`Closes #<n>`).
+   (`Closes #<n>`). Send a **Claude push notification** (the `PushNotification` tool)
+   that the auto-release has started: `auto-releasing v<version> from issue #<n>`.
 
 ## Step 2 — drive CI green (this is the gate)
 
@@ -74,8 +75,9 @@ and leave the PR open. **Never publish on red**, never trust a bypassing auto-me
    (`sync-main-to-dev.yml` if installed, else do the back-merge and use `sync-dev`).
    **The `/goal` is not met until `dev` is synced.**
 2. **Comment the outcome on the triggering issue** (Release link, tag, "dev synced") and
-   **close it**. Post the same summary to Slack (or a push notification); fall back to
-   the issue comment alone if neither is available.
+   **close it**. Also send a **Claude push notification** (the `PushNotification` tool):
+   `Released v<version> — published + dev synced.` Fall back to the issue comment alone
+   if push isn't available.
 
 ## Guardrails
 
