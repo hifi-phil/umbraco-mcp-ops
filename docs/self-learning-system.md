@@ -186,7 +186,7 @@ Full inventory of cross-repo routines in this repo:
 | Routine | Cadence | Status |
 |---------|---------|--------|
 | `branch-housekeeping` (`scripts/`) | weekly | **live** |
-| `merge-flow` | weekdays ×2 (poll) | **live** |
+| `merge-flow` | on `auto-merge` label (event) | **to wire** |
 | `auto-release-loop` | on `auto-release` label (event) | **to wire** |
 | `dependabot-rollup` (skill) | weekly | **to wire** (pending Dependabot-alerts grant) |
 | `triage-learnings` | weekly | **to wire** |

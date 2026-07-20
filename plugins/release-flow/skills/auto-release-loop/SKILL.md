@@ -32,9 +32,9 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
   `release 18.0.0-beta3` → `18.0.0-beta3`). If the title has no clear
   `release <version>`, **comment on the issue asking for one and stop** — never guess a
   version.
-- **Branch model** via [`release-and-branching`](../release-and-branching/SKILL.md) —
-  this skill is for **gitflow** (`dev` + `main`). Start from an up-to-date `dev`
-  (use [`sync-dev`](../sync-dev/SKILL.md)).
+- **Branch model** via the `release-and-branching` skill — this skill is for
+  **gitflow** (`dev` + `main`). Start from an up-to-date `dev` (use the `sync-dev`
+  skill).
 - All GitHub actions go through the **`github-ops`** skill (required for this loop).
 
 ## The `/goal`
