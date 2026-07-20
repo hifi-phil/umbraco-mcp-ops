@@ -1,6 +1,6 @@
 # umbraco-mcp-ops
 
-Private cross-repo operations tooling for the Umbraco MCP repositories. Scripts here
+Cross-repo operations tooling for the Umbraco MCP repositories. Scripts here
 act on *several* repos via the GitHub API rather than belonging to any one product, so
 they live in their own home and are run on a schedule (Claude routines) or by hand.
 
@@ -19,6 +19,7 @@ lib/                       # shared helpers reused across scripts
   slack.sh                 #   post_to_slack() — posts to the $SLACK_WEBHOOK_URL channel
 scripts/
   branch-housekeeping/     # weekly: delete merged branches, flag ambiguous ones on Slack
+  cloud-skill-sync/        # cloud-env setup script: load these skills into cloud routines
 ```
 
 Each script tool gets its own folder under `scripts/<tool>/` and reuses `lib/`.
@@ -68,6 +69,7 @@ What this means in practice:
 | Tool | What it does |
 |------|--------------|
 | [`branch-housekeeping`](scripts/branch-housekeeping/) | Weekly sweep: deletes branches whose PR was merged, keeps open-PR branches, and posts ambiguous branches to Slack for review. |
+| [`cloud-skill-sync`](scripts/cloud-skill-sync/) | Cloud-environment **setup script**: clones this (public) repo and copies the ops skills into the session skills dir, so cloud routines can invoke them. See [Running skills in cloud routines](#running-skills-in-cloud-routines). |
 
 ## Plugins (Claude Code marketplace)
 
@@ -93,8 +95,28 @@ Install from this repo inside Claude Code:
 | [`release-flow`](plugins/release-flow/) | Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (`dev` + `main`) vs main-only and follows the matching conventions for branch naming, squash vs merge-commit, cutting a release, tagging, and syncing back to `dev`. Bundles `release-and-branching`, `sync-dev`, and **`release-loop`** — a guardrail loop that drives a release end-to-end (cut release branch → bump → CI-green PR to `main`), pauses for human approval before the irreversible publish, then syncs `main` back to `dev`. Uses `/goal`. |
 | [`merge-flow`](plugins/merge-flow/) | Guardrail loop that merges PRs labelled `auto-merge` — but only once they're approved, CI-green (polled, never `--auto`), conflict-free, and on the right base. Replaces error-prone manual merges; drives each to a clean merge (branch deleted) or flags the blocker. Uses `/goal`. Repo-agnostic; local or scheduled cloud routine. |
 | [`github-ops`](plugins/github-ops/) | Shared reference the other loops point at for GitHub work in **both** environments — `gh` CLI + `git` locally, the **GitHub MCP server** (`mcp__github__*`) on Claude web / in routines. One operation catalog, two reference files; keeps the dual path in one place instead of duplicated across skills. |
-| [`dependabot-rollup`](plugins/dependabot-rollup/) | Roll every open Dependabot **security** PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Includes a generator for per-repo cloud-routine config. Repo-agnostic; safe to run unattended (weekly routine). |
+| [`dependabot-rollup`](plugins/dependabot-rollup/) | Roll every open Dependabot **security** PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Repo-agnostic; safe to run unattended (weekly routine). |
 
 > **Note:** `mcp-issue-loop` drives local worktrees, builds, and integration tests,
 > so it runs on a developer machine (or a runner with the full .NET/Umbraco
 > toolchain), not the lightweight web runners the `scripts/` routines target.
+
+### Running skills in cloud routines
+
+`/plugin install` (above) is for **local** Claude Code. A **cloud routine** doesn't read
+your machine's plugins — it loads skills from the session's skills dir. To get these
+skills there without committing them into every target repo or uploading them by hand,
+use the [`cloud-skill-sync`](scripts/cloud-skill-sync/) **environment setup script**:
+
+1. Open the cloud environment your routine uses (Claude Code on the web → environment
+   settings) and paste [`scripts/cloud-skill-sync/cloud-skill-sync.sh`](scripts/cloud-skill-sync/cloud-skill-sync.sh)
+   into its **Setup script** field.
+2. On the next build it clones this (public) repo and copies the listed skills into
+   `$HOME/.claude/skills`; routines in that environment can then invoke them.
+
+No per-repo marketplace marker, no token, no manual upload — the public clone is
+anonymous, so the runner's egress proxy stays free for the routine's own GitHub work.
+`github-ops` is the shared dependency every loop references by name, so keep it in the
+script's `SKILLS` list. After changing a skill, bump `VERSION` in the script to force a
+re-clone (the env snapshot is otherwise cached ~7 days). See
+[`docs/self-learning-system.md`](docs/self-learning-system.md) for the full setup.
