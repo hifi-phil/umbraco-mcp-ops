@@ -124,23 +124,24 @@ green-it attempts, and never re-push an identical fix that already failed.** If
 CI still isn't green after that, stop with a blocked report (last failing log);
 do not loop indefinitely.
 
-### 8. Mark the issue complete
+### 8. Mark the issue's outcome
 
-Once CI is green, update the **triggering issue** so its state reflects that the
-AI has produced the work and the loop won't re-pick it (github-ops →
-*Add / remove a label* and *Comment on an issue*):
+Update the **triggering issue** so its label reflects the terminal outcome and the
+loop won't silently re-pick it (github-ops → *Add / remove a label* and *Comment on
+an issue*). **Always remove `ready-for-ai`** — it's the queue gate and the issue is
+no longer queued either way — then add the outcome label:
 
-- **Remove** the `ready-for-ai` label and **add** `generated-by-ai`. Removing
-  `ready-for-ai` is what stops this issue being re-selected by a later loop run
-  or re-firing the Issue: Labeled routine; `generated-by-ai` marks it as
-  AI-built.
-- **Comment the PR link** on the issue (e.g. "Built by mcp-issue-loop → #<PR>").
-  The PR body's `Closes #<issue>` already links them; this makes the hand-off
-  explicit for the human reviewer.
+- **On a CI-green PR → `generated-by-ai`.** Comment the PR link (e.g. "Built by
+  mcp-issue-loop → #<PR>"). The PR body's `Closes #<issue>` already links them; this
+  makes the hand-off explicit for the human reviewer.
+- **On a block (you hit a backstop — CI-green cap, ambiguous issue, no-progress
+  guard) → `ai-blocked`.** Comment the specific reason (the last failing CI log, the
+  ambiguity, what you tried). The human reads it, fixes the issue or the blocker, and
+  **re-adds `ready-for-ai`** to retry — that re-queue is the only thing that revives
+  an `ai-blocked` issue, so there's no silent retry loop.
 
-Do this only on green (or skip it on a blocked return — a blocked issue keeps
-`ready-for-ai` so it can be retried). If the `generated-by-ai` label doesn't
-exist on the repo, note it in your report rather than failing the run.
+If the outcome label doesn't exist on the repo, note it in your report rather than
+failing the run.
 
 ### 9. Return
 

@@ -117,7 +117,8 @@ The system is label-driven. Create the labels on the repos that need them:
 | Label | On which repo(s) | Purpose |
 |-------|------------------|---------|
 | `ready-for-ai` | every MCP repo (and any repo a loop should work) | The only gate a loop acts on |
-| `generated-by-ai` | every MCP repo a loop works | Set by `mcp-issue-loop` on completion (replaces `ready-for-ai` when the CI-green PR opens) |
+| `generated-by-ai` | every MCP repo a loop works | Set by `mcp-issue-loop` on success (replaces `ready-for-ai` when the CI-green PR opens) |
+| `ai-blocked` | every MCP repo a loop works | Set by `mcp-issue-loop` when a backstop trips (replaces `ready-for-ai`; comment says why). Re-add `ready-for-ai` to retry |
 | `proto-learning` | `hifi-phil/umbraco-mcp-ops` | Capture inbox |
 | `triaged` | `hifi-phil/umbraco-mcp-ops` | Loop B routed it to a PR (skip next run) |
 | `loop-improvement` | `hifi-phil/umbraco-mcp-ops` | A change to the loop itself, promoted from a learning |
@@ -134,6 +135,7 @@ gh label create auto-merge       --repo hifi-phil/umbraco-mcp-ops --color 0e8a16
 # each MCP repo you want the loop to work
 gh label create ready-for-ai    --repo umbraco/<MCP-repo> --color 0e8a16
 gh label create generated-by-ai --repo umbraco/<MCP-repo> --color c5def5
+gh label create ai-blocked      --repo umbraco/<MCP-repo> --color d93f0b
 gh label create auto-merge      --repo umbraco/<MCP-repo> --color 0e8a16
 ```
 

@@ -108,8 +108,10 @@ Track each subagent's result:
 `{issue, worktreeName, worktreePath, branch, prNumber, model, tier}`.
 A build subagent's job is done when its PR is open and CI is green. If a build
 subagent reports it could not finish (e.g. the issue is ambiguous, or CI can't be
-greened), record it as **blocked**, leave a comment on the issue explaining why,
-and move on — don't let one bad issue stall the queue.
+greened), record it as **blocked** — the subagent will have labelled the issue
+`ai-blocked` (removing `ready-for-ai`) and commented the reason as its outcome step
+(build playbook step 8); just confirm that happened and move on — don't let one bad
+issue stall the queue.
 
 Keep dispatching until the queue is empty and all build subagents have returned.
 
@@ -185,7 +187,7 @@ The loop ends when **no actionable work remains** — not only when everything i
 merged. Actionable work = a queued issue, a running build/response subagent, or a
 PR with unaddressed review feedback. When none of those exist, every remaining
 issue is already terminal: **merged**, **awaiting the human** (CI-green PR, no new
-feedback), or **blocked** (a comment left on the issue explaining why).
+feedback), or **blocked** (labelled `ai-blocked` with a comment explaining why).
 
 What happens at that point depends on run mode:
 
@@ -197,11 +199,12 @@ What happens at that point depends on run mode:
   at a long interval and re-check next tick. End the routine only when everything
   is merged or a backstop below trips.
 
-**Safety backstops (all modes) — stop touching an issue, mark it blocked, and
-hand back if any trips:**
+**Safety backstops (all modes) — stop touching an issue, label it `ai-blocked`
+(remove `ready-for-ai`, comment why — build playbook step 8), and hand back if any
+trips:**
 
 - **CI-green cap** — at most **8** attempts to green one PR's CI. After that, the
-  issue is blocked (comment the last failure).
+  issue is `ai-blocked` (comment the last failure).
 - **Review-round cap** — at most **5** requested-changes rounds on one PR without
   reaching approval. After that, hand back — the disagreement needs a human.
 - **No-progress guard** — never retry the same failing command/action verbatim.
@@ -249,8 +252,8 @@ is *not* to fix learnings inline — leave that to Loop B.
 
 - **Never touch an issue without the `ready-for-ai` label.** The label is the
   only gate. If a human removes it mid-flight, stop work on that issue. The one
-  exception is the **completion swap**: on a CI-green PR the loop itself removes
-  `ready-for-ai` and adds `generated-by-ai` (build playbook step 8) — that's the
+  exception is the **outcome swap**: the loop itself removes `ready-for-ai` and adds
+  `generated-by-ai` (green PR) or `ai-blocked` (backstop tripped) (build playbook step 8) — that's the
   loop finishing the issue, not a human pulling the gate.
 - **One worktree per issue, hook-backed.** Always create via `EnterWorktree`
   (fires this repo's `WorktreeCreate` hook: fresh DB, `.env`, dynamic port,
@@ -316,4 +319,4 @@ cloud sessions by the [`cloud-skill-sync`](../../../../scripts/cloud-skill-sync/
 script, so self-learning capture runs in cloud too — degrading gracefully (log-and-skip) if
 `jq`/`claude`/`gh` aren't present in the environment. The same guardrails still hold —
 `ready-for-ai` is the only gate, reviews are non-negotiable, follow the repo's `CLAUDE.md`,
-never leave CI red, and a blocked issue gets a comment + stop.
+never leave CI red, and a blocked issue gets labelled `ai-blocked` + a comment, then stop.
