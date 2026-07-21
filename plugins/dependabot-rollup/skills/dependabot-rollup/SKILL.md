@@ -4,8 +4,8 @@ description: >-
   Roll every open Dependabot SECURITY update (excluding semver-major bumps) into a
   single chore branch + PR, drive it to green CI with /goal, close (and delete the
   branch of) the individual Dependabot PRs the rollup supersedes, and notify only when
-  everything is done. Repo-agnostic; safe to run unattended (locally or as a scheduled
-  routine). Invoke as `/dependabot-rollup [base branch]`, or trigger whenever you need
+  everything is done. Repo-agnostic; safe to run unattended locally (e.g. a Desktop
+  scheduled task) — not as a cloud routine. Invoke as `/dependabot-rollup [base branch]`, or trigger whenever you need
   to consolidate a repo's open Dependabot security PRs into one verified rollup PR.
   Requires the `github-ops` skill for all GitHub-API work.
 ---
@@ -14,14 +14,16 @@ description: >-
 
 Consolidate all **open Dependabot security updates** into one `chore/` branch + PR against the base branch, verify it to green CI, delete (close + delete-branch) the individual Dependabot PRs the rollup supersedes, and notify the human **only when everything is done**.
 
-Built to run **unattended on a schedule** (locally via a Desktop scheduled task, or as a cloud routine). It must be a quiet no-op when there is nothing to do, and it must never lose work: individual Dependabot PRs are closed **only after** the rollup PR's CI is fully green.
+Built to run **unattended on a schedule locally** (e.g. a Desktop scheduled task). It must be a quiet no-op when there is nothing to do, and it must never lose work: individual Dependabot PRs are closed **only after** the rollup PR's CI is fully green.
+
+> **Local only — not a cloud routine.** The Claude GitHub App available to cloud routines has a fixed permission set with **no Dependabot-alerts read** (it can't be granted), so a cloud run can never tell which PRs are security and can only no-op. Run this locally, where `gh` has the scope. See the alerts-permission note in *Discover & classify*.
 
 Invoke as `/dependabot-rollup [base branch]`. The optional base branch defaults to `dev` when it exists on `origin`, otherwise the repository's default branch (detect via `github-ops` → *Detect base branch*).
 
 ## GitHub access & environment
 
 - **GitHub-API operations** (list Dependabot PRs, list Dependabot alerts, get/create/update/close PRs, CI status, read failing logs) go through the **`github-ops`** skill — `gh` locally, the GitHub MCP server on Claude web. **`github-ops` must be available for this skill to run.** The steps name the *operation*; `github-ops` has the command/tool.
-- **Working-tree operations** (merging the include branches, reconciling lockfiles, `npm install`, building) use `git` + the ecosystem toolchain directly — these are **not** GitHub-API calls, so they need a **clone + the repo's toolchain** in the environment (e.g. the DotNet/Node cloud env), not just API access.
+- **Working-tree operations** (merging the include branches, reconciling lockfiles, `npm install`, building) use `git` + the ecosystem toolchain directly — these are **not** GitHub-API calls, so they need a **clone + the repo's toolchain** in the local environment (Node/.NET), not just API access.
 
 ## Guardrails (read first)
 
@@ -52,7 +54,7 @@ Via `github-ops`:
 - **List the open Dependabot PRs** (→ *List open Dependabot PRs*) — number, title, head branch, url.
 - **List open Dependabot security alerts** (→ *List Dependabot security alerts*) and collect the alerting package names.
 
-If listing alerts fails with a **permission error** (the connected app / token lacks Dependabot-alerts read — common in unattended/cloud runs), **stop and report that limitation**. Do not guess which PRs are security.
+If listing alerts fails with a **permission error** (the connected app / token lacks Dependabot-alerts read — this is **always** the case for the Claude GitHub App used by cloud routines, which is why this skill is local-only), **stop and report that limitation**. Do not guess which PRs are security.
 
 For each open Dependabot PR, parse the package(s) and `from → to` versions from the title (get the PR via `github-ops` → *Get a PR* for multi-package bundles), then classify:
 
