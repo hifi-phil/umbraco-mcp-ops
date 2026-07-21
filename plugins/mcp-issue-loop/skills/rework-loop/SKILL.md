@@ -29,11 +29,11 @@ review" session.
 
 ## Test gate: CI, not local
 
-This loop does **not** run Umbraco. This repo is TypeScript — it edits the TS, runs the
-repo's fast checks (`npm ci` + `npm run compile` / `npm run build`) as a sanity pass, and
-relies on **CI** (GitHub Actions) to run the integration/eval suite. All GitHub work goes
-through the **`github-ops`** skill (required). *(Run locally with the full toolchain and
-you may also `npm run test:all` before pushing — but CI is the gate either way.)*
+This loop **never runs Umbraco or `npm run test:all` — that's the CI job**, not the
+worker's. This repo is TypeScript, so it edits the TS, runs `npm ci` + `npm run compile`
+/ `npm run build` as a fast sanity pass, pushes, and relies on **CI** (GitHub Actions) to
+run the integration/eval suite. All GitHub work goes through the **`github-ops`** skill
+(required).
 
 ## Step 1 — read the feedback
 
