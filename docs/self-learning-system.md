@@ -100,9 +100,10 @@ environment can invoke the skills and spawn the agents.
   token** — the public clone is anonymous, and the runner's egress proxy stays free for
   the routine's own GitHub work.
 - Include at least **`github-ops`** (every loop references it by name) plus whichever
-  loops you want in cloud — e.g. **`dependabot-rollup`**, **`triage-learnings`**,
-  **`merge-flow`**, **`rework-loop`**, **`mcp-issue-loop`** (edit the script's `SKILLS`
-  list). `mcp-issue-loop` runs in cloud in its **cloud mode** (one session per issue,
+  loops you want in cloud — e.g. **`triage-learnings`**, **`merge-flow`**,
+  **`rework-loop`**, **`mcp-issue-loop`** (edit the script's `SKILLS` list).
+  (**`dependabot-rollup` is local-only** — the Claude GitHub App can't read Dependabot
+  alerts, so it can't run as a cloud routine.) `mcp-issue-loop` runs in cloud in its **cloud mode** (one session per issue,
   CI as the test gate — no local Umbraco); its **local mode** (worktrees + `test:all` +
   the review loop + capture hooks) is dev-machine-only.
 - **Refresh after a skill change:** bump `VERSION` in the script and re-save (the env
@@ -194,7 +195,7 @@ Full inventory of cross-repo routines in this repo:
 | `branch-housekeeping` (`scripts/`) | weekly | **live** |
 | `merge-flow` | on `auto-merge` label (event) | **to wire** |
 | `auto-release-loop` | on `auto-release` label (event) | **to wire** |
-| `dependabot-rollup` (skill) | weekly | **to wire** (pending Dependabot-alerts grant) |
+| `dependabot-rollup` (skill) | weekly | **local-only** (cloud impossible — Claude GitHub App can't read Dependabot alerts) |
 | `triage-learnings` | weekly | **to wire** |
 
 `mcp-issue-loop` and `content-issue-loop` are human-initiated and not scheduled.
@@ -206,8 +207,9 @@ Wiring a cloud routine is two steps: (1) ensure the environment's **setup script
 delivers the skills it needs — the [`cloud-skill-sync`](../scripts/cloud-skill-sync/)
 script, with at least `github-ops` plus the loop's own skill in its `SKILLS` list (§1b);
 (2) **create the routine** pointing at the target repo with a prompt that invokes the
-skill, e.g. `Run /dependabot-rollup` for the dependabot rollup. Cloud runs off the
-skills delivered by the setup script, not `/plugin install`.
+skill, e.g. `Run /merge-flow` for the merge loop. Cloud runs off the
+skills delivered by the setup script, not `/plugin install`. (`dependabot-rollup` is the
+exception — it's local-only; see §1b.)
 
 ## 3. Release-loop lifecycle (detail)
 

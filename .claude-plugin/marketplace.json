@@ -105,8 +105,8 @@
     {
       "name": "dependabot-rollup",
       "source": "./plugins/dependabot-rollup",
-      "description": "Roll every open Dependabot security PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Repo-agnostic and safe to run unattended, locally or as a scheduled routine. Requires github-ops.",
-      "version": "1.3.0",
+      "description": "Roll every open Dependabot security PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Repo-agnostic and safe to run unattended LOCALLY (e.g. a Desktop scheduled task). Not runnable as a cloud routine — the Claude GitHub App can't read Dependabot alerts. Requires github-ops.",
+      "version": "1.3.1",
       "category": "workflow",
       "author": {
         "name": "Phil W",
@@ -121,7 +121,6 @@
         "pull-request",
         "ci",
         "automation",
-        "cloud-routine",
         "workflow"
       ]
     }
