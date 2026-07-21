@@ -2,25 +2,36 @@
 name: mcp-issue-loop
 description: >-
   Work through the open GitHub issues labelled `ready-for-ai` in an Umbraco MCP
-  repo, one git worktree + subagent per issue (max 3 in parallel), driving each
-  to completion. Each issue is implemented following established MCP patterns and
-  skills, security-reviewed and code-reviewed, pushed, its CI driven green, and a
-  PR opened — then the loop monitors that PR for the human's review and responds
-  to review feedback, iterating until the PR is approved and merged. Repo-agnostic
-  across Umbraco MCP repos; runs locally or as a scheduled cloud routine. Trigger
-  on "work the ready issues", "action the ready-for-ai issues", "complete the AI
-  issues", "run the issue loop", "pick up the AI-ready backlog".
+  repo, driving each to a CI-green PR. Two modes, chosen by the caller (default
+  local): LOCAL — orchestrated, one git worktree + subagent per issue (max 3
+  parallel), local tests, then a review-response loop until merged, with capture
+  hooks; CLOUD — one session per issue (event-triggered), no worktree, TypeScript
+  compile sanity + CI as the test gate (no local Umbraco), build to a CI-green PR
+  and stop (review-response handed to rework-loop). Each issue is implemented
+  following the established MCP skills and security/code-reviewed. Repo-agnostic
+  across Umbraco MCP repos; github-ops required. Trigger on "work the ready issues",
+  "run the issue loop", or a routine on Issue: Labeled `ready-for-ai` (cloud).
 ---
 
 # mcp-issue-loop
 
 A durable loop that turns the `ready-for-ai` GitHub backlog into merged PRs.
 
-You are the **orchestrator**. You own a long-lived loop (it survives across turns
-and scheduled wake-ups) whose terminal condition is: *every open `ready-for-ai`
-issue in this repo has a PR that CI passed, that the human reviewed, and that is
-approved + merged.* You reach that state by dispatching **one subagent per issue,
-each in its own git worktree**, capped at **3 running at once**.
+**Two modes, set by the caller** (default **local**; a routine states **cloud mode**
+explicitly):
+- **Local (orchestrated)** — you own a long-lived loop over the whole backlog: one
+  hook-backed worktree + subagent per issue (cap 3), a build phase then a
+  human-review-response phase, capture hooks running. That's everything from *Config*
+  through *Rules* below.
+- **Cloud (one-shot per issue)** — a routine fires once per `ready-for-ai` issue
+  (cross-issue parallelism comes from separate sessions); you build that **one** issue
+  to a CI-green PR with **CI as the test gate**, then **stop**. See [Cloud mode](#cloud-mode).
+
+In **local mode** you are the **orchestrator**. You own a long-lived loop (it survives
+across turns and scheduled wake-ups) whose terminal condition is: *every open
+`ready-for-ai` issue in this repo has a PR that CI passed, that the human reviewed, and
+that is approved + merged.* You reach that state by dispatching **one subagent per
+issue, each in its own git worktree**, capped at **3 running at once**.
 
 Each issue has a two-part lifecycle:
 
@@ -258,11 +269,34 @@ is *not* to fix learnings inline — leave that to Loop B.
   [Capturing learnings](#capturing-learnings-compounding)); the triage routine
   turns them into PRs. Do not edit skills or `CLAUDE.md` from inside this loop.
 
-## Running on a cloud instance (later)
+## Cloud mode
 
-The design is already cloud-shaped: Step 1–3 are a burst of parallel work; Step 4
-is a scheduled poll-and-react. To run unattended as a routine, the same skill
-runs headless — `/goal` plus `ScheduleWakeup` become the routine's persistence,
-and the review-response dispatch fires whenever a wake-up finds
-`CHANGES_REQUESTED`. Nothing in the loop assumes an interactive human is present
-except the review itself, which is exactly the intended human gate.
+Everything above (Config → Rules) is **local mode**. **Cloud mode** is set explicitly by
+the caller — the routine prompt says *run in cloud mode*. There it's **event-triggered,
+one session per `ready-for-ai` issue**, so there is **no orchestrator, no worktrees, no
+cap-3 queue** — cross-issue parallelism comes from separate sessions firing.
+
+For the one triggering issue (identify it from the event; if unclear, take the **oldest**
+open `ready-for-ai` issue; none → quiet no-op):
+
+1. Work **directly in the session's checkout** — no `EnterWorktree`. Cloud sessions are
+   already isolated, and the worktree hooks need the local DB/toolchain.
+2. Implement the issue following the **shared build playbook**
+   ([`references/issue-lifecycle.md`](references/issue-lifecycle.md)) and the MCP skills,
+   with two substitutions:
+   - **No local Umbraco, no `npm run test:all`.** This repo is TypeScript — run `npm ci`
+     + `npm run compile` / `npm run build` as the sanity pass. **CI (GitHub Actions) is
+     the test gate**; it runs the integration/eval suite.
+   - Still run **`/security-review` + `/code-review` (low)** before pushing.
+3. Push, open the PR against `<base>`, and **drive CI green** from the logs (github-ops →
+   *Read a failing check's log*; the **8-attempt** cap applies).
+4. **Stop at a CI-green PR.** Do **not** enter a review phase and do **not** merge —
+   review-response is [`rework-loop`](../rework-loop/SKILL.md)'s job (it fires on the
+   PR-review event), and merging is `merge-flow`'s.
+
+**Not used in cloud mode:** the orchestrator/queue, worktrees, the review-response phase,
+per-issue model dispatch (the routine's own model is used), and the **capture hooks**
+(SubagentStop/SessionEnd → `proto-learning` issues are a local mechanism, so self-learning
+capture is local-only for now). The same guardrails still hold — `ready-for-ai` is the
+only gate, reviews are non-negotiable, follow the repo's `CLAUDE.md`, never leave CI red,
+and a blocked issue gets a comment + stop.
