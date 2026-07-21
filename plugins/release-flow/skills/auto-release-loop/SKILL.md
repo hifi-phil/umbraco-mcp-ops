@@ -65,23 +65,23 @@ on red**, never trust a bypassing auto-merge.
 
 ## Step 2.5 — pre-publish review (second gate)
 
-Once CI is green, **review the release PR against
-[`references/release-review-checklist.md`](references/release-review-checklist.md)**
-before anything irreversible — the growing list of common release mistakes (mismatched
-or downgraded version, beta-published-as-latest, oversized / off-scope PR, conflicts,
-wrong base, …). This is the last line of defence on an un-gated publish, so do it with
-maximum rigour: spawn a **review subagent on the `opus` model** (fresh context, via the
-Agent/Task tool) to (a) check the PR against **every** checklist item, and (b) **reason
-about the PR as a whole** — *does anything here look wrong or risky to ship?* — treating
-the checklist as a **floor, not a ceiling** and flagging anything off that the list
-doesn't yet cover (BLOCK if clearly wrong, WARN if merely suspect). It returns **PASS**
-or **BLOCK + findings**. That open-ended judgment is the main reason the review runs on
-Opus rather than a cheaper checklist-checker. Opus is used **only** for this review
-agent — the rest of the loop runs on
-the routine's own (cheaper) model, so the routine's `allowed_tools` must include the
-Agent/Task tool for the review agent to be spawned. If subagent-spawning isn't available,
-do the review inline on the loop's model and **note in the outcome comment that it wasn't
-run on Opus**.
+Once CI is green, and before anything irreversible, run the dedicated **`release-reviewer`
+agent** (defined in this plugin — `model: opus`, read-only, fresh context). First gather
+the PR's facts via `github-ops` — PR number / head / base, the target version, the
+triggering issue title, the diff (changed files + size), CI status, and mergeability —
+and pass them to the agent. It checks the PR against **every** item in
+[`references/release-review-checklist.md`](references/release-review-checklist.md) **and
+reasons about the PR as a whole** — *does anything look wrong or risky to ship?* —
+treating the checklist as a **floor, not a ceiling**, and returns **VERDICT: PASS** or
+**VERDICT: BLOCK + findings**.
+
+Because `release-reviewer` is **read-only** it can only judge — it cannot merge or
+publish; the loop acts on its verdict. The open-ended reasoning (not just the checklist)
+is why this agent runs on Opus rather than a cheaper checklist-checker.
+
+> The routine's `allowed_tools` must include the Agent/Task tool so `release-reviewer`
+> can be spawned. If it can't be spawned in the environment, do the review inline on the
+> loop's model and **note in the outcome comment that it wasn't the Opus `release-reviewer`**.
 
 - Any **BLOCK** finding → **stop**: comment the findings on the triggering issue, leave
   the PR open, do **not** merge/tag/publish, and push-notify (framed as blocked).
