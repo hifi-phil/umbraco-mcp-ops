@@ -14,6 +14,8 @@ flowchart LR
     ISSUE["ready-for-ai<br/>issue"] --> CODE["mcp-issue-loop /<br/>content-issue-loop<br/>(code the change)"]
     CODE --> PR["PR<br/>CI green"]
     PR --> REVIEW{"human<br/>review"}
+    REVIEW -->|"changes requested"| REWORK["rework-loop<br/>(address feedback)"]
+    REWORK --> PR
     REVIEW -->|"label auto-merge"| MERGE["merge-flow<br/>(gated merge)"]
     MERGE --> MERGED["merged to dev"]
     MERGED --> REL["auto-release-loop<br/>(label an issue auto-release)"]
@@ -51,7 +53,8 @@ repo benefits next time.
 
 | Loop | Plugin | What it does | Where it runs | Trigger |
 |------|--------|--------------|---------------|---------|
-| `mcp-issue-loop` | mcp-issue-loop | Works `ready-for-ai` issues on an **MCP** repo → CI-green PR → review loop | Dev machine (needs Umbraco toolchain) | "work the ready issues" |
+| `mcp-issue-loop` | mcp-issue-loop | Works `ready-for-ai` issues on an **MCP** repo → CI-green PR. *Local:* worktrees + parallel subagents + local tests + review loop. *Cloud:* one session/issue, CI-driven (no local Umbraco), stop at green PR | Dev machine **or** cloud routine (Issue: Labeled `ready-for-ai`) | label `ready-for-ai` |
+| `rework-loop` | mcp-issue-loop | Address a PR's review feedback → re-green CI → re-request review (never merges) | Cloud routine (PR-review event) or local | reviewer requests changes |
 | `content-issue-loop` | mcp-issue-loop | Same, for repos **without** the toolchain (this repo, `Umbraco-MCP-Base`, docs) | Dev machine or runner | "work the ready ops issues" |
 | capture hooks | mcp-issue-loop | After each subagent, analyze the transcript and file `proto-learning` issues | Wherever the loop runs | automatic (`SubagentStop`/`SessionEnd`) |
 | `triage-learnings` | mcp-issue-loop | Route proto-learnings → MCP-repo issue / shared-skills PR / loop-improvement issue | Web runner (scheduled) | "triage the learnings" |

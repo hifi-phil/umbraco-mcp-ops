@@ -1,7 +1,7 @@
 {
   "name": "mcp-issue-loop",
-  "version": "1.4.0",
-  "description": "Work through GitHub issues labelled ready-for-ai in an Umbraco MCP repo, one worktree + subagent per issue (max 3 parallel), driving each to a CI-green PR, then responding to review feedback until approved and merged. Repo-agnostic; runs locally or as a scheduled cloud routine.",
+  "version": "1.5.0",
+  "description": "Work through GitHub issues labelled ready-for-ai in an Umbraco MCP repo, driving each to a CI-green PR. Also bundles rework-loop, which reacts to the GitHub PR-review event: when a reviewer requests changes on a loop-authored PR it addresses the feedback, re-greens CI, and re-requests review (never merges — merge-flow does). CI is the test gate, so the cloud path needs no local Umbraco. Repo-agnostic; runs locally (worktrees + parallel subagents + local tests) or as a cloud routine.",
   "author": {
     "name": "Phil W",
     "email": "pjw@umbraco.com",
