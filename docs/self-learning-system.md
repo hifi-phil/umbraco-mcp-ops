@@ -89,8 +89,9 @@ Cloud routines load skills from the session's skills dir. Deliver them there wit
 [`cloud-skill-sync`](../scripts/cloud-skill-sync/) **environment setup script**: paste
 [`scripts/cloud-skill-sync/cloud-skill-sync.sh`](../scripts/cloud-skill-sync/cloud-skill-sync.sh)
 into the cloud environment's **Setup script** field. On build it clones this (public)
-repo and copies the listed skills into `$HOME/.claude/skills`, so any routine in that
-environment can invoke them.
+repo and copies the listed skills into `$HOME/.claude/skills` **and every plugin agent
+(e.g. `release-reviewer`) into `$HOME/.claude/agents`**, so any routine in that
+environment can invoke the skills and spawn the agents.
 
 - **No per-repo marketplace marker, no committed skill files, no manual upload, no
   token** — the public clone is anonymous, and the runner's egress proxy stays free for
