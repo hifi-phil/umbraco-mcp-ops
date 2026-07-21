@@ -13,8 +13,8 @@
     {
       "name": "mcp-issue-loop",
       "source": "./plugins/mcp-issue-loop",
-      "description": "Work through GitHub issues labelled ready-for-ai in an Umbraco MCP repo, driving each to a CI-green PR. Two modes: LOCAL (orchestrated worktrees + parallel subagents + local tests + review loop + capture hooks) and CLOUD (one session per issue, no worktree, CI as the test gate — no local Umbraco — build to a green PR and stop). Also bundles rework-loop (PR-review-event response), content-issue-loop, and triage-learnings. Repo-agnostic.",
-      "version": "1.6.0",
+      "description": "The GitHub-issue lifecycle for Umbraco MCP repos. grill-to-issue interrogates a feature idea one question at a time (MCP-aware) then files build-ready issues (unlabelled — you apply ready-for-ai). mcp-issue-loop drives each ready-for-ai issue to a CI-green PR in two modes: LOCAL (orchestrated worktrees + parallel subagents + local tests + review loop + capture hooks) and CLOUD (one session per issue, CI as the test gate). Also bundles rework-loop (PR-review-event response), content-issue-loop, and triage-learnings. Repo-agnostic.",
+      "version": "1.7.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
@@ -26,6 +26,8 @@
         "umbraco",
         "mcp",
         "github-issues",
+        "grilling",
+        "feature-spec",
         "worktree",
         "subagent",
         "ci",

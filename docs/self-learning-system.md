@@ -11,6 +11,9 @@ How one unit of work flows from an issue to a shipped release — the forward pa
 
 ```mermaid
 flowchart LR
+    IDEA["feature idea"] --> GRILL["grill-to-issue<br/>(interrogate → file issue)"]
+    GRILL --> UNLABELLED["issue(s)<br/>unlabelled"]
+    UNLABELLED -. "human adds ready-for-ai" .-> ISSUE
     ISSUE["ready-for-ai<br/>issue"] --> CODE["mcp-issue-loop /<br/>content-issue-loop<br/>(code the change)"]
     CODE --> PR["PR<br/>CI green"]
     PR --> REVIEW{"human<br/>review"}
@@ -53,6 +56,7 @@ repo benefits next time.
 
 | Loop | Plugin | What it does | Where it runs | Trigger |
 |------|--------|--------------|---------------|---------|
+| `grill-to-issue` | mcp-issue-loop | Interrogate a feature idea one question at a time (MCP-aware), optionally harden with an adversarial panel, split into vertical slices → file build-ready issues **unlabelled** (human applies `ready-for-ai`) | Dev machine (interactive) | "grill me about this feature" / "spec this into issues" |
 | `mcp-issue-loop` | mcp-issue-loop | Works `ready-for-ai` issues on an **MCP** repo → CI-green PR. *Local:* worktrees + parallel subagents + local tests + review loop. *Cloud:* one session/issue, CI-driven (no local Umbraco), stop at green PR | Dev machine **or** cloud routine (Issue: Labeled `ready-for-ai`) | label `ready-for-ai` |
 | `rework-loop` | mcp-issue-loop | Address a PR's review feedback → re-green CI → re-request review (never merges) | Cloud routine (PR-review event) or local | reviewer requests changes |
 | `content-issue-loop` | mcp-issue-loop | Same, for repos **without** the toolchain (this repo, `Umbraco-MCP-Base`, docs) | Dev machine or runner | "work the ready ops issues" |
