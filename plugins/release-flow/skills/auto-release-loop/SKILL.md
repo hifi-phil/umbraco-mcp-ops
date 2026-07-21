@@ -66,18 +66,12 @@ on red**, never trust a bypassing auto-merge.
 ## Step 2.5 — pre-publish review (second gate)
 
 Once CI is green, and before anything irreversible, run the dedicated **`release-reviewer`
-agent** (defined in this plugin — `model: opus`, read-only, fresh context). First gather
-the PR's facts via `github-ops` — PR number / head / base, the target version, the
-triggering issue title, the diff (changed files + size), CI status, and mergeability —
-and pass them to the agent. It checks the PR against **every** item in
-[`references/release-review-checklist.md`](references/release-review-checklist.md) **and
-reasons about the PR as a whole** — *does anything look wrong or risky to ship?* —
-treating the checklist as a **floor, not a ceiling**, and returns **VERDICT: PASS** or
-**VERDICT: BLOCK + findings**.
-
-Because `release-reviewer` is **read-only** it can only judge — it cannot merge or
-publish; the loop acts on its verdict. The open-ended reasoning (not just the checklist)
-is why this agent runs on Opus rather than a cheaper checklist-checker.
+agent** (defined in this plugin — read-only Opus; what it checks and how it judges live
+in its own definition). Gather the PR's facts via `github-ops` — PR number / head / base,
+target version, triggering issue, the diff (changed files + size), CI status,
+mergeability — and pass them to the agent. It returns **VERDICT: PASS** or **VERDICT:
+BLOCK + findings**; the loop acts on the verdict (the agent is read-only and can't publish
+itself).
 
 > The routine's `allowed_tools` must include the Agent/Task tool so `release-reviewer`
 > can be spawned. If it can't be spawned in the environment, do the review inline on the
