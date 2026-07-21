@@ -25,9 +25,11 @@ Both run `agentType: general-purpose` so the full tool + Skill set is available.
 > a hook-backed worktree exists for this issue; the change is implemented
 > following established MCP patterns; `npm run test:all` passes locally;
 > `/security-review` and `/code-review` (low) are clean or their findings are
-> fixed; the branch is pushed; a PR is open against the base branch; and its CI
-> is green. If you cannot reach this state, stop and return a clear blocked
-> report (what's ambiguous / what fails) — do not guess or half-finish.
+> fixed; the branch is pushed; a PR is open against the base branch; its CI
+> is green; and the **issue has been marked complete** — `ready-for-ai`
+> removed, `generated-by-ai` added, the PR referenced on it (see step 8). If
+> you cannot reach this state, stop and return a clear blocked report (what's
+> ambiguous / what fails) — do not guess or half-finish.
 
 ### 1. Create your worktree
 
@@ -121,6 +123,26 @@ failure is a real regression, never "flaky-until-proven". **Cap: at most 8
 green-it attempts, and never re-push an identical fix that already failed.** If
 CI still isn't green after that, stop with a blocked report (last failing log);
 do not loop indefinitely.
+
+### 8. Mark the issue complete
+
+Once CI is green, update the **triggering issue** so its state reflects that the
+AI has produced the work and the loop won't re-pick it (github-ops →
+*Add / remove a label* and *Comment on an issue*):
+
+- **Remove** the `ready-for-ai` label and **add** `generated-by-ai`. Removing
+  `ready-for-ai` is what stops this issue being re-selected by a later loop run
+  or re-firing the Issue: Labeled routine; `generated-by-ai` marks it as
+  AI-built.
+- **Comment the PR link** on the issue (e.g. "Built by mcp-issue-loop → #<PR>").
+  The PR body's `Closes #<issue>` already links them; this makes the hand-off
+  explicit for the human reviewer.
+
+Do this only on green (or skip it on a blocked return — a blocked issue keeps
+`ready-for-ai` so it can be retried). If the `generated-by-ai` label doesn't
+exist on the repo, note it in your report rather than failing the run.
+
+### 9. Return
 
 When CI is green (or you've hit the cap and are blocking), **return** the
 structured report to the orchestrator:

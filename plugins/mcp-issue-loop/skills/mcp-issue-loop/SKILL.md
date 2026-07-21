@@ -248,7 +248,10 @@ is *not* to fix learnings inline — leave that to Loop B.
 ## Rules
 
 - **Never touch an issue without the `ready-for-ai` label.** The label is the
-  only gate. If a human removes it mid-flight, stop work on that issue.
+  only gate. If a human removes it mid-flight, stop work on that issue. The one
+  exception is the **completion swap**: on a CI-green PR the loop itself removes
+  `ready-for-ai` and adds `generated-by-ai` (build playbook step 8) — that's the
+  loop finishing the issue, not a human pulling the gate.
 - **One worktree per issue, hook-backed.** Always create via `EnterWorktree`
   (fires this repo's `WorktreeCreate` hook: fresh DB, `.env`, dynamic port,
   `npm install`). Never hand-roll `git worktree add` and never use the Agent
@@ -300,12 +303,17 @@ open `ready-for-ai` issue; none → quiet no-op):
    - Still run **`/security-review` + `/code-review` (low)** before pushing.
 3. Push, open the PR against `<base>`, and **drive CI green** from the logs (github-ops →
    *Read a failing check's log*; the **8-attempt** cap applies).
-4. **Stop at a CI-green PR.** Do **not** enter a review phase and do **not** merge —
-   review-response is [`rework-loop`](../rework-loop/SKILL.md)'s job (it fires on the
-   PR-review event), and merging is `merge-flow`'s.
+4. **Mark the issue complete, then stop at the CI-green PR.** Once CI is green,
+   run build-playbook **step 8** on the triggering issue — remove `ready-for-ai`, add
+   `generated-by-ai`, comment the PR link. Removing `ready-for-ai` is what stops this
+   routine re-firing on the same issue. Then **stop**: do **not** enter a review phase and
+   do **not** merge — review-response is [`rework-loop`](../rework-loop/SKILL.md)'s job (it
+   fires on the PR-review event), and merging is `merge-flow`'s.
 
-**Not used in cloud mode:** the cap-3 queue, worktrees, the review-response phase, and the
-**capture hooks** (SubagentStop/SessionEnd → `proto-learning` issues are a local mechanism,
-so self-learning capture is local-only for now). The same guardrails still hold —
+**Not used in cloud mode:** the cap-3 queue, worktrees, and the review-response phase. The
+**capture hooks** (SubagentStop/SessionEnd → `proto-learning` issues) *are* delivered to
+cloud sessions by the [`cloud-skill-sync`](../../../../scripts/cloud-skill-sync/) setup
+script, so self-learning capture runs in cloud too — degrading gracefully (log-and-skip) if
+`jq`/`claude`/`gh` aren't present in the environment. The same guardrails still hold —
 `ready-for-ai` is the only gate, reviews are non-negotiable, follow the repo's `CLAUDE.md`,
 never leave CI red, and a blocked issue gets a comment + stop.
