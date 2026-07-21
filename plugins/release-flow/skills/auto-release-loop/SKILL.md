@@ -1,15 +1,17 @@
 ---
 name: auto-release-loop
 description: >-
-  Event-triggered, CI-gated release with NO mid-flow human approval. When an issue
-  titled `release <version>` is labelled `auto-release`, this cuts the release branch,
-  bumps version files + changelog, opens the PR to main, drives CI green, then — with
-  CI as the only gate — publishes (merge, tag, GitHub Release) and syncs main back to
-  dev, commenting + closing the triggering issue. Sends a Claude push notification at
-  start and on completion. The deliberate act of labelling the issue is the human
-  decision; CI-green is the quality gate. For gitflow repos. Requires the github-ops
-  skill. Trigger from a routine on Issue: Labeled = auto-release, or run manually as
-  "auto-release-loop <version>".
+  Event-triggered release with NO mid-flow human approval, guarded by two automated
+  gates: green CI, then an Opus pre-publish review against a growing checklist (version
+  correctness, beta-vs-latest, PR scope, conflicts, wrong base, …). When an issue titled
+  `release <version>` is labelled `auto-release`, this cuts the release branch, bumps
+  version files + changelog, opens the PR to main, drives CI green, runs the review (a
+  BLOCK finding stops it), then publishes (merge, tag, GitHub Release) and syncs main
+  back to dev, commenting + closing the triggering issue. Sends a Claude push
+  notification at start and on completion. The deliberate act of labelling the issue is
+  the human decision. For gitflow repos. Requires the github-ops skill. Trigger from a
+  routine on Issue: Labeled = auto-release, or run manually as "auto-release-loop
+  <version>".
 ---
 
 # auto-release-loop
@@ -40,7 +42,7 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
 ## The `/goal`
 
 ```
-/goal auto-release <version> of <repo>: release/<version> cut from dev; version files + changelog bumped; PR to main is green; merged to main; tagged v<version>; GitHub Release published (prerelease if <version> has a pre-release suffix); main synced back to dev; triggering issue commented and closed
+/goal auto-release <version> of <repo>: release/<version> cut from dev; version files + changelog bumped; PR to main is green; pre-publish review checklist passed with no BLOCK; merged to main; tagged v<version>; GitHub Release published (prerelease if <version> has a pre-release suffix); main synced back to dev; triggering issue commented and closed
 ```
 
 ## Step 1 — prepare (autonomous)
@@ -52,15 +54,43 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
    (`Closes #<n>`). Send a **Claude push notification** (the `PushNotification` tool)
    that the auto-release has started: `auto-releasing v<version> from issue #<n>`.
 
-## Step 2 — drive CI green (this is the gate)
+## Step 2 — drive CI green
 
 Poll the PR's check-run status (github-ops → *Get PR CI / check-run status*) until it
 settles, then require **every** check to pass. Fix failures on the release branch (the
-issue loop's **8-attempt** cap applies). **CI-green is the only gate — there is no human
-approval step.** If CI can't be made green, **stop**, comment the blocker on the issue,
-and leave the PR open. **Never publish on red**, never trust a bypassing auto-merge.
+issue loop's **8-attempt** cap applies). **CI-green is required** — there is no human
+approval step, but the Step 2.5 review is a second, automated gate. If CI can't be made
+green, **stop**, comment the blocker on the issue, and leave the PR open. **Never publish
+on red**, never trust a bypassing auto-merge.
 
-## Step 3 — publish (once green)
+## Step 2.5 — pre-publish review (second gate)
+
+Once CI is green, and before anything irreversible, run the dedicated **`release-reviewer`
+agent** (defined in this plugin — read-only Opus; what it checks and how it judges live
+in its own definition). Gather the PR's facts via `github-ops` — PR number / head / base,
+target version, triggering issue, the diff (changed files + size), CI status,
+mergeability — and pass them to the agent. It returns **VERDICT: PASS** or **VERDICT:
+BLOCK + findings**; the loop acts on the verdict (the agent is read-only and can't publish
+itself).
+
+> The routine's `allowed_tools` must include the Agent/Task tool so `release-reviewer`
+> can be spawned. If it can't be spawned in the environment, do the review inline on the
+> loop's model and **note in the outcome comment that it wasn't the Opus `release-reviewer`**.
+
+- Any **BLOCK** finding → **do not merge/tag/publish.** Leave the release PR open, then:
+  1. **Create a new issue** in the repo titled `Release <version> blocked by pre-publish
+     review`, detailing the reviewer's BLOCK findings (each: which check / what's wrong /
+     why) plus links to the release PR and the triggering issue. Label it
+     `release-blocked` if that label exists.
+  2. **Send a Claude push notification** (the `PushNotification` tool) summarising the
+     block and linking the new issue.
+  3. **Comment on the triggering issue** pointing to the blocked issue + PR, and **remove
+     its `auto-release` label** so the loop doesn't re-fire until a human fixes the cause
+     and re-labels.
+- **WARN** findings → proceed, but include them in the completion comment.
+- Continue to publish **only** when the checklist passes with no BLOCK.
+
+## Step 3 — publish (once green + review passed)
 
 1. Merge `release/<version>` → `main` per convention (github-ops → *Merge a PR*).
 2. **Tag `v<version>`** and **create the GitHub Release** — mark it **prerelease** if
@@ -81,8 +111,11 @@ and leave the PR open. **Never publish on red**, never trust a bypassing auto-me
 
 ## Guardrails
 
-- **CI-green is the gate; never publish on red.** No human approval step by design —
-  labelling the issue `auto-release` was the human decision.
+- **Two gates before publish: CI-green AND the pre-publish review checklist (Step 2.5).**
+  Never publish on red, and never publish with an open **BLOCK** finding. No human
+  approval step by design — labelling the issue `auto-release` was the human decision.
+- **A BLOCK is always surfaced, never silent** — file a `Release <version> blocked …`
+  issue **and** push-notify, then de-label the triggering issue so it doesn't re-fire.
 - **Never force-push; never skip the dev back-merge** — an un-synced `dev` is the
   classic release mistake.
 - **One release per triggering issue**; take the version only from that issue's title.
