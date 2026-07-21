@@ -71,8 +71,13 @@ before anything irreversible — the growing list of common release mistakes (mi
 or downgraded version, beta-published-as-latest, oversized / off-scope PR, conflicts,
 wrong base, …). This is the last line of defence on an un-gated publish, so do it with
 maximum rigour: spawn a **review subagent on the `opus` model** (fresh context, via the
-Agent/Task tool) to check the PR against **every** item and return **PASS** or **BLOCK +
-findings**. Opus is used **only** for this review agent — the rest of the loop runs on
+Agent/Task tool) to (a) check the PR against **every** checklist item, and (b) **reason
+about the PR as a whole** — *does anything here look wrong or risky to ship?* — treating
+the checklist as a **floor, not a ceiling** and flagging anything off that the list
+doesn't yet cover (BLOCK if clearly wrong, WARN if merely suspect). It returns **PASS**
+or **BLOCK + findings**. That open-ended judgment is the main reason the review runs on
+Opus rather than a cheaper checklist-checker. Opus is used **only** for this review
+agent — the rest of the loop runs on
 the routine's own (cheaper) model, so the routine's `allowed_tools` must include the
 Agent/Task tool for the review agent to be spawned. If subagent-spawning isn't available,
 do the review inline on the loop's model and **note in the outcome comment that it wasn't

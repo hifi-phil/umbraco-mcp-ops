@@ -10,6 +10,10 @@ below before merging/tagging/publishing.
   can glance at it.
 - Judge each check from what's observable on the PR (title/branch/issue, the diff, CI,
   mergeability). If a check can't be evaluated, treat it as a BLOCK and say why.
+- **Reason beyond the list.** These checks are a *floor*, not a ceiling — also step back
+  and ask *"does anything about this PR look wrong or risky to ship?"* Flag anything off
+  even when no row covers it (BLOCK if clearly wrong, WARN if merely suspect), and add a
+  check for it below so it's explicit next time.
 
 > **This list is meant to grow.** When a release goes wrong in a new way, add a row —
 > keep it objective and PR-observable, with a clear severity. See *Adding checks* below.
