@@ -72,8 +72,11 @@ or downgraded version, beta-published-as-latest, oversized / off-scope PR, confl
 wrong base, …). This is the last line of defence on an un-gated publish, so do it with
 maximum rigour: spawn a **review subagent on the `opus` model** (fresh context, via the
 Agent/Task tool) to check the PR against **every** item and return **PASS** or **BLOCK +
-findings**. If subagent-spawning isn't available in the environment, do the review inline
-— and run this loop on **Opus** so the gate stays high-rigour.
+findings**. Opus is used **only** for this review agent — the rest of the loop runs on
+the routine's own (cheaper) model, so the routine's `allowed_tools` must include the
+Agent/Task tool for the review agent to be spawned. If subagent-spawning isn't available,
+do the review inline on the loop's model and **note in the outcome comment that it wasn't
+run on Opus**.
 
 - Any **BLOCK** finding → **stop**: comment the findings on the triggering issue, leave
   the PR open, do **not** merge/tag/publish, and push-notify (framed as blocked).
