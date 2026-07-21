@@ -25,9 +25,11 @@ Both run `agentType: general-purpose` so the full tool + Skill set is available.
 > a hook-backed worktree exists for this issue; the change is implemented
 > following established MCP patterns; `npm run test:all` passes locally;
 > `/security-review` and `/code-review` (low) are clean or their findings are
-> fixed; the branch is pushed; a PR is open against the base branch; and its CI
-> is green. If you cannot reach this state, stop and return a clear blocked
-> report (what's ambiguous / what fails) — do not guess or half-finish.
+> fixed; the branch is pushed; a PR is open against the base branch; its CI
+> is green; and the **issue has been marked complete** — `ready-for-ai`
+> removed, `generated-by-ai` added, the PR referenced on it (see step 8). If
+> you cannot reach this state, stop and return a clear blocked report (what's
+> ambiguous / what fails) — do not guess or half-finish.
 
 ### 1. Create your worktree
 
@@ -121,6 +123,27 @@ failure is a real regression, never "flaky-until-proven". **Cap: at most 8
 green-it attempts, and never re-push an identical fix that already failed.** If
 CI still isn't green after that, stop with a blocked report (last failing log);
 do not loop indefinitely.
+
+### 8. Mark the issue's outcome
+
+Update the **triggering issue** so its label reflects the terminal outcome and the
+loop won't silently re-pick it (github-ops → *Add / remove a label* and *Comment on
+an issue*). **Always remove `ready-for-ai`** — it's the queue gate and the issue is
+no longer queued either way — then add the outcome label:
+
+- **On a CI-green PR → `generated-by-ai`.** Comment the PR link (e.g. "Built by
+  mcp-issue-loop → #<PR>"). The PR body's `Closes #<issue>` already links them; this
+  makes the hand-off explicit for the human reviewer.
+- **On a block (you hit a backstop — CI-green cap, ambiguous issue, no-progress
+  guard) → `ai-blocked`.** Comment the specific reason (the last failing CI log, the
+  ambiguity, what you tried). The human reads it, fixes the issue or the blocker, and
+  **re-adds `ready-for-ai`** to retry — that re-queue is the only thing that revives
+  an `ai-blocked` issue, so there's no silent retry loop.
+
+If the outcome label doesn't exist on the repo, note it in your report rather than
+failing the run.
+
+### 9. Return
 
 When CI is green (or you've hit the cap and are blocking), **return** the
 structured report to the orchestrator:
