@@ -101,8 +101,10 @@ environment can invoke the skills and spawn the agents.
   the routine's own GitHub work.
 - Include at least **`github-ops`** (every loop references it by name) plus whichever
   loops you want in cloud — e.g. **`dependabot-rollup`**, **`triage-learnings`**,
-  **`merge-flow`** (edit the script's `SKILLS` list). `mcp-issue-loop` is **not** a
-  cloud candidate (needs worktrees + `npm run test:all` + a live Umbraco — local only).
+  **`merge-flow`**, **`rework-loop`**, **`mcp-issue-loop`** (edit the script's `SKILLS`
+  list). `mcp-issue-loop` runs in cloud in its **cloud mode** (one session per issue,
+  CI as the test gate — no local Umbraco); its **local mode** (worktrees + `test:all` +
+  the review loop + capture hooks) is dev-machine-only.
 - **Refresh after a skill change:** bump `VERSION` in the script and re-save (the env
   snapshot is cached ~7 days; changing the source repo alone doesn't bust it). The repo
   stays the source of truth.
