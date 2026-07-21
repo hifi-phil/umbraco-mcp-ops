@@ -60,10 +60,18 @@ repo benefits next time.
 | `triage-learnings` | mcp-issue-loop | Route proto-learnings → MCP-repo issue / shared-skills PR / loop-improvement issue | Web runner (scheduled) | "triage the learnings" |
 | `merge-flow` | merge-flow | Merge PRs labelled `auto-merge` once green + conflict-free (the label is the approval) | Cloud routine (weekdays) | label `auto-merge` |
 | `auto-release-loop` | release-flow | Cut branch, drive CI green, publish + tag + Release, sync `dev` — CI-gated, no approval pause | Cloud routine (Issue: Labeled) | label an issue `auto-release` |
+| `loop-dispatch` | loop-dispatch | Front door that routes a triggering event → the matching loop above (sweeps all four when no event context). Lets **one routine per repo** handle every loop event | Cloud routine (all loop events) or manual | any loop event on the repo |
 
-Not a loop, but every loop above depends on it: **`github-ops`** — the shared how-to
-for GitHub work in both environments (`gh` CLI locally, the GitHub MCP server on the
-web). The loops defer all GitHub commands/tools to it.
+Not a loop itself, but every loop above depends on it: **`github-ops`** — the shared
+how-to for GitHub work in both environments (`gh` CLI locally, the GitHub MCP server on
+the web). The loops defer all GitHub commands/tools to it.
+
+**Scaling to many repos.** Rather than wiring four routines per repo, wire **one**
+routine per repo to all the loop events and point it at **`loop-dispatch`**; it routes
+each event to the right loop (or sweeps all four if the platform can't pass event
+context). This needs a routine that can hold multiple event triggers and see which one
+fired — otherwise keep per-event routines or run `loop-dispatch` in sweep mode on a
+single trigger/schedule.
 
 ## Setup
 
@@ -78,6 +86,7 @@ Inside Claude Code:
 /plugin install release-flow@umbraco-mcp-ops
 /plugin install github-ops@umbraco-mcp-ops
 /plugin install dependabot-rollup@umbraco-mcp-ops
+/plugin install loop-dispatch@umbraco-mcp-ops
 /reload-plugins
 ```
 
