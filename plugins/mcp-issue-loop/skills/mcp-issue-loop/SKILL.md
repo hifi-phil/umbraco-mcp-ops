@@ -272,16 +272,26 @@ is *not* to fix learnings inline — leave that to Loop B.
 ## Cloud mode
 
 Everything above (Config → Rules) is **local mode**. **Cloud mode** is set explicitly by
-the caller — the routine prompt says *run in cloud mode*. There it's **event-triggered,
-one session per `ready-for-ai` issue**, so there is **no orchestrator, no worktrees, no
-cap-3 queue** — cross-issue parallelism comes from separate sessions firing.
+the caller — the routine prompt says *run in cloud mode*. It's **event-triggered, one
+session per `ready-for-ai` issue**, so there's **no cap-3 queue and no worktrees** —
+cross-issue parallelism comes from separate sessions firing. The session is a **thin
+orchestrator on a cheap base model**: it triages the one issue and dispatches a **single**
+build subagent on the best-fit model — the same *Model selection* logic as local, just one
+subagent instead of up to three.
 
 For the one triggering issue (identify it from the event; if unclear, take the **oldest**
 open `ready-for-ai` issue; none → quiet no-op):
 
-1. Work **directly in the session's checkout** — no `EnterWorktree`. Cloud sessions are
-   already isolated, and the worktree hooks need the local DB/toolchain.
-2. Implement the issue following the **shared build playbook**
+1. **Triage + dispatch.** Read the issue, pick its tier from
+   [Model selection](#model-selection) (`opus` / `sonnet` / `haiku`; never `fable`; floor
+   `sonnet` for code-touching work), and spawn **one** build subagent on that model
+   (Agent/Task tool with the chosen `model`). The base session stays on a cheap model — it
+   only triages, dispatches, and reports. *If the routine environment can't spawn a
+   subagent with a model override, do the build **inline** on the routine's own model
+   instead (set that to a sensible default, e.g. `sonnet`) and note it.*
+2. **Build (in the subagent).** Work **directly in the session's checkout** — no
+   `EnterWorktree` (cloud sessions are already isolated, and the worktree hooks need the
+   local DB/toolchain). Implement the issue following the **shared build playbook**
    ([`references/issue-lifecycle.md`](references/issue-lifecycle.md)) and the MCP skills,
    with two substitutions:
    - **No local Umbraco, no `npm run test:all`.** This repo is TypeScript — run `npm ci`
@@ -294,9 +304,8 @@ open `ready-for-ai` issue; none → quiet no-op):
    review-response is [`rework-loop`](../rework-loop/SKILL.md)'s job (it fires on the
    PR-review event), and merging is `merge-flow`'s.
 
-**Not used in cloud mode:** the orchestrator/queue, worktrees, the review-response phase,
-per-issue model dispatch (the routine's own model is used), and the **capture hooks**
-(SubagentStop/SessionEnd → `proto-learning` issues are a local mechanism, so self-learning
-capture is local-only for now). The same guardrails still hold — `ready-for-ai` is the
-only gate, reviews are non-negotiable, follow the repo's `CLAUDE.md`, never leave CI red,
-and a blocked issue gets a comment + stop.
+**Not used in cloud mode:** the cap-3 queue, worktrees, the review-response phase, and the
+**capture hooks** (SubagentStop/SessionEnd → `proto-learning` issues are a local mechanism,
+so self-learning capture is local-only for now). The same guardrails still hold —
+`ready-for-ai` is the only gate, reviews are non-negotiable, follow the repo's `CLAUDE.md`,
+never leave CI red, and a blocked issue gets a comment + stop.
