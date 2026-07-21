@@ -83,8 +83,16 @@ is why this agent runs on Opus rather than a cheaper checklist-checker.
 > can be spawned. If it can't be spawned in the environment, do the review inline on the
 > loop's model and **note in the outcome comment that it wasn't the Opus `release-reviewer`**.
 
-- Any **BLOCK** finding → **stop**: comment the findings on the triggering issue, leave
-  the PR open, do **not** merge/tag/publish, and push-notify (framed as blocked).
+- Any **BLOCK** finding → **do not merge/tag/publish.** Leave the release PR open, then:
+  1. **Create a new issue** in the repo titled `Release <version> blocked by pre-publish
+     review`, detailing the reviewer's BLOCK findings (each: which check / what's wrong /
+     why) plus links to the release PR and the triggering issue. Label it
+     `release-blocked` if that label exists.
+  2. **Send a Claude push notification** (the `PushNotification` tool) summarising the
+     block and linking the new issue.
+  3. **Comment on the triggering issue** pointing to the blocked issue + PR, and **remove
+     its `auto-release` label** so the loop doesn't re-fire until a human fixes the cause
+     and re-labels.
 - **WARN** findings → proceed, but include them in the completion comment.
 - Continue to publish **only** when the checklist passes with no BLOCK.
 
@@ -112,6 +120,8 @@ is why this agent runs on Opus rather than a cheaper checklist-checker.
 - **Two gates before publish: CI-green AND the pre-publish review checklist (Step 2.5).**
   Never publish on red, and never publish with an open **BLOCK** finding. No human
   approval step by design — labelling the issue `auto-release` was the human decision.
+- **A BLOCK is always surfaced, never silent** — file a `Release <version> blocked …`
+  issue **and** push-notify, then de-label the triggering issue so it doesn't re-fire.
 - **Never force-push; never skip the dev back-merge** — an un-synced `dev` is the
   classic release mistake.
 - **One release per triggering issue**; take the version only from that issue's title.
