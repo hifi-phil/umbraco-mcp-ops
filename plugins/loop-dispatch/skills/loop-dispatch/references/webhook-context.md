@@ -34,12 +34,13 @@ event" (sweep or quiet no-op), not as an error.
 1. **Look for the trigger block.** Absent → no event (sweep / no-op). Present → continue.
 2. **Extract `event`, `action`, `owner`, `repo`, `number`, `label`/`state` verbatim.**
    No inference, no guessing what to look up.
-3. **Gate on the exact tuple *before* doing any work.** Act only if
-   `(event, action, label|state)` matches the route's condition. **Any other value →
-   quiet no-op.** Do **not** wake a loop and let it sweep on a label you don't care
-   about — that's the wasteful pattern (e.g. a Dependabot PR labelled `dependencies`
-   must *not* trigger the `auto-merge` path; that's what caused merge-flow to fire 4×
-   overnight).
+3. **Gate on the exact tuple *before* doing any work — with a script, not judgement.**
+   loop-dispatch ships [`route-event.sh`](route-event.sh): pass it the parsed fields and
+   it prints `route=<loop|none>`. Act only on a named route; **any other value → quiet
+   no-op.** Do **not** wake a loop and let it sweep on a label you don't care about —
+   that's the wasteful pattern (a Dependabot PR labelled `dependencies` must *not* trigger
+   the `auto-merge` path; that's what caused merge-flow to fire 4× overnight). A scripted
+   decision is byte-identical across firings and model instances.
 4. **Fetch details with the exact values** through `github-ops` — `issue_read`
    (`method: "get"`) for issues, `pull_request_read` (`method: "get"`) for PRs — using
    the `owner`/`repo`/`number` from step 2. Same inputs → same data, no judgement.

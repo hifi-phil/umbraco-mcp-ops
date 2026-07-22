@@ -1,0 +1,20 @@
+name: loop-dispatch router test
+
+# Deterministic, hermetic test of route-event.sh — the loop-dispatch routing
+# decision. No network, no gh, no claude — just bash + jq, a few ms. Runs on
+# every PR and every push to main (no paths filter, same rationale as the
+# hook-test gate: cheap, and never silently skipped).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  router-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run route-event tests
+        run: bash plugins/loop-dispatch/skills/loop-dispatch/test/run.sh

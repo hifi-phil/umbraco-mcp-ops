@@ -50,22 +50,31 @@ before any sweep.
 
 ## Step 1 — work out what fired (deterministically)
 
-Read the event from the **`<github-trigger-context>` block** in your opening context and
-parse it exactly as [`references/webhook-context.md`](references/webhook-context.md)
-describes — extract `event`, `action`, `owner`, `repo`, `number`, and `label`/`state`
-**verbatim, no inference**.
+The routing **decision is scripted**, not judged — so it's byte-identical every fire.
+Your only job is to lift the fields out of the **`<github-trigger-context>` block** and
+run the bundled router.
 
-- **Trigger block present →** match the `(event, action, label|state)` tuple against the
-  [routing table](#the-routing-table). **Match exactly one row, or none.** A non-match
-  (e.g. a PR labelled `dependencies`) is a **quiet no-op** — do **not** fall through to a
-  sweep, and do **not** wake a loop to check. This exact gate is the point of the router.
-- **Trigger block absent** (cron / manual run / no subscription) → go to
-  [Sweep](#step-2b--sweep-no-event-context). Sweep is only ever for the no-event case.
-- **Re-check the entity before acting.** Between the event firing and this session
-  starting, a label can be removed or the PR/issue closed. Fetch it (github-ops →
-  `issue_read`/`pull_request_read`, `method: "get"`, using the exact `owner`/`repo`/
-  `number`) and confirm it still carries the triggering label / is still open. If not,
-  **quiet no-op** — the world moved on.
+1. From the trigger block, read `event`, `action`, `owner`, `repo`, `number`, and
+   `label`/`state` **verbatim** (see [`references/webhook-context.md`](references/webhook-context.md)).
+   **No trigger block present** (cron / manual / no subscription) → go to
+   [Sweep](#step-2b--sweep-no-event-context); sweep is only ever for the no-event case.
+2. Run the bundled **`route-event.sh`** (in this skill's directory) with those fields and
+   obey its one-line output — do not re-derive the decision yourself:
+
+   ```bash
+   bash route-event.sh --event <event> --action <action> --label <label> \
+     --state <state> --number <number> --repo <owner/repo>
+   # → route=<loop|none> repo=<owner/repo> number=<n>
+   ```
+
+   `route=none` → **quiet no-op** (not ours; do not sweep, do not wake a loop to look).
+   Otherwise route names the loop to run for `number` (Step 2). The script is a pure
+   function of the tuple — an unmatched label like `dependencies` deterministically
+   returns `none`, which is what kills the wasteful fires.
+3. **Re-check the entity before acting.** Between the event firing and this session
+   starting a label can be removed or the PR/issue closed. Fetch it (github-ops →
+   `issue_read`/`pull_request_read`, `method: "get"`, exact `owner`/`repo`/`number`) and
+   confirm it still carries the triggering label / is still open. If not, **quiet no-op**.
 
 ## Step 2 — route (the normal path)
 
@@ -121,14 +130,14 @@ invocation).
 ## Wiring it (one routine per repo)
 
 Create **one** routine per repo whose prompt is essentially *"Run `/loop-dispatch` for
-`<owner/repo>`"*, and attach every loop event you want it to handle (Issue: Labeled
-`ready-for-ai`, PR: Labeled `auto-merge`, PR review, Issue: Labeled `auto-release`).
-That one routine replaces the four per-repo routines. The loop skills must be present
-in the environment (delivered by the `cloud-skill-sync` setup script — add
-`loop-dispatch` to its `SKILLS` list alongside the loops it routes to).
+`<owner/repo>`"*, and attach every loop event to it (Issue: Labeled `ready-for-ai`,
+Issue: Labeled `auto-release`, PR: Labeled `auto-merge`, PR review) — a routine can
+carry **multiple event triggers**, so one routine handles them all. That one routine
+replaces the four per-repo routines. The loop skills (and this one) must be in the
+environment — `loop-dispatch` is in the `cloud-skill-sync` setup script's `SKILLS` list.
 
-> **Requires** that a routine can carry multiple event triggers and that the fired
-> session can see which event fired. If your routine platform allows only one trigger
-> per routine, keep separate routines (or run loop-dispatch in **sweep** mode on a
-> single broad trigger / schedule). If the platform can't pass event context at all,
-> loop-dispatch still works via sweep — it just checks all four preconditions each fire.
+> The fired session sees which event fired via the `<github-trigger-context>` block, so
+> routing is exact (Step 1). If a repo's trigger fires on a broad event class (e.g. *any*
+> PR label), that's fine — `route-event.sh` returns `none` for the labels we don't own,
+> so the fire is a cheap no-op. If your platform can't pass event context at all,
+> loop-dispatch still works via **sweep** — it just checks all four preconditions per fire.
