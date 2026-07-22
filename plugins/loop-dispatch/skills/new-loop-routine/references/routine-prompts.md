@@ -19,4 +19,8 @@ Name: `loop-dispatch → {{OWNER_REPO}}`
 A GitHub loop event fired on {{OWNER_REPO}}. Run the loop-dispatch skill: read the <github-trigger-context> block, run route-event.sh with the parsed fields to get the route, and dispatch to the matching loop — mcp-issue-loop (cloud mode) / merge-flow / rework-loop / auto-release-loop — exactly as loop-dispatch specifies, or quiet no-op when route=none. Follow loop-dispatch's guardrails verbatim; add no policy of your own.
 ```
 
-Events to attach (UI): Issue: Labeled `ready-for-ai` · Issue: Labeled `auto-release` · PR: Labeled `auto-merge` · PR review.
+Events to attach (UI) — each routes to one loop:
+- Issue: Labeled `ready-for-ai` → **mcp-issue-loop** (or **content-issue-loop** on non-MCP repos)
+- PR: Labeled `auto-merge` → **merge-flow**
+- PR review (changes requested) → **rework-loop**
+- Issue: Labeled `auto-release` → **auto-release-loop**

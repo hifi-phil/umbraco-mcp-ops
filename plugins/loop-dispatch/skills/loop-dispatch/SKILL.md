@@ -81,8 +81,10 @@ run the bundled router.
 Invoke the matched skill exactly as its own dedicated routine would, scoped to the
 specific issue/PR, and **follow that skill's instructions verbatim**:
 
-- `ready-for-ai` issue → **`/mcp-issue-loop`**, told to run in **cloud mode** for that
-  issue (in a local run, use its local mode instead).
+- `ready-for-ai` issue → **`/mcp-issue-loop`** in **cloud mode** for that issue (local
+  run → its local mode). **On a non-MCP repo** (the ops repo, `Umbraco-MCP-Base`, docs)
+  use **`/content-issue-loop`** instead — same `route=mcp-issue-loop` signal, but that
+  repo has no MCP toolchain to build against.
 - `auto-merge` PR → **`/merge-flow`** (it sweeps all `auto-merge` PRs; the event is
   just the wake-up).
 - PR review changes-requested → **`/rework-loop`** for that PR.
