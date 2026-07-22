@@ -68,7 +68,10 @@ case "$event/$action" in
   pull_request/labeled)
     [ "$label" = "auto-merge" ] && route="merge-flow" ;;
   pull_request_review/submitted)
-    [ "$state" = "changes_requested" ] && route="rework-loop" ;;
+    # changes_requested OR a plain "Comment" review (people batch actionable inline
+    # comments under Comment far more than Request-changes). Approvals route nowhere;
+    # rework-loop itself judges whether a comment review is actionable.
+    case "$state" in changes_requested|commented) route="rework-loop" ;; esac ;;
 esac
 
 printf 'route=%s repo=%s number=%s\n' "$route" "$repo" "$number"
