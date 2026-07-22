@@ -109,8 +109,9 @@ environment can invoke the skills and spawn the agents.
   token** — the public clone is anonymous, and the runner's egress proxy stays free for
   the routine's own GitHub work.
 - Include at least **`github-ops`** (every loop references it by name) plus whichever
-  loops you want in cloud — e.g. **`triage-learnings`**, **`merge-flow`**,
-  **`rework-loop`**, **`mcp-issue-loop`** (edit the script's `SKILLS` list).
+  loops you want in cloud — e.g. **`loop-dispatch`** (the front-door router),
+  **`triage-learnings`**, **`merge-flow`**, **`rework-loop`**, **`mcp-issue-loop`**
+  (edit the script's `SKILLS` list; `loop-dispatch` is already listed).
   (**`dependabot-rollup` is local-only** — the Claude GitHub App can't read Dependabot
   alerts, so it can't run as a cloud routine.) `mcp-issue-loop` runs in cloud in its **cloud mode** (one session per issue,
   CI as the test gate — no local Umbraco); its **local mode** (worktrees + `test:all` +
