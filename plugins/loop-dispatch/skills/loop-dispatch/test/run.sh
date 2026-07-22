@@ -37,6 +37,11 @@ expect_json() {
 # --- flag-driven cases -----------------------------------------------------
 expect_route "pr auto-merge → merge-flow"          merge-flow        -- --event pull_request --action labeled --label auto-merge --number 42 --repo o/r
 expect_route "pr auto-rework → rework-loop"        rework-loop       -- --event pull_request --action labeled --label auto-rework --number 50 --repo o/r
+# The live caller fires `pull_request_target` (runs from default branch w/ secrets, so it
+# reaches dev-based PRs); route-event normalises it to pull_request.
+expect_route "pr_target auto-merge → merge-flow"   merge-flow        -- --event pull_request_target --action labeled --label auto-merge --number 42 --repo o/r
+expect_route "pr_target auto-rework → rework-loop" rework-loop       -- --event pull_request_target --action labeled --label auto-rework --number 50 --repo o/r
+expect_route "pr_target dependencies → none"       none              -- --event pull_request_target --action labeled --label dependencies --number 269 --repo o/r
 expect_route "pr dependencies → none (the 4x bug)" none              -- --event pull_request --action labeled --label dependencies --number 269 --repo o/r
 expect_route "pr javascript → none"                none              -- --event pull_request --action labeled --label javascript --number 7 --repo o/r
 expect_route "pr opened → none"                    none              -- --event pull_request --action opened --number 42 --repo o/r
@@ -65,6 +70,10 @@ expect_json "raw json auto-rework PR label" \
   "route=rework-loop repo=a/b number=8" \
   '{"action":"labeled","label":{"name":"auto-rework"},"pull_request":{"number":8},"repository":{"full_name":"a/b"}}' \
   pull_request
+expect_json "raw json auto-rework via pull_request_target" \
+  "route=rework-loop repo=a/b number=8" \
+  '{"action":"labeled","label":{"name":"auto-rework"},"pull_request":{"number":8},"repository":{"full_name":"a/b"}}' \
+  pull_request_target
 expect_json "raw json review changes_requested → none (label-driven now)" \
   "route=none repo=a/b number=8" \
   '{"action":"submitted","review":{"state":"changes_requested"},"pull_request":{"number":8},"repository":{"full_name":"a/b"}}' \
