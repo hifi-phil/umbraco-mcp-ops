@@ -36,16 +36,15 @@ expect_json() {
 
 # --- flag-driven cases -----------------------------------------------------
 expect_route "pr auto-merge → merge-flow"          merge-flow        -- --event pull_request --action labeled --label auto-merge --number 42 --repo o/r
+expect_route "pr auto-rework → rework-loop"        rework-loop       -- --event pull_request --action labeled --label auto-rework --number 50 --repo o/r
 expect_route "pr dependencies → none (the 4x bug)" none              -- --event pull_request --action labeled --label dependencies --number 269 --repo o/r
 expect_route "pr javascript → none"                none              -- --event pull_request --action labeled --label javascript --number 7 --repo o/r
 expect_route "pr opened → none"                    none              -- --event pull_request --action opened --number 42 --repo o/r
 expect_route "issue ready-for-ai → mcp-issue-loop" mcp-issue-loop    -- --event issues --action labeled --label ready-for-ai --number 5 --repo o/r
 expect_route "issue auto-release → auto-release"   auto-release-loop -- --event issues --action labeled --label auto-release --number 9 --repo o/r
 expect_route "issue bug → none"                    none              -- --event issues --action labeled --label bug --number 3 --repo o/r
-expect_route "review changes → rework-loop"        rework-loop       -- --event pull_request_review --action submitted --state changes_requested --number 42 --repo o/r
-expect_route "review comment → rework-loop"        rework-loop       -- --event pull_request_review --action submitted --state commented --number 42 --repo o/r
+expect_route "review changes → none (now label-driven)" none         -- --event pull_request_review --action submitted --state changes_requested --number 42 --repo o/r
 expect_route "review approved → none"              none              -- --event pull_request_review --action submitted --state approved --number 42 --repo o/r
-expect_route "review state UPPER → rework-loop"    rework-loop       -- --event pull_request_review --action submitted --state CHANGES_REQUESTED --number 42 --repo o/r
 expect_route "unknown event → none"                none              -- --event release --action published --number 1 --repo o/r
 expect_route "no input at all → none"              none              --
 
@@ -62,8 +61,12 @@ expect_json "raw json ready-for-ai issue" \
   "route=mcp-issue-loop repo=a/b number=5" \
   '{"action":"labeled","label":{"name":"ready-for-ai"},"issue":{"number":5},"repository":{"full_name":"a/b"}}' \
   issues
-expect_json "raw json review changes_requested" \
+expect_json "raw json auto-rework PR label" \
   "route=rework-loop repo=a/b number=8" \
+  '{"action":"labeled","label":{"name":"auto-rework"},"pull_request":{"number":8},"repository":{"full_name":"a/b"}}' \
+  pull_request
+expect_json "raw json review changes_requested → none (label-driven now)" \
+  "route=none repo=a/b number=8" \
   '{"action":"submitted","review":{"state":"changes_requested"},"pull_request":{"number":8},"repository":{"full_name":"a/b"}}' \
   pull_request_review
 

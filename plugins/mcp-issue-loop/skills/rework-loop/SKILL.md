@@ -1,36 +1,37 @@
 ---
 name: rework-loop
 description: >-
-  Event-triggered loop that acts on PR review feedback. When a reviewer requests changes
-  (or leaves actionable comments) on a loop-authored PR, it reads the feedback, makes the
-  changes following the established MCP skills, pushes, drives CI green, replies to the
-  threads, and re-requests review — then stops. It never merges (merge-flow does that once
+  Label-triggered loop that acts on PR review feedback. When a reviewer has left comments
+  and labels the loop-authored PR `auto-rework`, it reads the feedback, makes the changes
+  following the established MCP skills, pushes, drives CI green, replies to the threads,
+  and re-requests review — then stops. It never merges (merge-flow does that once
   re-approved). CI is the test gate, so no local Umbraco is needed — runs in a cloud
-  routine or locally. Requires the github-ops skill. Trigger from a routine on the GitHub
-  PR-review event (a "Request changes" review OR a plain "Comment" review that carries
-  actionable inline comments), or run manually as "rework PR #N".
+  routine or locally. Requires the github-ops skill. Trigger: a PR labelled `auto-rework`
+  (uniform with the other loops, and works regardless of who reviewed), or run manually as
+  "rework PR #N".
 ---
 
 # rework-loop
 
 The **review-response half of the issue loop, split out so it can be event-driven.**
 `mcp-issue-loop` (cloud mode) takes a `ready-for-ai` issue to a CI-green PR and stops;
-when you review that PR and ask for changes, **`rework-loop`** picks it up and addresses
-them — closing the write → review → rework → merge chain with no long-lived "monitor my
-review" session.
+when you review that PR and label it **`auto-rework`**, **`rework-loop`** picks it up and
+addresses the feedback — closing the write → review → rework → merge chain with no
+long-lived "monitor my review" session.
 
 ## Trigger & scope
 
-- Fired by a routine on the GitHub **PR-review** event — both a **"Request changes"**
-  review and a plain **"Comment"** review reach you (reviewers batch actionable inline
-  comments under "Comment" more often than "Request changes"), or run manually as
-  "rework PR #N".
-- **Only act on actionable feedback.** The edge can't tell an actionable comment review
-  from a chatty one, so *you* judge: read the review body + inline comments, and if
-  there's nothing concrete to change — praise, questions, a bare **approval** — **quiet
-  no-op** (it's ready; `merge-flow` handles the merge). Only rework when there's a
-  specific change to make.
-- Act on the **reviewed PR only** — never touch other PRs.
+- Fired when a PR is labelled **`auto-rework`** (via the loop-dispatch Action), or run
+  manually as "rework PR #N". A label rather than the review event because it's uniform
+  with the other loops and — unlike a `pull_request_review` — it fires even when the
+  reviewer's account is the PR author's (the loop's own identity). Reviewer flow: leave
+  the review comments, then add `auto-rework`.
+- **Read all the feedback first.** The `auto-rework` label is the reviewer's explicit
+  "address these" — so read the review(s) + inline comments on the PR and act on every
+  concrete point. If a comment is genuinely unclear, reply on the thread asking rather
+  than guessing. If, after reading, there's truly nothing actionable, remove `auto-rework`
+  with a note and stop rather than inventing changes.
+- Act on the **labelled PR only** — never touch other PRs.
 
 ## Test gate: CI, not local
 
@@ -78,8 +79,8 @@ Send a Claude push notification: `Reworked PR #N per review — CI green, re-req
 
 ## Running as a routine
 
-Trigger: the GitHub **PR-review** event (filter to *changes requested* if the UI allows;
-otherwise no-op on approvals in-loop), on an environment carrying this skill + `github-ops`
-(and, for good MCP code, the `umbraco-mcp-skills` conventions). One PR per event. Use a
+Trigger: a PR labelled **`auto-rework`** (routed by the loop-dispatch Action), on an
+environment carrying this skill + `github-ops` (and, for good MCP code, the
+`umbraco-mcp-skills` conventions). One PR per fire. Use a
 capable coding model (Sonnet or better) — it edits code. If the environment is cloud vs
 local, state that explicitly in the routine prompt.

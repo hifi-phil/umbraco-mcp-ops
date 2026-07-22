@@ -33,14 +33,15 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 | `issues` | `labeled` | label = `ready-for-ai` | **`/mcp-issue-loop`** (cloud mode) |
 | `issues` | `labeled` | label = `auto-release` (issue title `release <version>`) | **`/auto-release-loop`** |
 | `pull_request` | `labeled` | label = `auto-merge` | **`/merge-flow`** |
-| `pull_request_review` | `submitted` | state = `changes_requested` **or** `commented` | **`/rework-loop`** |
+| `pull_request` | `labeled` | label = `auto-rework` | **`/rework-loop`** |
 
-A **comment** review counts (people batch actionable inline comments under "Comment"
-far more than "Request changes"); rework-loop judges whether it's actionable and no-ops
-if it's just praise/questions. An **approving** review routes nowhere.
+Rework is a **label**, not the review event — uniform with the rest, and it works with one
+account (you can't fire a `pull_request_review` workflow by reviewing your *own* PR, and
+the loop's identity is often the reviewer's). Flow: a reviewer leaves comments, then adds
+`auto-rework` to say "address these". Review events route nowhere.
 
 Everything else — `pull_request.opened`, a PR labelled `dependencies`/`javascript`, an
-issue labelled anything else, an approving review — matches **no row**, so the edge never
+issue labelled anything else, any review event — matches **no row**, so the edge never
 fires the routine. This is what kills the wasteful fires: a Dependabot PR labelled
 `dependencies` woke merge-flow **4× overnight** under per-event routines; here the edge
 stops immediately, waking no routine.
