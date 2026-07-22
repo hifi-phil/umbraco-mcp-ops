@@ -127,7 +127,7 @@
     {
       "name": "loop-dispatch",
       "source": "./plugins/loop-dispatch",
-      "description": "Single front door for a repo's automation loops so one routine per repo can handle every loop event instead of one routine per event. Routes the triggering GitHub event to the matching loop — ready-for-ai issue → mcp-issue-loop (cloud), auto-merge PR → merge-flow, PR review (changes requested) → rework-loop, auto-release issue → auto-release-loop — with a full-sweep fallback when event context isn't available. Router only; each loop owns its guardrails. Requires github-ops + the loop skills.",
+      "description": "Single front door for a repo's automation loops so one routine per repo can handle every loop event instead of one routine per event. Routes the triggering GitHub event to the matching loop — ready-for-ai issue → mcp-issue-loop (cloud), auto-merge PR → merge-flow, PR review (changes requested) → rework-loop, auto-release issue → auto-release-loop — with a full-sweep fallback when event context isn't available. Router only; each loop owns its guardrails. Also bundles new-loop-routine — the standard config + canonical prompts + UI wiring for standing up one routine per repo. Requires github-ops + the loop skills.",
       "version": "1.0.0",
       "category": "workflow",
       "author": {
