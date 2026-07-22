@@ -3,9 +3,10 @@ name: rework-loop
 description: >-
   Label-triggered loop that acts on PR review feedback. When a reviewer has left comments
   and labels the loop-authored PR `auto-rework`, it reads the feedback, makes the changes
-  following the established MCP skills, pushes, drives CI green, replies to the threads,
-  re-requests review, and removes the `auto-rework` label — then stops. It never merges
-  (merge-flow does that once re-approved). CI is the test gate, so no local Umbraco is needed — runs in a cloud
+  following the established MCP skills, runs the fast local checks, pushes, replies to the
+  threads, re-requests review, and removes the `auto-rework` label — then stops. It does
+  NOT wait for CI (merge-flow won't merge until CI passes, so CI is enforced there) and it
+  never merges. No local Umbraco needed — runs in a cloud
   routine or locally. Requires the github-ops skill. Trigger: a PR labelled `auto-rework`
   (uniform with the other loops, and works regardless of who reviewed), or run manually as
   "rework PR #N".
@@ -33,12 +34,15 @@ long-lived "monitor my review" session.
   with a note and stop rather than inventing changes.
 - Act on the **labelled PR only** — never touch other PRs.
 
-## Test gate: CI, not local
+## Test gate: CI, async — this loop never waits on it
 
 This loop **never runs Umbraco or `npm run test:all` — that's the CI job**, not the
 worker's. This repo is TypeScript, so it edits the TS, runs `npm ci` + `npm run compile`
-/ `npm run build` as a fast sanity pass, pushes, and relies on **CI** (GitHub Actions) to
-run the integration/eval suite. All GitHub work goes through the **`github-ops`** skill
+/ `npm run build` as a **fast local sanity pass**, then pushes and **stops** — it does
+**not** poll or wait for CI. CI (GitHub Actions) runs the integration/eval suite
+asynchronously, and **`merge-flow` won't merge until CI is green**, so CI is enforced at
+merge time, not by this session sitting idle. Keeping the rework session short is the
+whole point of the split. All GitHub work goes through the **`github-ops`** skill
 (required).
 
 ## Step 1 — read the feedback
@@ -55,22 +59,22 @@ and the repo's `CLAUDE.md` conventions. Stay **scoped to the feedback** — don'
 unrelated code or grow the PR. Run the fast checks (`npm run compile` / `npm run build`)
 and fix anything they catch.
 
-## Step 3 — push & drive CI green
+## Step 3 — push
 
-Commit and push to the PR branch. Poll the PR's check-run status (github-ops → *Get PR CI
-/ check-run status*); on failure, read the failing log (→ *Read a failing check's log*),
-fix the root cause, push, re-poll. The issue loop's **8-attempt** cap applies. Never
-leave the PR red.
+Commit and push to the PR branch. The `npm run compile` / `npm run build` sanity pass from
+Step 2 is the only gate this session applies — **do not poll or wait for CI to go green.**
+CI runs asynchronously and `merge-flow` enforces it at merge time, so a rework session that
+sits watching check-runs just burns time and tokens for no benefit.
 
 ## Step 4 — reply, re-request & clear the label
 
-Once CI is green: **reply briefly on each addressed thread** (what changed),
-**re-request review** from the original reviewer (github-ops → *Re-request review*), and
-**remove the `auto-rework` label** from the PR (github-ops → *Add / remove a label*). The
-label means "rework pending" — clearing it marks the round done and re-arms the trigger,
-so a later review can re-add `auto-rework` to fire the next round.
+Immediately after pushing (no waiting for CI): **reply briefly on each addressed thread**
+(what changed), **re-request review** from the original reviewer (github-ops → *Re-request
+review*), and **remove the `auto-rework` label** from the PR (github-ops → *Add / remove a
+label*). The label means "rework pending" — clearing it marks the round done and re-arms
+the trigger, so a later review can re-add `auto-rework` to fire the next round.
 **Do not merge** — re-approval + `merge-flow` (via the `auto-merge` label) handle that.
-Send a Claude push notification: `Reworked PR #N per review — CI green, re-requested review.`
+Send a Claude push notification: `Reworked PR #N per review — pushed & re-requested review (CI will verify).`
 
 ## Guardrails
 
@@ -79,8 +83,9 @@ Send a Claude push notification: `Reworked PR #N per review — CI green, re-req
 - **Always clear `auto-rework` on exit** — both on completion (Step 4) and on the quiet
   no-op (Step 1) — so the label reflects "rework pending" and the trigger stays re-armable.
 - **Never merge** — re-request review; `merge-flow` merges once re-approved.
-- **Never leave CI red;** the 8-attempt fix cap applies.
-- Follow the MCP skills for code changes; **CI is the correctness gate.**
+- **Never wait on CI** — push and hand off. `merge-flow` won't merge until CI is green, so
+  CI is enforced there; a rework session polling check-runs just wastes time and tokens.
+- Follow the MCP skills for code changes; **CI is the correctness gate — asynchronously.**
 
 ## Running as a routine
 
