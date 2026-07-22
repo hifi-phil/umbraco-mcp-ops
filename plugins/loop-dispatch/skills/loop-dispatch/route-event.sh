@@ -58,6 +58,12 @@ fi
 # but be defensive).
 state="$(printf '%s' "$state" | tr '[:upper:]' '[:lower:]')"
 
+# The PR-label triggers use `pull_request_target` (it runs from the base repo's DEFAULT
+# branch with secrets, regardless of the PR's base — so it fires for our dev-based loop
+# PRs, which plain `pull_request` does not). It carries the same payload, so treat it as
+# `pull_request` for routing.
+[ "$event" = "pull_request_target" ] && event="pull_request"
+
 route="none"
 case "$event/$action" in
   issues/labeled)
