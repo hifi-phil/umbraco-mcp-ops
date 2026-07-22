@@ -24,5 +24,5 @@ The routine has **no UI event triggers** — it's fired by the committed GitHub 
 and routes them at the edge via `route-event.sh`. The event → loop mapping it enforces:
 - Issue labelled `ready-for-ai` → **mcp-issue-loop** (or **content-issue-loop** on non-MCP repos)
 - PR labelled `auto-merge` → **merge-flow**
-- PR review (changes requested) → **rework-loop**
+- PR labelled `auto-rework` → **rework-loop**
 - Issue labelled `auto-release` → **auto-release-loop**

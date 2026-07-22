@@ -14,7 +14,7 @@ flowchart LR
     ISSUE["ready-for-ai<br/>issue"] --> CODE["mcp-issue-loop /<br/>content-issue-loop<br/>(code the change)"]
     CODE --> PR["PR<br/>CI green"]
     PR --> REVIEW{"human<br/>review"}
-    REVIEW -->|"changes requested"| REWORK["rework-loop<br/>(address feedback)"]
+    REVIEW -->|"label auto-rework"| REWORK["rework-loop<br/>(address feedback)"]
     REWORK --> PR
     REVIEW -->|"label auto-merge"| MERGE["merge-flow<br/>(gated merge)"]
     MERGE --> MERGED["merged to dev"]
@@ -54,7 +54,7 @@ repo benefits next time.
 | Loop | Plugin | What it does | Where it runs | Trigger |
 |------|--------|--------------|---------------|---------|
 | `mcp-issue-loop` | mcp-issue-loop | Works `ready-for-ai` issues on an **MCP** repo → CI-green PR. *Local:* worktrees + parallel subagents + local tests + review loop. *Cloud:* one session/issue, CI-driven (no local Umbraco), stop at green PR | Dev machine **or** cloud routine (Issue: Labeled `ready-for-ai`) | label `ready-for-ai` |
-| `rework-loop` | mcp-issue-loop | Address a PR's review feedback → re-green CI → re-request review (never merges) | Cloud routine (PR-review event) or local | reviewer requests changes |
+| `rework-loop` | mcp-issue-loop | Address a PR's review feedback → re-green CI → re-request review (never merges) | Cloud routine (PR: Labeled `auto-rework`) or local | label a PR `auto-rework` |
 | `content-issue-loop` | mcp-issue-loop | Same, for repos **without** the toolchain (this repo, `Umbraco-MCP-Base`, docs) | Dev machine or runner | "work the ready ops issues" |
 | capture hooks | mcp-issue-loop | After each subagent, analyze the transcript and file `proto-learning` issues | Wherever the loop runs | automatic (`SubagentStop`/`SessionEnd`) |
 | `triage-learnings` | mcp-issue-loop | Route proto-learnings → MCP-repo issue / shared-skills PR / loop-improvement issue | Web runner (scheduled) | "triage the learnings" |
@@ -133,6 +133,7 @@ The system is label-driven. Create the labels on the repos that need them:
 | `triaged` | `hifi-phil/umbraco-mcp-ops` | Loop B routed it to a PR (skip next run) |
 | `loop-improvement` | `hifi-phil/umbraco-mcp-ops` | A change to the loop itself, promoted from a learning |
 | `auto-merge` | any repo where `merge-flow` runs | Merge me once approved + green |
+| `auto-rework` | every MCP repo a loop works | On a PR: address the review feedback (rework-loop). Add it after leaving your comments |
 
 ```bash
 # ops repo (inbox + loop bookkeeping)
@@ -146,6 +147,7 @@ gh label create auto-merge       --repo hifi-phil/umbraco-mcp-ops --color 0e8a16
 gh label create ready-for-ai    --repo umbraco/<MCP-repo> --color 0e8a16
 gh label create generated-by-ai --repo umbraco/<MCP-repo> --color c5def5
 gh label create ai-blocked      --repo umbraco/<MCP-repo> --color d93f0b
+gh label create auto-rework     --repo umbraco/<MCP-repo> --color fbca04
 gh label create auto-merge      --repo umbraco/<MCP-repo> --color 0e8a16
 ```
 
