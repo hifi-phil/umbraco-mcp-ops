@@ -6,6 +6,10 @@
 # Usage: bash run.sh   (exits non-zero if any case fails)
 set -uo pipefail
 
+# Isolate from any ambient GitHub-event env (GitHub Actions sets these to the
+# workflow's OWN event, which would otherwise shadow the stdin payloads we feed in).
+unset GITHUB_EVENT_PATH GITHUB_EVENT_NAME
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$(cd "$HERE/.." && pwd)/route-event.sh"
 [ -f "$SCRIPT" ] || { echo "FATAL: route-event.sh not found at $SCRIPT"; exit 2; }
