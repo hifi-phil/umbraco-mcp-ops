@@ -263,9 +263,13 @@ is *not* to fix learnings inline — leave that to Loop B.
   must never sit and wait for a human review — it returns once its PR is green.
   All long waits (CI, human review) that span turns live in the orchestrator
   loop under `/goal`.
-- **Reviews are non-negotiable.** Every build and every review-response pass runs
-  both `/security-review` and `/code-review` (low) and fixes what they surface
-  before pushing. See the playbook.
+- **Reviews are non-negotiable — and honestly reported.** Every build and every
+  review-response pass reviews the diff for security + code-quality issues and fixes
+  findings before pushing. **Locally** that's `/security-review` + `/code-review` (low).
+  **In cloud** (a subagent or headless session) those slash commands **do not run** — do
+  the equivalent review inline with Read/Grep (see Cloud mode step 2). Never report a
+  review as passed unless it actually ran; if it couldn't, say so — a PR body that claims
+  a review it never performed is worse than no claim.
 - **Follow the repo, not this skill, for specifics.** Test/build commands, the
   version-bump file list, and worktree cleanup live in the repo's `CLAUDE.md`
   and the `release-and-branching` skill — obey those.
@@ -303,7 +307,16 @@ open `ready-for-ai` issue; none → quiet no-op):
    - **No local Umbraco, no `npm run test:all`.** This repo is TypeScript — run `npm ci`
      + `npm run compile` / `npm run build` as the sanity pass. **CI (GitHub Actions) is
      the test gate**; it runs the integration/eval suite.
-   - Still run **`/security-review` + `/code-review` (low)** before pushing.
+   - **Review the diff before pushing — WITHOUT slash commands.** A cloud build runs as
+     a subagent (or headless), where `/security-review` and `/code-review` **do not run** —
+     they silently no-op. Review your own diff **inline with Read/Grep** instead: check for
+     security issues (injection, path traversal, authz/scope, secrets or tokens committed,
+     unsafe deserialization, SSRF) and code-quality issues (error handling, input
+     validation, incorrect Zod schemas per the MCP conventions, dead code), and fix
+     everything actionable. In the PR body, report **exactly what you checked and what you
+     found** — and if you could not run the review, say so plainly. **Never write that
+     `/security-review` or `/code-review` passed**: those commands did not run in cloud, and
+     claiming otherwise is a false report.
 3. Push, open the PR against `<base>`, and **drive CI green** from the logs (github-ops →
    *Read a failing check's log*; the **8-attempt** cap applies).
 4. **Mark the issue complete, then stop at the CI-green PR.** Once CI is green,
