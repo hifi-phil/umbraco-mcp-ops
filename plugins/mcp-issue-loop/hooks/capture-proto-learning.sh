@@ -89,18 +89,36 @@ if [ -n "${MCP_ISSUE_LOOP_DRY_RUN:-}" ]; then
   exit 0
 fi
 
-# --- Filing needs gh from here on ------------------------------------------
-command -v gh >/dev/null 2>&1 || { log "missing gh — skipping capture"; exit 0; }
+# --- File it: gh locally, or the REST API via curl+token in cloud ----------
+# Local dev has an authed `gh`. Cloud routine sessions don't (they drive GitHub via the
+# MCP server, which a bash hook can't call) — but a GitHub token is present in the env,
+# so fall back to curl + the REST API. Dedup by exact open title either way.
+API="https://api.github.com/repos/$OPS_REPO/issues"
+TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 
-# --- Dedup: skip an obvious exact-title match already open -----------------
-if gh issue list --repo "$OPS_REPO" --label "$LABEL" --state open --search "$TITLE" \
-     --json title --jq '.[].title' 2>/dev/null | grep -qxF "$TITLE"; then
-  log "duplicate open proto-learning, skipping: $TITLE"; exit 0
-fi
-
-# --- File it ---------------------------------------------------------------
-if URL="$(gh issue create --repo "$OPS_REPO" --label "$LABEL" --title "$TITLE" --body "$BODY" 2>>"$LOG")"; then
-  log "filed proto-learning: $URL"
+if command -v gh >/dev/null 2>&1; then
+  if gh issue list --repo "$OPS_REPO" --label "$LABEL" --state open --search "$TITLE" \
+       --json title --jq '.[].title' 2>/dev/null | grep -qxF "$TITLE"; then
+    log "duplicate open proto-learning, skipping: $TITLE"; exit 0
+  fi
+  if URL="$(gh issue create --repo "$OPS_REPO" --label "$LABEL" --title "$TITLE" --body "$BODY" 2>>"$LOG")"; then
+    log "filed proto-learning: $URL"
+  else
+    log "gh issue create failed for: $TITLE"
+  fi
+elif [ -n "$TOKEN" ] && command -v curl >/dev/null 2>&1; then
+  gh_api() { curl -sS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" "$@" 2>>"$LOG"; }
+  if gh_api "$API?state=open&labels=$LABEL&per_page=100" | jq -r '.[].title' 2>/dev/null | grep -qxF "$TITLE"; then
+    log "duplicate open proto-learning, skipping: $TITLE"; exit 0
+  fi
+  payload="$(jq -nc --arg t "$TITLE" --arg b "$BODY" --arg l "$LABEL" '{title:$t,body:$b,labels:[$l]}')"
+  URL="$(gh_api -X POST "$API" -d "$payload" | jq -r '.html_url // empty' 2>/dev/null)"
+  if [ -n "$URL" ]; then
+    log "filed proto-learning (rest api): $URL"
+  else
+    log "REST issue create failed for: $TITLE"
+  fi
 else
-  log "gh issue create failed for: $TITLE"
+  log "no gh and no token — skipping capture"; exit 0
 fi
