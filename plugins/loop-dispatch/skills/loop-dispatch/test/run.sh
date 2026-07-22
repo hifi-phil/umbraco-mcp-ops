@@ -43,6 +43,7 @@ expect_route "issue ready-for-ai → mcp-issue-loop" mcp-issue-loop    -- --even
 expect_route "issue auto-release → auto-release"   auto-release-loop -- --event issues --action labeled --label auto-release --number 9 --repo o/r
 expect_route "issue bug → none"                    none              -- --event issues --action labeled --label bug --number 3 --repo o/r
 expect_route "review changes → rework-loop"        rework-loop       -- --event pull_request_review --action submitted --state changes_requested --number 42 --repo o/r
+expect_route "review comment → rework-loop"        rework-loop       -- --event pull_request_review --action submitted --state commented --number 42 --repo o/r
 expect_route "review approved → none"              none              -- --event pull_request_review --action submitted --state approved --number 42 --repo o/r
 expect_route "review state UPPER → rework-loop"    rework-loop       -- --event pull_request_review --action submitted --state CHANGES_REQUESTED --number 42 --repo o/r
 expect_route "unknown event → none"                none              -- --event release --action published --number 1 --repo o/r

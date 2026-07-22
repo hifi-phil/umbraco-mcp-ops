@@ -7,7 +7,8 @@ description: >-
   threads, and re-requests review — then stops. It never merges (merge-flow does that once
   re-approved). CI is the test gate, so no local Umbraco is needed — runs in a cloud
   routine or locally. Requires the github-ops skill. Trigger from a routine on the GitHub
-  PR-review event (changes requested), or run manually as "rework PR #N".
+  PR-review event (a "Request changes" review OR a plain "Comment" review that carries
+  actionable inline comments), or run manually as "rework PR #N".
 ---
 
 # rework-loop
@@ -20,11 +21,15 @@ review" session.
 
 ## Trigger & scope
 
-- Fired by a routine on the GitHub **PR-review** event (a review that **requests changes**
-  or leaves actionable comments), or run manually as "rework PR #N".
-- **Only act on actionable feedback.** A plain **approval** with no requested changes and
-  no unresolved comment threads → **quiet no-op** (it's ready; `merge-flow` handles the
-  merge). Only rework when there's something concrete to address.
+- Fired by a routine on the GitHub **PR-review** event — both a **"Request changes"**
+  review and a plain **"Comment"** review reach you (reviewers batch actionable inline
+  comments under "Comment" more often than "Request changes"), or run manually as
+  "rework PR #N".
+- **Only act on actionable feedback.** The edge can't tell an actionable comment review
+  from a chatty one, so *you* judge: read the review body + inline comments, and if
+  there's nothing concrete to change — praise, questions, a bare **approval** — **quiet
+  no-op** (it's ready; `merge-flow` handles the merge). Only rework when there's a
+  specific change to make.
 - Act on the **reviewed PR only** — never touch other PRs.
 
 ## Test gate: CI, not local

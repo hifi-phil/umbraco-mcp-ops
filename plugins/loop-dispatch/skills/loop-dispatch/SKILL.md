@@ -33,7 +33,11 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 | `issues` | `labeled` | label = `ready-for-ai` | **`/mcp-issue-loop`** (cloud mode) |
 | `issues` | `labeled` | label = `auto-release` (issue title `release <version>`) | **`/auto-release-loop`** |
 | `pull_request` | `labeled` | label = `auto-merge` | **`/merge-flow`** |
-| `pull_request_review` | `submitted` | state = `changes_requested` | **`/rework-loop`** |
+| `pull_request_review` | `submitted` | state = `changes_requested` **or** `commented` | **`/rework-loop`** |
+
+A **comment** review counts (people batch actionable inline comments under "Comment"
+far more than "Request changes"); rework-loop judges whether it's actionable and no-ops
+if it's just praise/questions. An **approving** review routes nowhere.
 
 Everything else — `pull_request.opened`, a PR labelled `dependencies`/`javascript`, an
 issue labelled anything else, an approving review — matches **no row**, so the edge never
