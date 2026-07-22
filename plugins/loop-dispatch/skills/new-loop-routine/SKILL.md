@@ -48,10 +48,6 @@ Issue: Labeled `auto-release` · PR: Labeled `auto-merge` · PR review.
    `auto-merge`, `auto-release`, `release-blocked` (see `self-learning-system.md` §2).
 2. **Skills reach the env** — `loop-dispatch` (and the loops) are in the
    `cloud-skill-sync` `SKILLS` list and the env has been rebuilt (bump `VERSION`, re-paste).
-3. **(MCP repos only) the repo matches MCP conventions** (a `CLAUDE.md`, `src/*/tools/`,
-   gitflow `dev`) — the `mcp-issue-loop` build path needs them. **Non-MCP repos** (the ops
-   repo, `Umbraco-MCP-Base`, docs) are worked by `content-issue-loop` and don't need the
-   MCP layout — the loops still run there.
 
 **Create:**
 1. **Create the routine shell** (via `RemoteTrigger` `create` if available) with a

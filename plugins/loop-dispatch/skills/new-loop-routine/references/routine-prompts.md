@@ -16,7 +16,7 @@ a live routine's prompt. Substitution is the *only* per-repo change.
 Name: `loop-dispatch → {{OWNER_REPO}}`
 
 ```text
-A GitHub loop event fired on {{OWNER_REPO}}. Run the loop-dispatch skill: read the <github-trigger-context> block, run route-event.sh with the parsed fields to get the route, and dispatch to the matching loop — mcp-issue-loop (cloud mode) / merge-flow / rework-loop / auto-release-loop — exactly as loop-dispatch specifies, or quiet no-op when route=none. Follow loop-dispatch's guardrails verbatim; add no policy of your own.
+You are running as a cloud worker; do all GitHub work via the GitHub MCP (github-ops). A GitHub loop event fired on {{OWNER_REPO}}. Run the loop-dispatch skill: read the <github-trigger-context> block, run route-event.sh to get the route, and dispatch to the matching loop exactly as loop-dispatch specifies, or quiet no-op when route=none. Follow loop-dispatch's guardrails verbatim; add no policy of your own.
 ```
 
 Events to attach (UI) — each routes to one loop:

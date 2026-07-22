@@ -115,16 +115,8 @@ loop skill directly.)
   routine's model); the real work — and its model choice — happens inside the loop
   skills and their subagents.
 
-## Wiring it (one routine per repo)
+## Wiring it
 
-Create **one** routine per repo whose prompt is essentially *"Run `/loop-dispatch` for
-`<owner/repo>`"*, and attach every loop event to it (Issue: Labeled `ready-for-ai`,
-Issue: Labeled `auto-release`, PR: Labeled `auto-merge`, PR review) — a routine can
-carry **multiple event triggers**, so one routine handles them all. That one routine
-replaces the four per-repo routines. The loop skills (and this one) must be in the
-environment — `loop-dispatch` is in the `cloud-skill-sync` setup script's `SKILLS` list.
-
-> The fired session sees which event fired via the `<github-trigger-context>` block, so
-> routing is exact (Step 1). If a repo's trigger fires on a broad event class (e.g. *any*
-> PR label), that's fine — `route-event.sh` returns `none` for the labels we don't own,
-> so the fire is a cheap no-op.
+To stand up the one routine per repo, use the
+[`new-loop-routine`](../new-loop-routine/SKILL.md) skill — it owns the standardised
+config, the locked prompt template, and the event-wiring steps.
