@@ -49,6 +49,19 @@ if ! grep -qiE 'mcp-issue-loop|content-issue-loop|ready-for-ai' "$TRANSCRIPT" 2>
   log "transcript has no loop signature — skipping"; exit 0
 fi
 
+# --- Once-per-session guard ------------------------------------------------
+# transcript_path is the WHOLE shared session JSONL, not a per-subagent slice.
+# Resuming a stuck subagent fires another SubagentStop over the same (growing)
+# transcript, so without this we'd re-analyse the same session repeatedly — the
+# analyzer eventually bails on "already been through this". Analyse each session
+# once per scope; the marker is written after the analyzer runs (below).
+SID="$(printf '%s' "$EVENT" | jq -r '.session_id // empty' 2>/dev/null)"
+MARKER=""
+if [ -n "$SID" ]; then
+  MARKER="$(dirname "$LOG")/analyzed-$SCOPE-$SID"
+  if [ -f "$MARKER" ]; then log "session $SID ($SCOPE) already analysed — skipping"; exit 0; fi
+fi
+
 PROMPT_FILE="$PLUGIN_ROOT/hooks/analyzer-$SCOPE.md"
 [ -f "$PROMPT_FILE" ] || { log "no prompt file $PROMPT_FILE — skipping"; exit 0; }
 
@@ -66,6 +79,10 @@ else
   OUT="$(claude -p "$PROMPT" --model sonnet --allowedTools "Read,Grep" 2>>"$LOG")" || {
     log "analyzer invocation failed"; exit 0; }
 fi
+
+# Mark this session/scope analysed so a later SubagentStop (e.g. a resumed
+# subagent) doesn't re-run the analyzer over the same growing transcript.
+[ -n "$MARKER" ] && { : >"$MARKER" 2>/dev/null || true; }
 
 # The analyzer outputs a single JSON object (optionally fenced). Strip fences.
 JSON="$(printf '%s' "$OUT" | sed -e 's/^```json//' -e 's/^```//' -e 's/```$//' | jq -c . 2>/dev/null)"
@@ -113,11 +130,16 @@ elif [ -n "$TOKEN" ] && command -v curl >/dev/null 2>&1; then
     log "duplicate open proto-learning, skipping: $TITLE"; exit 0
   fi
   payload="$(jq -nc --arg t "$TITLE" --arg b "$BODY" --arg l "$LABEL" '{title:$t,body:$b,labels:[$l]}')"
-  URL="$(gh_api -X POST "$API" -d "$payload" | jq -r '.html_url // empty' 2>/dev/null)"
-  if [ -n "$URL" ]; then
+  # Capture status + body so a failure (e.g. a 403 from a scope/auth problem) is
+  # logged, not swallowed — an empty .html_url used to hide the real reason.
+  resp="$(gh_api -w $'\n%{http_code}' -X POST "$API" -d "$payload")"
+  http="$(printf '%s' "$resp" | tail -n1)"
+  body="$(printf '%s' "$resp" | sed '$d')"
+  URL="$(printf '%s' "$body" | jq -r '.html_url // empty' 2>/dev/null)"
+  if [ "$http" = "201" ] && [ -n "$URL" ]; then
     log "filed proto-learning (rest api): $URL"
   else
-    log "REST issue create failed for: $TITLE"
+    log "REST issue create failed (HTTP ${http:-?}) for: $TITLE — $(printf '%s' "$body" | tr -d '\n' | head -c 300)"
   fi
 else
   log "no gh and no token — skipping capture"; exit 0
