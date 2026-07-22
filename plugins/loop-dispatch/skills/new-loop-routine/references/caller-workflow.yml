@@ -21,4 +21,9 @@ on:
 jobs:
   dispatch:
     uses: hifi-phil/umbraco-mcp-ops/.github/workflows/loop-dispatch.yml@main
-    secrets: inherit
+    # Pass explicitly — NOT `secrets: inherit`. inherit only forwards secrets when the
+    # caller and the reusable workflow share an org/enterprise; these repos are in
+    # different owners (umbraco vs hifi-phil), so inherit would forward nothing.
+    secrets:
+      LOOP_DISPATCH_FIRE_URL: ${{ secrets.LOOP_DISPATCH_FIRE_URL }}
+      LOOP_DISPATCH_TOKEN: ${{ secrets.LOOP_DISPATCH_TOKEN }}
