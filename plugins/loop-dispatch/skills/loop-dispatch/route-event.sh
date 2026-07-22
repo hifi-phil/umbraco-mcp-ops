@@ -2,9 +2,10 @@
 # route-event.sh — deterministic loop-dispatch router.
 #
 # Decides which loop (if any) a GitHub webhook event maps to. Pure function of the
-# event fields — same inputs always give the same output, no model judgement. The
-# skill's job is only to lift the fields out of the <github-trigger-context> block and
-# pass them here, then obey the printed decision.
+# event fields — same inputs always give the same output, no model judgement. Run at the
+# EDGE by the caller GitHub Action (reads the Actions event); it fires the routine only
+# when the printed route is not `none`, and the routine's loop-dispatch skill just
+# dispatches that already-resolved route.
 #
 # Inputs (in priority order):
 #   1. flags: --event --action --label --state --number --repo

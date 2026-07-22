@@ -1,38 +1,32 @@
-# Reading a GitHub webhook trigger deterministically
+# Routing a GitHub event deterministically (the edge contract)
 
-How a routine fired by a GitHub event receives that event, and how to route on it
-with **zero judgement**. This is the contract [`loop-dispatch`](../SKILL.md) routes on;
-any webhook-driven routine can reuse it.
+How the loop system turns a GitHub event into a route with **zero judgement**. Routing
+happens **at the edge** — in the caller GitHub Action, `route-event.sh` reads the event
+and decides — so `loop-dispatch` only ever receives an already-resolved route. This is
+the field contract `route-event.sh` routes on; any webhook-driven automation can reuse it.
 
-## What the session receives
+## The event fields route-event.sh reads
 
-When a routine fires from a real GitHub event, the session's **opening context**
-contains a structured trigger block (observed as **`<github-trigger-context>`** /
-`<github-webhook-activity>`) carrying, verbatim from the webhook payload:
+In the caller workflow the event is at **`$GITHUB_EVENT_PATH`** (the payload JSON) with
+its type in **`$GITHUB_EVENT_NAME`** — standard GitHub Actions env. `route-event.sh`
+pulls, verbatim:
 
 | Field | Example | Notes |
 |---|---|---|
-| event type | `issues`, `pull_request`, `pull_request_review` | which webhook |
-| action | `labeled`, `opened`, `submitted` | the sub-event |
-| owner / repo | `umbraco` / `Umbraco-CMS-MCP-Dev` | the repo |
-| number | `302` | issue **or** PR number |
-| html_url | `https://github.com/.../issues/302` | canonical link |
-| label (label events) | `javascript` | **the specific label just added** |
-| review state (review events) | `changes_requested` | for `pull_request_review` |
+| event type | `issues`, `pull_request`, `pull_request_review` | `$GITHUB_EVENT_NAME` |
+| action | `labeled`, `opened`, `submitted` | `.action` |
+| owner / repo | `umbraco/Umbraco-CMS-MCP-Dev` | `.repository.full_name` |
+| number | `302` | `.issue.number` / `.pull_request.number` |
+| label (label events) | `javascript` | `.label.name` — **the specific label just added** |
+| review state (review events) | `changes_requested` | `.review.state` |
 
-When a routine fires **without** a real event (cron, manual run, or a
-mis-wired/absent subscription), **no trigger block is present** — that's a **quiet
-no-op**, not an error. There is no "look for work anyway" fallback; with no event there's
-nothing to route.
-
-> The field *values* are the stable contract. The exact wrapper tag was reported by a
-> live exploration firing (see the design notes below); confirm the literal tag against
-> your next real event if you need byte-level certainty. Route on the fields, not on
-> string-matching the wrapper.
+(Legacy: a routine fired by a *native UI event trigger* instead received these in a
+`<github-trigger-context>` session block — the same fields. The Action/edge model
+supersedes that; the field contract is identical either way.)
 
 ## The deterministic recipe
 
-1. **Look for the trigger block.** Absent → no event → **quiet no-op**. Present → continue.
+1. **Read the event** from `$GITHUB_EVENT_PATH` (+ `$GITHUB_EVENT_NAME`). No event → **quiet no-op**.
 2. **Extract `event`, `action`, `owner`, `repo`, `number`, `label`/`state` verbatim.**
    No inference, no guessing what to look up.
 3. **Gate on the exact tuple *before* doing any work — with a script, not judgement.**
@@ -51,7 +45,7 @@ nothing to route.
 If a routine also *reports* on the event, these keep two firings byte-comparable:
 
 - **Fix the data source, not just the format.** Pin the exact tool call and say its
-  inputs come *only* from the trigger block — no room to decide what to look up.
+  inputs come *only* from the parsed event fields — no room to decide what to look up.
 - **Ban paraphrasing explicitly.** "Fill fields verbatim, no paraphrasing of the body"
   is the line that actually stops prose drift between runs.
 - **Template the output, not just the process.** A literal fill-in-the-blanks block,
