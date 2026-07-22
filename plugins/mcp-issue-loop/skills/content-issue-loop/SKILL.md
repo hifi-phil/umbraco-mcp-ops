@@ -72,9 +72,10 @@ mcp-issue-loop's build/review-response playbooks.
      touched the capture hook; validate any JSON/YAML/bash you changed.
    - Other repos: run their documented lint/test (a `package.json` script, a linter)
      if present. A pure-docs change may have nothing to run — that's fine.
-4. **Security + code review.** Run `/security-review` and `/code-review low` and fix
-   findings, same as the MCP loop. For pure-prose changes there may be little to
-   flag; run them anyway.
+4. **Security + code review.** Locally, run `/security-review` and `/code-review low` and
+   fix findings. **In cloud** (subagent/headless) those slash commands silently no-op —
+   review the diff inline instead and **report only what actually ran; never claim a review
+   passed if it didn't execute.** For pure-prose changes there may be little to flag.
 5. **Commit, push, open the PR** against the base branch (detect via
    `release-and-branching` — `umbraco-mcp-ops` and `Umbraco-MCP-Base` are main-only).
    Link the issue (`Closes #N`), ready for review, never draft. Drive CI green

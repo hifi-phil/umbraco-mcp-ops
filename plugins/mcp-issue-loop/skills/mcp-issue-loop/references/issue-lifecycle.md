@@ -96,6 +96,12 @@ Run both over your change and fix everything actionable before pushing:
 /code-review low
 ```
 
+**These slash commands only work in an interactive / local session.** In **cloud mode**
+the build runs as a subagent (or headless), where they silently no-op — there, review the
+diff **inline** (Read/Grep against the security + code-quality checklist in the mcp-issue-loop
+skill's Cloud mode) and **report only what actually ran**. Never claim `/security-review`
+or `/code-review` passed when it didn't execute.
+
 Treat confirmed findings like failing tests — fix them in this worktree, re-run
 the relevant tests, and only then proceed. Re-run a review after fixing if the
 fix was non-trivial.
