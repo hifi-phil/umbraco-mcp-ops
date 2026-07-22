@@ -25,12 +25,22 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 
 ## The routing table
 
-| What fired | Precondition on the entity | Run |
-|---|---|---|
-| Issue labelled `ready-for-ai` | open issue still carries `ready-for-ai` | **`/mcp-issue-loop`** (cloud mode) |
-| PR labelled `auto-merge` | open PR still carries `auto-merge` | **`/merge-flow`** |
-| PR review = changes requested | bot-authored PR with unresolved changes-requested | **`/rework-loop`** |
-| Issue labelled `auto-release` (title `release <version>`) | open issue still carries `auto-release` | **`/auto-release-loop`** |
+Match the **exact `(event, action, label|state)` tuple** from the trigger block. If none
+match — including a label event whose label is *not* one of ours — **quiet no-op**.
+Never wake a loop just to "have a look".
+
+| event | action | label / state | Run |
+|---|---|---|---|
+| `issues` | `labeled` | label = `ready-for-ai` | **`/mcp-issue-loop`** (cloud mode) |
+| `issues` | `labeled` | label = `auto-release` (issue title `release <version>`) | **`/auto-release-loop`** |
+| `pull_request` | `labeled` | label = `auto-merge` | **`/merge-flow`** |
+| `pull_request_review` | `submitted` | state = `changes_requested` | **`/rework-loop`** |
+
+Everything else — `pull_request.opened`, a PR labelled `dependencies`/`javascript`, an
+issue labelled anything else, an approving review — matches **no row → quiet no-op**.
+This is what kills the wasteful fires: a Dependabot PR labelled `dependencies` woke
+merge-flow **4× overnight** under per-event routines; here it matches no row and stops
+before any sweep.
 
 ## Config (resolve once)
 
@@ -38,18 +48,24 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 - **github-ops required** — every downstream loop uses it; it must be installed.
 - **Run context** — cloud routine (the default use) or a local manual run.
 
-## Step 1 — work out what fired
+## Step 1 — work out what fired (deterministically)
 
-- **If you can see the triggering event** (event type + action + label + issue/PR
-  number — e.g. the routine passed it, or it's in the session's opening context),
-  map it through the routing table. Exactly one row should match. Note the specific
-  issue/PR number — you'll hand it to the loop.
-- **If you cannot** (the routine fired with no event detail), go to
-  [Sweep](#step-2b--sweep-no-event-context).
-- **Re-check the precondition before acting.** Labels get removed and PRs get closed
-  between the event firing and this session starting. If the triggering entity no
-  longer meets its precondition (label gone, PR/issue closed), **quiet no-op** — the
-  world moved on.
+Read the event from the **`<github-trigger-context>` block** in your opening context and
+parse it exactly as [`references/webhook-context.md`](references/webhook-context.md)
+describes — extract `event`, `action`, `owner`, `repo`, `number`, and `label`/`state`
+**verbatim, no inference**.
+
+- **Trigger block present →** match the `(event, action, label|state)` tuple against the
+  [routing table](#the-routing-table). **Match exactly one row, or none.** A non-match
+  (e.g. a PR labelled `dependencies`) is a **quiet no-op** — do **not** fall through to a
+  sweep, and do **not** wake a loop to check. This exact gate is the point of the router.
+- **Trigger block absent** (cron / manual run / no subscription) → go to
+  [Sweep](#step-2b--sweep-no-event-context). Sweep is only ever for the no-event case.
+- **Re-check the entity before acting.** Between the event firing and this session
+  starting, a label can be removed or the PR/issue closed. Fetch it (github-ops →
+  `issue_read`/`pull_request_read`, `method: "get"`, using the exact `owner`/`repo`/
+  `number`) and confirm it still carries the triggering label / is still open. If not,
+  **quiet no-op** — the world moved on.
 
 ## Step 2 — route (the normal path)
 
