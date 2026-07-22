@@ -21,8 +21,9 @@ contains a structured trigger block (observed as **`<github-trigger-context>`** 
 | review state (review events) | `changes_requested` | for `pull_request_review` |
 
 When a routine fires **without** a real event (cron, manual run, or a
-mis-wired/absent subscription), **no trigger block is present** — treat that as "no
-event" (sweep or quiet no-op), not as an error.
+mis-wired/absent subscription), **no trigger block is present** — that's a **quiet
+no-op**, not an error. There is no "look for work anyway" fallback; with no event there's
+nothing to route.
 
 > The field *values* are the stable contract. The exact wrapper tag was reported by a
 > live exploration firing (see the design notes below); confirm the literal tag against
@@ -31,7 +32,7 @@ event" (sweep or quiet no-op), not as an error.
 
 ## The deterministic recipe
 
-1. **Look for the trigger block.** Absent → no event (sweep / no-op). Present → continue.
+1. **Look for the trigger block.** Absent → no event → **quiet no-op**. Present → continue.
 2. **Extract `event`, `action`, `owner`, `repo`, `number`, `label`/`state` verbatim.**
    No inference, no guessing what to look up.
 3. **Gate on the exact tuple *before* doing any work — with a script, not judgement.**
@@ -57,11 +58,3 @@ If a routine also *reports* on the event, these keep two firings byte-comparable
   not "report these fields".
 - **Cap the tail.** Forbid extra commentary/recommendations beyond the template — that's
   where inconsistency creeps back in.
-
-## Platform caveat
-
-A routine created via the `http_api` (or an external webhook integration) **cannot have
-its prompt edited by an agent session** — `update_trigger` only touches routines the
-agent created via `create_trigger`, and `create_trigger` can't bind a new routine to a
-GitHub event (cron/`run_once_at` only). So webhook-routine prompt changes go through the
-UI/admin surface that created them, not from inside a session.

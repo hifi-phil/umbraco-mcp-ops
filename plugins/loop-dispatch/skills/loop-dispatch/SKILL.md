@@ -2,14 +2,12 @@
 name: loop-dispatch
 description: >-
   Single front door for a repo's automation loops, so one routine per repo can
-  handle every loop event instead of one routine per event. Given the triggering
-  GitHub event it routes to the matching loop skill — `ready-for-ai` issue →
-  mcp-issue-loop (cloud), `auto-merge` PR → merge-flow, PR review (changes
-  requested) → rework-loop, `auto-release` issue → auto-release-loop — and falls
-  back to a full sweep of all four when the event context isn't available. It only
-  routes; each loop owns its own guardrails. Repo-agnostic; github-ops required.
-  Trigger from one per-repo routine wired to all the loop events, or run manually
-  as "dispatch the loops for this repo".
+  handle every loop event instead of one routine per event. Deterministically
+  routes each triggering GitHub event (parsed from the trigger block, decided by
+  route-event.sh) to the matching loop skill; a non-matching event is a quiet
+  no-op. It only routes; each loop owns its own guardrails. Repo-agnostic;
+  github-ops required. Trigger from one per-repo routine wired to all the loop
+  events.
 ---
 
 # loop-dispatch
@@ -40,7 +38,7 @@ Everything else — `pull_request.opened`, a PR labelled `dependencies`/`javascr
 issue labelled anything else, an approving review — matches **no row → quiet no-op**.
 This is what kills the wasteful fires: a Dependabot PR labelled `dependencies` woke
 merge-flow **4× overnight** under per-event routines; here it matches no row and stops
-before any sweep.
+immediately, waking no loop.
 
 ## Config (resolve once)
 
@@ -56,8 +54,9 @@ run the bundled router.
 
 1. From the trigger block, read `event`, `action`, `owner`, `repo`, `number`, and
    `label`/`state` **verbatim** (see [`references/webhook-context.md`](references/webhook-context.md)).
-   **No trigger block present** (cron / manual / no subscription) → go to
-   [Sweep](#step-2b--sweep-no-event-context); sweep is only ever for the no-event case.
+   **No trigger block present** (cron / manual / no subscription) → **quiet no-op**. Don't
+   go looking for work — with no event there's nothing to route, and guessing is exactly
+   what we don't want.
 2. Run the bundled **`route-event.sh`** (in this skill's directory) with those fields and
    obey its one-line output — do not re-derive the decision yourself:
 
@@ -94,23 +93,10 @@ specific issue/PR, and **follow that skill's instructions verbatim**:
 single fire) — each of those has its own event that will dispatch its own run. Hand
 off and stop.
 
-## Step 2b — sweep (no event context)
-
-When the fire carries no usable event detail, check each loop's precondition in this
-order and run the ones with actionable work (each is a quiet no-op when there's
-nothing):
-
-1. **rework-loop** — any bot-authored PR with an unresolved changes-requested review?
-   (unblock in-flight work first)
-2. **merge-flow** — any `auto-merge` PR that's green + clean? (land what's ready)
-3. **mcp-issue-loop** (cloud) — any open `ready-for-ai` issue? (start new work)
-4. **auto-release-loop** — any open `auto-release` issue? (ship)
-
-Use github-ops list queries (→ *List issues by label / state*, *List PRs by label /
-state*, *Get PR reviews*) to test each precondition cheaply before invoking a loop.
-Sweep does more work per fire than routing, so **prefer a routed fire**; sweep is the
-safety net (and the natural shape for a scheduled/manual "run the loops for this repo"
-invocation).
+There is deliberately **no sweep / "check everything" fallback** — routing is only ever
+driven by a real event through `route-event.sh`. No event, or an unmatched one, is a
+quiet no-op. (Working a whole backlog is a separate, explicit action: run the relevant
+loop skill directly.)
 
 ## Rules
 
@@ -141,5 +127,4 @@ environment — `loop-dispatch` is in the `cloud-skill-sync` setup script's `SKI
 > The fired session sees which event fired via the `<github-trigger-context>` block, so
 > routing is exact (Step 1). If a repo's trigger fires on a broad event class (e.g. *any*
 > PR label), that's fine — `route-event.sh` returns `none` for the labels we don't own,
-> so the fire is a cheap no-op. If your platform can't pass event context at all,
-> loop-dispatch still works via **sweep** — it just checks all four preconditions per fire.
+> so the fire is a cheap no-op.

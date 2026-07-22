@@ -20,11 +20,11 @@ skill** (all logic lives in the loop skills, never inlined into a routine prompt
 
 | Field | Value |
 |---|---|
-| `environment_id` | the ops cloud env that runs the `cloud-skill-sync` setup script — **`env_01VxnEuhLbt9ScqRmrwtgWK9`** (confirm for the account). |
+| `environment_id` | your ops cloud env — the one running the `cloud-skill-sync` setup script. Get its id from `/schedule` (or the routines UI); it's account-specific, so it's not written here. |
 | `model` | `claude-sonnet-5` — the dispatcher base; the loops pick their own subagent tier. |
 | `allowed_tools` | `["Bash","Read","Write","Edit","Glob","Grep","Skill","Task"]`. |
 | `sources` | the target repo, e.g. `https://github.com/umbraco/<repo>`. |
-| `mcp_connections` | Slack (`55c1fbd6-c65d-4c9b-881f-0d58b118f445`) + Claude_Code_Remote (`bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a`, for push). |
+| `mcp_connections` | Slack + Claude_Code_Remote (for push) — use your account's connector UUIDs from `/schedule` (account-specific, not written here). |
 | `enabled` | `false` at creation (API only sets a cron placeholder; enable in the UI after wiring the events). |
 
 Never use `fable`. Never put secrets in the prompt or config.
