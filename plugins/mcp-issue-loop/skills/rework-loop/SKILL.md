@@ -4,8 +4,8 @@ description: >-
   Label-triggered loop that acts on PR review feedback. When a reviewer has left comments
   and labels the loop-authored PR `auto-rework`, it reads the feedback, makes the changes
   following the established MCP skills, pushes, drives CI green, replies to the threads,
-  and re-requests review — then stops. It never merges (merge-flow does that once
-  re-approved). CI is the test gate, so no local Umbraco is needed — runs in a cloud
+  re-requests review, and removes the `auto-rework` label — then stops. It never merges
+  (merge-flow does that once re-approved). CI is the test gate, so no local Umbraco is needed — runs in a cloud
   routine or locally. Requires the github-ops skill. Trigger: a PR labelled `auto-rework`
   (uniform with the other loops, and works regardless of who reviewed), or run manually as
   "rework PR #N".
@@ -62,10 +62,13 @@ Commit and push to the PR branch. Poll the PR's check-run status (github-ops →
 fix the root cause, push, re-poll. The issue loop's **8-attempt** cap applies. Never
 leave the PR red.
 
-## Step 4 — reply & re-request
+## Step 4 — reply, re-request & clear the label
 
-Once CI is green, **reply briefly on each addressed thread** (what changed) and
-**re-request review** from the original reviewer (github-ops → *Re-request review*).
+Once CI is green: **reply briefly on each addressed thread** (what changed),
+**re-request review** from the original reviewer (github-ops → *Re-request review*), and
+**remove the `auto-rework` label** from the PR (github-ops → *Add / remove a label*). The
+label means "rework pending" — clearing it marks the round done and re-arms the trigger,
+so a later review can re-add `auto-rework` to fire the next round.
 **Do not merge** — re-approval + `merge-flow` (via the `auto-merge` label) handle that.
 Send a Claude push notification: `Reworked PR #N per review — CI green, re-requested review.`
 
@@ -73,6 +76,8 @@ Send a Claude push notification: `Reworked PR #N per review — CI green, re-req
 
 - **Only actionable feedback triggers a rework;** a plain approval is a quiet no-op.
 - **Scoped to the review** — resolve what was raised, nothing more; never grow the PR.
+- **Always clear `auto-rework` on exit** — both on completion (Step 4) and on the quiet
+  no-op (Step 1) — so the label reflects "rework pending" and the trigger stays re-armable.
 - **Never merge** — re-request review; `merge-flow` merges once re-approved.
 - **Never leave CI red;** the 8-attempt fix cap applies.
 - Follow the MCP skills for code changes; **CI is the correctness gate.**
