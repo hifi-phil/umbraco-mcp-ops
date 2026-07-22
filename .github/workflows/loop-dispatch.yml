@@ -61,6 +61,11 @@ jobs:
             exit 1
           fi
           text="loop-dispatch (cloud worker). A GitHub loop event was routed at the edge: ${RESULT}. Run the loop-dispatch skill and dispatch this already-resolved route to its loop for that number, following loop-dispatch's guardrails (do all GitHub work via the GitHub MCP / github-ops). Re-check the entity still qualifies before acting; quiet no-op if not."
+          # Retry transient upstream errors (e.g. a Cloudflare 520 from the Fire endpoint):
+          # --fail-with-body makes any HTTP >=400 an error, and --retry-all-errors makes
+          # --retry cover non-standard 5xx codes that plain --retry ignores. A retried fire
+          # is safe: loop-dispatch re-checks the entity still qualifies and quiet no-ops if
+          # the first fire already handled it.
           jq -nc --arg t "$text" '{text:$t}' | \
           curl -sS -X POST "$FIRE_URL" \
             -H "Authorization: Bearer ${TOKEN}" \
@@ -68,5 +73,6 @@ jobs:
             -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
             -H "Content-Type: application/json" \
             --fail-with-body \
+            --retry 3 --retry-delay 5 --retry-all-errors \
             -d @-
           echo "fired routine for route: ${RESULT}"
