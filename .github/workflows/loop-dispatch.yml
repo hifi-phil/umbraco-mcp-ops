@@ -2,8 +2,10 @@ name: loop-dispatch (reusable)
 
 # Reusable workflow that routes a GitHub loop event to the repo's loop-dispatch
 # routine. A caller workflow in each target repo (see
-# plugins/loop-dispatch/skills/new-loop-routine) declares the events and calls this
-# with `secrets: inherit`. This runs route-event.sh at the edge and fires the routine
+# plugins/loop-dispatch/skills/new-loop-routine) declares the events and calls this,
+# passing the two secrets explicitly (NOT `secrets: inherit` — inherit only works when
+# the caller and this workflow share an org/enterprise; these repos don't).
+# This runs route-event.sh at the edge and fires the routine
 # via its Fire URL ONLY when the event maps to a loop — so non-matching events (e.g. a
 # Dependabot `dependencies` label) cost nothing, not even a routine session.
 #
@@ -12,7 +14,12 @@ name: loop-dispatch (reusable)
 #   LOOP_DISPATCH_TOKEN     — the token generated for that routine
 
 on:
-  workflow_call: {}
+  workflow_call:
+    secrets:
+      LOOP_DISPATCH_FIRE_URL:
+        required: true
+      LOOP_DISPATCH_TOKEN:
+        required: true
 
 permissions:
   contents: read
