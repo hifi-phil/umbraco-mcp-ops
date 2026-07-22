@@ -12,10 +12,10 @@ description: >-
 
 # loop-dispatch
 
-The **front door** to a repo's automation loops. Instead of **four event-triggered
-routines per repo** (mcp-issue-loop, merge-flow, rework-loop, auto-release-loop),
-wire **one routine per repo** to all the loop events and point it here — this skill
-works out what fired and runs the matching loop.
+The **front door** to a repo's automation loops. A committed GitHub Action routes each
+loop event at the edge (via `route-event.sh`) and fires this routine **only on a match**,
+handing it the resolved route. This skill **dispatches that route** to the matching loop —
+one routine per repo instead of one per loop/event.
 
 It is a **router, not a worker.** It never builds, merges, or releases anything
 itself; it invokes the loop skill that owns that job, and that skill enforces all its
@@ -23,9 +23,10 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 
 ## The routing table
 
-Match the **exact `(event, action, label|state)` tuple** from the trigger block. If none
-match — including a label event whose label is *not* one of ours — **quiet no-op**.
-Never wake a loop just to "have a look".
+`route-event.sh` (run **at the edge** by the caller workflow — see new-loop-routine and
+[`references/webhook-context.md`](references/webhook-context.md), not here) maps the exact
+`(event, action, label|state)` tuple to a loop. Anything unmatched → the routine is
+**never fired**. The mapping it applies:
 
 | event | action | label / state | Run |
 |---|---|---|---|
@@ -35,47 +36,29 @@ Never wake a loop just to "have a look".
 | `pull_request_review` | `submitted` | state = `changes_requested` | **`/rework-loop`** |
 
 Everything else — `pull_request.opened`, a PR labelled `dependencies`/`javascript`, an
-issue labelled anything else, an approving review — matches **no row → quiet no-op**.
-This is what kills the wasteful fires: a Dependabot PR labelled `dependencies` woke
-merge-flow **4× overnight** under per-event routines; here it matches no row and stops
-immediately, waking no loop.
+issue labelled anything else, an approving review — matches **no row**, so the edge never
+fires the routine. This is what kills the wasteful fires: a Dependabot PR labelled
+`dependencies` woke merge-flow **4× overnight** under per-event routines; here the edge
+stops immediately, waking no routine.
 
 ## Config (resolve once)
 
 - **Repo** — identify the current repo (github-ops → *Detect base branch / repo*).
 - **github-ops required** — every downstream loop uses it; it must be installed.
-- **Run context** — cloud routine (the default use) or a local manual run.
 
-## Step 1 — work out what fired (deterministically)
+## Step 1 — take the resolved route
 
-The routing **decision is scripted**, not judged — so it's byte-identical every fire.
-Your only job is to lift the fields out of the **`<github-trigger-context>` block** and
-run the bundled router.
+Your turn contains the decision the **edge already made** — e.g.
+`route=merge-flow repo=umbraco/… number=269`. The caller workflow ran `route-event.sh`
+and only fired you because it matched, so **take that route as given; don't re-derive it.**
+(If a fire ever arrives with no resolved route, **quiet no-op** — never go looking for work.)
 
-1. From the trigger block, read `event`, `action`, `owner`, `repo`, `number`, and
-   `label`/`state` **verbatim** (see [`references/webhook-context.md`](references/webhook-context.md)).
-   **No trigger block present** (cron / manual / no subscription) → **quiet no-op**. Don't
-   go looking for work — with no event there's nothing to route, and guessing is exactly
-   what we don't want.
-2. Run the bundled **`route-event.sh`** (in this skill's directory) with those fields and
-   obey its one-line output — do not re-derive the decision yourself:
+**Re-check the entity before acting.** Between the event and this session a label can be
+removed or the PR/issue closed. Fetch it (github-ops → `issue_read`/`pull_request_read`,
+`method: "get"`, exact `owner`/`repo`/`number`) and confirm it still carries the
+triggering label / is still open. If not, **quiet no-op**.
 
-   ```bash
-   bash route-event.sh --event <event> --action <action> --label <label> \
-     --state <state> --number <number> --repo <owner/repo>
-   # → route=<loop|none> repo=<owner/repo> number=<n>
-   ```
-
-   `route=none` → **quiet no-op** (not ours; do not sweep, do not wake a loop to look).
-   Otherwise route names the loop to run for `number` (Step 2). The script is a pure
-   function of the tuple — an unmatched label like `dependencies` deterministically
-   returns `none`, which is what kills the wasteful fires.
-3. **Re-check the entity before acting.** Between the event firing and this session
-   starting a label can be removed or the PR/issue closed. Fetch it (github-ops →
-   `issue_read`/`pull_request_read`, `method: "get"`, exact `owner`/`repo`/`number`) and
-   confirm it still carries the triggering label / is still open. If not, **quiet no-op**.
-
-## Step 2 — route (the normal path)
+## Step 2 — dispatch the route
 
 Invoke the matched skill exactly as its own dedicated routine would, scoped to the
 specific issue/PR, and **follow that skill's instructions verbatim**:

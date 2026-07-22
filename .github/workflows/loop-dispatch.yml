@@ -1,0 +1,65 @@
+name: loop-dispatch (reusable)
+
+# Reusable workflow that routes a GitHub loop event to the repo's loop-dispatch
+# routine. A caller workflow in each target repo (see
+# plugins/loop-dispatch/skills/new-loop-routine) declares the events and calls this
+# with `secrets: inherit`. This runs route-event.sh at the edge and fires the routine
+# via its Fire URL ONLY when the event maps to a loop — so non-matching events (e.g. a
+# Dependabot `dependencies` label) cost nothing, not even a routine session.
+#
+# Caller must provide two secrets (repo or org level):
+#   LOOP_DISPATCH_FIRE_URL  — the routine's Fire URL (Routines UI → Call via API)
+#   LOOP_DISPATCH_TOKEN     — the token generated for that routine
+
+on:
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch route-event.sh from umbraco-mcp-ops
+        uses: actions/checkout@v4
+        with:
+          repository: hifi-phil/umbraco-mcp-ops
+          ref: main
+          path: ops
+
+      - name: Decide the route (deterministic, at the edge)
+        id: route
+        run: |
+          set -uo pipefail
+          # $GITHUB_EVENT_PATH / $GITHUB_EVENT_NAME are the CALLER repo's triggering event.
+          out="$(bash ops/plugins/loop-dispatch/skills/loop-dispatch/route-event.sh --event "$GITHUB_EVENT_NAME")"
+          echo "route-event: $out"
+          route="${out#route=}"; route="${route%% *}"
+          {
+            echo "route=$route"
+            echo "result=$out"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Fire the routine (only when the event maps to a loop)
+        if: steps.route.outputs.route != 'none' && steps.route.outputs.route != ''
+        env:
+          FIRE_URL: ${{ secrets.LOOP_DISPATCH_FIRE_URL }}
+          TOKEN: ${{ secrets.LOOP_DISPATCH_TOKEN }}
+          RESULT: ${{ steps.route.outputs.result }}
+        run: |
+          set -uo pipefail
+          if [ -z "${FIRE_URL:-}" ] || [ -z "${TOKEN:-}" ]; then
+            echo "::error::LOOP_DISPATCH_FIRE_URL / LOOP_DISPATCH_TOKEN secret not set on this repo (or org)."
+            exit 1
+          fi
+          text="loop-dispatch (cloud worker). A GitHub loop event was routed at the edge: ${RESULT}. Run the loop-dispatch skill and dispatch this already-resolved route to its loop for that number, following loop-dispatch's guardrails (do all GitHub work via the GitHub MCP / github-ops). Re-check the entity still qualifies before acting; quiet no-op if not."
+          jq -nc --arg t "$text" '{text:$t}' | \
+          curl -sS -X POST "$FIRE_URL" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+            -H "Content-Type: application/json" \
+            --fail-with-body \
+            -d @-
+          echo "fired routine for route: ${RESULT}"

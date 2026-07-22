@@ -19,8 +19,10 @@ Name: `loop-dispatch → {{OWNER_REPO}}`
 You are running as a cloud worker; do all GitHub work via the GitHub MCP (github-ops). A GitHub loop event fired on {{OWNER_REPO}}. Run the loop-dispatch skill: read the <github-trigger-context> block, run route-event.sh to get the route, and dispatch to the matching loop exactly as loop-dispatch specifies, or quiet no-op when route=none. Follow loop-dispatch's guardrails verbatim; add no policy of your own.
 ```
 
-Events to attach (UI) — each routes to one loop:
-- Issue: Labeled `ready-for-ai` → **mcp-issue-loop** (or **content-issue-loop** on non-MCP repos)
-- PR: Labeled `auto-merge` → **merge-flow**
+The routine has **no UI event triggers** — it's fired by the committed GitHub Action
+([`caller-workflow.yml`](caller-workflow.yml)), which subscribes to all the loop events
+and routes them at the edge via `route-event.sh`. The event → loop mapping it enforces:
+- Issue labelled `ready-for-ai` → **mcp-issue-loop** (or **content-issue-loop** on non-MCP repos)
+- PR labelled `auto-merge` → **merge-flow**
 - PR review (changes requested) → **rework-loop**
-- Issue: Labeled `auto-release` → **auto-release-loop**
+- Issue labelled `auto-release` → **auto-release-loop**
