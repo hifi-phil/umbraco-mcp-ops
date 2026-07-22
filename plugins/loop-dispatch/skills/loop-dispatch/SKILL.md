@@ -46,34 +46,34 @@ immediately, waking no loop.
 - **github-ops required** — every downstream loop uses it; it must be installed.
 - **Run context** — cloud routine (the default use) or a local manual run.
 
-## Step 1 — work out what fired (deterministically)
+## Step 1 — get the route (deterministically)
 
-The routing **decision is scripted**, not judged — so it's byte-identical every fire.
-Your only job is to lift the fields out of the **`<github-trigger-context>` block** and
-run the bundled router.
+The routing **decision is scripted**, not judged. You're invoked one of two ways:
 
-1. From the trigger block, read `event`, `action`, `owner`, `repo`, `number`, and
-   `label`/`state` **verbatim** (see [`references/webhook-context.md`](references/webhook-context.md)).
-   **No trigger block present** (cron / manual / no subscription) → **quiet no-op**. Don't
-   go looking for work — with no event there's nothing to route, and guessing is exactly
-   what we don't want.
-2. Run the bundled **`route-event.sh`** (in this skill's directory) with those fields and
-   obey its one-line output — do not re-derive the decision yourself:
+- **Edge-resolved (primary — the GitHub Action path).** Your turn already contains a
+  resolved decision, e.g. `route=merge-flow repo=umbraco/… number=269`, because the
+  repo's caller workflow ran `route-event.sh` at the edge and only fired you on a match
+  (see [`references/webhook-context.md`](references/webhook-context.md) and
+  new-loop-routine). **Take that route as given** — don't re-derive it.
+- **Native trigger (legacy).** Your turn has a `<github-trigger-context>` block instead.
+  Parse `event`, `action`, `owner`, `repo`, `number`, `label`/`state` **verbatim**, then
+  run the bundled **`route-event.sh`** yourself:
 
-   ```bash
-   bash route-event.sh --event <event> --action <action> --label <label> \
-     --state <state> --number <number> --repo <owner/repo>
-   # → route=<loop|none> repo=<owner/repo> number=<n>
-   ```
+  ```bash
+  bash route-event.sh --event <event> --action <action> --label <label> \
+    --state <state> --number <number> --repo <owner/repo>
+  # → route=<loop|none> repo=<owner/repo> number=<n>
+  ```
 
-   `route=none` → **quiet no-op** (not ours; do not sweep, do not wake a loop to look).
-   Otherwise route names the loop to run for `number` (Step 2). The script is a pure
-   function of the tuple — an unmatched label like `dependencies` deterministically
-   returns `none`, which is what kills the wasteful fires.
-3. **Re-check the entity before acting.** Between the event firing and this session
-   starting a label can be removed or the PR/issue closed. Fetch it (github-ops →
-   `issue_read`/`pull_request_read`, `method: "get"`, exact `owner`/`repo`/`number`) and
-   confirm it still carries the triggering label / is still open. If not, **quiet no-op**.
+  `route=none` (or neither input present) → **quiet no-op**. Don't go looking for work —
+  guessing is exactly what we don't want.
+
+Either way you end up with `route=<loop>` + `repo` + `number`. Then:
+
+**Re-check the entity before acting.** Between the event and this session a label can be
+removed or the PR/issue closed. Fetch it (github-ops → `issue_read`/`pull_request_read`,
+`method: "get"`, exact `owner`/`repo`/`number`) and confirm it still carries the
+triggering label / is still open. If not, **quiet no-op**.
 
 ## Step 2 — route (the normal path)
 

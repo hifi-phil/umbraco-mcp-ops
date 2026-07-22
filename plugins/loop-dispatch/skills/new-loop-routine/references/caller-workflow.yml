@@ -1,0 +1,24 @@
+# LOCKED template — the per-repo caller for the loop-dispatch reusable workflow.
+# Commit verbatim to each target repo as `.github/workflows/loop-dispatch.yml`.
+# It declares every loop event (issues + PRs + PR reviews — Actions has no
+# event-type-mixing limit, unlike the routines UI) and calls the reusable workflow in
+# umbraco-mcp-ops, which routes at the edge and fires the repo's routine only on a real
+# match. No per-repo edits: the two secrets carry everything repo-specific.
+#
+# Requires two secrets on the repo (or the org):
+#   LOOP_DISPATCH_FIRE_URL  — the routine's Fire URL (Routines UI → Call via API)
+#   LOOP_DISPATCH_TOKEN     — the token generated for that routine
+name: loop-dispatch
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [labeled]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  dispatch:
+    uses: hifi-phil/umbraco-mcp-ops/.github/workflows/loop-dispatch.yml@main
+    secrets: inherit
