@@ -123,6 +123,30 @@
         "automation",
         "workflow"
       ]
+    },
+    {
+      "name": "loop-dispatch",
+      "source": "./plugins/loop-dispatch",
+      "description": "Single front door for a repo's automation loops so one routine per repo can handle every loop event instead of one routine per event. Deterministically routes each triggering GitHub event to the matching loop (via route-event.sh); a non-matching event is a quiet no-op. Router only; each loop owns its guardrails. Also bundles new-loop-routine — the standard config + canonical prompts + UI wiring for standing up one routine per repo. Requires github-ops + the loop skills.",
+      "version": "1.0.0",
+      "category": "workflow",
+      "author": {
+        "name": "Phil W",
+        "email": "pjw@umbraco.com",
+        "url": "https://github.com/hifi-phil"
+      },
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/loop-dispatch",
+      "keywords": [
+        "umbraco",
+        "mcp",
+        "routine",
+        "dispatch",
+        "router",
+        "github-events",
+        "automation",
+        "cloud-routine",
+        "workflow"
+      ]
     }
   ]
 }
