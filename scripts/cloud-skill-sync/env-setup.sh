@@ -53,6 +53,19 @@ deliver_skills() {
   fi
 }
 
+# ── System tools the seed build needs ──────────────────────────────────────
+# rsync is used by the repo's bootstrap-demo-site.sh AND by our snapshot step, but the
+# cloud worker image doesn't ship it. Install it (runs as root; apt available on the
+# Ubuntu image). Best-effort — a failure just means the seeds can't build.
+ensure_tools() {
+  command -v rsync >/dev/null 2>&1 && { log "rsync present"; return 0; }
+  log "installing rsync (needed by bootstrap-demo-site.sh + snapshot)"
+  if command -v apt-get >/dev/null 2>&1; then
+    (apt-get update -qq && apt-get install -y rsync) >>"$LOG" 2>&1 || log "WARN: apt-get rsync failed"
+  fi
+  command -v rsync >/dev/null 2>&1 || log "WARN: rsync still missing — seeds will fail"
+}
+
 # ── 2. .NET SDK (idempotent) ───────────────────────────────────────────────
 install_dotnet() {
   local channel="$1"
@@ -141,6 +154,7 @@ build_seed() {
 {
   log "===== env-setup v$VERSION ====="
   deliver_skills
+  ensure_tools
   mkdir -p "$SEED_ROOT"
   for t in "${SEED_TARGETS[@]}"; do
     # t = "<major>:<repo_url>:<branch>:<channel>"; repo_url contains ':' (https://),
