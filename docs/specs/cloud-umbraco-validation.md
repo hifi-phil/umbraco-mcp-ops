@@ -69,8 +69,10 @@ it writes under `$HOME` is captured in the snapshot; the session's repo checkout
    - `npm run umbraco:bootstrap -- --sqlite`,
    - `dotnet restore` + `dotnet build` (warms `~/.nuget/packages` — ~1.5 GB / 170+ packages
      cold; stored version-side-by-side so both majors share the cache),
-   - `dotnet run` once to complete the **unattended install** (creates the SQLite DB),
-   - `create-api-user.mjs` + `publish-root-content.mjs`, then stop,
+   - `npm run start:umbraco` once to complete the **unattended install** (creates the SQLite
+     DB) — it writes the port + `UMBRACO_BASE_URL`,
+   - `node scripts/create-api-user.mjs "$UMBRACO_BASE_URL" admin@admin.com 1234567890` +
+     `node scripts/publish-root-content.mjs "$UMBRACO_BASE_URL"`, then `npm run stop:umbraco`,
    - snapshot the prepared instance to `$HOME/umbraco-seed/<major>/` — the built output +
      `umbraco/Data/*.sqlite.db` + any generated starter-kit files, i.e. everything a session
      needs to `dotnet run` immediately with the API user + root content already present.
@@ -94,12 +96,13 @@ After the change is implemented and the fast checks (`npm run compile` / `build`
 1. **Copy the baked seed into place**: `cp -r $HOME/umbraco-seed/<major>/ ./demo-site` (major
    chosen from the branch's pinned `Umbraco.Cms`). No `bootstrap`, no unattended install, no
    `create-api-user` — the seed already has the DB, API user, and published root content.
-2. Start Umbraco in the background:
-   `ASPNETCORE_ENVIRONMENT=Development dotnet run --no-launch-profile --urls http://localhost:<port>`
-   — restore is a cache hit and the DB already exists, so this is a **normal boot** (seconds),
-   not a first-boot install.
-3. **Wait for startup** by grepping `"Now listening on"` in the run log (bounded, ~180s);
-   bail on `Unhandled exception` / `Failed to bind` / process death — never a blind sleep.
+2. **`npm run start:umbraco`** — the repo's existing script already backgrounds `dotnet run`,
+   picks a free port, and writes `.demo-site-port` / `.demo-site-pid` + `UMBRACO_BASE_URL`
+   into `.env` (which the tests read). Because the seed's DB already exists, this is a
+   **normal boot** (seconds), not a first-boot install. Don't hand-roll `dotnet run`.
+3. **Wait for readiness** — `.demo-site-port` exists and the base URL responds (poll
+   `…/umbraco/management/api/v1/server/status`, bounded). Clean up with `npm run stop:umbraco`
+   after the run.
 4. **Run only the change's test(s)** via a deterministic helper — `npm run test:changed`,
    which runs `jest --findRelatedTests` over the files changed vs the PR base, so **Jest**
    selects the tests that import the change (no `--testPathPattern` for the model to
