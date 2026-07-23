@@ -100,9 +100,11 @@ After the change is implemented and the fast checks (`npm run compile` / `build`
    not a first-boot install.
 3. **Wait for startup** by grepping `"Now listening on"` in the run log (bounded, ~180s);
    bail on `Unhandled exception` / `Failed to bind` / process death — never a blind sleep.
-4. **Run only the change's test(s)** with `npm run test:one`. The agent already picks the
-   right test file locally (it never has trouble with this) — just have it run *that* file
-   via `test:one` (`--testPathPattern='…'`) instead of `test:all`. CI owns the full suite.
+4. **Run only the change's test(s)** via a deterministic helper — `npm run test:changed`,
+   which runs `jest --findRelatedTests` over the files changed vs the PR base, so **Jest**
+   selects the tests that import the change (no `--testPathPattern` for the model to
+   construct). `test:one -- --testPathPattern='…'` stays as the manual fallback. Never
+   `test:all` in a session; CI owns the full suite.
 5. **Report honestly** — state exactly which test(s) ran and their result; never claim
    coverage the session didn't run (same honesty rule as the review fix).
 
@@ -137,8 +139,10 @@ Because the seed is baked, a session goes from "code compiled" to "test running"
 
 1. **Majors to prime:** v17 + v18 (Dev MCP revisited when it's added).
 2. **Env-build egress:** unrestricted for now.
-3. **`test:one` selection:** no special heuristic — the agent already picks the right test
-   file locally; the skill just tells it to run *that* file via `test:one`, not `test:all`.
+3. **Test selection:** add a `test:changed` helper (`jest --findRelatedTests` over the PR
+   diff) so the loop runs **one deterministic command** — Jest picks the tests importing the
+   change, nothing for the model to construct. `test:one -- --testPathPattern` remains the
+   manual fallback.
 4. **Prime source:** the **real demo-site** (clone the target repo per version), **including
    the seeded SQLite DB** — the starting point never changes, so caching it makes sessions
    very quick.
@@ -148,6 +152,10 @@ Because the seed is baked, a session goes from "code compiled" to "test running"
 - Exactly what `$HOME/umbraco-seed/<major>/` must contain for an instant boot — SQLite DB is
   essential; confirm whether built `bin/` + generated `Views`/`wwwroot` need to be in the seed
   or are regenerated cheaply. (§`env-setup.sh` step 3.)
+- The `test:changed` helper (new npm script in the target repo): resolve the PR base for the
+  diff, and handle the edge cases — a **shared file** selecting a large test set (cap or
+  accept), and a change that only touches a `*.test.ts` (run it directly as well as via
+  `--findRelatedTests`).
 
 ## Rollout
 
