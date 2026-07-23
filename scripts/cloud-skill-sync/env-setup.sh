@@ -105,40 +105,53 @@ build_seed() {
 
   local work; work="$(mktemp -d)"
   log "seed $major: cloning $repo@$branch"
-  if ! git clone --depth 1 --branch "$branch" "$repo" "$work/app" 2>>"$LOG"; then
+  if ! git clone --depth 1 --branch "$branch" "$repo" "$work/app"; then
     log "WARN: clone failed for $major ($repo@$branch) — skipping seed"; rm -rf "$work"; return 1
   fi
+  # NB: no stderr redirect on this subshell — everything streams through the outer
+  # `tee` so you see live progress in an interactive session (and it's still logged).
   ( set -e
     cd "$work/app"
+    echo "[seed $major] npm ci…"
     npm ci
-    npm run umbraco:bootstrap -- --sqlite            # server-less SQLite demo-site
+    echo "[seed $major] bootstrap demo-site (--sqlite)…"
+    npm run umbraco:bootstrap -- --sqlite
     # Boot once (backgrounded): start:umbraco runs dotnet run, writes .demo-site-port +
     # UMBRACO_BASE_URL, and creates the API user itself.
+    echo "[seed $major] starting Umbraco — first boot runs the unattended install (minutes)…"
     npm run start:umbraco > "$work/start.log" 2>&1 &
 
-    # Wait for the port file + a live server-status response (first boot = unattended install).
+    # Wait for the port + a live server-status response, with a ~30s heartbeat + boot-log
+    # tail so a long first-boot install doesn't look hung.
     base=""
-    for _ in $(seq 1 90); do            # ~7.5 min ceiling for a cold first-boot install
+    for i in $(seq 1 90); do            # ~7.5 min ceiling for a cold first-boot install
       if [ -f .demo-site-port ]; then
         port="$(cat .demo-site-port)"
         if curl -ksf "https://localhost:$port/umbraco/management/api/v1/server/status" >/dev/null 2>&1; then
           base="https://localhost:$port"; break
         fi
       fi
+      if [ $((i % 6)) -eq 0 ]; then
+        echo "[seed $major] still booting (~$((i * 5))s)… last boot-log line:"
+        tail -n 1 "$work/start.log" 2>/dev/null | sed "s/^/[seed $major]   /"
+      fi
       sleep 5
     done
-    [ -n "$base" ] || { echo "seed $major: Umbraco did not become ready"; tail -n 40 "$work/start.log"; exit 1; }
+    [ -n "$base" ] || { echo "[seed $major] Umbraco did not become ready in time; boot log:"; tail -n 40 "$work/start.log"; exit 1; }
+    echo "[seed $major] ready at $base — publishing root content…"
 
-    node scripts/publish-root-content.mjs "$base" || echo "seed $major: publish-root-content warned"
+    node scripts/publish-root-content.mjs "$base" || echo "[seed $major] publish-root-content warned"
     npm run stop:umbraco || true
 
     # Snapshot the prepared demo-site (DB + built output + generated files); drop transient
     # per-run files so a session's start:umbraco rewrites them cleanly.
+    echo "[seed $major] snapshotting demo-site -> $dest…"
     mkdir -p "$dest"
     rsync -a --delete \
       --exclude '.demo-site-port' --exclude '.demo-site-pid' \
       "$work/app/demo-site/" "$dest/"
-  ) 2>>"$LOG"
+    echo "[seed $major] snapshot complete"
+  )
   local rc=$?
   rm -rf "$work"
   if [ "$rc" -eq 0 ] && [ -d "$dest" ]; then
