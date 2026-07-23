@@ -61,46 +61,53 @@ it writes under `$HOME` is captured in the snapshot; the session's repo checkout
    (**not** `dot.net/v1/...` — it 301-redirects and `curl` without `-L` silently writes an
    empty file). Install to `$HOME/.dotnet`; export `DOTNET_ROOT` + PATH and persist to
    `.bashrc`. Channel(s) resolved per supported Umbraco version (see *Versioning*).
-3. **Prime the NuGet cache** — the big speed win. Cold Umbraco restore is **~1.5 GB / 170+
-   packages**; priming it here makes per-session restore a cache hit (and lets the session
-   run offline). For **each supported major**:
-   - clone the target repo at that version's branch into a temp dir,
+3. **Build a ready-to-run demo-site seed per version (v17 + v18)** — the big win. The
+   demo-site's starting point never changes between sessions (the code under test is the
+   TypeScript MCP server, not this Umbraco host), so bake the **fully prepared instance**
+   once per major and copy it in per session. For **each of v17 and v18**:
+   - clone the target repo at that version's branch (Editor: `v17/*` for 17, `dev` for 18),
    - `npm run umbraco:bootstrap -- --sqlite`,
-   - `dotnet restore` (and `dotnet build`) the demo-site,
-   - discard the checkout — keep only the warmed `~/.nuget/packages`.
-   `~/.nuget/packages` stores every version **side by side**, so one primed cache serves v17
-   **and** v18 — no version-keying needed (unlike a DB seed).
-   *(Lighter alternative if cloning the target repo at build is undesirable: scaffold a
-   throwaway vanilla project per version — `dotnet new install Umbraco.Templates@<v>` +
-   `dotnet new umbraco` — which pulls essentially the same package tree. Bootstrapping the
-   real demo-site guarantees a complete cache; the vanilla scaffold gets ~95% and lets the
-   session fetch any stragglers, which needs session-time egress.)*
-4. **Idempotence** — skip re-installing the SDK / re-priming if already present, so a
-   rebuild is cheap. Log a one-line `env-setup vN` marker.
+   - `dotnet restore` + `dotnet build` (warms `~/.nuget/packages` — ~1.5 GB / 170+ packages
+     cold; stored version-side-by-side so both majors share the cache),
+   - `dotnet run` once to complete the **unattended install** (creates the SQLite DB),
+   - `create-api-user.mjs` + `publish-root-content.mjs`, then stop,
+   - snapshot the prepared instance to `$HOME/umbraco-seed/<major>/` — the built output +
+     `umbraco/Data/*.sqlite.db` + any generated starter-kit files, i.e. everything a session
+     needs to `dotnet run` immediately with the API user + root content already present.
+   *Implementation note:* nail down exactly what the seed must contain (SQLite DB is
+   essential; verify whether the built `bin/` and generated `Views`/`wwwroot` must be
+   included or are regenerated cheaply on boot). The seed **is** version-keyed (per major) —
+   that's fine and bounded (17, 18); the NuGet cache is not.
+4. **Idempotence** — skip re-installing the SDK / re-priming / re-seeding if already present,
+   so a rebuild is cheap. Log a one-line `env-setup vN` marker.
 
-Snapshot ends up holding: `$HOME/.dotnet`, `~/.nuget/packages`, `~/.claude/{skills,agents,ops-hooks}`, `settings.json`.
+Snapshot ends up holding: `$HOME/.dotnet`, `~/.nuget/packages`, `$HOME/umbraco-seed/{17,18}/`,
+`~/.claude/{skills,agents,ops-hooks}`, `settings.json`.
+
+> Rebuild the env (bump `# rebuild: N` in the stub) whenever the demo-site-template or its
+> pinned `Umbraco.Cms` version changes — that's what makes the baked seed go stale.
 
 ## Per-session flow (cloud mode, build + rework only)
 
 After the change is implemented and the fast checks (`npm run compile` / `build`) pass:
 
-1. `npm run umbraco:bootstrap -- --sqlite` — fast (file copy; DB config points at SQLite, no
-   SQL Server / service container).
+1. **Copy the baked seed into place**: `cp -r $HOME/umbraco-seed/<major>/ ./demo-site` (major
+   chosen from the branch's pinned `Umbraco.Cms`). No `bootstrap`, no unattended install, no
+   `create-api-user` — the seed already has the DB, API user, and published root content.
 2. Start Umbraco in the background:
    `ASPNETCORE_ENVIRONMENT=Development dotnet run --no-launch-profile --urls http://localhost:<port>`
-   — restore is a **cache hit**.
+   — restore is a cache hit and the DB already exists, so this is a **normal boot** (seconds),
+   not a first-boot install.
 3. **Wait for startup** by grepping `"Now listening on"` in the run log (bounded, ~180s);
    bail on `Unhandled exception` / `Failed to bind` / process death — never a blind sleep.
-4. `node scripts/create-api-user.mjs <baseUrl> admin@admin.com 1234567890` +
-   `node scripts/publish-root-content.mjs <baseUrl>`.
-5. **Run only the change's test(s)**:
-   `npm run test:one -- --testPathPattern='<collection>/__tests__/<tool-or-area>'`.
-   Never `test:all` in a session.
-6. **Report honestly** — state exactly which test(s) ran and their result. CI owns the full
-   suite; do not claim coverage the session didn't run. (Same honesty rule as the review fix.)
+4. **Run only the change's test(s)** with `npm run test:one`. The agent already picks the
+   right test file locally (it never has trouble with this) — just have it run *that* file
+   via `test:one` (`--testPathPattern='…'`) instead of `test:all`. CI owns the full suite.
+5. **Report honestly** — state exactly which test(s) ran and their result; never claim
+   coverage the session didn't run (same honesty rule as the review fix).
 
-The one remaining per-session cost is Umbraco's **first-boot unattended install** (creates
-the SQLite DB), ~1–2 min. Acceptable for v1.
+Because the seed is baked, a session goes from "code compiled" to "test running" in
+**seconds** — no bootstrap, no ~1–2 min unattended install, no API-user setup.
 
 ## Versioning (multi-version support)
 
@@ -114,30 +121,33 @@ the SQLite DB), ~1–2 min. Acceptable for v1.
 
 ## Deferred
 
-- **Per-version SQLite DB seed** — bake a booted-once `umbraco/Data` DB per major into the
-  snapshot and copy it into place at session start, removing the ~1–2 min first-boot install.
-  Only pursue if that cost proves annoying. (This *is* version-keyed, unlike the NuGet cache.)
+- Nothing structural — the per-version baked seed (moved into the core design above) already
+  removes the first-boot install. Possible later polish: trimming what the seed contains, or
+  a periodic auto-rebuild when the demo-site-template changes.
 
 ## Egress
 
-- **Env-build only:** `github.com` (clone), NuGet feed (`api.nuget.org`), .NET install CDN
-  (`builds.dotnet.microsoft.com` / the raw-github script host). The current loop env is
-  restricted; either run env-build on an env with these allowed, or add them to the
-  allow-list.
-- **Session:** runs against baked SDK + warm cache → no network needed for the toolchain
-  (GitHub work still goes through github-ops as today).
+- **Env-build:** make the build-loop env **unrestricted for now** (decision) — env-build
+  needs `github.com` (clone), the NuGet feed, and the .NET install CDN, and enumerating every
+  host a restore touches is fiddly. Tighten to an allow-list later if we want.
+- **Session:** runs against the baked SDK + warm cache + seeded demo-site → no network needed
+  for the toolchain (GitHub work still goes through github-ops as today).
 
-## Open questions
+## Resolved decisions
 
-1. Which Umbraco majors to prime at env-build — confirm **v17 + v18** (and whether Dev MCP
-   adds others).
-2. Env for env-build: make the build-loop env unrestricted, or enumerate + add the
-   allow-listed hosts above?
-3. `test:one` selection heuristic — how the build subagent maps a change to its test file(s)
-   (e.g. the tool it touched → its `__tests__/<tool>.test.ts`; a shared helper → the
-   collection's suite). Worth a short rule in the skill.
-4. Do we prime from the **real demo-site** (clone target repo) or a **vanilla scaffold**?
-   (§`env-setup.sh` step 3.)
+1. **Majors to prime:** v17 + v18 (Dev MCP revisited when it's added).
+2. **Env-build egress:** unrestricted for now.
+3. **`test:one` selection:** no special heuristic — the agent already picks the right test
+   file locally; the skill just tells it to run *that* file via `test:one`, not `test:all`.
+4. **Prime source:** the **real demo-site** (clone the target repo per version), **including
+   the seeded SQLite DB** — the starting point never changes, so caching it makes sessions
+   very quick.
+
+## Implementation note to resolve during build
+
+- Exactly what `$HOME/umbraco-seed/<major>/` must contain for an instant boot — SQLite DB is
+  essential; confirm whether built `bin/` + generated `Views`/`wwwroot` need to be in the seed
+  or are regenerated cheaply. (§`env-setup.sh` step 3.)
 
 ## Rollout
 
