@@ -138,8 +138,10 @@ build_seed() {
       sleep 5
     done
     [ -n "$base" ] || { echo "[seed $major] Umbraco did not become ready in time; boot log:"; tail -n 40 "$work/start.log"; exit 1; }
-    echo "[seed $major] ready at $base — publishing root content…"
-
+    echo "[seed $major] ready at $base — ensuring API user, then publishing root content…"
+    # start:umbraco creates the API user in the background; do it explicitly + synchronously
+    # here so it exists before publish (otherwise publish-root-content races it and 401s).
+    node scripts/create-api-user.mjs "$base" || echo "[seed $major] create-api-user warned"
     node scripts/publish-root-content.mjs "$base" || echo "[seed $major] publish-root-content warned"
     npm run stop:umbraco || true
 
