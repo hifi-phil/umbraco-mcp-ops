@@ -174,6 +174,12 @@ build_seed() {
 # ── main ───────────────────────────────────────────────────────────────────
 {
   log "===== env-setup v$VERSION ====="
+  # env-setup bakes SQLite seeds only (a file → persists in the snapshot). SQL Server
+  # (Docker daemon + container) can't be baked, so it lives in run-umbraco.sh at session
+  # time — surface that instead of silently ignoring a --provider arg.
+  case " $* " in
+    *sqlserver*) log "NOTE: env-setup bakes SQLite seeds only; SQL Server isn't snapshot-bakeable. For a SQL Server (CI-parity) run use run-umbraco.sh --provider sqlserver from a repo checkout in a session. Continuing with the SQLite seed bake." ;;
+  esac
   deliver_skills
   ensure_tools
   mkdir -p "$SEED_ROOT"
