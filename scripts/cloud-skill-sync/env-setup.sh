@@ -35,7 +35,10 @@ export NODE_TLS_REJECT_UNAUTHORIZED=0   # demo-site uses a self-signed HTTPS dev
 # cached in the snapshot; sessions then just start the daemon + `docker run` (no re-pull).
 # Docker's storage is kept under $HOME so the snapshot retains the pulled image.
 MSSQL_IMAGE="mcr.microsoft.com/mssql/server:2022-latest"
-DOCKER_DATA_ROOT="$HOME/.docker-data"
+# FIXED absolute path (NOT $HOME-relative): env-build runs as root and caches the image
+# here; a session must start dockerd against the SAME path to see it. Confirmed to persist
+# across sessions. Override only if the env stores docker data elsewhere.
+DOCKER_DATA_ROOT="${DOCKER_DATA_ROOT:-/root/.docker-data}"
 PROVIDER="${DB_PROVIDER:-sqlite}"
 _prev=""
 for _a in "$@"; do [ "$_prev" = "--provider" ] && PROVIDER="$_a"; _prev="$_a"; done

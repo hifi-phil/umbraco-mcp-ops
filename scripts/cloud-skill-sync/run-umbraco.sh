@@ -31,7 +31,8 @@ export NODE_TLS_REJECT_UNAUTHORIZED=0   # demo-site uses a self-signed HTTPS dev
 MSSQL_IMAGE="mcr.microsoft.com/mssql/server:2022-latest"
 SA_PASSWORD="Moloko99"
 MSSQL_DB="umbraco-mcp-local"
-DOCKER_DATA_ROOT="$HOME/.docker-data"   # only used if we have to start our own daemon
+# FIXED path matching env-setup.sh, so a session's dockerd sees the env-build-cached image.
+DOCKER_DATA_ROOT="${DOCKER_DATA_ROOT:-/root/.docker-data}"
 
 [ -d demo-site-template ] || { echo "ERROR: run from an MCP repo checkout (no demo-site-template/)"; exit 1; }
 command -v dotnet >/dev/null 2>&1 || { echo "ERROR: dotnet not on PATH — env-setup.sh installs it"; exit 1; }
