@@ -67,10 +67,15 @@ ensure_tools() {
 }
 
 # ── 2. .NET SDK (idempotent) ───────────────────────────────────────────────
+# Symlink dotnet onto a PATH dir every shell sees. .bashrc only helps interactive
+# shells — start:umbraco's `nohup dotnet run` doesn't source it, so without this the
+# backgrounded boot fails with "dotnet: command not found".
+link_dotnet() { [ -x "$HOME/.dotnet/dotnet" ] && ln -sf "$HOME/.dotnet/dotnet" /usr/local/bin/dotnet 2>/dev/null || true; }
+
 install_dotnet() {
   local channel="$1"
   if dotnet --list-sdks 2>/dev/null | grep -q "^${channel%.*}\."; then
-    log ".NET SDK for channel $channel already present"; return 0
+    log ".NET SDK for channel $channel already present"; link_dotnet; return 0
   fi
   log "installing .NET SDK channel $channel"
   local tmp; tmp="$(mktemp -d)/dotnet-install.sh"
@@ -87,6 +92,7 @@ install_dotnet() {
       echo 'export PATH=$HOME/.dotnet:$HOME/.dotnet/tools:$PATH'; } >> "$HOME/.bashrc"
   fi
   dotnet --version >/dev/null 2>&1 || { log "WARN: dotnet not usable after install"; return 1; }
+  link_dotnet
 }
 
 # ── 3. Per-version Umbraco (SQLite) seed (idempotent, best-effort) ─────────
