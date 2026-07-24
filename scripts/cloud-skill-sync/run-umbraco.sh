@@ -31,6 +31,7 @@ export NODE_TLS_REJECT_UNAUTHORIZED=0   # demo-site uses a self-signed HTTPS dev
 MSSQL_IMAGE="mcr.microsoft.com/mssql/server:2022-latest"
 SA_PASSWORD="Moloko99"
 MSSQL_DB="umbraco-mcp-local"
+DOCKER_DATA_ROOT="$HOME/.docker-data"   # only used if we have to start our own daemon
 
 [ -d demo-site-template ] || { echo "ERROR: run from an MCP repo checkout (no demo-site-template/)"; exit 1; }
 command -v dotnet >/dev/null 2>&1 || { echo "ERROR: dotnet not on PATH — env-setup.sh installs it"; exit 1; }
@@ -41,7 +42,8 @@ command -v dotnet >/dev/null 2>&1 || { echo "ERROR: dotnet not on PATH — env-s
 # `dockerd` can't start (unprivileged sandbox), this reports it so we can fall back to a
 # native `mssql-server` apt install instead.
 ensure_docker() {
-  if docker info >/dev/null 2>&1; then echo "docker ready"; return 0; fi
+  # The env usually already has a running daemon — use it directly.
+  if docker info >/dev/null 2>&1; then echo "docker ready (existing daemon)"; return 0; fi
   if ! command -v docker >/dev/null 2>&1; then
     echo "installing docker engine…"
     if command -v apt-get >/dev/null 2>&1; then
@@ -50,11 +52,11 @@ ensure_docker() {
       echo "ERROR: no apt-get to install docker"; return 1
     fi
   fi
-  if ! docker info >/dev/null 2>&1; then
-    echo "starting docker daemon…"
-    service docker start >/dev/null 2>&1 || (nohup dockerd >/tmp/dockerd.log 2>&1 &)
-    for _ in $(seq 1 20); do docker info >/dev/null 2>&1 && break; sleep 2; done
-  fi
+  echo "starting docker daemon (data-root $DOCKER_DATA_ROOT)…"
+  mkdir -p "$DOCKER_DATA_ROOT"
+  service docker stop >/dev/null 2>&1 || true
+  (nohup dockerd --data-root "$DOCKER_DATA_ROOT" >/tmp/dockerd.log 2>&1 &)
+  for _ in $(seq 1 20); do docker info >/dev/null 2>&1 && break; sleep 2; done
   docker info >/dev/null 2>&1 || {
     echo "ERROR: docker installed but the daemon won't run in this env (likely no privileged/dind support)."
     echo "       See /tmp/dockerd.log. Fall back to a native SQL Server install (apt mssql-server) — tell me and I'll add that path."

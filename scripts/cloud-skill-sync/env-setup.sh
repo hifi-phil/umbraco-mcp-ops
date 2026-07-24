@@ -30,6 +30,16 @@ export DOTNET_ROOT="$HOME/.dotnet"
 export PATH="$HOME/.dotnet:$HOME/.dotnet/tools:$PATH"
 export NODE_TLS_REJECT_UNAUTHORIZED=0   # demo-site uses a self-signed HTTPS dev cert
 
+# SQL Server (CI-parity) prep is opt-in: `--provider sqlserver` (or DB_PROVIDER=sqlserver).
+# When set, env-build installs Docker and PULLS the mssql image so the ~1.5 GB download is
+# cached in the snapshot; sessions then just start the daemon + `docker run` (no re-pull).
+# Docker's storage is kept under $HOME so the snapshot retains the pulled image.
+MSSQL_IMAGE="mcr.microsoft.com/mssql/server:2022-latest"
+DOCKER_DATA_ROOT="$HOME/.docker-data"
+PROVIDER="${DB_PROVIDER:-sqlite}"
+_prev=""
+for _a in "$@"; do [ "$_prev" = "--provider" ] && PROVIDER="$_a"; _prev="$_a"; done
+
 # Versions to pre-seed: "major:repo_url:branch:dotnet_channel".
 # Branches verified to exist (dev, v17/dev). Channel .NET 10 for both matches CI
 # (.github/workflows/test.yml uses dotnet 10.0.x on the current tree). If a future major
@@ -64,6 +74,37 @@ ensure_tools() {
     (apt-get update -qq && apt-get install -y rsync) >>"$LOG" 2>&1 || log "WARN: apt-get rsync failed"
   fi
   command -v rsync >/dev/null 2>&1 || log "WARN: rsync still missing — seeds will fail"
+}
+
+# ── SQL Server prep (opt-in) ───────────────────────────────────────────────
+# Install Docker + start the daemon with its data-root under $HOME (so pulled images
+# land somewhere the snapshot keeps). run-umbraco.sh uses the SAME data-root at session
+# time, so it finds the pre-pulled image instead of re-downloading ~1.5 GB.
+ensure_docker() {
+  if docker info >/dev/null 2>&1; then log "docker ready"; return 0; fi
+  if ! command -v docker >/dev/null 2>&1; then
+    log "installing docker engine…"
+    if command -v apt-get >/dev/null 2>&1; then
+      (apt-get update -qq && apt-get install -y docker.io) >>"$LOG" 2>&1 || log "WARN: apt-get docker.io failed"
+    fi
+  fi
+  mkdir -p "$DOCKER_DATA_ROOT"
+  log "starting docker daemon (data-root $DOCKER_DATA_ROOT)…"
+  service docker stop >/dev/null 2>&1 || true
+  nohup dockerd --data-root "$DOCKER_DATA_ROOT" >/tmp/dockerd.log 2>&1 &
+  for _ in $(seq 1 20); do docker info >/dev/null 2>&1 && break; sleep 2; done
+  docker info >/dev/null 2>&1 || { log "WARN: dockerd won't run in this env (see /tmp/dockerd.log)"; return 1; }
+}
+
+prep_sqlserver() {
+  log "prep SQL Server: install docker + cache the mssql image in the snapshot"
+  ensure_docker || { log "WARN: docker unavailable — SQL Server prep skipped (loops still get SQLite seeds)"; return 1; }
+  log "pulling $MSSQL_IMAGE (~1.5 GB; cached under $DOCKER_DATA_ROOT for sessions)…"
+  if docker pull "$MSSQL_IMAGE" >>"$LOG" 2>&1; then
+    log "mssql image cached: $(docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' "$MSSQL_IMAGE" 2>/dev/null | head -1)"
+  else
+    log "WARN: docker pull failed for $MSSQL_IMAGE"
+  fi
 }
 
 # ── 2. .NET SDK (idempotent) ───────────────────────────────────────────────
@@ -173,15 +214,13 @@ build_seed() {
 
 # ── main ───────────────────────────────────────────────────────────────────
 {
-  log "===== env-setup v$VERSION ====="
-  # env-setup bakes SQLite seeds only (a file → persists in the snapshot). SQL Server
-  # (Docker daemon + container) can't be baked, so it lives in run-umbraco.sh at session
-  # time — surface that instead of silently ignoring a --provider arg.
-  case " $* " in
-    *sqlserver*) log "NOTE: env-setup bakes SQLite seeds only; SQL Server isn't snapshot-bakeable. For a SQL Server (CI-parity) run use run-umbraco.sh --provider sqlserver from a repo checkout in a session. Continuing with the SQLite seed bake." ;;
-  esac
+  log "===== env-setup v$VERSION (provider=$PROVIDER) ====="
   deliver_skills
   ensure_tools
+  # Always bake the SQLite seeds (below). If SQL Server was requested, ALSO install docker
+  # and cache the mssql image now so sessions don't re-download it (the running container
+  # itself is brought up per session by run-umbraco.sh --provider sqlserver).
+  if [ "$PROVIDER" = "sqlserver" ]; then prep_sqlserver || true; fi
   mkdir -p "$SEED_ROOT"
   for t in "${SEED_TARGETS[@]}"; do
     # t = "<major>:<repo_url>:<branch>:<channel>"; repo_url contains ':' (https://),
