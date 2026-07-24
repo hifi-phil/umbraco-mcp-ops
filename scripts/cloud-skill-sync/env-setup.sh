@@ -101,8 +101,11 @@ ensure_docker() {
 
 prep_sqlserver() {
   log "prep SQL Server: install docker + cache the mssql image in the snapshot"
-  ensure_docker || { log "WARN: docker unavailable — SQL Server prep skipped (loops still get SQLite seeds)"; return 1; }
-  log "pulling $MSSQL_IMAGE (~1.5 GB; cached under $DOCKER_DATA_ROOT for sessions)…"
+  ensure_docker || { log "WARN: docker unavailable — SQL Server image not cached"; return 1; }
+  if docker image inspect "$MSSQL_IMAGE" >/dev/null 2>&1; then
+    log "mssql image already cached ($(docker images --format '{{.Size}}' "$MSSQL_IMAGE" | head -1)) — skipping pull"; return 0
+  fi
+  log "pulling $MSSQL_IMAGE (~2.3 GB; cached under $DOCKER_DATA_ROOT for sessions)…"
   if docker pull "$MSSQL_IMAGE" >>"$LOG" 2>&1; then
     log "mssql image cached: $(docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' "$MSSQL_IMAGE" 2>/dev/null | head -1)"
   else
@@ -218,27 +221,30 @@ build_seed() {
 # ── main ───────────────────────────────────────────────────────────────────
 {
   log "===== env-setup v$VERSION (provider=$PROVIDER) ====="
-  deliver_skills
-  ensure_tools
-  # Always bake the SQLite seeds (below). If SQL Server was requested, ALSO install docker
-  # and cache the mssql image now so sessions don't re-download it (the running container
-  # itself is brought up per session by run-umbraco.sh --provider sqlserver).
-  if [ "$PROVIDER" = "sqlserver" ]; then prep_sqlserver || true; fi
-  mkdir -p "$SEED_ROOT"
-  for t in "${SEED_TARGETS[@]}"; do
-    # t = "<major>:<repo_url>:<branch>:<channel>"; repo_url contains ':' (https://),
-    # so take major from the left and split the rest from the RIGHT.
-    major="${t%%:*}"          # 18
-    rest="${t#*:}"            # repo_url:branch:channel
-    channel="${rest##*:}"     # 10.0
-    rest="${rest%:*}"         # repo_url:branch
-    branch="${rest##*:}"      # dev
-    repo="${rest%:*}"         # https://github.com/…
-    log "seed target: major=$major repo=$repo branch=$branch channel=$channel"
-    build_seed "$major" "$repo" "$branch" "$channel" || true
-  done
+  # env-build does only NO-AUTH work — it runs before git credentials exist, so it can't
+  # clone the private target repo. The demo-site is bootstrapped per SESSION (which has the
+  # repo loaded + creds) via run-umbraco.sh. Here we just cache the heavy, credential-free
+  # downloads so sessions start fast:
+  deliver_skills                                   # skills / agents / hooks
+  ensure_tools                                     # rsync
+  install_dotnet "${DOTNET_CHANNEL:-10.0}"         # SDK — every session needs it
+  if [ "$PROVIDER" = "sqlserver" ]; then prep_sqlserver || true; fi   # cache the mssql image
+
+  # Opt-in only: pre-bake SQLite seeds by cloning the repo. Off by default because env-build
+  # has no git creds for the private repo (clone -> "could not read Username"). Set
+  # BAKE_SEEDS=1 only in an env whose build phase DOES have git access.
+  if [ "${BAKE_SEEDS:-0}" = "1" ]; then
+    mkdir -p "$SEED_ROOT"
+    for t in "${SEED_TARGETS[@]}"; do
+      major="${t%%:*}"; rest="${t#*:}"; channel="${rest##*:}"; rest="${rest%:*}"; branch="${rest##*:}"; repo="${rest%:*}"
+      log "seed target: major=$major repo=$repo branch=$branch channel=$channel"
+      build_seed "$major" "$repo" "$branch" "$channel" || true
+    done
+    log "seeds:  $(ls -1 "$SEED_ROOT" 2>/dev/null | tr '\n' ' ')"
+  fi
+
   log "dotnet: $(dotnet --version 2>/dev/null || echo 'not installed')"
-  log "seeds:  $(ls -1 "$SEED_ROOT" 2>/dev/null | tr '\n' ' ')"
+  [ "$PROVIDER" = "sqlserver" ] && log "mssql image: $(docker images --format '{{.Size}}' "$MSSQL_IMAGE" 2>/dev/null | head -1 || echo 'not cached')"
   log "===== env-setup done ====="
 } 2>&1 | tee -a "$LOG"
 exit 0

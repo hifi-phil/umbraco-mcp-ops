@@ -103,6 +103,19 @@ JSONEOF
   *) echo "ERROR: unknown --provider '$PROVIDER' (use sqlite or sqlserver)"; exit 1 ;;
 esac
 
+# Ensure .env carries the API-user creds + a UMBRACO_BASE_URL line for start:umbraco to
+# fill in — the integration tests read these. (create-api-user uses the same defaults.)
+if [ ! -f .env ]; then
+  cat > .env <<'ENVEOF'
+UMBRACO_CLIENT_ID=umbraco-back-office-mcp
+UMBRACO_CLIENT_SECRET=1234567890
+UMBRACO_BASE_URL=
+ENVEOF
+  echo "wrote .env (api-user creds + BASE_URL placeholder)"
+elif ! grep -q '^UMBRACO_BASE_URL=' .env; then
+  echo 'UMBRACO_BASE_URL=' >> .env   # start:umbraco only updates an existing line
+fi
+
 dotnet dev-certs https >/dev/null 2>&1 || true
 
 echo "starting Umbraco ($PROVIDER)…"
