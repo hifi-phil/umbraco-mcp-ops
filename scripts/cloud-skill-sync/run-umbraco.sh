@@ -36,6 +36,32 @@ MSSQL_DB="umbraco-mcp-local"
 command -v dotnet >/dev/null 2>&1 || { echo "ERROR: dotnet not on PATH — env-setup.sh installs it"; exit 1; }
 [ -d node_modules ] || { echo "node_modules missing — running npm ci…"; npm ci; }
 
+# The routine env ships no Docker — install the engine and start the daemon on demand
+# (only for --provider sqlserver). Needs root + a daemon that can actually run here; if
+# `dockerd` can't start (unprivileged sandbox), this reports it so we can fall back to a
+# native `mssql-server` apt install instead.
+ensure_docker() {
+  if docker info >/dev/null 2>&1; then echo "docker ready"; return 0; fi
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "installing docker engine…"
+    if command -v apt-get >/dev/null 2>&1; then
+      (apt-get update -qq && apt-get install -y docker.io) || echo "WARN: apt-get docker.io failed"
+    else
+      echo "ERROR: no apt-get to install docker"; return 1
+    fi
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "starting docker daemon…"
+    service docker start >/dev/null 2>&1 || (nohup dockerd >/tmp/dockerd.log 2>&1 &)
+    for _ in $(seq 1 20); do docker info >/dev/null 2>&1 && break; sleep 2; done
+  fi
+  docker info >/dev/null 2>&1 || {
+    echo "ERROR: docker installed but the daemon won't run in this env (likely no privileged/dind support)."
+    echo "       See /tmp/dockerd.log. Fall back to a native SQL Server install (apt mssql-server) — tell me and I'll add that path."
+    return 1
+  }
+}
+
 case "$PROVIDER" in
   sqlite)
     if [ -n "$SEED" ] && [ -d "$HOME/umbraco-seed/$SEED" ]; then
@@ -46,7 +72,7 @@ case "$PROVIDER" in
       npm run umbraco:bootstrap -- --sqlite --force
     fi ;;
   sqlserver)
-    command -v docker >/dev/null 2>&1 || { echo "ERROR: docker not available (needed for --provider sqlserver)"; exit 1; }
+    ensure_docker || { echo "ERROR: docker unavailable — cannot run the SQL Server container"; exit 1; }
     if ! docker ps --format '{{.Names}}' | grep -qx mssql; then
       echo "starting SQL Server 2022 (docker)…"
       docker rm -f mssql >/dev/null 2>&1 || true
