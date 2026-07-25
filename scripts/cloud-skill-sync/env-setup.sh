@@ -247,13 +247,39 @@ write_manifest() {
   local seeds=""
   for d in "$SEED_ROOT"/*/; do [ -d "$d" ] && seeds="${seeds}v$(basename "$d"): \`${d%/}\`  "; done
   [ -n "$seeds" ] || seeds="none built yet"
-  local docker_line="not installed (sqlite env)"
+  local docker_line="not installed (sqlite env)" has_mssql=0
   if [ "$PROVIDER" = "sqlserver" ]; then
     if docker image inspect "$MSSQL_IMAGE" >/dev/null 2>&1; then
-      docker_line="mssql image cached ($(docker images --format '{{.Size}}' "$MSSQL_IMAGE" | head -1))"
+      docker_line="mssql image cached ($(docker images --format '{{.Size}}' "$MSSQL_IMAGE" | head -1))"; has_mssql=1
     else
       docker_line="requested but image NOT cached (check the pull step in this log)"
     fi
+  fi
+  # DB-choice guidance depends on whether SQL Server is AVAILABLE (image cached). Built with
+  # a QUOTED heredoc so the example backticks stay literal; embedded below via $db_section
+  # (parameter expansion isn't re-scanned for command substitution, so it's safe).
+  local db_section
+  if [ "$has_mssql" = "1" ]; then
+    db_section="$(cat <<'DBEOF'
+**SQL Server IS available in this environment** (image cached) — it is simply not *running*
+yet, because the Docker daemon does not persist across sessions. It can be started on demand;
+"not running" does NOT mean unavailable. Check the live state:
+```
+docker info >/dev/null 2>&1 && echo RUNNING || echo "AVAILABLE (not started)"
+```
+- **RUNNING** → use it directly: `--provider sqlserver`.
+- **AVAILABLE (not started)** — the usual fresh-session state → either **start SQL Server on
+  demand** with `run-umbraco.sh --provider sqlserver` (brings up the daemon + container from
+  the cached image), or use `--provider sqlite` (the baked v17/v18 instances) for a quick
+  test with no startup cost. Both are valid — pick per the task.
+DBEOF
+)"
+  else
+    db_section="$(cat <<'DBEOF'
+Only **SQLite** is available in this environment (no SQL Server image cached). Use
+`--provider sqlite` (the baked v17/v18 instances).
+DBEOF
+)"
   fi
   cat > "$MANIFEST" <<EOF
 # Umbraco MCP worker environment — ready ($(date -u +%FT%TZ 2>/dev/null || echo 'time n/a'))
@@ -271,14 +297,7 @@ env build (initial or cached rebuild) by env-setup.sh, so you don't need to prob
 | Ops scripts | $OPS_SCRIPTS_DIR (run-umbraco.sh) |
 
 ## Which database to use RIGHT NOW
-The SQL Server daemon does **not** persist across sessions, so check it live:
-\`\`\`
-docker info >/dev/null 2>&1 && echo "SQL Server: RUNNING" || echo "SQL Server: NOT running"
-\`\`\`
-- **RUNNING** → use SQL Server: \`--provider sqlserver\`.
-- **NOT running** (the usual fresh-session state) → use the **SQLite** demo instances:
-  \`--provider sqlite\` (fast, from the baked seeds above). Only start SQL Server (below) if
-  you specifically need CI-parity.
+$db_section
 
 ## Bring up Umbraco (run from your repo checkout)
 \`\`\`

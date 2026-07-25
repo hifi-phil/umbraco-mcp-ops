@@ -34,16 +34,19 @@ repo's own `CLAUDE.md` (`npm run umbraco:bootstrap` + `npm run start:umbraco`).
 
 ## 2. Choose the database
 
-The **SQL Server daemon does not persist across sessions**, so check it live — don't assume:
+**If the manifest shows the `mssql:2022` image is cached, SQL Server is *available* here** —
+even if it's not running. The daemon does not persist across sessions, so it's usually
+stopped at session start; "stopped" means *startable*, not unavailable. Check live:
 
 ```
-docker info >/dev/null 2>&1 && echo "SQL Server: RUNNING" || echo "SQL Server: NOT running"
+docker info >/dev/null 2>&1 && echo RUNNING || echo "AVAILABLE (not started)"
 ```
 
-- **RUNNING** → use `--provider sqlserver`.
-- **NOT running** (the usual fresh-session state) → use **SQLite** (`--provider sqlite`),
-  fast from the baked v17/v18 instances. Only start SQL Server if you specifically need
-  CI-parity.
+- **RUNNING** → use it: `--provider sqlserver`.
+- **AVAILABLE (not started)** — usual fresh session → either **start it on demand**
+  (`run-umbraco.sh --provider sqlserver` brings it up from the cached image) or use
+  `--provider sqlite` (baked v17/v18 instances) for a quick, no-startup test. Both valid.
+- **No image cached** (a sqlite-only env) → use `--provider sqlite`.
 
 ## 3. Bring Umbraco up
 
