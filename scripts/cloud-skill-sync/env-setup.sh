@@ -272,6 +272,18 @@ docker info >/dev/null 2>&1 && echo RUNNING || echo "AVAILABLE (not started)"
   demand** with `run-umbraco.sh --provider sqlserver` (brings up the daemon + container from
   the cached image), or use `--provider sqlite` (the baked v17/v18 instances) for a quick
   test with no startup cost. Both are valid — pick per the task.
+
+### Start SQL Server directly (without the full Umbraco bring-up)
+`run-umbraco.sh --provider sqlserver` is the wrapper; to bring up just the DB (creds/port
+match CI — see run-umbraco.sh for the canonical invocation):
+```
+docker info >/dev/null 2>&1 || ( dockerd --data-root /root/.docker-data >/tmp/dockerd.log 2>&1 & )
+docker start mssql 2>/dev/null || docker run -d --name mssql \
+  -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Moloko99 -p 1433:1433 \
+  mcr.microsoft.com/mssql/server:2022-latest
+# ready when: docker exec mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Moloko99 -C -Q "SELECT 1"
+# then SQL Server is at localhost:1433 (sa / Moloko99)
+```
 DBEOF
 )"
   else
