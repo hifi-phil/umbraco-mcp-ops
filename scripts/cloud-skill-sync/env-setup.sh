@@ -43,6 +43,12 @@ PROVIDER="${DB_PROVIDER:-sqlite}"
 _prev=""
 for _a in "$@"; do [ "$_prev" = "--provider" ] && PROVIDER="$_a"; _prev="$_a"; done
 
+# A manifest recording what this build added + how to use it, so a session doesn't have to
+# probe. Written on every build (initial or cached rebuild). Fixed paths so any session
+# finds them; run-umbraco.sh is copied here too (sessions shouldn't depend on /tmp/ops-boot).
+MANIFEST="/root/env-manifest.md"
+OPS_SCRIPTS_DIR="/root/umbraco-ops"
+
 # Versions to pre-seed: "major:repo_url:branch:dotnet_channel".
 # Branches verified to exist (dev, v17/dev). Channel .NET 10 for both matches CI
 # (.github/workflows/test.yml uses dotnet 10.0.x on the current tree). If a future major
@@ -228,6 +234,45 @@ build_seed() {
   return "$rc"
 }
 
+# ── Manifest — tell the session what's here ────────────────────────────────
+write_manifest() {
+  mkdir -p "$OPS_SCRIPTS_DIR"
+  cp "$HERE/run-umbraco.sh" "$OPS_SCRIPTS_DIR/" 2>/dev/null || true
+  local seeds; seeds="$(ls -1 "$SEED_ROOT" 2>/dev/null | tr '\n' ' ')"; [ -n "$seeds" ] || seeds="none (sessions bootstrap a fresh demo-site)"
+  local docker_line="not installed (sqlite env — no Docker/SQL Server)"
+  if [ "$PROVIDER" = "sqlserver" ]; then
+    if docker image inspect "$MSSQL_IMAGE" >/dev/null 2>&1; then
+      docker_line="mssql image cached ($(docker images --format '{{.Size}}' "$MSSQL_IMAGE" | head -1)) at $DOCKER_DATA_ROOT — daemon NOT running (run-umbraco.sh starts it per session)"
+    else
+      docker_line="requested but image NOT cached (check the pull step in this log)"
+    fi
+  fi
+  cat > "$MANIFEST" <<EOF
+# Umbraco MCP worker environment — ready ($(date -u +%FT%TZ 2>/dev/null || echo 'time n/a'))
+
+**Agent: read this first** to know what the environment provides — it's written on every
+env build (initial or cached rebuild) by env-setup.sh, so you don't need to probe.
+
+| What        | State |
+|-------------|-------|
+| Provider    | $PROVIDER |
+| .NET SDK    | $(dotnet --version 2>/dev/null || echo 'NOT installed') (on PATH via /usr/local/bin) |
+| Docker/SQL  | $docker_line |
+| SQLite seeds| $seeds |
+| Skills      | delivered to ~/.claude/skills |
+| Ops scripts | $OPS_SCRIPTS_DIR (run-umbraco.sh) |
+
+## Bring up Umbraco (run from your repo checkout)
+\`\`\`
+bash $OPS_SCRIPTS_DIR/run-umbraco.sh --provider $PROVIDER
+\`\`\`
+(sqlite: add \`--seed <major>\` to restore a baked seed fast, if one is listed above.)
+It starts Docker + SQL Server when needed, bootstraps demo-site/, boots Umbraco, and writes
+.env — then \`npm run test:changed\` (or \`npm test\` for the full suite) runs against it.
+EOF
+  log "wrote manifest: $MANIFEST"
+}
+
 # ── main ───────────────────────────────────────────────────────────────────
 {
   log "===== env-setup v$VERSION (provider=$PROVIDER) ====="
@@ -256,6 +301,7 @@ build_seed() {
 
   log "dotnet: $(dotnet --version 2>/dev/null || echo 'not installed')"
   [ "$PROVIDER" = "sqlserver" ] && log "mssql image: $(docker images --format '{{.Size}}' "$MSSQL_IMAGE" 2>/dev/null | head -1 || echo 'not cached')"
-  log "===== env-setup done ====="
+  write_manifest
+  log "===== env-setup done (manifest: $MANIFEST) ====="
 } 2>&1 | tee -a "$LOG"
 exit 0
