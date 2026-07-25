@@ -43,6 +43,11 @@ PROVIDER="${DB_PROVIDER:-sqlite}"
 _prev=""
 for _a in "$@"; do [ "$_prev" = "--provider" ] && PROVIDER="$_a"; _prev="$_a"; done
 
+# Bake the SQLite demo-instance seeds (v17 + v18) — the fast-test path, useful in BOTH env
+# types. A sqlserver env keeps these AND caches the mssql image (CI-parity on demand). Set
+# BAKE_SEEDS=0 only for a lean env with no git token where sessions bootstrap fresh instead.
+BAKE_SEEDS="${BAKE_SEEDS:-1}"
+
 # A manifest recording what this build added + how to use it, so a session doesn't have to
 # probe. Written on every build (initial or cached rebuild). Fixed paths so any session
 # finds them; run-umbraco.sh is copied here too (sessions shouldn't depend on /tmp/ops-boot).
@@ -238,11 +243,14 @@ build_seed() {
 write_manifest() {
   mkdir -p "$OPS_SCRIPTS_DIR"
   cp "$HERE/run-umbraco.sh" "$OPS_SCRIPTS_DIR/" 2>/dev/null || true
-  local seeds; seeds="$(ls -1 "$SEED_ROOT" 2>/dev/null | tr '\n' ' ')"; [ -n "$seeds" ] || seeds="none (sessions bootstrap a fresh demo-site)"
-  local docker_line="not installed (sqlite env — no Docker/SQL Server)"
+  # The demo instances, one per major version, listed as "v<major>: <path>".
+  local seeds=""
+  for d in "$SEED_ROOT"/*/; do [ -d "$d" ] && seeds="${seeds}v$(basename "$d"): \`${d%/}\`  "; done
+  [ -n "$seeds" ] || seeds="none built yet"
+  local docker_line="not installed (sqlite env)"
   if [ "$PROVIDER" = "sqlserver" ]; then
     if docker image inspect "$MSSQL_IMAGE" >/dev/null 2>&1; then
-      docker_line="mssql image cached ($(docker images --format '{{.Size}}' "$MSSQL_IMAGE" | head -1)) at $DOCKER_DATA_ROOT — daemon NOT running (run-umbraco.sh starts it per session)"
+      docker_line="mssql image cached ($(docker images --format '{{.Size}}' "$MSSQL_IMAGE" | head -1))"
     else
       docker_line="requested but image NOT cached (check the pull step in this log)"
     fi
@@ -257,18 +265,28 @@ env build (initial or cached rebuild) by env-setup.sh, so you don't need to prob
 |-------------|-------|
 | Provider    | $PROVIDER |
 | .NET SDK    | $(dotnet --version 2>/dev/null || echo 'NOT installed') (on PATH via /usr/local/bin) |
-| Docker/SQL  | $docker_line |
-| SQLite seeds| $seeds |
+| SQL Server image | $docker_line |
+| Demo instances | $seeds |
 | Skills      | delivered to ~/.claude/skills |
 | Ops scripts | $OPS_SCRIPTS_DIR (run-umbraco.sh) |
 
+## Which database to use RIGHT NOW
+The SQL Server daemon does **not** persist across sessions, so check it live:
+\`\`\`
+docker info >/dev/null 2>&1 && echo "SQL Server: RUNNING" || echo "SQL Server: NOT running"
+\`\`\`
+- **RUNNING** → use SQL Server: \`--provider sqlserver\`.
+- **NOT running** (the usual fresh-session state) → use the **SQLite** demo instances:
+  \`--provider sqlite\` (fast, from the baked seeds above). Only start SQL Server (below) if
+  you specifically need CI-parity.
+
 ## Bring up Umbraco (run from your repo checkout)
 \`\`\`
-bash $OPS_SCRIPTS_DIR/run-umbraco.sh --provider $PROVIDER
+bash $OPS_SCRIPTS_DIR/run-umbraco.sh --provider <sqlite|sqlserver>
 \`\`\`
-(sqlite: add \`--seed <major>\` to restore a baked seed fast, if one is listed above.)
-It starts Docker + SQL Server when needed, bootstraps demo-site/, boots Umbraco, and writes
-.env — then \`npm run test:changed\` (or \`npm test\` for the full suite) runs against it.
+sqlite: add \`--seed <major>\` to restore a baked demo instance fast. sqlserver: starts the
+Docker daemon + container (from the cached image) first. Either way it bootstraps demo-site/,
+boots Umbraco, and writes .env — then \`npm run test:changed\` (or \`npm test\`) runs against it.
 EOF
   log "wrote manifest: $MANIFEST"
 }
@@ -285,11 +303,9 @@ EOF
   install_dotnet "${DOTNET_CHANNEL:-10.0}"         # SDK — every session needs it
   if [ "$PROVIDER" = "sqlserver" ]; then prep_sqlserver || true; fi   # cache the mssql image
 
-  # Pre-bake the SQLite seeds (v17 + v18) by cloning the repo. On by default now that the
-  # clone uses the env's GitHub token (build_seed) — the private-repo "could not read
-  # Username" failure was just git not being handed the token. Set BAKE_SEEDS=0 to skip
-  # (e.g. an env with no token, where sessions bootstrap the demo-site fresh instead).
-  if [ "${BAKE_SEEDS:-1}" = "1" ]; then
+  # Pre-bake the SQLite demo-instance seeds (v17 + v18) by cloning the repo (token-auth in
+  # build_seed). Defaults on for a SQLITE env, off for sqlserver (see BAKE_SEEDS above).
+  if [ "$BAKE_SEEDS" = "1" ]; then
     mkdir -p "$SEED_ROOT"
     for t in "${SEED_TARGETS[@]}"; do
       major="${t%%:*}"; rest="${t#*:}"; channel="${rest##*:}"; rest="${rest%:*}"; branch="${rest##*:}"; repo="${rest%:*}"

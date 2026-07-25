@@ -16,7 +16,7 @@ a live routine's prompt. Substitution is the *only* per-repo change.
 Name: `loop-dispatch → {{OWNER_REPO}}`
 
 ```text
-You are running as a cloud worker; do all GitHub work via the GitHub MCP (github-ops). A GitHub loop event fired on {{OWNER_REPO}}. Run the loop-dispatch skill: read the <github-trigger-context> block, run route-event.sh to get the route, and dispatch to the matching loop exactly as loop-dispatch specifies, or quiet no-op when route=none. Follow loop-dispatch's guardrails verbatim; add no policy of your own.
+You are running as a cloud worker; do all GitHub work via the GitHub MCP (github-ops). A GitHub loop event fired on {{OWNER_REPO}}. First consult the worker-env skill (read /root/env-manifest.md) to learn what this environment provides — .NET SDK, whether SQL Server is running, the v17/v18 demo instances, and run-umbraco.sh. Then run the loop-dispatch skill: read the <github-trigger-context> block, run route-event.sh to get the route, and dispatch to the matching loop exactly as loop-dispatch specifies, or quiet no-op when route=none. Follow loop-dispatch's guardrails verbatim; add no policy of your own.
 ```
 
 The routine has **no UI event triggers** — it's fired by the committed GitHub Action

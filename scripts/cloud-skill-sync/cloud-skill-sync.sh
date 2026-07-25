@@ -32,7 +32,7 @@ SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
 HOOKS_ROOT="$HOME/.claude/ops-hooks"          # plugin-root stand-in for the capture hooks
 SETTINGS="$HOME/.claude/settings.json"
-SKILLS="github-ops loop-dispatch merge-flow triage-learnings dependabot-rollup auto-release-loop release-and-branching sync-dev rework-loop mcp-issue-loop"
+SKILLS="github-ops loop-dispatch worker-env merge-flow triage-learnings dependabot-rollup auto-release-loop release-and-branching sync-dev rework-loop mcp-issue-loop"
 LOG="$HOME/skill-sync.log"
 
 mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
