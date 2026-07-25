@@ -157,8 +157,18 @@ build_seed() {
   dotnet dev-certs https >/dev/null 2>&1 || true
 
   local work; work="$(mktemp -d)"
-  log "seed $major: cloning $repo@$branch"
-  if ! git clone --depth 1 --branch "$branch" "$repo" "$work/app"; then
+  # The target repo is PRIVATE, so a bare clone prompts for a username ("could not read
+  # Username"). Inject the env's GitHub token when present so env-build can clone it. The
+  # token stays only in the throwaway $work clone (removed below); it's never logged.
+  local tok="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  local clone_url="$repo"
+  if [ -n "$tok" ]; then
+    clone_url="https://x-access-token:${tok}@${repo#https://}"
+    log "seed $major: cloning $repo@$branch (authenticated via env token)"
+  else
+    log "seed $major: cloning $repo@$branch (no token in env — anonymous; will fail if private)"
+  fi
+  if ! git clone --depth 1 --branch "$branch" "$clone_url" "$work/app" 2>&1 | sed "s#${tok:-__no_token__}#***#g"; then
     log "WARN: clone failed for $major ($repo@$branch) — skipping seed"; rm -rf "$work"; return 1
   fi
   # NB: no stderr redirect on this subshell — everything streams through the outer
@@ -230,10 +240,11 @@ build_seed() {
   install_dotnet "${DOTNET_CHANNEL:-10.0}"         # SDK — every session needs it
   if [ "$PROVIDER" = "sqlserver" ]; then prep_sqlserver || true; fi   # cache the mssql image
 
-  # Opt-in only: pre-bake SQLite seeds by cloning the repo. Off by default because env-build
-  # has no git creds for the private repo (clone -> "could not read Username"). Set
-  # BAKE_SEEDS=1 only in an env whose build phase DOES have git access.
-  if [ "${BAKE_SEEDS:-0}" = "1" ]; then
+  # Pre-bake the SQLite seeds (v17 + v18) by cloning the repo. On by default now that the
+  # clone uses the env's GitHub token (build_seed) — the private-repo "could not read
+  # Username" failure was just git not being handed the token. Set BAKE_SEEDS=0 to skip
+  # (e.g. an env with no token, where sessions bootstrap the demo-site fresh instead).
+  if [ "${BAKE_SEEDS:-1}" = "1" ]; then
     mkdir -p "$SEED_ROOT"
     for t in "${SEED_TARGETS[@]}"; do
       major="${t%%:*}"; rest="${t#*:}"; channel="${rest##*:}"; rest="${rest%:*}"; branch="${rest##*:}"; repo="${rest%:*}"
