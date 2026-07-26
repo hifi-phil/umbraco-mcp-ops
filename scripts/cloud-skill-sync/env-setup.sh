@@ -43,8 +43,11 @@ log() { printf '%s %s\n' "$(date -u +%FT%TZ 2>/dev/null || echo now)" "$*" | tee
 # ── 1. Skills / agents / hooks (required) ──────────────────────────────────
 deliver_skills() {
   if [ -f "$HERE/cloud-skill-sync.sh" ]; then
-    log "delivering skills/agents/hooks via cloud-skill-sync.sh"
-    bash "$HERE/cloud-skill-sync.sh" || log "WARN: cloud-skill-sync.sh returned non-zero"
+    # Deliver skills from THIS checkout (the branch env-setup was launched from), not a
+    # fresh clone of main — otherwise a branch-pointed env can't test its own new skills.
+    local ops_root; ops_root="$(cd "$HERE/../.." && pwd)"
+    log "delivering skills/agents/hooks via cloud-skill-sync.sh (source: $ops_root)"
+    OPS_SRC="$ops_root" bash "$HERE/cloud-skill-sync.sh" || log "WARN: cloud-skill-sync.sh returned non-zero"
   else
     log "ERROR: cloud-skill-sync.sh not found next to env-setup.sh"
   fi

@@ -26,7 +26,7 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="10"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="11"                                  # bump to force an env-cache rebuild / re-clone
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
@@ -38,11 +38,20 @@ LOG="$HOME/skill-sync.log"
 mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
 {
   echo "===== cloud-skill-sync v$VERSION ====="
-  rm -rf /tmp/ops
-  if git clone --depth 1 "$REPO" /tmp/ops; then
+  # Source of truth: if env-setup passed the checkout it was launched from (OPS_SRC), use
+  # it — so a branch-pointed env delivers THAT branch's skills (worker-env etc.). Otherwise
+  # (this script pasted directly as the Setup field) clone the default branch.
+  CLONED=0
+  if [ -n "${OPS_SRC:-}" ] && [ -d "$OPS_SRC/plugins" ]; then
+    OPS_DIR="$OPS_SRC"; echo "using provided source (no clone): $OPS_DIR"
+  else
+    rm -rf /tmp/ops
+    if git clone --depth 1 "$REPO" /tmp/ops; then OPS_DIR=/tmp/ops; CLONED=1; fi
+  fi
+  if [ -n "${OPS_DIR:-}" ]; then
     # Skills: copy each listed skill dir into the skills dir.
     for s in $SKILLS; do
-      src="$(find /tmp/ops/plugins -type d -path "*/skills/$s" 2>/dev/null | head -1)"
+      src="$(find "$OPS_DIR/plugins" -type d -path "*/skills/$s" 2>/dev/null | head -1)"
       if [ -n "$src" ]; then
         rm -rf "$SKILLS_DEST/$s"; cp -r "$src" "$SKILLS_DEST/$s"; echo "installed skill: $s"
       else
@@ -50,13 +59,13 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
       fi
     done
     # Agents: copy every plugin agent definition (e.g. release-reviewer) into the agents dir.
-    find /tmp/ops/plugins -type f -path "*/agents/*.md" 2>/dev/null | while read -r a; do
+    find "$OPS_DIR/plugins" -type f -path "*/agents/*.md" 2>/dev/null | while read -r a; do
       cp "$a" "$AGENTS_DEST/" && echo "installed agent: $(basename "$a")"
     done
     # Hooks: deliver the mcp-issue-loop learning hooks (+ their schema) under a plugin-root
     # stand-in, then register them in settings.json. An installed plugin auto-wires its
     # hooks via ${CLAUDE_PLUGIN_ROOT}; a copied skill does not, so we wire them by hand.
-    plug="$(find /tmp/ops/plugins -maxdepth 1 -type d -name mcp-issue-loop 2>/dev/null | head -1)"
+    plug="$(find "$OPS_DIR/plugins" -maxdepth 1 -type d -name mcp-issue-loop 2>/dev/null | head -1)"
     if [ -n "$plug" ] && [ -d "$plug/hooks" ]; then
       rm -rf "$HOOKS_ROOT"
       mkdir -p "$HOOKS_ROOT/hooks" "$HOOKS_ROOT/skills/mcp-issue-loop/references"
@@ -92,9 +101,9 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
       echo "NOT FOUND in source: mcp-issue-loop hooks"
     fi
   else
-    echo "ERROR: clone failed ($REPO)"
+    echo "ERROR: no source available (clone failed: $REPO, and no OPS_SRC provided)"
   fi
-  rm -rf /tmp/ops
+  [ "$CLONED" = "1" ] && rm -rf /tmp/ops   # only remove a checkout WE cloned, not OPS_SRC
   echo "skills present: $(ls -1 "$SKILLS_DEST" 2>/dev/null | tr '\n' ' ')"
   echo "agents present: $(ls -1 "$AGENTS_DEST" 2>/dev/null | tr '\n' ' ')"
   echo "hooks present:  $(ls -1 "$HOOKS_ROOT/hooks" 2>/dev/null | tr '\n' ' ')"
