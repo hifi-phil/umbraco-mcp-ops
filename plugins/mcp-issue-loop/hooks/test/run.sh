@@ -25,7 +25,10 @@ event_for() { printf '{"transcript_path":"%s","hook_event_name":"%s","session_id
 # run_case <name> <scope> <expect-substring> [env assignments...] -- reads event JSON on stdin
 run_case() {
   local name="$1" scope="$2" expect="$3"; shift 3
-  local log="$WORK/$name.log"
+  # Per-case dir so the once-per-session marker (analyzed-<scope>-<sid>, written
+  # beside the log) can't leak between cases that share session_id "test".
+  local dir="$WORK/$name"; mkdir -p "$dir"
+  local log="$dir/capture.log"
   env MCP_ISSUE_LOOP_LOG="$log" "$@" bash "$SCRIPT" "$scope"
   local rc=$?
   if [ "$rc" -ne 0 ]; then echo "FAIL [$name]: exit=$rc (expected 0)"; fail=$((fail+1)); return; fi
@@ -68,6 +71,19 @@ run_case no_transcript subagent "no readable transcript_path — skipping" \
 # 7. Malformed analyzer output is rejected, not filed
 run_case bad_json subagent "analyzer output not JSON" MCP_ISSUE_LOOP_ANALYZER_OUT='not json at all' \
   < <(event_for "$FIX/loop-build.jsonl")
+
+# 8. Once-per-session guard: a second SubagentStop for the same session skips
+#    re-analysis (mirrors a resumed subagent firing another SubagentStop).
+guard_dir="$WORK/once"; mkdir -p "$guard_dir"; guard2_log="$guard_dir/capture.log"
+env MCP_ISSUE_LOOP_LOG="$guard2_log" MCP_ISSUE_LOOP_DRY_RUN=1 MCP_ISSUE_LOOP_ANALYZER_OUT="$FILE_JSON" \
+  bash "$SCRIPT" subagent < <(event_for "$FIX/loop-build.jsonl") >/dev/null 2>&1
+env MCP_ISSUE_LOOP_LOG="$guard2_log" MCP_ISSUE_LOOP_DRY_RUN=1 MCP_ISSUE_LOOP_ANALYZER_OUT="$FILE_JSON" \
+  bash "$SCRIPT" subagent < <(event_for "$FIX/loop-build.jsonl") >/dev/null 2>&1
+if grep -qF "already analysed — skipping" "$guard2_log" 2>/dev/null; then
+  echo "PASS [once_per_session]"; pass=$((pass+1))
+else
+  echo "FAIL [once_per_session]: second run did not skip"; echo "  --- log ---"; sed 's/^/  /' "$guard2_log" 2>/dev/null; fail=$((fail+1))
+fi
 
 echo "-----"
 echo "passed=$pass failed=$fail"
