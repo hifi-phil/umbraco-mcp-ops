@@ -5,9 +5,10 @@ description: >-
   repo, driving each to a CI-green PR. Two modes, chosen by the caller (default
   local): LOCAL — orchestrated, one git worktree + subagent per issue (max 3
   parallel), local tests, then a review-response loop until merged, with capture
-  hooks; CLOUD — one session per issue (event-triggered), no worktree, TypeScript
-  compile sanity + CI as the test gate (no local Umbraco), build to a CI-green PR
-  and stop (review-response handed to rework-loop). Each issue is implemented
+  hooks; CLOUD — one session per issue (event-triggered), no worktree, boots a
+  local Umbraco via the worker-env skill and gates on the diff's tests
+  (test:changed) before pushing, then drives CI green and stops (review-response
+  handed to rework-loop). Each issue is implemented
   following the established MCP skills and security/code-reviewed. Repo-agnostic
   across Umbraco MCP repos; github-ops required. Trigger on "work the ready issues",
   "run the issue loop", or a routine on Issue: Labeled `ready-for-ai` (cloud).
@@ -25,7 +26,8 @@ explicitly):
   through *Rules* below.
 - **Cloud (one-shot per issue)** — a routine fires once per `ready-for-ai` issue
   (cross-issue parallelism comes from separate sessions); you build that **one** issue
-  to a CI-green PR with **CI as the test gate**, then **stop**. See [Cloud mode](#cloud-mode).
+  to a CI-green PR, **gating locally on the diff's tests** (a `worker-env` Umbraco +
+  `test:changed`) before pushing, then **stop**. See [Cloud mode](#cloud-mode).
 
 In **local mode** you are the **orchestrator**. You own a long-lived loop (it survives
 across turns and scheduled wake-ups) whose terminal condition is: *every open
@@ -285,6 +287,12 @@ orchestrator on a cheap base model**: it triages the one issue and dispatches a 
 build subagent on the best-fit model — the same *Model selection* logic as local, just one
 subagent instead of up to three.
 
+**Know the environment first.** Before triaging, consult the **[`worker-env`](../../../loop-dispatch/skills/worker-env/SKILL.md)** skill
+(`cat /root/env-manifest.md`) — it tells you what this cloud worker provides (.NET SDK,
+whether SQL Server is available, the ops `run-umbraco.sh`). Cloud sessions **do** get a
+local Umbraco now: the build subagent boots one and runs the diff's tests as a real local
+gate (below) — this is no longer a compile-only, CI-is-the-only-gate flow.
+
 For the one triggering issue (identify it from the event; if unclear, take the **oldest**
 open `ready-for-ai` issue; none → quiet no-op):
 
@@ -299,10 +307,27 @@ open `ready-for-ai` issue; none → quiet no-op):
    `EnterWorktree` (cloud sessions are already isolated, and the worktree hooks need the
    local DB/toolchain). Implement the issue following the **shared build playbook**
    ([`references/issue-lifecycle.md`](references/issue-lifecycle.md)) and the MCP skills,
-   with two substitutions:
-   - **No local Umbraco, no `npm run test:all`.** This repo is TypeScript — run `npm ci`
-     + `npm run compile` / `npm run build` as the sanity pass. **CI (GitHub Actions) is
-     the test gate**; it runs the integration/eval suite.
+   with two substitutions for playbook steps 1 and 4:
+   - **Instead of the worktree (playbook step 1):** work directly in the session checkout.
+   - **Instead of `npm run start:umbraco` + `npm run test:all` (playbook step 4):** bring up
+     a local Umbraco via the **[`worker-env`](../../../loop-dispatch/skills/worker-env/SKILL.md)**
+     skill and gate on the **diff's** tests, not the whole suite. As your **first action**
+     (so Umbraco boots while you implement — first boot runs the unattended install, ~1–2 min):
+     ```
+     bash /root/.umbraco-ops/run-umbraco.sh --provider sqlite >/tmp/umbraco-run.log 2>&1 &
+     ```
+     (Use `--provider sqlserver` only if `worker-env` says the mssql image is cached and you
+     want CI-parity; SQLite is the fast default.) Implement, then **wait for Umbraco ready**
+     (`.demo-site-port` exists and `/umbraco/management/api/v1/server/status` returns 200) and
+     run the tests covering your change:
+     - **`npm run test:changed`** — the integration tests touching your diff (preferred). If
+       the repo doesn't have that script yet, fall back to
+       `npm run test:one -- --testPathPattern='<collection>/__tests__/<tool>'` for each area
+       you touched.
+     - **`npm run test:all`** — only for a broad / cross-cutting change.
+
+     Fix locally until green **before** pushing. CI still runs the full suite on the PR, but
+     this local gate catches regressions before you spend CI attempts on them.
    - Still run **`/security-review` + `/code-review` (low)** before pushing.
 3. Push, open the PR against `<base>`, and **drive CI green** from the logs (github-ops →
    *Read a failing check's log*; the **8-attempt** cap applies).

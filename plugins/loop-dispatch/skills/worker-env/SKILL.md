@@ -64,8 +64,15 @@ for i in $(seq 1 60); do [ -f .demo-site-port ] && curl -ksf "https://localhost:
 grep UMBRACO_BASE_URL .env   # the ready base URL the tests use
 ```
 
-Then run the change's tests: **`npm run test:changed`** (only the tests touching your diff),
-or `npm test` for the full suite. CI still runs the whole suite on the PR.
+Then run the change's tests:
+
+- **`npm run test:changed`** — only the integration tests touching your diff (preferred). If
+  the repo doesn't have that script yet, fall back to
+  **`npm run test:one -- --testPathPattern='<collection>/__tests__/<tool>'`** for each area
+  you changed.
+- **`npm run test:all`** — the full suite; use only for a broad / cross-cutting change.
+
+CI still runs the whole suite on the PR, so `test:changed` is the normal local gate.
 
 ## Guardrails
 
