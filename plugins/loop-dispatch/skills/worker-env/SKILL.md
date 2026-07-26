@@ -26,8 +26,8 @@ authoritative record of this worker. It lists:
 - **.NET SDK** — version, on `PATH` via `/usr/local/bin`.
 - **SQL Server image** — whether the `mssql:2022` image is cached.
 - **Demo instances** — the **v17 and v18** instances and their directories (e.g.
-  `/root/umbraco-seed/17`, `/root/umbraco-seed/18`).
-- **Ops scripts** — `/root/umbraco-ops/run-umbraco.sh`.
+  `/root/.umbraco-seed/17`, `/root/.umbraco-seed/18`).
+- **Ops scripts** — `/root/.umbraco-ops/run-umbraco.sh`.
 
 If the manifest is **absent**, this env wasn't built by `env-setup.sh` — fall back to the
 repo's own `CLAUDE.md` (`npm run umbraco:bootstrap` + `npm run start:umbraco`).
@@ -54,7 +54,7 @@ From your repo checkout, one command does everything (starts Docker + SQL Server
 needed, bootstraps `demo-site/`, boots Umbraco, creates the API user, writes `.env`):
 
 ```
-bash /root/umbraco-ops/run-umbraco.sh --provider <sqlite|sqlserver>
+bash /root/.umbraco-ops/run-umbraco.sh --provider <sqlite|sqlserver>
 ```
 
 - **sqlite** — add `--seed <major>` to restore a baked instance in seconds (if the manifest

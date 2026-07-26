@@ -24,7 +24,11 @@ set -uo pipefail
 VERSION="1"                       # log marker only — the cache-bust is `rebuild:` in the stub
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG="$HOME/env-setup.log"
-SEED_ROOT="$HOME/umbraco-seed"
+# Dot-path on purpose: everything that survives across builds here is a HOME dot-dir
+# (.dotnet, .docker-data, .claude), so the seed is stored as a dot-dir too on the theory
+# that the env persists dotfiles and discards plain working dirs. Absolute (not $HOME-
+# relative) so a session with a different $HOME finds it. Override with SEED_ROOT=.
+SEED_ROOT="${SEED_ROOT:-/root/.umbraco-seed}"
 
 export DOTNET_ROOT="$HOME/.dotnet"
 export PATH="$HOME/.dotnet:$HOME/.dotnet/tools:$PATH"
@@ -52,7 +56,7 @@ BAKE_SEEDS="${BAKE_SEEDS:-1}"
 # probe. Written on every build (initial or cached rebuild). Fixed paths so any session
 # finds them; run-umbraco.sh is copied here too (sessions shouldn't depend on /tmp/ops-boot).
 MANIFEST="/root/env-manifest.md"
-OPS_SCRIPTS_DIR="/root/umbraco-ops"
+OPS_SCRIPTS_DIR="/root/.umbraco-ops"   # dot-dir too (same persistence theory)
 
 # Versions to pre-seed: "major:repo_url:branch:dotnet_channel".
 # Branches verified to exist (dev, v17/dev). Channel .NET 10 for both matches CI
