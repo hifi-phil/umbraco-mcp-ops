@@ -4,20 +4,17 @@
 #
 #   --provider sqlite      (default) server-less SQLite; file-based, fast, bakeable.
 #   --provider sqlserver   CI-parity: SQL Server 2022 via Docker (exact image + creds
-#                          from .github/workflows/test.yml). Not bakeable (DB in container).
-#   --seed <major>         sqlite only: restore a pre-baked seed from /root/.umbraco-seed/<major>
-#                          (built by env-setup.sh) instead of a fresh bootstrap — near-instant.
+#                          from .github/workflows/test.yml).
 #   --no-test-user         skip create-api-user / publish-root-content (just boot).
 #
 # Assumes env-setup.sh already installed the .NET SDK (dotnet on PATH via /usr/local/bin).
 # Prints the base URL on success; leaves Umbraco running in the background.
 set -uo pipefail
 
-PROVIDER="sqlite"; SEED=""; TEST_USER=1
+PROVIDER="sqlite"; TEST_USER=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --provider) PROVIDER="${2:-}"; shift 2 ;;
-    --seed)     SEED="${2:-}"; shift 2 ;;
     --no-test-user) TEST_USER=0; shift ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
@@ -67,13 +64,8 @@ ensure_docker() {
 
 case "$PROVIDER" in
   sqlite)
-    if [ -n "$SEED" ] && [ -d "/root/.umbraco-seed/$SEED" ]; then
-      echo "restoring pre-baked SQLite seed /root/.umbraco-seed/$SEED …"
-      rm -rf demo-site && mkdir -p demo-site && rsync -a "/root/.umbraco-seed/$SEED/" demo-site/
-    else
-      echo "bootstrapping fresh SQLite demo-site…"
-      npm run umbraco:bootstrap -- --sqlite --force
-    fi ;;
+    echo "bootstrapping SQLite demo-site…"
+    npm run umbraco:bootstrap -- --sqlite --force ;;
   sqlserver)
     ensure_docker || { echo "ERROR: docker unavailable — cannot run the SQL Server container"; exit 1; }
     if ! docker ps --format '{{.Names}}' | grep -qx mssql; then

@@ -1,73 +1,42 @@
 #!/usr/bin/env bash
-# env-setup.sh — cloud env build for the Umbraco MCP loop workers.
+# env-setup.sh — cloud env WARM-UP for the Umbraco MCP loop workers.
 #
-# Invoked by the tiny stub in the env Setup script field (env-setup-stub.sh). Runs
-# ONCE at env-build (before any session), and everything it writes under $HOME is
-# captured in the env snapshot; a session's repo checkout is fresh each time, so
-# anything a session needs must live under $HOME.
+# Invoked once at env-build by the stub in the env Setup script field (env-setup-stub.sh).
+# It caches only the slow, CREDENTIAL-FREE downloads — the things that reliably persist —
+# so a session can bring Umbraco up quickly:
+#   1. skills / agents / hooks           (delegates to cloud-skill-sync.sh)   [required]
+#   2. rsync                             (bootstrap-demo-site.sh needs it)
+#   3. .NET SDK                          ($HOME/.dotnet, symlinked to /usr/local/bin)
+#   4. (sqlserver only) Docker + the mssql:2022 image, in Docker's persistent store
 #
-# It does three things:
-#   1. Deliver skills/agents/hooks         (delegates to cloud-skill-sync.sh)  — REQUIRED
-#   2. Install the .NET SDK                ($HOME/.dotnet)                      — best-effort
-#   3. Bake a ready-to-run Umbraco (SQLite) seed per version                   — best-effort
-#      ($HOME/umbraco-seed/<major>/ = a booted, API-user'd, root-published demo-site)
+# It deliberately does NOT pre-bake an Umbraco instance — caching a baked instance proved
+# unreliable (needs a build-phase token for the private repo, and the plain seed dir isn't
+# retained across rebuilds). Instead, a SESSION runs run-umbraco.sh to bootstrap demo-site/
+# and boot Umbraco (~a couple of minutes) against the chosen DB. Everything here is
+# credential-free, so there's no private-repo / token dependency at build time.
 #
-# Steps 2–3 are best-effort: if a seed can't build, the build/rework loops simply skip
-# their local test pre-flight (and lean on CI) — the loops themselves still run. Only the
-# skill delivery is required.
+# Two environments from one stub, via --provider (or DB_PROVIDER):
+#   sqlite     lean: skills + SDK. Sessions run Umbraco on server-less SQLite.
+#   sqlserver  CI-parity: also Docker + the cached mssql image, for SQL Server sessions.
 #
-# Design + rationale: docs/specs/cloud-umbraco-validation.md.
-# See also reference: the .NET install pattern below (raw-github dotnet-install.sh; the
-# dot.net/v1 URL 301-redirects and traps curl without -L).
+# Design: docs/specs/cloud-umbraco-validation.md.
 set -uo pipefail
 
-VERSION="1"                       # log marker only — the cache-bust is `rebuild:` in the stub
+VERSION="2"                       # log marker only — the cache-bust is `rebuild:` in the stub
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG="$HOME/env-setup.log"
-# Dot-path on purpose: everything that survives across builds here is a HOME dot-dir
-# (.dotnet, .docker-data, .claude), so the seed is stored as a dot-dir too on the theory
-# that the env persists dotfiles and discards plain working dirs. Absolute (not $HOME-
-# relative) so a session with a different $HOME finds it. Override with SEED_ROOT=.
-SEED_ROOT="${SEED_ROOT:-/root/.umbraco-seed}"
 
 export DOTNET_ROOT="$HOME/.dotnet"
 export PATH="$HOME/.dotnet:$HOME/.dotnet/tools:$PATH"
-export NODE_TLS_REJECT_UNAUTHORIZED=0   # demo-site uses a self-signed HTTPS dev cert
 
-# SQL Server (CI-parity) prep is opt-in: `--provider sqlserver` (or DB_PROVIDER=sqlserver).
-# When set, env-build installs Docker and PULLS the mssql image so the ~1.5 GB download is
-# cached in the snapshot; sessions then just start the daemon + `docker run` (no re-pull).
-# Docker's storage is kept under $HOME so the snapshot retains the pulled image.
 MSSQL_IMAGE="mcr.microsoft.com/mssql/server:2022-latest"
-# FIXED absolute path (NOT $HOME-relative): env-build runs as root and caches the image
-# here; a session must start dockerd against the SAME path to see it. Confirmed to persist
-# across sessions. Override only if the env stores docker data elsewhere.
-DOCKER_DATA_ROOT="${DOCKER_DATA_ROOT:-/root/.docker-data}"
-PROVIDER="${DB_PROVIDER:-sqlite}"
-_prev=""
-for _a in "$@"; do [ "$_prev" = "--provider" ] && PROVIDER="$_a"; _prev="$_a"; done
-
-# Bake the SQLite demo-instance seeds (v17 + v18) — the fast-test path, useful in BOTH env
-# types. A sqlserver env keeps these AND caches the mssql image (CI-parity on demand). Set
-# BAKE_SEEDS=0 only for a lean env with no git token where sessions bootstrap fresh instead.
-BAKE_SEEDS="${BAKE_SEEDS:-1}"
-
-# A manifest recording what this build added + how to use it, so a session doesn't have to
-# probe. Written on every build (initial or cached rebuild). Fixed paths so any session
-# finds them; run-umbraco.sh is copied here too (sessions shouldn't depend on /tmp/ops-boot).
+DOCKER_DATA_ROOT="${DOCKER_DATA_ROOT:-/root/.docker-data}"   # persistent (proven)
+DOTNET_CHANNEL="${DOTNET_CHANNEL:-10.0}"
 MANIFEST="/root/env-manifest.md"
-OPS_SCRIPTS_DIR="/root/.umbraco-ops"   # dot-dir too (same persistence theory)
+OPS_SCRIPTS_DIR="/root/.umbraco-ops"
 
-# Versions to pre-seed: "major:repo_url:branch:dotnet_channel".
-# Branches verified to exist (dev, v17/dev). Channel .NET 10 for both matches CI
-# (.github/workflows/test.yml uses dotnet 10.0.x on the current tree). If a future major
-# targets a different .NET (check docs.umbraco.com/umbraco-cms/<version>.latest — the
-# supported .NET tracks the CMS release), add its channel here. A wrong branch/channel just
-# makes that one seed skip (best-effort), it won't break env-build.
-SEED_TARGETS=(
-  "18:https://github.com/umbraco/Umbraco-CMS-MCP-Editor:dev:10.0"
-  "17:https://github.com/umbraco/Umbraco-CMS-MCP-Editor:v17/dev:10.0"
-)
+PROVIDER="${DB_PROVIDER:-sqlite}"
+_prev=""; for _a in "$@"; do [ "$_prev" = "--provider" ] && PROVIDER="$_a"; _prev="$_a"; done
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ 2>/dev/null || echo now)" "$*" | tee -a "$LOG"; }
 
@@ -81,234 +50,106 @@ deliver_skills() {
   fi
 }
 
-# ── System tools the seed build needs ──────────────────────────────────────
-# rsync is used by the repo's bootstrap-demo-site.sh AND by our snapshot step, but the
-# cloud worker image doesn't ship it. Install it (runs as root; apt available on the
-# Ubuntu image). Best-effort — a failure just means the seeds can't build.
+# ── 2. rsync (bootstrap-demo-site.sh uses it; the base image may not ship it) ──
 ensure_tools() {
   command -v rsync >/dev/null 2>&1 && { log "rsync present"; return 0; }
-  log "installing rsync (needed by bootstrap-demo-site.sh + snapshot)"
-  if command -v apt-get >/dev/null 2>&1; then
-    (apt-get update -qq && apt-get install -y rsync) >>"$LOG" 2>&1 || log "WARN: apt-get rsync failed"
-  fi
-  command -v rsync >/dev/null 2>&1 || log "WARN: rsync still missing — seeds will fail"
+  log "installing rsync"
+  command -v apt-get >/dev/null 2>&1 && (apt-get update -qq && apt-get install -y rsync) >>"$LOG" 2>&1 || log "WARN: apt-get rsync failed"
+  command -v rsync >/dev/null 2>&1 || log "WARN: rsync still missing — run-umbraco bootstrap will fail"
 }
 
-# ── SQL Server prep (opt-in) ───────────────────────────────────────────────
-# Install Docker + start the daemon with its data-root under $HOME (so pulled images
-# land somewhere the snapshot keeps). run-umbraco.sh uses the SAME data-root at session
-# time, so it finds the pre-pulled image instead of re-downloading ~1.5 GB.
-ensure_docker() {
-  if docker info >/dev/null 2>&1; then log "docker ready"; return 0; fi
-  if ! command -v docker >/dev/null 2>&1; then
-    log "installing docker engine…"
-    if command -v apt-get >/dev/null 2>&1; then
-      (apt-get update -qq && apt-get install -y docker.io) >>"$LOG" 2>&1 || log "WARN: apt-get docker.io failed"
-    fi
-  fi
-  mkdir -p "$DOCKER_DATA_ROOT"
-  log "starting docker daemon (data-root $DOCKER_DATA_ROOT)…"
-  service docker stop >/dev/null 2>&1 || true
-  nohup dockerd --data-root "$DOCKER_DATA_ROOT" >/tmp/dockerd.log 2>&1 &
-  for _ in $(seq 1 20); do docker info >/dev/null 2>&1 && break; sleep 2; done
-  docker info >/dev/null 2>&1 || { log "WARN: dockerd won't run in this env (see /tmp/dockerd.log)"; return 1; }
-}
-
-prep_sqlserver() {
-  log "prep SQL Server: install docker + cache the mssql image in the snapshot"
-  ensure_docker || { log "WARN: docker unavailable — SQL Server image not cached"; return 1; }
-  if docker image inspect "$MSSQL_IMAGE" >/dev/null 2>&1; then
-    log "mssql image already cached ($(docker images --format '{{.Size}}' "$MSSQL_IMAGE" | head -1)) — skipping pull"; return 0
-  fi
-  log "pulling $MSSQL_IMAGE (~2.3 GB; cached under $DOCKER_DATA_ROOT for sessions)…"
-  if docker pull "$MSSQL_IMAGE" >>"$LOG" 2>&1; then
-    log "mssql image cached: $(docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' "$MSSQL_IMAGE" 2>/dev/null | head -1)"
-  else
-    log "WARN: docker pull failed for $MSSQL_IMAGE"
-  fi
-}
-
-# ── 2. .NET SDK (idempotent) ───────────────────────────────────────────────
-# Symlink dotnet onto a PATH dir every shell sees. .bashrc only helps interactive
-# shells — start:umbraco's `nohup dotnet run` doesn't source it, so without this the
-# backgrounded boot fails with "dotnet: command not found".
+# ── 3. .NET SDK ────────────────────────────────────────────────────────────
+# Symlink onto a PATH dir every shell sees — .bashrc isn't sourced by start:umbraco's
+# `nohup dotnet run`, so without this the backgrounded boot fails "command not found".
 link_dotnet() { [ -x "$HOME/.dotnet/dotnet" ] && ln -sf "$HOME/.dotnet/dotnet" /usr/local/bin/dotnet 2>/dev/null || true; }
 
 install_dotnet() {
   local channel="$1"
   if dotnet --list-sdks 2>/dev/null | grep -q "^${channel%.*}\."; then
-    log ".NET SDK for channel $channel already present"; link_dotnet; return 0
+    log ".NET SDK channel $channel already present"; link_dotnet; return 0
   fi
   log "installing .NET SDK channel $channel"
   local tmp; tmp="$(mktemp -d)/dotnet-install.sh"
-  # Fetch the script directly from GitHub — dot.net/v1/dotnet-install.sh 301-redirects and
-  # curl without -L silently writes an empty file and exits 0.
+  # raw-github URL, NOT dot.net/v1 (which 301-redirects and traps curl into an empty file).
   if ! curl -fsSL -o "$tmp" https://raw.githubusercontent.com/dotnet/install-scripts/main/src/dotnet-install.sh; then
-    log "WARN: could not download dotnet-install.sh (channel $channel)"; return 1
+    log "WARN: could not download dotnet-install.sh"; return 1
   fi
   chmod +x "$tmp"
-  "$tmp" --channel "$channel" --install-dir "$HOME/.dotnet" || { log "WARN: dotnet install failed ($channel)"; return 1; }
-  # Persist for session shells.
+  "$tmp" --channel "$channel" --install-dir "$HOME/.dotnet" || { log "WARN: dotnet install failed"; return 1; }
   if ! grep -q 'DOTNET_ROOT=$HOME/.dotnet' "$HOME/.bashrc" 2>/dev/null; then
-    { echo 'export DOTNET_ROOT=$HOME/.dotnet'
-      echo 'export PATH=$HOME/.dotnet:$HOME/.dotnet/tools:$PATH'; } >> "$HOME/.bashrc"
+    { echo 'export DOTNET_ROOT=$HOME/.dotnet'; echo 'export PATH=$HOME/.dotnet:$HOME/.dotnet/tools:$PATH'; } >> "$HOME/.bashrc"
   fi
   dotnet --version >/dev/null 2>&1 || { log "WARN: dotnet not usable after install"; return 1; }
   link_dotnet
 }
 
-# ── 3. Per-version Umbraco (SQLite) seed (idempotent, best-effort) ─────────
-# Clone the target repo at <branch>, bootstrap a SQLite demo-site, boot it once (which
-# runs the unattended install AND creates the API user via start:umbraco), publish root
-# content, stop, and snapshot the prepared demo-site to $SEED_ROOT/<major>/. A session
-# then copies that in and boots in seconds. Warms ~/.nuget/packages as a side effect.
-build_seed() {
-  local major="$1" repo="$2" branch="$3" channel="$4"
-  local dest="$SEED_ROOT/$major"
-  if [ -d "$dest" ] && [ -n "$(ls -A "$dest" 2>/dev/null)" ]; then
-    log "seed for Umbraco $major already present ($dest) — skipping"; return 0
+# ── 4. Docker + mssql image (sqlserver only) ───────────────────────────────
+# Use an existing daemon if one is running; else install + start dockerd with a data-root
+# under the persistent store, so the pulled image survives to sessions.
+ensure_docker() {
+  if docker info >/dev/null 2>&1; then log "docker ready (existing daemon)"; return 0; fi
+  if ! command -v docker >/dev/null 2>&1; then
+    log "installing docker engine"
+    command -v apt-get >/dev/null 2>&1 && (apt-get update -qq && apt-get install -y docker.io) >>"$LOG" 2>&1 || log "WARN: apt-get docker.io failed"
   fi
-  install_dotnet "$channel" || { log "WARN: no SDK for $major — skipping seed"; return 1; }
-  dotnet dev-certs https >/dev/null 2>&1 || true
-
-  local work; work="$(mktemp -d)"
-  # The target repo is PRIVATE, so a bare clone prompts for a username ("could not read
-  # Username"). Inject the env's GitHub token when present so env-build can clone it. The
-  # token stays only in the throwaway $work clone (removed below); it's never logged.
-  local tok="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
-  local clone_url="$repo"
-  if [ -n "$tok" ]; then
-    clone_url="https://x-access-token:${tok}@${repo#https://}"
-    log "seed $major: cloning $repo@$branch (authenticated via env token)"
-  else
-    log "seed $major: cloning $repo@$branch (no token in env — anonymous; will fail if private)"
-  fi
-  if ! git clone --depth 1 --branch "$branch" "$clone_url" "$work/app" 2>&1 | sed "s#${tok:-__no_token__}#***#g"; then
-    log "WARN: clone failed for $major ($repo@$branch) — skipping seed"; rm -rf "$work"; return 1
-  fi
-  # NB: no stderr redirect on this subshell — everything streams through the outer
-  # `tee` so you see live progress in an interactive session (and it's still logged).
-  ( set -e
-    cd "$work/app"
-    echo "[seed $major] npm ci…"
-    npm ci
-    echo "[seed $major] bootstrap demo-site (--sqlite)…"
-    npm run umbraco:bootstrap -- --sqlite
-    # Boot once (backgrounded): start:umbraco runs dotnet run, writes .demo-site-port +
-    # UMBRACO_BASE_URL, and creates the API user itself.
-    echo "[seed $major] starting Umbraco — first boot runs the unattended install (minutes)…"
-    npm run start:umbraco > "$work/start.log" 2>&1 &
-
-    # Wait for the port + a live server-status response, with a ~30s heartbeat + boot-log
-    # tail so a long first-boot install doesn't look hung.
-    base=""
-    for i in $(seq 1 90); do            # ~7.5 min ceiling for a cold first-boot install
-      if [ -f .demo-site-port ]; then
-        port="$(cat .demo-site-port)"
-        if curl -ksf "https://localhost:$port/umbraco/management/api/v1/server/status" >/dev/null 2>&1; then
-          base="https://localhost:$port"; break
-        fi
-      fi
-      if [ $((i % 6)) -eq 0 ]; then
-        echo "[seed $major] still booting (~$((i * 5))s)… last boot-log line:"
-        tail -n 1 "$work/start.log" 2>/dev/null | sed "s/^/[seed $major]   /"
-      fi
-      sleep 5
-    done
-    [ -n "$base" ] || { echo "[seed $major] Umbraco did not become ready in time; boot log:"; tail -n 40 "$work/start.log"; exit 1; }
-    echo "[seed $major] ready at $base — ensuring API user, then publishing root content…"
-    # start:umbraco creates the API user in the background; do it explicitly + synchronously
-    # here so it exists before publish (otherwise publish-root-content races it and 401s).
-    node scripts/create-api-user.mjs "$base" || echo "[seed $major] create-api-user warned"
-    node scripts/publish-root-content.mjs "$base" || echo "[seed $major] publish-root-content warned"
-    npm run stop:umbraco || true
-
-    # Snapshot the prepared demo-site (DB + built output + generated files); drop transient
-    # per-run files so a session's start:umbraco rewrites them cleanly.
-    echo "[seed $major] snapshotting demo-site -> $dest…"
-    mkdir -p "$dest"
-    rsync -a --delete \
-      --exclude '.demo-site-port' --exclude '.demo-site-pid' \
-      "$work/app/demo-site/" "$dest/"
-    echo "[seed $major] snapshot complete"
-  )
-  local rc=$?
-  rm -rf "$work"
-  if [ "$rc" -eq 0 ] && [ -d "$dest" ]; then
-    log "seed $major: baked -> $dest"
-  else
-    log "WARN: seed $major failed (rc=$rc) — build/rework loops will skip its test pre-flight"
-    rm -rf "$dest"
-  fi
-  return "$rc"
+  mkdir -p "$DOCKER_DATA_ROOT"
+  log "starting docker daemon (data-root $DOCKER_DATA_ROOT)"
+  service docker stop >/dev/null 2>&1 || true
+  (nohup dockerd --data-root "$DOCKER_DATA_ROOT" >/tmp/dockerd.log 2>&1 &)
+  for _ in $(seq 1 20); do docker info >/dev/null 2>&1 && break; sleep 2; done
+  docker info >/dev/null 2>&1 || { log "WARN: dockerd won't run here (see /tmp/dockerd.log)"; return 1; }
 }
 
-# ── Manifest — tell the session what's here ────────────────────────────────
+prep_sqlserver() {
+  log "prep SQL Server: docker + cache the mssql image"
+  ensure_docker || { log "WARN: docker unavailable — mssql image not cached"; return 1; }
+  if docker image inspect "$MSSQL_IMAGE" >/dev/null 2>&1; then
+    log "mssql image already cached ($(docker images --format '{{.Size}}' "$MSSQL_IMAGE" | head -1)) — skip pull"; return 0
+  fi
+  log "pulling $MSSQL_IMAGE (~2.3 GB; cached in $DOCKER_DATA_ROOT)"
+  docker pull "$MSSQL_IMAGE" >>"$LOG" 2>&1 && log "mssql image cached" || log "WARN: docker pull failed"
+}
+
+# ── Manifest — tell the session what's here + how to bring Umbraco up ──────
 write_manifest() {
   mkdir -p "$OPS_SCRIPTS_DIR"
   cp "$HERE/run-umbraco.sh" "$OPS_SCRIPTS_DIR/" 2>/dev/null || true
-  # The demo instances, one per major version, listed as "v<major>: <path>".
-  local seeds=""
-  for d in "$SEED_ROOT"/*/; do [ -d "$d" ] && seeds="${seeds}v$(basename "$d"): \`${d%/}\`  "; done
-  [ -n "$seeds" ] || seeds="none built yet"
   local docker_line="not installed (sqlite env)" has_mssql=0
   if [ "$PROVIDER" = "sqlserver" ]; then
     if docker image inspect "$MSSQL_IMAGE" >/dev/null 2>&1; then
       docker_line="mssql image cached ($(docker images --format '{{.Size}}' "$MSSQL_IMAGE" | head -1))"; has_mssql=1
     else
-      docker_line="requested but image NOT cached (check the pull step in this log)"
+      docker_line="requested but image NOT cached (see this log)"
     fi
   fi
-  # DB-choice guidance depends on whether SQL Server is AVAILABLE (image cached). Built with
-  # a QUOTED heredoc so the example backticks stay literal; embedded below via $db_section
-  # (parameter expansion isn't re-scanned for command substitution, so it's safe).
   local db_section
   if [ "$has_mssql" = "1" ]; then
     db_section="$(cat <<'DBEOF'
-**SQL Server IS available in this environment** (image cached) — it is simply not *running*
-yet, because the Docker daemon does not persist across sessions. It can be started on demand;
-"not running" does NOT mean unavailable. Check the live state:
+**SQL Server is available** (image cached) — the daemon isn't running yet (it doesn't persist
+across sessions); "not running" means startable, not unavailable. Check live:
 ```
 docker info >/dev/null 2>&1 && echo RUNNING || echo "AVAILABLE (not started)"
 ```
-- **RUNNING** → use it directly: `--provider sqlserver`.
-- **AVAILABLE (not started)** — the usual fresh-session state → either **start SQL Server on
-  demand** with `run-umbraco.sh --provider sqlserver` (brings up the daemon + container from
-  the cached image), or use `--provider sqlite` (the baked v17/v18 instances) for a quick
-  test with no startup cost. Both are valid — pick per the task.
-
-### Start SQL Server directly (without the full Umbraco bring-up)
-`run-umbraco.sh --provider sqlserver` is the wrapper; to bring up just the DB (creds/port
-match CI — see run-umbraco.sh for the canonical invocation):
-```
-docker info >/dev/null 2>&1 || ( dockerd --data-root /root/.docker-data >/tmp/dockerd.log 2>&1 & )
-docker start mssql 2>/dev/null || docker run -d --name mssql \
-  -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Moloko99 -p 1433:1433 \
-  mcr.microsoft.com/mssql/server:2022-latest
-# ready when: docker exec mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Moloko99 -C -Q "SELECT 1"
-# then SQL Server is at localhost:1433 (sa / Moloko99)
-```
+- **RUNNING** → `--provider sqlserver`.
+- **AVAILABLE (not started)** → `run-umbraco.sh --provider sqlserver` starts it (daemon +
+  container from the cached image), or use `--provider sqlite` for a quick test.
 DBEOF
 )"
   else
-    db_section="$(cat <<'DBEOF'
-Only **SQLite** is available in this environment (no SQL Server image cached). Use
-`--provider sqlite` (the baked v17/v18 instances).
-DBEOF
-)"
+    db_section="Only **SQLite** is available (no mssql image). Use \`--provider sqlite\`."
   fi
   cat > "$MANIFEST" <<EOF
 # Umbraco MCP worker environment — ready ($(date -u +%FT%TZ 2>/dev/null || echo 'time n/a'))
 
-**Agent: read this first** to know what the environment provides — it's written on every
-env build (initial or cached rebuild) by env-setup.sh, so you don't need to probe.
+**Agent: read this first.** Written on every env build (initial or cached rebuild) so you
+don't need to probe. There is **no pre-baked Umbraco instance** — you bring one up per
+session with run-umbraco.sh (bootstrap + boot, ~1–2 min).
 
 | What        | State |
 |-------------|-------|
 | Provider    | $PROVIDER |
 | .NET SDK    | $(dotnet --version 2>/dev/null || echo 'NOT installed') (on PATH via /usr/local/bin) |
 | SQL Server image | $docker_line |
-| Demo instances | $seeds |
 | Skills      | delivered to ~/.claude/skills |
 | Ops scripts | $OPS_SCRIPTS_DIR (run-umbraco.sh) |
 
@@ -319,9 +160,9 @@ $db_section
 \`\`\`
 bash $OPS_SCRIPTS_DIR/run-umbraco.sh --provider <sqlite|sqlserver>
 \`\`\`
-sqlite: add \`--seed <major>\` to restore a baked demo instance fast. sqlserver: starts the
-Docker daemon + container (from the cached image) first. Either way it bootstraps demo-site/,
-boots Umbraco, and writes .env — then \`npm run test:changed\` (or \`npm test\`) runs against it.
+It bootstraps demo-site/, boots Umbraco as a background process (SQLite, or Docker+SQL
+Server), creates the API user, and writes .env. First boot runs the unattended install
+(~1–2 min). Then \`npm run test:changed\` (or \`npm test\`) runs against it.
 EOF
   log "wrote manifest: $MANIFEST"
 }
@@ -329,30 +170,13 @@ EOF
 # ── main ───────────────────────────────────────────────────────────────────
 {
   log "===== env-setup v$VERSION (provider=$PROVIDER) ====="
-  # env-build does only NO-AUTH work — it runs before git credentials exist, so it can't
-  # clone the private target repo. The demo-site is bootstrapped per SESSION (which has the
-  # repo loaded + creds) via run-umbraco.sh. Here we just cache the heavy, credential-free
-  # downloads so sessions start fast:
-  deliver_skills                                   # skills / agents / hooks
-  ensure_tools                                     # rsync
-  install_dotnet "${DOTNET_CHANNEL:-10.0}"         # SDK — every session needs it
-  if [ "$PROVIDER" = "sqlserver" ]; then prep_sqlserver || true; fi   # cache the mssql image
-
-  # Pre-bake the SQLite demo-instance seeds (v17 + v18) by cloning the repo (token-auth in
-  # build_seed). Defaults on for a SQLITE env, off for sqlserver (see BAKE_SEEDS above).
-  if [ "$BAKE_SEEDS" = "1" ]; then
-    mkdir -p "$SEED_ROOT"
-    for t in "${SEED_TARGETS[@]}"; do
-      major="${t%%:*}"; rest="${t#*:}"; channel="${rest##*:}"; rest="${rest%:*}"; branch="${rest##*:}"; repo="${rest%:*}"
-      log "seed target: major=$major repo=$repo branch=$branch channel=$channel"
-      build_seed "$major" "$repo" "$branch" "$channel" || true
-    done
-    log "seeds:  $(ls -1 "$SEED_ROOT" 2>/dev/null | tr '\n' ' ')"
-  fi
-
+  deliver_skills
+  ensure_tools
+  install_dotnet "$DOTNET_CHANNEL"
+  [ "$PROVIDER" = "sqlserver" ] && { prep_sqlserver || true; }
+  write_manifest
   log "dotnet: $(dotnet --version 2>/dev/null || echo 'not installed')"
   [ "$PROVIDER" = "sqlserver" ] && log "mssql image: $(docker images --format '{{.Size}}' "$MSSQL_IMAGE" 2>/dev/null | head -1 || echo 'not cached')"
-  write_manifest
   log "===== env-setup done (manifest: $MANIFEST) ====="
 } 2>&1 | tee -a "$LOG"
 exit 0
