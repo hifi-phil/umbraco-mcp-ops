@@ -3,11 +3,12 @@ name: rework-loop
 description: >-
   Label-triggered loop that acts on PR review feedback. When a reviewer has left comments
   and labels the loop-authored PR `auto-rework`, it reads the feedback, makes the changes
-  following the established MCP skills, runs the fast local checks, pushes, replies to the
-  threads, re-requests review, and removes the `auto-rework` label — then stops. It does
-  NOT wait for CI (merge-flow won't merge until CI passes, so CI is enforced there) and it
-  never merges. No local Umbraco needed — runs in a cloud
-  routine or locally. Requires the github-ops skill. Trigger: a PR labelled `auto-rework`
+  following the established MCP skills, boots a local Umbraco via the worker-env skill and
+  runs the diff's tests (test:changed) as a local gate, pushes, replies to the threads,
+  re-requests review, and removes the `auto-rework` label — then stops. It runs a local
+  test gate but does NOT poll/wait for the full CI suite (merge-flow won't merge until CI
+  passes, so CI is enforced there) and it never merges. Runs in a cloud routine or locally.
+  Requires the github-ops skill. Trigger: a PR labelled `auto-rework`
   (uniform with the other loops, and works regardless of who reviewed), or run manually as
   "rework PR #N".
 ---
@@ -34,16 +35,24 @@ long-lived "monitor my review" session.
   with a note and stop rather than inventing changes.
 - Act on the **labelled PR only** — never touch other PRs.
 
-## Test gate: CI, async — this loop never waits on it
+## Test gate: local (the diff's tests) + async CI — never poll the full suite
 
-This loop **never runs Umbraco or `npm run test:all` — that's the CI job**, not the
-worker's. This repo is TypeScript, so it edits the TS, runs `npm ci` + `npm run compile`
-/ `npm run build` as a **fast local sanity pass**, then pushes and **stops** — it does
-**not** poll or wait for CI. CI (GitHub Actions) runs the integration/eval suite
-asynchronously, and **`merge-flow` won't merge until CI is green**, so CI is enforced at
-merge time, not by this session sitting idle. Keeping the rework session short is the
-whole point of the split. All GitHub work goes through the **`github-ops`** skill
-(required).
+Two distinct gates, don't conflate them:
+
+- **Local, before pushing:** bring up a local Umbraco **on SQL Server** via the
+  **[`worker-env`](../../../loop-dispatch/skills/worker-env/SKILL.md)** skill (SQL Server is
+  CI-parity — SQLite is a last resort only, and throws false failures/passes) and run the
+  tests that cover the rework diff — **`npm run test:changed`** (fallback
+  `npm run test:one -- --testPathPattern='…'` if the repo lacks that script). This catches
+  regressions in your change before it reaches CI. Default to the diff's tests, not the full
+  `test:all` suite — that's CI's job; run the full suite locally only if the rework is broad
+  enough that you suspect it reaches beyond the diff (Step 2).
+- **CI, asynchronously:** GitHub Actions runs the full integration/eval suite on the PR, and
+  **`merge-flow` won't merge until CI is green** — so CI is enforced at merge time. This
+  session **must not poll or wait for CI**; it runs the local gate, pushes, and stops.
+  Keeping the rework session short is the whole point of the split.
+
+All GitHub work goes through the **`github-ops`** skill (required).
 
 ## Step 1 — read the feedback
 
@@ -51,20 +60,31 @@ Via `github-ops`, get the PR and its reviews + review comments (→ *Get reviews
 comments*). Collect every **unresolved, actionable** item: requested changes, inline
 comments, and review-body asks. If there are none (approval only) → **quiet no-op, stop.**
 
-## Step 2 — address it
+## Step 2 — address it (with a local test gate)
 
-Check out the PR's head branch. Make the changes that resolve the feedback, **following
-the established MCP skills** (`umbraco-mcp-skills` — tool creation, tests, descriptions)
-and the repo's `CLAUDE.md` conventions. Stay **scoped to the feedback** — don't refactor
-unrelated code or grow the PR. Run the fast checks (`npm run compile` / `npm run build`)
-and fix anything they catch.
+Check out the PR's head branch. **As your first action, boot a local Umbraco on SQL Server**
+so it's ready by the time you test (consult `worker-env`; SQLite only as the last resort it
+describes):
+
+```
+bash /root/.umbraco-ops/run-umbraco.sh --provider sqlserver >/tmp/umbraco-run.log 2>&1 &
+```
+
+Then make the changes that resolve the feedback, **following the established MCP skills**
+(`umbraco-mcp-skills` — tool creation, tests, descriptions) and the repo's `CLAUDE.md`
+conventions. Stay **scoped to the feedback** — don't refactor unrelated code or grow the PR.
+Run `npm run compile`, then — once Umbraco is ready (`.demo-site-port` +
+`/umbraco/management/api/v1/server/status` returns 200) — run the diff's tests:
+**`npm run test:changed`** (fallback `npm run test:one -- --testPathPattern='…'`). Fix
+anything they catch. Use `npm run test:all` only if the rework is broad; CI runs the full
+suite regardless.
 
 ## Step 3 — push
 
-Commit and push to the PR branch. The `npm run compile` / `npm run build` sanity pass from
-Step 2 is the only gate this session applies — **do not poll or wait for CI to go green.**
-CI runs asynchronously and `merge-flow` enforces it at merge time, so a rework session that
-sits watching check-runs just burns time and tokens for no benefit.
+Commit and push to the PR branch. The local `compile` + `test:changed` gate from Step 2 is
+the only gate this session applies — **do not poll or wait for the full CI suite to go
+green.** CI runs asynchronously and `merge-flow` enforces it at merge time, so a rework
+session that sits watching check-runs just burns time and tokens for no benefit.
 
 ## Step 4 — reply, re-request & clear the label
 
@@ -83,9 +103,12 @@ Send a Claude push notification: `Reworked PR #N per review — pushed & re-requ
 - **Always clear `auto-rework` on exit** — both on completion (Step 4) and on the quiet
   no-op (Step 1) — so the label reflects "rework pending" and the trigger stays re-armable.
 - **Never merge** — re-request review; `merge-flow` merges once re-approved.
-- **Never wait on CI** — push and hand off. `merge-flow` won't merge until CI is green, so
-  CI is enforced there; a rework session polling check-runs just wastes time and tokens.
-- Follow the MCP skills for code changes; **CI is the correctness gate — asynchronously.**
+- **Gate locally, then hand off — never poll the full CI suite.** Run `test:changed` (the
+  diff's tests) before pushing, then push and stop. `merge-flow` won't merge until CI is
+  green, so the full suite is enforced there; a rework session polling check-runs just
+  wastes time and tokens.
+- Follow the MCP skills for code changes; the local `test:changed` gate catches regressions
+  in your change, and **CI runs the full suite asynchronously** as the merge-time gate.
 
 ## Running as a routine
 

@@ -23,7 +23,10 @@ Both run `agentType: general-purpose` so the full tool + Skill set is available.
 >
 > **Definition of done (all must hold before you return):**
 > a hook-backed worktree exists for this issue; the change is implemented
-> following established MCP patterns; `npm run test:all` passes locally;
+> following established MCP patterns; the local test gate passes — **`npm run
+> test:all`** in local mode (steps 1 & 4 below); **cloud mode overrides steps 1 & 4**
+> (no worktree; boot Umbraco via `worker-env` and gate on the diff's tests,
+> `npm run test:changed` — see the main SKILL.md → *Cloud mode*);
 > `/security-review` and `/code-review` (low) are clean or their findings are
 > fixed; the branch is pushed; a PR is open against the base branch; its CI
 > is green; and the **issue has been marked complete** — `ready-for-ai`

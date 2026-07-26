@@ -5,9 +5,11 @@ description: >-
   repo, driving each to a CI-green PR. Two modes, chosen by the caller (default
   local): LOCAL — orchestrated, one git worktree + subagent per issue (max 3
   parallel), local tests, then a review-response loop until merged, with capture
-  hooks; CLOUD — one session per issue (event-triggered), no worktree, TypeScript
-  compile sanity + CI as the test gate (no local Umbraco), build to a CI-green PR
-  and stop (review-response handed to rework-loop). Each issue is implemented
+  hooks; CLOUD — one session per issue (event-triggered), no worktree, boots a
+  local Umbraco on SQL Server (CI-parity) via the worker-env skill and runs the tests
+  locally before pushing (test:changed by default, the full suite when it suspects wider
+  breakage; SQLite only as a last resort — quicker than looping on CI), then drives CI
+  green and stops (review-response handed to rework-loop). Each issue is implemented
   following the established MCP skills and security/code-reviewed. Repo-agnostic
   across Umbraco MCP repos; github-ops required. Trigger on "work the ready issues",
   "run the issue loop", or a routine on Issue: Labeled `ready-for-ai` (cloud).
@@ -25,7 +27,9 @@ explicitly):
   through *Rules* below.
 - **Cloud (one-shot per issue)** — a routine fires once per `ready-for-ai` issue
   (cross-issue parallelism comes from separate sessions); you build that **one** issue
-  to a CI-green PR with **CI as the test gate**, then **stop**. See [Cloud mode](#cloud-mode).
+  to a CI-green PR, **gating locally before pushing** (a `worker-env` Umbraco on SQL Server —
+  `test:changed`, escalating to the full suite when you suspect wider breakage), then
+  **stop**. See [Cloud mode](#cloud-mode).
 
 In **local mode** you are the **orchestrator**. You own a long-lived loop (it survives
 across turns and scheduled wake-ups) whose terminal condition is: *every open
@@ -285,6 +289,16 @@ orchestrator on a cheap base model**: it triages the one issue and dispatches a 
 build subagent on the best-fit model — the same *Model selection* logic as local, just one
 subagent instead of up to three.
 
+**Know the environment first.** Before triaging, consult the **[`worker-env`](../../../loop-dispatch/skills/worker-env/SKILL.md)** skill
+(`cat /root/env-manifest.md`) — it tells you what this cloud worker provides (.NET SDK,
+whether SQL Server is available, the ops `run-umbraco.sh`). Cloud sessions **do** get a
+local Umbraco now: the build subagent boots one and runs a real local test gate (below) —
+this is no longer a compile-only, CI-is-the-only-gate flow. Run these sessions in a **SQL
+Server** worker-env so the local run is **CI-parity** — the subagent tests on the same
+provider CI uses, greens the suite locally, and skips the slow push → CI-fail → fix →
+re-push loop. (SQLite is a degraded fallback only — a different provider that throws
+false failures and false passes; see step 2.)
+
 For the one triggering issue (identify it from the event; if unclear, take the **oldest**
 open `ready-for-ai` issue; none → quiet no-op):
 
@@ -299,13 +313,42 @@ open `ready-for-ai` issue; none → quiet no-op):
    `EnterWorktree` (cloud sessions are already isolated, and the worktree hooks need the
    local DB/toolchain). Implement the issue following the **shared build playbook**
    ([`references/issue-lifecycle.md`](references/issue-lifecycle.md)) and the MCP skills,
-   with two substitutions:
-   - **No local Umbraco, no `npm run test:all`.** This repo is TypeScript — run `npm ci`
-     + `npm run compile` / `npm run build` as the sanity pass. **CI (GitHub Actions) is
-     the test gate**; it runs the integration/eval suite.
+   with two substitutions for playbook steps 1 and 4:
+   - **Instead of the worktree (playbook step 1):** work directly in the session checkout.
+   - **Instead of `npm run start:umbraco` + `npm run test:all` (playbook step 4):** bring up
+     a local Umbraco via the **[`worker-env`](../../../loop-dispatch/skills/worker-env/SKILL.md)**
+     skill and run a local test gate **on SQL Server**. As your **first action** (so Umbraco
+     boots while you implement — first boot runs the unattended install, ~1–2 min):
+     ```
+     bash /root/.umbraco-ops/run-umbraco.sh --provider sqlserver >/tmp/umbraco-run.log 2>&1 &
+     ```
+     **Default to SQL Server** — it's the provider CI uses, so the results are trustworthy.
+     **SQLite is a last resort**, not an equivalent: it's a different provider and produces
+     provider-specific false failures *and* false passes. Use `--provider sqlite` only when
+     `worker-env` reports no mssql image (a sqlite-only env), or for a quick smoke of a single
+     focused change where speed matters — and in either case its results aren't authoritative:
+     confirm anything surprising on SQL Server, and treat CI as the real gate. Implement, then **wait for Umbraco
+     ready** (`.demo-site-port` exists and `/umbraco/management/api/v1/server/status` returns
+     200) and run:
+     - **`npm run test:changed`** — the integration tests touching your diff. The **default
+       gate** for a focused change. If the repo doesn't have that script yet, fall back to
+       `npm run test:one -- --testPathPattern='<collection>/__tests__/<tool>'` for each area
+       you touched.
+     - **`npm run test:all`** — the full suite. Run it **when you suspect the change reaches
+       beyond its diff** — a shared helper, a schema/generated-client change, cross-cutting
+       logic, or `test:changed` surfacing something that hints at wider breakage. For an
+       obviously self-contained change, don't pay the full-suite cost — `test:changed` is
+       enough.
+
+     Fix locally until green **before** pushing. Because the local run is SQL Server
+     (CI-parity), a green local gate means CI passes first time — much quicker than pushing
+     and looping on remote CI failures (the 8-attempt cap).
    - Still run **`/security-review` + `/code-review` (low)** before pushing.
 3. Push, open the PR against `<base>`, and **drive CI green** from the logs (github-ops →
-   *Read a failing check's log*; the **8-attempt** cap applies).
+   *Read a failing check's log*; the **8-attempt** cap applies). Since you tested on SQL
+   Server (CI-parity), CI should pass first time — this step is then just a confirmation,
+   not a fix loop; a surprise CI failure usually means the local run was on SQLite or the
+   diff wasn't fully covered by `test:changed`.
 4. **Mark the issue complete, then stop at the CI-green PR.** Once CI is green,
    run build-playbook **step 8** on the triggering issue — remove `ready-for-ai`, add
    `generated-by-ai`, comment the PR link. Removing `ready-for-ai` is what stops this

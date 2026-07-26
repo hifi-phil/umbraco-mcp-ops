@@ -1,0 +1,33 @@
+name: cloud-skill-sync
+
+# Static checks for the cloud-skill-sync shell scripts (env-setup, run-umbraco,
+# cloud-skill-sync). Their real behaviour — dotnet install, Docker, Umbraco boot — only
+# runs in the cloud env, so CI just guards syntax + common shell bugs.
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/cloud-skill-sync/**'
+      - '.github/workflows/cloud-skill-sync-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/cloud-skill-sync/**'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y shellcheck
+
+      - name: bash -n (syntax)
+        run: for f in scripts/cloud-skill-sync/*.sh; do echo "bash -n $f"; bash -n "$f"; done
+
+      - name: shellcheck (gate on errors)
+        run: shellcheck --severity=error scripts/cloud-skill-sync/*.sh
+
+      - name: shellcheck (warnings, informational)
+        run: shellcheck --severity=warning scripts/cloud-skill-sync/*.sh || true
