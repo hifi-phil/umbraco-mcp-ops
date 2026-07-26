@@ -114,6 +114,7 @@ prep_sqlserver() {
 write_manifest() {
   mkdir -p "$OPS_SCRIPTS_DIR"
   cp "$HERE/run-umbraco.sh" "$OPS_SCRIPTS_DIR/" 2>/dev/null || true
+  printf '%s\n' "$PROVIDER" > "$OPS_SCRIPTS_DIR/provider"   # read by the SessionStart boot hook
   local docker_line="not installed (sqlite env)" has_mssql=0
   if [ "$PROVIDER" = "sqlserver" ]; then
     if docker image inspect "$MSSQL_IMAGE" >/dev/null 2>&1; then
@@ -156,13 +157,18 @@ session with run-umbraco.sh (bootstrap + boot, ~1–2 min).
 ## Which database to use RIGHT NOW
 $db_section
 
-## Bring up Umbraco (run from your repo checkout)
+## Umbraco boots automatically at session start
+A **SessionStart hook** already launched \`run-umbraco.sh --provider $PROVIDER\` in the
+background for this repo, so Umbraco is booting (or booted). **Wait for it — don't start it
+again:**
 \`\`\`
-bash $OPS_SCRIPTS_DIR/run-umbraco.sh --provider <sqlite|sqlserver>
+for i in \$(seq 1 60); do [ -f .demo-site-port ] && curl -ksf "https://localhost:\$(cat .demo-site-port)/umbraco/management/api/v1/server/status" >/dev/null 2>&1 && break; sleep 5; done
+grep UMBRACO_BASE_URL .env    # the ready base URL
 \`\`\`
-It bootstraps demo-site/, boots Umbraco as a background process (SQLite, or Docker+SQL
-Server), creates the API user, and writes .env. First boot runs the unattended install
-(~1–2 min). Then \`npm run test:changed\` (or \`npm test\`) runs against it.
+Then run the change's tests: \`npm run test:changed\` (or \`npm test\`). Boot log: /tmp/umbraco-boot.log.
+
+Manual (only if the auto-boot didn't run — e.g. no \`.demo-site-port\` after a few min):
+\`bash $OPS_SCRIPTS_DIR/run-umbraco.sh --provider <sqlite|sqlserver>\`
 EOF
   log "wrote manifest: $MANIFEST"
 }

@@ -85,6 +85,22 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
             rm -f "$tmp"; echo "WARN: could not register $ev hook (jq merge failed)"
           fi
         done
+        # Register SessionStart -> background Umbraco boot (idempotent, async, non-blocking).
+        # The script no-ops unless the session's checkout is an Umbraco MCP repo.
+        if [ -f "$HOOKS_ROOT/hooks/session-start-umbraco.sh" ]; then
+          sscmd="bash $HOOKS_ROOT/hooks/session-start-umbraco.sh"
+          tmp="$(mktemp)"
+          if jq --arg cmd "$sscmd" '
+                .hooks = (.hooks // {})
+                | .hooks.SessionStart = (.hooks.SessionStart // [])
+                | if any(.hooks.SessionStart[]?; any(.hooks[]?; .command == $cmd)) then .
+                  else .hooks.SessionStart += [ {"hooks": [ {"type":"command","command":$cmd,"async":true} ]} ] end
+              ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
+            mv "$tmp" "$SETTINGS"; echo "registered hook: SessionStart -> umbraco boot"
+          else
+            rm -f "$tmp"; echo "WARN: could not register SessionStart hook (jq merge failed)"
+          fi
+        fi
       else
         echo "WARN: jq missing — hooks copied but NOT registered in settings.json"
       fi
