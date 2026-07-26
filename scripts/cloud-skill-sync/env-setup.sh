@@ -125,9 +125,9 @@ write_manifest() {
   local db_section
   if [ "$has_mssql" = "1" ]; then
     db_section="$(cat <<'DBEOF'
-**SQL Server is available** (image cached) — **use it for any test run** (it's CI-parity;
-SQLite is a last resort only and throws false failures/passes). The daemon isn't running yet
-(it doesn't persist across sessions); "not running" means startable, not unavailable. Check
+**SQL Server is available** (image cached) — **use it for any test run** (it is CI-parity;
+SQLite is a last resort only and throws false failures/passes). The daemon is not running yet
+(it does not persist across sessions); "not running" means startable, not unavailable. Check
 live:
 ```
 docker info >/dev/null 2>&1 && echo RUNNING || echo "AVAILABLE (not started)"
