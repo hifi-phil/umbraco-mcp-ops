@@ -39,8 +39,9 @@ long-lived "monitor my review" session.
 
 Two distinct gates, don't conflate them:
 
-- **Local, before pushing:** bring up a local Umbraco via the
-  **[`worker-env`](../../../loop-dispatch/skills/worker-env/SKILL.md)** skill and run the
+- **Local, before pushing:** bring up a local Umbraco **on SQL Server** via the
+  **[`worker-env`](../../../loop-dispatch/skills/worker-env/SKILL.md)** skill (SQL Server is
+  CI-parity — SQLite is a last resort only, and throws false failures/passes) and run the
   tests that cover the rework diff — **`npm run test:changed`** (fallback
   `npm run test:one -- --testPathPattern='…'` if the repo lacks that script). This catches
   regressions in your change before it reaches CI. Default to the diff's tests, not the full
@@ -61,11 +62,12 @@ comments, and review-body asks. If there are none (approval only) → **quiet no
 
 ## Step 2 — address it (with a local test gate)
 
-Check out the PR's head branch. **As your first action, boot a local Umbraco** so it's
-ready by the time you test (consult `worker-env` for the manifest / provider details):
+Check out the PR's head branch. **As your first action, boot a local Umbraco on SQL Server**
+so it's ready by the time you test (consult `worker-env`; SQLite only as the last resort it
+describes):
 
 ```
-bash /root/.umbraco-ops/run-umbraco.sh --provider sqlite >/tmp/umbraco-run.log 2>&1 &
+bash /root/.umbraco-ops/run-umbraco.sh --provider sqlserver >/tmp/umbraco-run.log 2>&1 &
 ```
 
 Then make the changes that resolve the feedback, **following the established MCP skills**

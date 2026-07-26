@@ -35,27 +35,34 @@ wasn't built by `env-setup.sh` — fall back to the repo's own `CLAUDE.md`
 
 ## 2. Choose the database
 
-**If the manifest shows the `mssql:2022` image is cached, SQL Server is *available* here** —
-even if it's not running. The daemon does not persist across sessions, so it's usually
-stopped at session start; "stopped" means *startable*, not unavailable. Check live:
+**Prefer SQL Server for any test run** — it's the provider CI uses, so its results are
+trustworthy. **SQLite is a last resort**, not an equivalent target: a different provider
+that throws provider-specific false failures *and* false passes. Use SQLite only when no
+mssql image is cached, or for a quick smoke of a single focused change where speed matters —
+and treat its results as non-authoritative (confirm on SQL Server / CI).
+
+If the manifest shows the `mssql:2022` image is cached, SQL Server is *available* here even
+if it's not running — the daemon does not persist across sessions, so it's usually stopped
+at session start; "stopped" means *startable*, not unavailable. Check live:
 
 ```
 docker info >/dev/null 2>&1 && echo RUNNING || echo "AVAILABLE (not started)"
 ```
 
-- **RUNNING** → use it: `--provider sqlserver`.
-- **AVAILABLE (not started)** — usual fresh session → either **start it on demand**
-  (`run-umbraco.sh --provider sqlserver` brings it up from the cached image) or use
-  `--provider sqlite` for a quicker start. Both valid.
-- **No image cached** (a sqlite-only env) → use `--provider sqlite`.
+- **RUNNING** → `--provider sqlserver`.
+- **AVAILABLE (not started)** — usual fresh session → **start it**: `run-umbraco.sh
+  --provider sqlserver` brings it up from the cached image. This is the default for testing.
+- **No image cached** (a sqlite-only env) → `--provider sqlite`, and treat CI as the real
+  test gate — SQLite is not CI-parity.
 
 ## 3. Bring Umbraco up
 
 There's no auto-boot — start it yourself, ideally as your first action so it boots while you
-read the issue / check out / make the change:
+read the issue / check out / make the change. Default to **SQL Server** (§2); drop to
+`--provider sqlite` only as the last resort described there:
 
 ```
-bash /root/.umbraco-ops/run-umbraco.sh --provider <sqlite|sqlserver> >/tmp/umbraco-run.log 2>&1 &
+bash /root/.umbraco-ops/run-umbraco.sh --provider sqlserver >/tmp/umbraco-run.log 2>&1 &
 ```
 It bootstraps `demo-site/`, boots Umbraco in the background, creates the API user, and writes
 `.env`. First boot runs the unattended install (~1–2 min). Then wait for it before testing:
