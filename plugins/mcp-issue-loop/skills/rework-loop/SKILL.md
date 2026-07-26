@@ -43,8 +43,9 @@ Two distinct gates, don't conflate them:
   **[`worker-env`](../../../loop-dispatch/skills/worker-env/SKILL.md)** skill and run the
   tests that cover the rework diff — **`npm run test:changed`** (fallback
   `npm run test:one -- --testPathPattern='…'` if the repo lacks that script). This catches
-  regressions in your change before it reaches CI. Not `npm run test:all` — the full suite
-  is CI's job.
+  regressions in your change before it reaches CI. Default to the diff's tests, not the full
+  `test:all` suite — that's CI's job; run the full suite locally only if the rework is broad
+  enough that you suspect it reaches beyond the diff (Step 2).
 - **CI, asynchronously:** GitHub Actions runs the full integration/eval suite on the PR, and
   **`merge-flow` won't merge until CI is green** — so CI is enforced at merge time. This
   session **must not poll or wait for CI**; it runs the local gate, pushes, and stops.
