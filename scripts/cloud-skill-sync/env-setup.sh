@@ -114,7 +114,6 @@ prep_sqlserver() {
 write_manifest() {
   mkdir -p "$OPS_SCRIPTS_DIR"
   cp "$HERE/run-umbraco.sh" "$OPS_SCRIPTS_DIR/" 2>/dev/null || true
-  printf '%s\n' "$PROVIDER" > "$OPS_SCRIPTS_DIR/provider"   # read by the SessionStart boot hook
   local docker_line="not installed (sqlite env)" has_mssql=0
   if [ "$PROVIDER" = "sqlserver" ]; then
     if docker image inspect "$MSSQL_IMAGE" >/dev/null 2>&1; then
@@ -143,8 +142,8 @@ DBEOF
 # Umbraco MCP worker environment — ready ($(date -u +%FT%TZ 2>/dev/null || echo 'time n/a'))
 
 **Agent: read this first.** Written on every env build (initial or cached rebuild) so you
-don't need to probe. There is **no pre-baked Umbraco instance** — you bring one up per
-session with run-umbraco.sh (bootstrap + boot, ~1–2 min).
+don't need to probe. There is **no pre-baked Umbraco instance and no auto-boot** — bring one
+up yourself with run-umbraco.sh (bootstrap + boot, ~1–2 min) when you need it.
 
 | What        | State |
 |-------------|-------|
@@ -157,18 +156,18 @@ session with run-umbraco.sh (bootstrap + boot, ~1–2 min).
 ## Which database to use RIGHT NOW
 $db_section
 
-## Umbraco boots automatically at session start
-A **SessionStart hook** already launched \`run-umbraco.sh --provider $PROVIDER\` in the
-background for this repo, so Umbraco is booting (or booted). **Wait for it — don't start it
-again:**
+## Bring up Umbraco (run from your repo checkout)
+\`\`\`
+bash $OPS_SCRIPTS_DIR/run-umbraco.sh --provider <sqlite|sqlserver>
+\`\`\`
+It bootstraps demo-site/, boots Umbraco as a background process (SQLite, or Docker + SQL
+Server), creates the API user, and writes .env. First boot runs the unattended install
+(~1–2 min). Then wait for it and run the tests:
 \`\`\`
 for i in \$(seq 1 60); do [ -f .demo-site-port ] && curl -ksf "https://localhost:\$(cat .demo-site-port)/umbraco/management/api/v1/server/status" >/dev/null 2>&1 && break; sleep 5; done
-grep UMBRACO_BASE_URL .env    # the ready base URL
+npm run test:changed    # or: npm test
 \`\`\`
-Then run the change's tests: \`npm run test:changed\` (or \`npm test\`). Boot log: /tmp/umbraco-boot.log.
-
-Manual (only if the auto-boot didn't run — e.g. no \`.demo-site-port\` after a few min):
-\`bash $OPS_SCRIPTS_DIR/run-umbraco.sh --provider <sqlite|sqlserver>\`
+Boot log: /tmp/umbraco-run.log.
 EOF
   log "wrote manifest: $MANIFEST"
 }

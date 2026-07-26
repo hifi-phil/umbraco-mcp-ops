@@ -49,27 +49,23 @@ docker info >/dev/null 2>&1 && echo RUNNING || echo "AVAILABLE (not started)"
   `--provider sqlite` for a quicker start. Both valid.
 - **No image cached** (a sqlite-only env) → use `--provider sqlite`.
 
-## 3. Umbraco is already booting — wait for it
+## 3. Bring Umbraco up
 
-A **SessionStart hook boots Umbraco in the background at session start** (via
-`run-umbraco.sh`, using the env's provider), so it's coming up before you need it —
-**don't start it again.** Wait for it to be ready:
+There's no auto-boot — start it yourself, ideally as your first action so it boots while you
+read the issue / check out / make the change:
 
+```
+bash /root/.umbraco-ops/run-umbraco.sh --provider <sqlite|sqlserver> >/tmp/umbraco-run.log 2>&1 &
+```
+It bootstraps `demo-site/`, boots Umbraco in the background, creates the API user, and writes
+`.env`. First boot runs the unattended install (~1–2 min). Then wait for it before testing:
 ```
 for i in $(seq 1 60); do [ -f .demo-site-port ] && curl -ksf "https://localhost:$(cat .demo-site-port)/umbraco/management/api/v1/server/status" >/dev/null 2>&1 && break; sleep 5; done
 grep UMBRACO_BASE_URL .env   # the ready base URL the tests use
 ```
-Boot log: `/tmp/umbraco-boot.log`. First boot runs the unattended install (~1–2 min); it's
-usually done by the time you've read the issue + made your change.
 
 Then run the change's tests: **`npm run test:changed`** (only the tests touching your diff),
 or `npm test` for the full suite. CI still runs the whole suite on the PR.
-
-**Manual fallback** — only if `.demo-site-port` never appears (auto-boot didn't run, e.g. a
-non-MCP checkout or the hook wasn't registered):
-```
-bash /root/.umbraco-ops/run-umbraco.sh --provider <sqlite|sqlserver>
-```
 
 ## Guardrails
 
