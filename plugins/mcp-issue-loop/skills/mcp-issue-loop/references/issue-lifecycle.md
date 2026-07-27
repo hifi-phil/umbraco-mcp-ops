@@ -27,8 +27,7 @@ Both run `agentType: general-purpose` so the full tool + Skill set is available.
 > test:all`** in local mode (steps 1 & 4 below); **cloud mode overrides steps 1 & 4**
 > (no worktree; boot Umbraco via `worker-env` and gate on the diff's tests,
 > `npm run test:changed` — see the main SKILL.md → *Cloud mode*);
-> `/security-review` and `/code-review` (low) are clean or their findings are
-> fixed; the branch is pushed; a PR is open against the base branch; its CI
+> the branch is pushed; a PR is open against the base branch; its CI
 > is green; and the **issue has been marked complete** — `ready-for-ai`
 > removed, `generated-by-ai` added, the PR referenced on it (see step 8). If
 > you cannot reach this state, stop and return a clear blocked report (what's
@@ -90,18 +89,15 @@ npm run test:all
 state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename the DB in
 `demo-site/appsettings.local.json`, restart, re-run `create-api-user.mjs`).
 
-### 5. Security + code review — fix findings
+### 5. Review is the orchestrator's job — you do NOT self-review
 
-Run both over your change and fix everything actionable before pushing:
-
-```
-/security-review
-/code-review low
-```
-
-Treat confirmed findings like failing tests — fix them in this worktree, re-run
-the relevant tests, and only then proceed. Re-run a review after fixing if the
-fix was non-trivial.
+**Do not run `/security-review` or `/code-review` yourself.** They can't run in a subagent
+(they're `disable-model-invocation: true` — the command reaches you as inert text and
+nothing happens), and a subagent grading its own code is weak anyway. Instead, once you
+return a CI-green PR, **the orchestrator runs the [`mcp-review`](../../mcp-review/SKILL.md)
+skill** over it (the faithful 5-lens code review + security scan, spawned as independent
+review subagents) and hands you back any surviving findings to fix in this worktree. Just
+build well and return; don't claim a review ran.
 
 ### 6. Commit, push, open the PR
 
@@ -112,8 +108,9 @@ gitflow repos — defer to the `release-and-branching` skill), linking the issue
 (`Closes #{NUMBER}`) so the merge closes it. Open it **ready for review** (not draft) — the human needs
 to be able to review and approve it; that review is the acceptance gate.
 
-Include in the PR body: what changed, which skills/agents were used, test
-results, and a note that security + code review ran clean.
+Include in the PR body: what changed, which skills/agents were used, and test
+results. **Do not claim security/code review ran** — that happens next, at the
+orchestrator level via `mcp-review`; the orchestrator adds the review outcome.
 
 ### 7. Drive CI green — then return
 
@@ -181,11 +178,12 @@ review comments*). List every requested change. If any comment is unclear, reply
 the thread asking for clarification and return — don't guess at what the reviewer
 meant.
 
-### 3. Address, re-review, re-test
+### 3. Address + re-test (review is the orchestrator's job)
 
 Make the changes (using the MCP skills again if tools/tests are involved — same
-rules as the build playbook). Re-run `npm run test:all`. Re-run
-`/security-review` and `/code-review low` over the new changes and fix findings.
+rules as the build playbook). Re-run `npm run test:all`. **Do not run
+`/security-review` / `/code-review` yourself** — after you push, the orchestrator re-runs
+[`mcp-review`](../../mcp-review/SKILL.md) over the new changes and hands back any findings.
 
 ### 4. Push, reply, re-request
 
