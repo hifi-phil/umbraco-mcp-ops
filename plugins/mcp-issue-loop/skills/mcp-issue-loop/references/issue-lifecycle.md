@@ -1,14 +1,11 @@
-# Issue lifecycle — subagent playbooks
+# Issue lifecycle — build playbook
 
-Two playbooks. The orchestrator (see `../SKILL.md`) substitutes the issue details
-and dispatches each as a subagent prompt.
-
-- **Build playbook** — runs once per issue, in parallel (cap 3). Takes an issue
-  from `ready-for-ai` to an open, CI-green PR.
-- **Review-response playbook** — runs each time the human requests changes on a
-  PR. Addresses the feedback and re-greens.
-
-Both run `agentType: general-purpose` so the full tool + Skill set is available.
+The **build playbook** below. The orchestrator (see `../SKILL.md`) substitutes the issue
+details and dispatches it as a subagent prompt (`agentType: general-purpose`, so the full
+tool + Skill set is available). It runs once per issue, in parallel (cap 3), and takes an
+issue from `ready-for-ai` to an open, CI-green PR. The orchestrator then reviews that PR with
+`mcp-review` and hands off — human change-requests are `rework-loop`'s, not a playbook here
+(see *Responding to human review* at the end).
 
 ---
 
@@ -27,8 +24,7 @@ Both run `agentType: general-purpose` so the full tool + Skill set is available.
 > test:all`** in local mode (steps 1 & 4 below); **cloud mode overrides steps 1 & 4**
 > (no worktree; boot Umbraco via `worker-env` and gate on the diff's tests,
 > `npm run test:changed` — see the main SKILL.md → *Cloud mode*);
-> `/security-review` and `/code-review` (low) are clean or their findings are
-> fixed; the branch is pushed; a PR is open against the base branch; its CI
+> the branch is pushed; a PR is open against the base branch; its CI
 > is green; and the **issue has been marked complete** — `ready-for-ai`
 > removed, `generated-by-ai` added, the PR referenced on it (see step 8). If
 > you cannot reach this state, stop and return a clear blocked report (what's
@@ -90,18 +86,15 @@ npm run test:all
 state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename the DB in
 `demo-site/appsettings.local.json`, restart, re-run `create-api-user.mjs`).
 
-### 5. Security + code review — fix findings
+### 5. Review is the orchestrator's job — you do NOT self-review
 
-Run both over your change and fix everything actionable before pushing:
-
-```
-/security-review
-/code-review low
-```
-
-Treat confirmed findings like failing tests — fix them in this worktree, re-run
-the relevant tests, and only then proceed. Re-run a review after fixing if the
-fix was non-trivial.
+**Do not run `/security-review` or `/code-review` yourself.** They can't run in a subagent
+(they're `disable-model-invocation: true` — the command reaches you as inert text and
+nothing happens), and a subagent grading its own code is weak anyway. Instead, once you
+return a CI-green PR, **the orchestrator runs the [`mcp-review`](../../mcp-review/SKILL.md)
+skill** over it (the faithful 5-lens code review + security scan, spawned as independent
+review subagents) and hands you back any surviving findings to fix in this worktree. Just
+build well and return; don't claim a review ran.
 
 ### 6. Commit, push, open the PR
 
@@ -112,8 +105,9 @@ gitflow repos — defer to the `release-and-branching` skill), linking the issue
 (`Closes #{NUMBER}`) so the merge closes it. Open it **ready for review** (not draft) — the human needs
 to be able to review and approve it; that review is the acceptance gate.
 
-Include in the PR body: what changed, which skills/agents were used, test
-results, and a note that security + code review ran clean.
+Include in the PR body: what changed, which skills/agents were used, and test
+results. **Do not claim security/code review ran** — that happens next, at the
+orchestrator level via `mcp-review`; the orchestrator adds the review outcome.
 
 ### 7. Drive CI green — then return
 
@@ -152,8 +146,9 @@ When CI is green (or you've hit the cap and are blocking), **return** the
 structured report to the orchestrator:
 `{ issue, worktreeName, worktreePath, branch, prNumber, model, tier, status }`
 (`status`: `pr-open-green` or `blocked` with the reason). Leave the worktree on
-disk (do **not** remove it) — the review phase reuses it. Do not wait for the
-human review; that's the orchestrator's job.
+disk (do **not** remove it) — the orchestrator reuses it to fix any `mcp-review` findings.
+Do not review your own code and do not wait for human review; both are the orchestrator's
+job (review) or `rework-loop`'s (human feedback).
 
 > **Learnings are captured automatically — you do nothing here.** When you finish,
 > a `SubagentStop` hook analyses this transcript off the critical path and files
@@ -163,47 +158,9 @@ human review; that's the orchestrator's job.
 
 ---
 
-## Review-response playbook
+## Responding to human review
 
-> The human reviewed PR **#{PR}** (issue #{NUMBER}) and requested changes. Your
-> job: address every piece of feedback and get the PR back to green + re-requested
-> review. Work in the issue's existing worktree.
-
-### 1. Re-enter the worktree
-
-`EnterWorktree({ path: "{WORKTREE_PATH}" })` to return to this issue's worktree
-with all its state (DB, port, node_modules) intact.
-
-### 2. Read the review
-
-Read the PR's reviews and inline review comments (github-ops → *Get PR reviews +
-review comments*). List every requested change. If any comment is unclear, reply on
-the thread asking for clarification and return — don't guess at what the reviewer
-meant.
-
-### 3. Address, re-review, re-test
-
-Make the changes (using the MCP skills again if tools/tests are involved — same
-rules as the build playbook). Re-run `npm run test:all`. Re-run
-`/security-review` and `/code-review low` over the new changes and fix findings.
-
-### 4. Push, reply, re-request
-
-Commit and push. Reply to each review thread noting how it was addressed (or
-resolve it). Re-request review from the reviewer (github-ops → *Re-request review /
-add reviewer*) — a fresh push often re-triggers review anyway.
-
-### 5. Re-green CI
-
-Watch CI as in build step 7 (same 8-attempt cap). Get it back to green before
-returning.
-
-### 6. Return
-
-**Return** to the orchestrator: `{ prNumber, status:
-"changes-addressed-green" }`. The orchestrator resumes watching for the human's
-next review or approval.
-
-> **Capture is automatic.** The `SubagentStop` hook analyses this transcript when
-> you finish and files a `proto-learning` issue if the feedback revealed a
-> systemic lesson. You don't file anything.
+There is **no review-response playbook here** — `mcp-issue-loop` builds to a CI-green,
+`mcp-review`-passed PR and hands off. When the human requests changes, they add the
+`auto-rework` label and [`rework-loop`](../../rework-loop/SKILL.md) actions the feedback.
+Merging is `merge-flow`'s job.

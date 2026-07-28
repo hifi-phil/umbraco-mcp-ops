@@ -4,7 +4,8 @@ description: >-
   Label-triggered loop that acts on PR review feedback. When a reviewer has left comments
   and labels the loop-authored PR `auto-rework`, it reads the feedback, makes the changes
   following the established MCP skills, boots a local Umbraco via the worker-env skill and
-  runs the diff's tests (test:changed) as a local gate, pushes, replies to the threads,
+  runs the diff's tests (test:changed) as a local gate, reviews the change with the
+  mcp-review skill (faithful 5-lens + security scan), pushes, replies to the threads,
   re-requests review, and removes the `auto-rework` label — then stops. It runs a local
   test gate but does NOT poll/wait for the full CI suite (merge-flow won't merge until CI
   passes, so CI is enforced there) and it never merges. Runs in a cloud routine or locally.
@@ -79,14 +80,25 @@ Run `npm run compile`, then — once Umbraco is ready (`.demo-site-port` +
 anything they catch. Use `npm run test:all` only if the rework is broad; CI runs the full
 suite regardless.
 
-## Step 3 — push
+## Step 3 — review the rework with `mcp-review`
 
-Commit and push to the PR branch. The local `compile` + `test:changed` gate from Step 2 is
-the only gate this session applies — **do not poll or wait for the full CI suite to go
-green.** CI runs asynchronously and `merge-flow` enforces it at merge time, so a rework
-session that sits watching check-runs just burns time and tokens for no benefit.
+Before pushing, run the **[`mcp-review`](../mcp-review/SKILL.md)** skill over your rework
+diff — the faithful 5-lens code review + security scan. This session is top-level, so it
+can spawn mcp-review's independent review subagents (the reviewers didn't write the change,
+so it's a real review, not self-grading). Fix anything that survives its confidence
+threshold, re-run the affected tests, then proceed. **Do not** use the bundled
+`/security-review` / `/code-review` slash commands — they're `disable-model-invocation:
+true` and won't run here. Report only what mcp-review actually found.
 
-## Step 4 — reply, re-request & clear the label
+## Step 4 — push
+
+Commit and push to the PR branch. The local `compile` + `test:changed` gate plus
+`mcp-review` (Steps 2–3) are the only gates this session applies — **do not poll or wait
+for the full CI suite to go green.** CI runs asynchronously and `merge-flow` enforces it at
+merge time, so a rework session that sits watching check-runs just burns time and tokens
+for no benefit.
+
+## Step 5 — reply, re-request & clear the label
 
 Immediately after pushing (no waiting for CI): **reply briefly on each addressed thread**
 (what changed), **re-request review** from the original reviewer (github-ops → *Re-request
@@ -100,8 +112,11 @@ Send a Claude push notification: `Reworked PR #N per review — pushed & re-requ
 
 - **Only actionable feedback triggers a rework;** a plain approval is a quiet no-op.
 - **Scoped to the review** — resolve what was raised, nothing more; never grow the PR.
-- **Always clear `auto-rework` on exit** — both on completion (Step 4) and on the quiet
+- **Always clear `auto-rework` on exit** — both on completion (Step 5) and on the quiet
   no-op (Step 1) — so the label reflects "rework pending" and the trigger stays re-armable.
+- **Review with `mcp-review`, never the bundled slash commands.** The real 5-lens + security
+  scan runs via `mcp-review` (Step 3); `/security-review` and `/code-review` are
+  `disable-model-invocation: true` and silently no-op here. Report only what ran.
 - **Never merge** — re-request review; `merge-flow` merges once re-approved.
 - **Gate locally, then hand off — never poll the full CI suite.** Run `test:changed` (the
   diff's tests) before pushing, then push and stop. `merge-flow` won't merge until CI is

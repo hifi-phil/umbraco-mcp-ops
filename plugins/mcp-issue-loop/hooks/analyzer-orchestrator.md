@@ -13,9 +13,9 @@ could see.
    (`mcp-issue-loop` or `content-issue-loop` — no backlog gathered, no issue
    subagents dispatched), output `{"file":false}` and stop.
 2. Look **only** for loop-level signals, e.g.:
-   - a safety backstop tripped (CI-green cap, review-round cap, no-progress),
+   - a safety backstop tripped (CI-green cap, no-progress),
    - a class of issue that consistently needed a higher model tier,
-   - repeated review-round churn across issues,
+   - an `mcp-review` finding that recurs across issues,
    - a recurring blocker or environment problem hitting multiple issues,
    - the loop's own instructions being unclear or wrong in practice.
 3. Do **not** re-file per-issue learnings — those are captured separately by the

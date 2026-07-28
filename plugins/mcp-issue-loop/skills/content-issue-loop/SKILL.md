@@ -5,10 +5,10 @@ description: >-
   that have NO Umbraco build/test toolchain: the umbraco-mcp-ops repo (skills,
   plugins, scripts, workflows), the shared umbraco-mcp-skills source (Umbraco-MCP-Base),
   docs repos, and plugin repos. One worktree + subagent per issue (max 3 parallel),
-  each driven to a CI-green PR, then iterated against review feedback until approved
-  and merged. Same orchestration as mcp-issue-loop but with a docs/skill/config build
-  playbook instead of the MCP-tool one — no worktree DB hooks, no `npm run test:all`,
-  no MCP skills. This is the converter for the `loop-improvement` issues triage files
+  each driven to a CI-green, mcp-reviewed PR, then handed off (human change-requests →
+  rework-loop, merge → merge-flow). Same orchestration as mcp-issue-loop but with a
+  docs/skill/config build playbook instead of the MCP-tool one — no worktree DB hooks, no
+  `npm run test:all`, no MCP skills. This is the converter for the `loop-improvement` issues triage files
   on the ops repo. Trigger on "work the ready ops issues", "run the content loop",
   "action the loop-improvement issues", "convert the loop-improvement backlog".
 ---
@@ -34,13 +34,14 @@ structural — do not restate or re-derive it:
 
 - **Gathering** the `ready-for-ai` backlog and setting the durable `/goal`.
 - **Rolling dispatch, cap 3** — one worktree + subagent per issue.
-- **Review phase** — open a ready-for-review PR, watch for the human's review,
-  dispatch a response subagent on `CHANGES_REQUESTED`, merge on approval.
+- **Review + hand off** — the orchestrator runs `mcp-review` over each returned green PR,
+  fixes findings (re-testing locally), then **hands off**: no human-review phase here — the
+  reviewer's change-requests go to `rework-loop` (`auto-rework`), and `merge-flow` merges.
 - **Model selection** — orchestrator inherits the session model; pick per issue.
   Content work skews lighter: `sonnet` default, `haiku` for pure-docs/typo fixes,
   `opus` for intricate skill/plugin logic. **Never `fable`.**
 - **Stop conditions & caps** — satisfiable `/goal`, graceful hand-back, the CI-green
-  (8) and review-round (5) caps, the no-progress guard, label/issue-change handling.
+  (8) cap, the no-progress guard, label/issue-change handling.
 - **Capturing learnings** — automatic via the same `SubagentStop`/`SessionEnd`
   hooks (this skill's subagents are recognised too). You file nothing by hand.
 - **GitHub operations** — use the **`github-ops`** skill (required); it owns the
@@ -49,7 +50,7 @@ structural — do not restate or re-derive it:
   via the API instead.
 
 Only the **per-issue build playbook** changes. Use the one below in place of
-mcp-issue-loop's build/review-response playbooks.
+mcp-issue-loop's build playbook.
 
 ## What's different — the lightweight build playbook
 
@@ -72,9 +73,11 @@ mcp-issue-loop's build/review-response playbooks.
      touched the capture hook; validate any JSON/YAML/bash you changed.
    - Other repos: run their documented lint/test (a `package.json` script, a linter)
      if present. A pure-docs change may have nothing to run — that's fine.
-4. **Security + code review.** Run `/security-review` and `/code-review low` and fix
-   findings, same as the MCP loop. For pure-prose changes there may be little to
-   flag; run them anyway.
+4. **Review is the orchestrator's job — you do NOT self-review.** Don't run
+   `/security-review` / `/code-review` (they can't run in a subagent and self-review is
+   weak). After you return a CI-green PR, the orchestrator runs
+   [`mcp-review`](../mcp-review/SKILL.md) over it and hands back any findings. For a
+   pure-prose change the review will find little — that's fine.
 5. **Commit, push, open the PR** against the base branch (detect via
    `release-and-branching` — `umbraco-mcp-ops` and `Umbraco-MCP-Base` are main-only).
    Link the issue (`Closes #N`), ready for review, never draft. Drive CI green

@@ -6,6 +6,9 @@
 # starts, clones the PUBLIC umbraco-mcp-ops repo, and copies:
 #   - the listed skills             → the session skills dir  ($HOME/.claude/skills)
 #   - every plugin agent definition → the session agents dir  ($HOME/.claude/agents)
+#   - Anthropic's pr-review-toolkit code-review agents (used by mcp-review), fetched at a
+#     pinned commit from github.com/anthropics/claude-plugins-official → $HOME/.claude/agents
+#     (routines can't use the marketplace; locally these come from the installed marketplace)
 #   - the mcp-issue-loop learning hooks → $HOME/.claude/ops-hooks, then registers
 #     them (SubagentStop/SessionEnd) in $HOME/.claude/settings.json so the
 #     proto-learning capture that runs locally as a plugin also runs in cloud
@@ -26,14 +29,22 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="11"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="15"                                  # bump to force an env-cache rebuild / re-clone
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
 HOOKS_ROOT="$HOME/.claude/ops-hooks"          # plugin-root stand-in for the capture hooks
 SETTINGS="$HOME/.claude/settings.json"
-SKILLS="github-ops loop-dispatch worker-env merge-flow triage-learnings dependabot-rollup auto-release-loop release-and-branching sync-dev rework-loop mcp-issue-loop"
+SKILLS="github-ops loop-dispatch worker-env merge-flow triage-learnings dependabot-rollup auto-release-loop release-and-branching sync-dev rework-loop mcp-issue-loop content-issue-loop mcp-review"
 LOG="$HOME/skill-sync.log"
+
+# Anthropic's pr-review-toolkit code-review agents, used by the mcp-review skill. Routines
+# can't use the marketplace and there's no other channel, so we fetch them from the public
+# source repo at setup and drop them in AGENTS_DEST. Pinned for reproducibility on a review
+# gate — bump REVIEW_REF to update. (Locally these come from the auto-installed marketplace.)
+REVIEW_REPO="https://github.com/anthropics/claude-plugins-official"
+REVIEW_REF="e5635ad1f03874dbe6862f8b56f8873b8d4035dc"
+REVIEW_SUBPATH="plugins/pr-review-toolkit/agents"
 
 mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
 {
@@ -104,6 +115,23 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     echo "ERROR: no source available (clone failed: $REPO, and no OPS_SRC provided)"
   fi
   [ "$CLONED" = "1" ] && rm -rf /tmp/ops   # only remove a checkout WE cloned, not OPS_SRC
+
+  # Anthropic's review agents — fetch the pinned commit shallowly and copy the agent files.
+  # A single-commit fetch keeps it light; on failure the loop still runs with our own
+  # security-reviewer, just without the pr-review-toolkit code lenses, so this never aborts.
+  rt="$(mktemp -d)"
+  if git -C "$rt" init -q 2>>"$LOG" \
+     && git -C "$rt" remote add origin "$REVIEW_REPO" 2>>"$LOG" \
+     && git -C "$rt" fetch -q --depth 1 origin "$REVIEW_REF" 2>>"$LOG" \
+     && git -C "$rt" checkout -q FETCH_HEAD 2>>"$LOG" \
+     && ls "$rt/$REVIEW_SUBPATH"/*.md >/dev/null 2>&1; then
+    cp "$rt/$REVIEW_SUBPATH"/*.md "$AGENTS_DEST/" \
+      && echo "installed review agents from $REVIEW_REPO@${REVIEW_REF:0:7}: $(ls -1 "$rt/$REVIEW_SUBPATH"/*.md | xargs -n1 basename | tr '\n' ' ')"
+  else
+    echo "WARN: could not fetch review agents ($REVIEW_REPO@${REVIEW_REF:0:7}) — mcp-review will run with security-reviewer only"
+  fi
+  rm -rf "$rt"
+
   echo "skills present: $(ls -1 "$SKILLS_DEST" 2>/dev/null | tr '\n' ' ')"
   echo "agents present: $(ls -1 "$AGENTS_DEST" 2>/dev/null | tr '\n' ' ')"
   echo "hooks present:  $(ls -1 "$HOOKS_ROOT/hooks" 2>/dev/null | tr '\n' ' ')"
