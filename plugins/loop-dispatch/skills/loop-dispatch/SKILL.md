@@ -32,8 +32,28 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 |---|---|---|---|
 | `issues` | `labeled` | label = `ready-for-ai` | **`/mcp-issue-loop`** (cloud mode) |
 | `issues` | `labeled` | label = `auto-release` (issue title `release <version>`) | **`/auto-release-loop`** |
+| `issues` | `labeled` | label = `ai-discuss` | **`/issue-discuss-loop`** |
+| `issue_comment` | `created` | issue carries `ai-discuss` + is open, comment is unsigned and doesn't start `//`, author is a trusted `User`, not a PR | **`/issue-discuss-loop`** |
 | `pull_request` | `labeled` | label = `auto-merge` | **`/merge-flow`** |
 | `pull_request` | `labeled` | label = `auto-rework` | **`/rework-loop`** |
+
+The `issue_comment` row is the only one that isn't a label event: it carries the **next round of
+an `ai-discuss` conversation**. The comment payload has no `.label`, so the router reads the
+labels already **on the issue** (`.issue.labels[]`) instead, plus four gates that matter:
+
+- **The comment must be unsigned.** `issue-discuss-loop` posts as the **maintainer's own
+  account** (not a bot — verified), so nothing in the author fields tells its reply from a
+  human's. It therefore signs every comment with `<!-- issue-discuss-loop -->`, and a signed
+  comment routes nowhere. Without this the loop would answer itself indefinitely.
+- **A comment starting `//` addresses a person, not the loop.** Comments are for the loop by
+  default; the prefix is the opt-out that lets colleagues talk to each other on an issue the
+  loop is watching. Anchored, so a `//` inside a URL still routes.
+- **The commenter must be trusted** — `OWNER`, `MEMBER`, or `COLLABORATOR`. These repos are
+  public, so otherwise any user could wake a cloud session by commenting.
+- **The issue must be open**, and it must be an issue: PR conversation comments arrive as
+  `issue_comment` too and route nowhere.
+
+All of them fail closed — a missing or unexpected field routes nowhere.
 
 Rework is a **label**, not the review event — uniform with the rest, and it works with one
 account (you can't fire a `pull_request_review` workflow by reviewing your *own* PR, and
@@ -41,8 +61,8 @@ the loop's identity is often the reviewer's). Flow: a reviewer leaves comments, 
 `auto-rework` to say "address these". Review events route nowhere.
 
 Everything else — `pull_request.opened`, a PR labelled `dependencies`/`javascript`, an
-issue labelled anything else, any review event — matches **no row**, so the edge never
-fires the routine. This is what kills the wasteful fires: a Dependabot PR labelled
+issue labelled anything else, a comment on an issue without `ai-discuss`, any review event —
+matches **no row**, so the edge never fires the routine. This is what kills the wasteful fires: a Dependabot PR labelled
 `dependencies` woke merge-flow **4× overnight** under per-event routines; here the edge
 stops immediately, waking no routine.
 
@@ -76,6 +96,9 @@ specific issue/PR, and **follow that skill's instructions verbatim**:
   just the wake-up).
 - PR review changes-requested → **`/rework-loop`** for that PR.
 - `auto-release` issue → **`/auto-release-loop`**, version taken from the issue title.
+- `ai-discuss` issue, or a comment on one → **`/issue-discuss-loop`** for that issue. It
+  discusses only: no code, no PR, and it never clears its own label (the human owns
+  `ai-discuss`), so **don't expect the label to be gone afterwards** and don't remove it here.
 
 **One event → one loop.** Do not chain (don't build *then* merge *then* release in a
 single fire) — each of those has its own event that will dispatch its own run. Hand

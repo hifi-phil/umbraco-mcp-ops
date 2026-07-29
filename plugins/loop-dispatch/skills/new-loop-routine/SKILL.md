@@ -42,7 +42,7 @@ Never use `fable`. Never put secrets in the prompt or config.
 
 **Preconditions (once per repo):**
 1. **Labels exist**: `ready-for-ai`, `generated-by-ai`, `ai-blocked`, `auto-merge`,
-   `auto-release`, `release-blocked` (see `self-learning-system.md` §2).
+   `auto-release`, `release-blocked`, `ai-discuss` (see `self-learning-system.md` §2).
 2. **Skills reach the env** — `loop-dispatch` (and the loops) are in the
    `cloud-skill-sync` `SKILLS` list and the env has been rebuilt (bump `VERSION`, re-paste).
 3. **Org Actions policy** allows calling a reusable workflow from `hifi-phil/umbraco-mcp-ops`
@@ -57,8 +57,22 @@ Never use `fable`. Never put secrets in the prompt or config.
    Fire URL) and `LOOP_DISPATCH_TOKEN` (the token) — `gh secret set …`.
 4. **Commit the caller workflow** — copy [`references/caller-workflow.yml`](references/caller-workflow.yml)
    **verbatim** to the repo as `.github/workflows/loop-dispatch.yml` (open a PR).
+   *One exception:* on `umbraco-mcp-ops` itself that filename is taken by the **reusable**
+   workflow, so its caller lives at `.github/workflows/loop-dispatch-caller.yml`. Same body.
 5. **Smoke-test** — label a throwaway issue `ready-for-ai` (Action fires → routine builds
    a PR), and label a PR `dependencies` (Action computes `route=none` → routine never fires).
+
+**When the caller template itself changes** (a new event added to
+[`caller-workflow.yml`](references/caller-workflow.yml) — e.g. `issue_comment` for the
+discussion loop), **every already-onboarded repo keeps the old copy and silently won't fire the
+new trigger.** The committed workflow is the subscription; the reusable workflow can't add one.
+So re-commit the template verbatim to each repo that has it (one PR each) and note in the PR
+which trigger is new. Check which repos are affected with:
+
+```bash
+gh api "search/code?q=repo:umbraco/<repo>+filename:loop-dispatch.yml+path:.github/workflows"
+# or per repo: gh api repos/umbraco/<repo>/contents/.github/workflows/loop-dispatch.yml --jq .sha
+```
 
 ## Rules
 

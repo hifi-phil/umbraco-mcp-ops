@@ -26,3 +26,5 @@ and routes them at the edge via `route-event.sh`. The event → loop mapping it 
 - PR labelled `auto-merge` → **merge-flow**
 - PR labelled `auto-rework` → **rework-loop**
 - Issue labelled `auto-release` → **auto-release-loop**
+- Issue labelled `ai-discuss`, **or a human comment on an issue that already carries it** →
+  **issue-discuss-loop**
