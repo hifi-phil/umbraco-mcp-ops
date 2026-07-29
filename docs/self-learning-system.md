@@ -64,7 +64,7 @@ repo benefits next time.
 | `issue-discuss-loop` | mcp-issue-loop | Talks an issue into shape *before* it's built — writes a stub issue properly, asks questions when it can't, or critiques a written issue antagonistically. One comment per fire; your reply fires the next round. Never writes code | Cloud routine (Issue: Labeled `ai-discuss`, or a comment on one) or local | label `ai-discuss` |
 | `mcp-issue-loop` | mcp-issue-loop | Works `ready-for-ai` issues on an **MCP** repo → CI-green PR. *Local:* worktrees + parallel subagents + local tests + review loop. *Cloud:* one session/issue, CI-driven (no local Umbraco), stop at green PR | Dev machine **or** cloud routine (Issue: Labeled `ready-for-ai`) | label `ready-for-ai` |
 | `rework-loop` | mcp-issue-loop | Address a PR's review feedback → re-green CI → re-request review (never merges) | Cloud routine (PR: Labeled `auto-rework`) or local | label a PR `auto-rework` |
-| `content-issue-loop` | mcp-issue-loop | Same, for repos **without** the toolchain (this repo, `Umbraco-MCP-Base`, docs) | Dev machine or runner | "work the ready ops issues" |
+| `content-issue-loop` | mcp-issue-loop | Same, for repos **without** the toolchain (this repo, docs/plugin repos — *not* `Umbraco-MCP-Base`, which is a full MCP repo) | Dev machine or runner | "work the ready ops issues" |
 | capture hooks | mcp-issue-loop | After each subagent, analyze the transcript and file `proto-learning` issues | Wherever the loop runs | automatic (`SubagentStop`/`SessionEnd`) |
 | `triage-learnings` | mcp-issue-loop | Route proto-learnings → MCP-repo issue / shared-skills PR / loop-improvement issue | Web runner (scheduled) | "triage the learnings" |
 | `merge-flow` | merge-flow | Merge PRs labelled `auto-merge` once green + conflict-free (the label is the approval) | Cloud routine (weekdays) | label `auto-merge` |
@@ -202,7 +202,8 @@ per-user token).
   default branch, plus the routine and its two secrets. The already-onboarded repos need the
   template **re-committed** to pick up the new `issue_comment` trigger — see `new-loop-routine`.
 - **Complete issues:** label issues `ready-for-ai`, then run `mcp-issue-loop`
-  (MCP repos) or `content-issue-loop` (ops/base/docs). Each opens a PR and waits
+  (MCP repos, including `Umbraco-MCP-Base`) or `content-issue-loop` (this repo,
+  docs/plugin repos). Each opens a PR and waits
   for your review. Capture is automatic.
 - **Merge:** approve a PR and add `auto-merge`; `merge-flow` merges it once CI is
   green and it's conflict-free (it never merges on a red or unapproved PR).

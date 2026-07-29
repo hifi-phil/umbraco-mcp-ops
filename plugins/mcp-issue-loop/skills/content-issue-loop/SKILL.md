@@ -3,8 +3,9 @@ name: content-issue-loop
 description: >-
   The lightweight sibling of mcp-issue-loop — works `ready-for-ai` issues on repos
   that have NO Umbraco build/test toolchain: the umbraco-mcp-ops repo (skills,
-  plugins, scripts, workflows), the shared umbraco-mcp-skills source (Umbraco-MCP-Base),
-  docs repos, and plugin repos. One worktree + subagent per issue (max 3 parallel),
+  plugins, scripts, workflows), docs repos, and plugin repos. Not for
+  Umbraco-MCP-Base — that's a full MCP repo, use mcp-issue-loop.
+  One worktree + subagent per issue (max 3 parallel),
   each driven to a CI-green, mcp-reviewed PR, then handed off (human change-requests →
   rework-loop, merge → merge-flow). Same orchestration as mcp-issue-loop but with a
   docs/skill/config build playbook instead of the MCP-tool one — no worktree DB hooks, no
@@ -21,11 +22,18 @@ in this system aren't MCP repos and can't use that loop:
 
 - `hifi-phil/umbraco-mcp-ops` — where triage files `loop-improvement` issues
   (skills, plugins, `scripts/`, workflows, docs).
-- `umbraco/Umbraco-MCP-Base` — the shared `umbraco-mcp-skills` source.
 - docs / plugin repos generally.
 
 This skill is the loop for **those** repos. It's deliberately the *same* loop,
 minus the MCP-specific build steps.
+
+> **Not `umbraco/Umbraco-MCP-Base`.** It hosts the `umbraco-mcp-skills` source, but
+> that's one workspace out of six — it's a TypeScript monorepo (`packages/mcp-server-sdk`,
+> `packages/hosted-mcp`, `packages/create-mcp-server`, `template`, `tests/cli`) with jest,
+> Playwright, worktree hooks, and a CI job that boots a real Umbraco. Use
+> **`mcp-issue-loop`** there, even for a skills-only change. Before assuming any repo
+> belongs here, **check for a build/test toolchain** rather than going by what the repo
+> is "for".
 
 ## Same as mcp-issue-loop — reuse it wholesale
 
@@ -56,10 +64,12 @@ mcp-issue-loop's build playbook.
 
 > Completing one `ready-for-ai` issue on a **non-MCP** repo. No Umbraco toolchain.
 
-1. **Worktree.** These repos have **no `WorktreeCreate` hooks** (no DB, no `.env`, no
-   port, no `npm install`) — so a plain worktree is all you need. `EnterWorktree`
-   still works in any git repo (it just does `git worktree add`); nothing hook-backed
-   fires, which is correct here.
+1. **Worktree.** `EnterWorktree` works in any git repo (at minimum it does
+   `git worktree add`). **Check `.claude/settings.json` for `WorktreeCreate` hooks**
+   rather than assuming there are none — if the repo has them they *will* fire, and a
+   repo with worktree hooks is a strong sign it belongs in `mcp-issue-loop`, not here.
+   For a repo with no hooks (the ops repo, docs repos), a plain worktree is all you
+   need: no DB, no `.env`, no port, no `npm install`.
 2. **Implement.** Make the change directly — markdown, a skill (`SKILL.md` +
    references), a plugin manifest, a `scripts/` change, a workflow. Follow the repo's
    own conventions:
