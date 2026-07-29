@@ -51,6 +51,7 @@ files cover the **same** list — keep them in sync.
 | Get / read an issue | triage |
 | Create an issue | triage (`mcp-repo`, `loop-improvement`) |
 | Comment on an issue | all loops |
+| Rewrite an issue's body | issue-discuss-loop |
 | Add / remove a label on an issue | triage, merge-flow |
 | Close an issue | triage |
 | List PRs (by label / state) | merge-flow |

@@ -18,6 +18,7 @@ Auth is the MCP server's connected GitHub App — no token to paste. Mirror of
 | Get / read | `issue_read` (`method: "get"`; also `get_comments`, `get_labels`) |
 | Create | `issue_write` (`method: "create"`) — older servers: `create_issue` |
 | Comment | `add_issue_comment` |
+| Rewrite the body | `issue_write` (`method: "update"`, set `body`) — send the whole body; it replaces, never appends |
 | Add / remove label | `issue_write` (`method: "update"`, set the `labels` array). `label_write` manages label *definitions*, not application. |
 | Close | `issue_write` (`method: "update"`, `state: "closed"`) |
 | Search | `search_issues` |
