@@ -199,9 +199,7 @@ per-user token).
   the loop, so people can talk to each other on a watched issue. Everything else is treated as
   addressed to the loop (`/discuss …` or `@claude …` if you like being explicit).
   **Firing needs the caller workflow** (`.github/workflows/loop-dispatch.yml`) on the repo's
-  default branch, plus the routine and its two secrets. **This ops repo hosts the *reusable*
-  workflow but has no caller of its own**, so `ai-discuss` here is a marker for running the
-  skill by hand ("discuss issue #N") until one is wired. The already-onboarded repos need the
+  default branch, plus the routine and its two secrets. The already-onboarded repos need the
   template **re-committed** to pick up the new `issue_comment` trigger — see `new-loop-routine`.
 - **Complete issues:** label issues `ready-for-ai`, then run `mcp-issue-loop`
   (MCP repos) or `content-issue-loop` (ops/base/docs). Each opens a PR and waits
@@ -249,6 +247,31 @@ script, with at least `github-ops` plus the loop's own skill in its `SKILLS` lis
 skill, e.g. `Run /merge-flow` for the merge loop. Cloud runs off the
 skills delivered by the setup script, not `/plugin install`. (`dependabot-rollup` is the
 exception — it's local-only; see §1b.)
+
+### This repo runs the loops too
+
+`umbraco-mcp-ops` has its own caller at
+[`.github/workflows/loop-dispatch-caller.yml`](../.github/workflows/loop-dispatch-caller.yml) —
+a copy of the locked template under a different filename, because the name
+`loop-dispatch.yml` is taken here by the **reusable** workflow it calls. It points at
+`…@main`, so this repo uses the same published router as everywhere else.
+
+**It needs two secrets before it does anything:**
+
+```bash
+gh secret set LOOP_DISPATCH_FIRE_URL --repo hifi-phil/umbraco-mcp-ops   # Routines UI → Call via API
+gh secret set LOOP_DISPATCH_TOKEN    --repo hifi-phil/umbraco-mcp-ops   # …→ Generate token
+```
+
+Both come from a `loop-dispatch → umbraco-mcp-ops` routine you create with
+[`new-loop-routine`](../plugins/loop-dispatch/skills/new-loop-routine/SKILL.md) (model it on
+the live `loop-dispatch → Umbraco-MCP-Base` one). Until they exist, a **matching** event fails
+loudly with `LOOP_DISPATCH_FIRE_URL / LOOP_DISPATCH_TOKEN secret not set on this repo` — which
+is the error you want; non-matching events still cost nothing. Meanwhile every loop skill can be
+run by hand here.
+
+One thing to know: `ready-for-ai` on this repo routes to **`content-issue-loop`**, not
+`mcp-issue-loop` — there's no Umbraco toolchain here to build against.
 
 ## 3. Release-loop lifecycle (detail)
 

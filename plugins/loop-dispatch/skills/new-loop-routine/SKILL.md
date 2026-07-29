@@ -57,6 +57,8 @@ Never use `fable`. Never put secrets in the prompt or config.
    Fire URL) and `LOOP_DISPATCH_TOKEN` (the token) — `gh secret set …`.
 4. **Commit the caller workflow** — copy [`references/caller-workflow.yml`](references/caller-workflow.yml)
    **verbatim** to the repo as `.github/workflows/loop-dispatch.yml` (open a PR).
+   *One exception:* on `umbraco-mcp-ops` itself that filename is taken by the **reusable**
+   workflow, so its caller lives at `.github/workflows/loop-dispatch-caller.yml`. Same body.
 5. **Smoke-test** — label a throwaway issue `ready-for-ai` (Action fires → routine builds
    a PR), and label a PR `dependencies` (Action computes `route=none` → routine never fires).
 
