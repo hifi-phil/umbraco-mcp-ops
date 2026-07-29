@@ -49,7 +49,7 @@ skill just names the *operation* and never restates or hard-codes how to do it.
 | Inbox repo | `hifi-phil/umbraco-mcp-ops` |
 | Inbox filter | open issues, label `proto-learning`, **not** label `triaged` |
 | Homes | see the routing table below |
-| Base branch (shared-skills PR) | **detect** via the `release-and-branching` skill — `Umbraco-MCP-Base` is main-only |
+| Base branch (shared-skills PR) | **detect** via the `release-and-branching` skill |
 | Routed items per run cap | **10** total, of which **≤ 5** are PRs (see Caps) |
 
 ### Routing table
@@ -114,8 +114,7 @@ All GitHub actions below use `github-ops` for the concrete command/tool.
 3. **Do not** add `ready-for-ai` — a human decides whether to feed it to the loop.
 
 **`shared-mcp-skills` (generalizable → PR to Umbraco-MCP-Base):**
-1. Detect the base branch via `release-and-branching` (`Umbraco-MCP-Base` is
-   main-only → base `main`).
+1. Detect the base branch via `release-and-branching` — never assume it.
 2. **Create a branch** (`chore/proto-learning-<slug>`) and **push** the **smallest**
    edit to the `umbraco-mcp-skills` skill that *should have* surfaced the lesson
    (often `add-tool` / `mcp-patterns` / an integration-test skill).

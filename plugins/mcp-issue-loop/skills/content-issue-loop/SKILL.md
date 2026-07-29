@@ -79,7 +79,7 @@ mcp-issue-loop's build playbook.
    [`mcp-review`](../mcp-review/SKILL.md) over it and hands back any findings. For a
    pure-prose change the review will find little — that's fine.
 5. **Commit, push, open the PR** against the base branch (detect via
-   `release-and-branching` — `umbraco-mcp-ops` and `Umbraco-MCP-Base` are main-only).
+   `release-and-branching` — never assume it; these repos don't share one model).
    Link the issue (`Closes #N`), ready for review, never draft. Drive CI green
    (the 8-attempt cap applies; `umbraco-mcp-ops` runs the hook-test workflow when
    `hooks/**` changes).
