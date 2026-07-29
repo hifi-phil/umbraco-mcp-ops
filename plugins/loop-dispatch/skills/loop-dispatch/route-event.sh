@@ -10,7 +10,7 @@
 # Inputs (in priority order):
 #   1. flags: --event --action --label --state --number --repo
 #      issue_comment only: --issue-labels --issue-state --author-type --author-assoc
-#                          --self-marked --is-pr
+#                          --self-marked --human-only --is-pr
 #   2. a raw GitHub event JSON on stdin or at $GITHUB_EVENT_PATH (parsed with jq);
 #      the event NAME comes from --event or $GITHUB_EVENT_NAME (it's an HTTP header,
 #      not part of the JSON body).
@@ -24,6 +24,7 @@ set -uo pipefail
 
 event="" action="" label="" state="" number="" repo=""
 issue_labels="" issue_state="" author_type="" author_assoc="" self_marked="" is_pr=""
+human_only=""
 
 # The marker the discussion loop signs every comment with. Matched as a PREFIX so the
 # variants (e.g. `<!-- issue-discuss-loop:capped -->`) match too.
@@ -45,6 +46,7 @@ while [ $# -gt 0 ]; do
     --author-type)  author_type="${2:-}";  shift 2 ;;
     --author-assoc) author_assoc="${2:-}"; shift 2 ;;
     --self-marked)  self_marked="${2:-}";  shift 2 ;;
+    --human-only)   human_only="${2:-}";   shift 2 ;;
     --is-pr)        is_pr="${2:-}";        shift 2 ;;
     *) shift ;;
   esac
@@ -75,6 +77,11 @@ if [ -z "$action" ]; then
     author_assoc="$(printf '%s' "$payload" | jq -r '.comment.author_association // empty' 2>/dev/null)"
     self_marked="$(printf '%s'  "$payload" | jq -r --arg m "$DISCUSS_MARKER" \
       'if ((.comment.body // "") | contains($m)) then "1" else empty end' 2>/dev/null)"
+    # A comment STARTING with `//` is addressed to a person, not the loop — the opt-out that
+    # lets colleagues talk to each other on an issue the loop is watching. Anchored, so a `//`
+    # later in the body (a URL, a code snippet) doesn't count.
+    human_only="$(printf '%s'   "$payload" | jq -r \
+      'if ((.comment.body // "") | test("^\\s*//")) then "1" else empty end' 2>/dev/null)"
     # `.issue.pull_request` is present only when the comment is on a PR (GitHub sends PR
     # conversation comments as issue_comment too).
     is_pr="$(printf '%s' "$payload" | jq -r 'if .issue.pull_request then "1" else empty end' 2>/dev/null)"
@@ -134,16 +141,20 @@ case "$event/$action" in
     # loop SIGNS every comment with `<!-- issue-discuss-loop -->` and this gate skips signed
     # comments. That works the same in cloud and local runs, whoever the account is.
     #
-    # Five gates, all required, all fail-closed (a missing/unknown field routes nowhere):
+    # Six gates, all required, all fail-closed (a missing/unknown field routes nowhere):
     #   1. the issue carries `ai-discuss` — the label IS "the conversation is open"
     #   2. the comment is NOT signed by the loop — the anti-self-reply guard
-    #   3. the commenter is trusted (OWNER / MEMBER / COLLABORATOR). These repos are public:
+    #   3. the comment does NOT start with `//` — that prefix means "I'm talking to a
+    #      colleague, not the loop". Comments are for the loop by default; `//` opts out, so
+    #      people can hold a conversation on an issue the loop is watching.
+    #   4. the commenter is trusted (OWNER / MEMBER / COLLABORATOR). These repos are public:
     #      without this, any GitHub user could burn a cloud session — or steer a rewrite of
     #      the issue body — just by commenting.
-    #   4. the issue is still open
-    #   5. it's an issue, not a PR (GitHub sends PR conversation comments as issue_comment)
+    #   5. the issue is still open
+    #   6. it's an issue, not a PR (GitHub sends PR conversation comments as issue_comment)
     if labels_include "$issue_labels" ai-discuss \
        && [ -z "$self_marked" ] \
+       && [ -z "$human_only" ] \
        && is_trusted "$author_assoc" \
        && [ "$author_type" = "User" ] \
        && [ "$issue_state" = "open" ] \

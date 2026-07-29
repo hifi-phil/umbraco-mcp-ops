@@ -33,7 +33,7 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 | `issues` | `labeled` | label = `ready-for-ai` | **`/mcp-issue-loop`** (cloud mode) |
 | `issues` | `labeled` | label = `auto-release` (issue title `release <version>`) | **`/auto-release-loop`** |
 | `issues` | `labeled` | label = `ai-discuss` | **`/issue-discuss-loop`** |
-| `issue_comment` | `created` | issue carries `ai-discuss` + is open, comment is unsigned, author is a trusted `User`, not a PR | **`/issue-discuss-loop`** |
+| `issue_comment` | `created` | issue carries `ai-discuss` + is open, comment is unsigned and doesn't start `//`, author is a trusted `User`, not a PR | **`/issue-discuss-loop`** |
 | `pull_request` | `labeled` | label = `auto-merge` | **`/merge-flow`** |
 | `pull_request` | `labeled` | label = `auto-rework` | **`/rework-loop`** |
 
@@ -45,6 +45,9 @@ labels already **on the issue** (`.issue.labels[]`) instead, plus four gates tha
   account** (not a bot — verified), so nothing in the author fields tells its reply from a
   human's. It therefore signs every comment with `<!-- issue-discuss-loop -->`, and a signed
   comment routes nowhere. Without this the loop would answer itself indefinitely.
+- **A comment starting `//` addresses a person, not the loop.** Comments are for the loop by
+  default; the prefix is the opt-out that lets colleagues talk to each other on an issue the
+  loop is watching. Anchored, so a `//` inside a URL still routes.
 - **The commenter must be trusted** — `OWNER`, `MEMBER`, or `COLLABORATOR`. These repos are
   public, so otherwise any user could wake a cloud session by commenting.
 - **The issue must be open**, and it must be an issue: PR conversation comments arrive as

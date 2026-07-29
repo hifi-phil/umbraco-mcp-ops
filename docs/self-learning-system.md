@@ -135,7 +135,7 @@ The system is label-driven. Create the labels on the repos that need them:
 
 | Label | On which repo(s) | Purpose |
 |-------|------------------|---------|
-| `ai-discuss` | any repo where you want issues talked through first — it only *fires by itself* on repos that have the caller workflow committed (see below) | Discussion is open on this issue — question it, critique it, write it up. **You** remove it when satisfied; the loop never does |
+| `ai-discuss` | any repo where you want issues talked through first — it only *fires by itself* on repos that have the caller workflow committed (see below) | Discussion is open on this issue — question it, critique it, write it up. Comments address the loop by default; start one with `//` to talk to a colleague instead. **You** remove the label when satisfied; the loop never does |
 | `ready-for-ai` | every MCP repo (and any repo a loop should work) | The only gate a loop acts on |
 | `generated-by-ai` | every MCP repo a loop works | Set by `mcp-issue-loop` on success (replaces `ready-for-ai` when the CI-green PR opens) |
 | `ai-blocked` | every MCP repo a loop works | Set by `mcp-issue-loop` when a backstop trips (replaces `ready-for-ai`; comment says why). Re-add `ready-for-ai` to retry |
@@ -195,6 +195,9 @@ per-user token).
 - **Think an issue through first (optional):** label it `ai-discuss`. The loop questions,
   critiques, or writes it up, one comment at a time — reply and it fires again. When you agree
   it's right, remove `ai-discuss` and add `ready-for-ai`.
+  **To ask a colleague something instead, start the comment with `//`** — that one never wakes
+  the loop, so people can talk to each other on a watched issue. Everything else is treated as
+  addressed to the loop (`/discuss …` or `@claude …` if you like being explicit).
   **Firing needs the caller workflow** (`.github/workflows/loop-dispatch.yml`) on the repo's
   default branch, plus the routine and its two secrets. **This ops repo hosts the *reusable*
   workflow but has no caller of its own**, so `ai-discuss` here is a marker for running the

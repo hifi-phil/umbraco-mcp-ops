@@ -30,6 +30,7 @@ the label already *on* the issue, so the gate is built from the issue and the co
 | author association | `OWNER` | `.comment.author_association` — only `OWNER`/`MEMBER`/`COLLABORATOR` route. These repos are public; without this any user could fire a session |
 | author type | `User` | `.comment.user.type` — must be `User` |
 | loop's own marker | `<!-- issue-discuss-loop` | `.comment.body` contains it → **routes nowhere**. The loop posts as the *maintainer's own account*, so the author fields can't tell its reply from a human's; the marker is the only anti-self-reply guard |
+| human-only prefix | `// @sarah thoughts?` | `.comment.body` matches `^\s*//` → **routes nowhere**. Comments address the loop by default; the prefix lets colleagues talk to each other on a watched issue. Anchored, so a `//` inside a URL still routes |
 | is it a PR? | present / absent | `.issue.pull_request` — set for PR conversation comments, which route nowhere |
 
 Every one of these is **fail-closed**: a missing or unexpected value routes nowhere.

@@ -60,6 +60,8 @@ expect_route "comment: COLLABORATOR is trusted"      issue-discuss-loop -- --eve
 # THE critical negative: the loop posts as the maintainer's own account, so its own comment is
 # indistinguishable by author. The marker it signs every comment with is the only guard.
 expect_route "comment: signed by the loop → none"    none -- "${OK[@]}" --self-marked 1
+# Opt-out: a comment starting `//` is aimed at a colleague, not the loop.
+expect_route "comment: // human-only → none"         none -- "${OK[@]}" --human-only 1
 # Untrusted commenters: these repos are public, so a stranger must not be able to fire a session.
 expect_route "comment: assoc NONE → none"            none -- --event issue_comment --action created --issue-labels ai-discuss --issue-state open --author-type User --author-assoc NONE --number 50 --repo o/r
 expect_route "comment: assoc CONTRIBUTOR → none"     none -- --event issue_comment --action created --issue-labels ai-discuss --issue-state open --author-type User --author-assoc CONTRIBUTOR --number 50 --repo o/r
@@ -130,6 +132,33 @@ expect_json "raw json loop's own signed comment → none" \
 expect_json "raw json loop's capped comment → none" \
   "route=none repo=a/b number=50" \
   '{"action":"created","comment":{"user":{"type":"User"},"author_association":"OWNER","body":"Round cap.\n\n<!-- issue-discuss-loop:capped -->"},"issue":{"number":50,"state":"open","labels":[{"name":"ai-discuss"}]},"repository":{"full_name":"a/b"}}' \
+  issue_comment
+# Opt-out prefix: comments are for the loop by default, `//` addresses a colleague instead.
+expect_json "raw json // comment to a colleague → none" \
+  "route=none repo=a/b number=50" \
+  '{"action":"created","comment":{"user":{"type":"User"},"author_association":"OWNER","body":"// @sarah do we still need this at all?"},"issue":{"number":50,"state":"open","labels":[{"name":"ai-discuss"}]},"repository":{"full_name":"a/b"}}' \
+  issue_comment
+expect_json "raw json // with no space → none" \
+  "route=none repo=a/b number=50" \
+  '{"action":"created","comment":{"user":{"type":"User"},"author_association":"OWNER","body":"//parking this for now"},"issue":{"number":50,"state":"open","labels":[{"name":"ai-discuss"}]},"repository":{"full_name":"a/b"}}' \
+  issue_comment
+expect_json "raw json leading blank line then // → none" \
+  "route=none repo=a/b number=50" \
+  '{"action":"created","comment":{"user":{"type":"User"},"author_association":"OWNER","body":"\n  // @sarah thoughts?"},"issue":{"number":50,"state":"open","labels":[{"name":"ai-discuss"}]},"repository":{"full_name":"a/b"}}' \
+  issue_comment
+# A `//` that is not at the START is not the opt-out — a URL or a code snippet must still route.
+expect_json "raw json url containing // still routes" \
+  "route=issue-discuss-loop repo=a/b number=50" \
+  '{"action":"created","comment":{"user":{"type":"User"},"author_association":"OWNER","body":"see https://example.com/docs — does that change the plan?"},"issue":{"number":50,"state":"open","labels":[{"name":"ai-discuss"}]},"repository":{"full_name":"a/b"}}' \
+  issue_comment
+# Addressing it explicitly is honoured because an unprefixed comment already routes.
+expect_json "raw json /discuss prefix routes" \
+  "route=issue-discuss-loop repo=a/b number=50" \
+  '{"action":"created","comment":{"user":{"type":"User"},"author_association":"OWNER","body":"/discuss can we do this without a new route?"},"issue":{"number":50,"state":"open","labels":[{"name":"ai-discuss"}]},"repository":{"full_name":"a/b"}}' \
+  issue_comment
+expect_json "raw json @claude mention routes" \
+  "route=issue-discuss-loop repo=a/b number=50" \
+  '{"action":"created","comment":{"user":{"type":"User"},"author_association":"OWNER","body":"@claude can we do this without a new route?"},"issue":{"number":50,"state":"open","labels":[{"name":"ai-discuss"}]},"repository":{"full_name":"a/b"}}' \
   issue_comment
 expect_json "raw json stranger comment → none" \
   "route=none repo=a/b number=50" \
