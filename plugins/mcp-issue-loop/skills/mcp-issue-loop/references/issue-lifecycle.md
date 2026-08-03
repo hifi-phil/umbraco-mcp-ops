@@ -3,9 +3,11 @@
 The **build playbook** below. The orchestrator (see `../SKILL.md`) substitutes the issue
 details and dispatches it as a subagent prompt (`agentType: general-purpose`, so the full
 tool + Skill set is available). It runs once per issue, in parallel (cap 3), and takes an
-issue from `ready-for-ai` to an open, CI-green PR. The orchestrator then reviews that PR with
-`mcp-review` and hands off — human change-requests are `rework-loop`'s, not a playbook here
-(see *Responding to human review* at the end).
+issue from `ready-for-ai` to a pushed branch with an open PR. The orchestrator then drives
+that PR's CI green (re-dispatching a subagent into the same worktree on a failing check),
+marks the issue's outcome, and reviews it with `mcp-review` before handing off — human
+change-requests are `rework-loop`'s, not a playbook here (see *Responding to human review*
+at the end).
 
 ---
 
@@ -24,9 +26,9 @@ issue from `ready-for-ai` to an open, CI-green PR. The orchestrator then reviews
 > test:all`** in local mode (steps 1 & 4 below); **cloud mode overrides steps 1 & 4**
 > (no worktree; boot Umbraco via `worker-env` and gate on the diff's tests,
 > `npm run test:changed` — see the main SKILL.md → *Cloud mode*);
-> the branch is pushed; a PR is open against the base branch; its CI
-> is green; and the **issue has been marked complete** — `ready-for-ai`
-> removed, `generated-by-ai` added, the PR referenced on it (see step 8). If
+> the branch is pushed; and a PR is open against the base branch. Driving that
+> PR's CI green and marking the issue's outcome are the **orchestrator's** job, not
+> yours (see the main `SKILL.md`) — you return as soon as the PR is open. If
 > you cannot reach this state, stop and return a clear blocked report (what's
 > ambiguous / what fails) — do not guess or half-finish.
 
@@ -90,11 +92,12 @@ state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename the DB in
 
 **Do not run `/security-review` or `/code-review` yourself.** They can't run in a subagent
 (they're `disable-model-invocation: true` — the command reaches you as inert text and
-nothing happens), and a subagent grading its own code is weak anyway. Instead, once you
-return a CI-green PR, **the orchestrator runs the [`mcp-review`](../../mcp-review/SKILL.md)
-skill** over it (the faithful 5-lens code review + security scan, spawned as independent
-review subagents) and hands you back any surviving findings to fix in this worktree. Just
-build well and return; don't claim a review ran.
+nothing happens), and a subagent grading its own code is weak anyway. You also do **not**
+drive CI — once you return, **the orchestrator** polls the PR's checks and drives it green,
+then runs the [`mcp-review`](../../mcp-review/SKILL.md) skill over it (the faithful 5-lens
+code review + security scan, spawned as independent review subagents), handing you back
+either a failing check's log or any surviving review findings to fix in this worktree. Just
+build well and return; don't claim a review ran or that CI is green.
 
 ### 6. Commit, push, open the PR
 
@@ -106,49 +109,19 @@ gitflow repos — defer to the `release-and-branching` skill), linking the issue
 to be able to review and approve it; that review is the acceptance gate.
 
 Include in the PR body: what changed, which skills/agents were used, and test
-results. **Do not claim security/code review ran** — that happens next, at the
-orchestrator level via `mcp-review`; the orchestrator adds the review outcome.
+results. **Do not claim security/code review ran, or that CI is green** — driving CI
+green, marking the issue's outcome, and the review all happen next, at the orchestrator
+level.
 
-### 7. Drive CI green — then return
+### 7. Return
 
-Poll the PR's check-run status and **do not return until CI is green** (github-ops →
-*Get PR CI / check-run status*).
-
-If a check fails: read the failing check's log (github-ops → *Read a failing check's
-log*), reproduce locally in your worktree, fix the root cause, push, and re-poll. A CI
-failure is a real regression, never "flaky-until-proven". **Cap: at most 8
-green-it attempts, and never re-push an identical fix that already failed.** If
-CI still isn't green after that, stop with a blocked report (last failing log);
-do not loop indefinitely.
-
-### 8. Mark the issue's outcome
-
-Update the **triggering issue** so its label reflects the terminal outcome and the
-loop won't silently re-pick it (github-ops → *Add / remove a label* and *Comment on
-an issue*). **Always remove `ready-for-ai`** — it's the queue gate and the issue is
-no longer queued either way — then add the outcome label:
-
-- **On a CI-green PR → `generated-by-ai`.** Comment the PR link (e.g. "Built by
-  mcp-issue-loop → #<PR>"). The PR body's `Closes #<issue>` already links them; this
-  makes the hand-off explicit for the human reviewer.
-- **On a block (you hit a backstop — CI-green cap, ambiguous issue, no-progress
-  guard) → `ai-blocked`.** Comment the specific reason (the last failing CI log, the
-  ambiguity, what you tried). The human reads it, fixes the issue or the blocker, and
-  **re-adds `ready-for-ai`** to retry — that re-queue is the only thing that revives
-  an `ai-blocked` issue, so there's no silent retry loop.
-
-If the outcome label doesn't exist on the repo, note it in your report rather than
-failing the run.
-
-### 9. Return
-
-When CI is green (or you've hit the cap and are blocking), **return** the
-structured report to the orchestrator:
-`{ issue, worktreeName, worktreePath, branch, prNumber, model, tier, status }`
-(`status`: `pr-open-green` or `blocked` with the reason). Leave the worktree on
-disk (do **not** remove it) — the orchestrator reuses it to fix any `mcp-review` findings.
-Do not review your own code and do not wait for human review; both are the orchestrator's
-job (review) or `rework-loop`'s (human feedback).
+Once your branch is pushed and the PR is open, **return** the structured report to the
+orchestrator: `{ issue, worktreeName, worktreePath, branch, prNumber, model, tier, status }`
+(`status`: `pr-open`). Leave the worktree on disk (do **not** remove it) — the orchestrator
+reuses it to drive the PR's CI green (re-dispatching a fix into this same worktree on a
+failing check) and to fix any `mcp-review` findings. Do not poll CI, do not review your own
+code, and do not wait for human review — driving CI green, marking the issue's outcome, and
+review are all the orchestrator's job now; human feedback is `rework-loop`'s.
 
 > **Learnings are captured automatically — you do nothing here.** When you finish,
 > a `SubagentStop` hook analyses this transcript off the critical path and files
