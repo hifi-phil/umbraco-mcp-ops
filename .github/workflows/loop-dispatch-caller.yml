@@ -1,0 +1,54 @@
+# The loop-dispatch caller for THIS repo — so the loops run on umbraco-mcp-ops too.
+#
+# Body copied from the LOCKED template
+# (plugins/loop-dispatch/skills/new-loop-routine/references/caller-workflow.yml).
+# Two deviations, both forced by this being the repo that *hosts* the reusable workflow:
+#
+#   1. FILENAME. The template says commit it as `.github/workflows/loop-dispatch.yml`, but
+#      that name is already taken here by the reusable workflow itself. Hence
+#      `loop-dispatch-caller.yml`. Everywhere else, use the template's name.
+#   2. It calls `…@main` rather than a local `./…` path — i.e. this repo's caller uses the
+#      SAME published router every other repo uses, so a routing change is live everywhere at
+#      once and this repo can't silently drift onto a branch copy of the router.
+#
+# Nothing else differs. Do not hand-edit the events or the secrets block: change the template
+# in a PR and re-copy.
+#
+# NOT LIVE UNTIL TWO SECRETS EXIST on this repo:
+#   LOOP_DISPATCH_FIRE_URL  — the routine's Fire URL (Routines UI → Call via API)
+#   LOOP_DISPATCH_TOKEN     — the token generated for that routine
+# Until then this is inert in the useful direction: events that route nowhere still cost
+# nothing (the fire step is skipped), and an event that DOES match fails loudly with
+# "LOOP_DISPATCH_FIRE_URL / LOOP_DISPATCH_TOKEN secret not set on this repo" — which is the
+# error you want, naming exactly what's missing, rather than silence.
+#
+# PR labels use `pull_request_target`, NOT `pull_request`: `pull_request` resolves the
+# workflow from the PR's BASE branch, and loop PRs can target a non-default branch, where
+# GitHub does not fire the `labeled` trigger. `pull_request_target` always runs from the base
+# repo's DEFAULT branch, WITH secrets, regardless of the PR's base. It's safe here because
+# this caller never checks out or executes PR head code — it only forwards event metadata to
+# the reusable workflow, which routes on the payload and checks out trusted mcp-ops.
+#
+# `issue_comment` is the one trigger that isn't label-driven: it carries the next round of an
+# `ai-discuss` conversation. It fires on EVERY comment on every issue and PR in the repo, and
+# the gating happens at the edge in route-event.sh (issue carries `ai-discuss` and is open, the
+# comment is neither the loop's own nor `//`-prefixed, the author is trusted, not a PR) — so a
+# normal comment costs one short Actions job and wakes no routine.
+name: loop-dispatch (caller)
+
+on:
+  issues:
+    types: [labeled]
+  pull_request_target:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+jobs:
+  dispatch:
+    uses: hifi-phil/umbraco-mcp-ops/.github/workflows/loop-dispatch.yml@main
+    # Pass explicitly — NOT `secrets: inherit`. Kept identical to the template even though
+    # caller and callee are the same repo here, so this file stays a copy, not a variant.
+    secrets:
+      LOOP_DISPATCH_FIRE_URL: ${{ secrets.LOOP_DISPATCH_FIRE_URL }}
+      LOOP_DISPATCH_TOKEN: ${{ secrets.LOOP_DISPATCH_TOKEN }}

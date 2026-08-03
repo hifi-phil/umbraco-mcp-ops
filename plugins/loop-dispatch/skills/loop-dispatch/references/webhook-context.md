@@ -13,12 +13,27 @@ pulls, verbatim:
 
 | Field | Example | Notes |
 |---|---|---|
-| event type | `issues`, `pull_request`, `pull_request_review` | `$GITHUB_EVENT_NAME` |
-| action | `labeled`, `opened`, `submitted` | `.action` |
+| event type | `issues`, `pull_request`, `issue_comment` | `$GITHUB_EVENT_NAME` |
+| action | `labeled`, `opened`, `created` | `.action` |
 | owner / repo | `umbraco/Umbraco-CMS-MCP-Dev` | `.repository.full_name` |
 | number | `302` | `.issue.number` / `.pull_request.number` |
 | label (label events) | `javascript` | `.label.name` — **the specific label just added** |
 | review state (review events) | `changes_requested` | `.review.state` |
+
+**`issue_comment` reads a different set**, because the payload has no `.label` — the trigger is
+the label already *on* the issue, so the gate is built from the issue and the comment instead:
+
+| Field | Example | Notes |
+|---|---|---|
+| issue labels | `bug,ai-discuss` | `.issue.labels[].name` — the labels already on the issue |
+| issue state | `open` | `.issue.state` — a closed issue routes nowhere |
+| author association | `OWNER` | `.comment.author_association` — only `OWNER`/`MEMBER`/`COLLABORATOR` route. These repos are public; without this any user could fire a session |
+| author type | `User` | `.comment.user.type` — must be `User` |
+| loop's own marker | `<!-- issue-discuss-loop` | `.comment.body` contains it → **routes nowhere**. The loop posts as the *maintainer's own account*, so the author fields can't tell its reply from a human's; the marker is the only anti-self-reply guard |
+| human-only prefix | `// @sarah thoughts?` | `.comment.body` matches `^\s*//` → **routes nowhere**. Comments address the loop by default; the prefix lets colleagues talk to each other on a watched issue. Anchored, so a `//` inside a URL still routes |
+| is it a PR? | present / absent | `.issue.pull_request` — set for PR conversation comments, which route nowhere |
+
+Every one of these is **fail-closed**: a missing or unexpected value routes nowhere.
 
 (Legacy: a routine fired by a *native UI event trigger* instead received these in a
 `<github-trigger-context>` session block — the same fields. The Action/edge model
@@ -27,8 +42,9 @@ supersedes that; the field contract is identical either way.)
 ## The deterministic recipe
 
 1. **Read the event** from `$GITHUB_EVENT_PATH` (+ `$GITHUB_EVENT_NAME`). No event → **quiet no-op**.
-2. **Extract `event`, `action`, `owner`, `repo`, `number`, `label`/`state` verbatim.**
-   No inference, no guessing what to look up.
+2. **Extract `event`, `action`, `owner`, `repo`, `number`, `label`/`state` verbatim** — plus,
+   for `issue_comment`, the issue's labels + state and the comment's association, author type,
+   and marker (see the second table above). No inference, no guessing what to look up.
 3. **Gate on the exact tuple *before* doing any work — with a script, not judgement.**
    loop-dispatch ships [`route-event.sh`](route-event.sh): pass it the parsed fields and
    it prints `route=<loop|none>`. Act only on a named route; **any other value → quiet

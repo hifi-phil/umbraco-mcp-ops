@@ -31,10 +31,11 @@ flowchart LR
   server** is → use [`references/github-mcp.md`](references/github-mcp.md). Auth is
   the MCP server's connected GitHub App (no token to paste).
 
-Both are first-class. Detect with `command -v gh` (or: if the `mcp__github__*` tools
-are present, you're on the MCP path). **Bash scripts** under `scripts/` are a third,
-separate case — they call the REST API with `curl` directly and are out of scope
-here.
+Both are first-class, and they are the **only** two paths. Detect with `command -v gh`
+(or: if the `mcp__github__*` tools are present, you're on the MCP path). There is no
+longer a third case: no bash script in this repo calls the GitHub REST API with `curl`,
+and reintroducing one would reintroduce the token problem that killed the old
+`branch-housekeeping` script in routines.
 
 > The MCP reference uses the tool names from the current `github/github-mcp-server`.
 > Server versions differ — **confirm against the live `mcp__github__*` tool list**
@@ -54,6 +55,7 @@ instead).
 | Get / read an issue | triage |
 | Create an issue | triage (`mcp-repo`, `loop-improvement`) |
 | Comment on an issue | all loops |
+| Rewrite an issue's body | issue-discuss-loop |
 | Add / remove a label on an issue | triage, merge-flow |
 | Close an issue | triage |
 | List PRs (by label / state) | merge-flow |
