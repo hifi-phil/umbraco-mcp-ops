@@ -37,12 +37,13 @@ structural — do not restate or re-derive it:
 - **CI-driving** — a build subagent returns once its branch is pushed and its PR is open;
   it never polls CI. The orchestrator polls each returned PR's check-run status until every
   check passes or the 8-attempt cap trips, re-dispatching a subagent into that same
-  worktree with a failing check's log to fix it, then does the issue's outcome-label swap.
-  Identical to `mcp-issue-loop` — nothing content-loop-specific here.
+  worktree with a failing check's log to fix it. Identical to `mcp-issue-loop` — nothing
+  content-loop-specific here.
 - **Review + hand off** — once a PR's CI is green, the orchestrator runs `mcp-review` over
-  it, fixes findings (re-testing locally, re-greening CI), then **hands off**: no
-  human-review phase here — the reviewer's change-requests go to `rework-loop`
-  (`auto-rework`), and `merge-flow` merges.
+  it, fixes findings (re-testing locally, re-greening CI). Only once that's clean/addressed
+  does it do the issue's outcome-label swap, then **hands off**: no human-review phase
+  here — the reviewer's change-requests go to `rework-loop` (`auto-rework`), and
+  `merge-flow` merges.
 - **Model selection** — orchestrator inherits the session model; pick per issue.
   Content work skews lighter: `sonnet` default, `haiku` for pure-docs/typo fixes,
   `opus` for intricate skill/plugin logic. **Never `fable`.**
@@ -79,7 +80,7 @@ mcp-issue-loop's build playbook.
      touched the capture hook; validate any JSON/YAML/bash you changed.
    - Other repos: run their documented lint/test (a `package.json` script, a linter)
      if present. A pure-docs change may have nothing to run — that's fine.
-4. **Review is the orchestrator's job — you do NOT self-review.** Don't run
+4. **CI-driving and review are the orchestrator's job — you do neither.** Don't run
    `/security-review` / `/code-review` (they can't run in a subagent and self-review is
    weak). After you return an open PR, the orchestrator drives its CI green, then runs
    [`mcp-review`](../mcp-review/SKILL.md) over it and hands back any findings. For a
@@ -89,7 +90,7 @@ mcp-issue-loop's build playbook.
    Link the issue (`Closes #N`), ready for review, never draft. CI-driving is the
    orchestrator's job from here (`umbraco-mcp-ops` runs the hook-test workflow when
    `hooks/**` changes), not yours.
-6. **Return** as in mcp-issue-loop (`pr-open`); leave the worktree for the orchestrator to
+6. **Return** as in mcp-issue-loop (`pr-open`, or `blocked` with the reason); leave the worktree for the orchestrator to
    drive CI green and run the review phase. Capture is automatic — do nothing.
 
 ## Scope guardrail

@@ -40,6 +40,14 @@ gives you a fresh SQL Server DB, a copied `.env`, a dynamic port, and a complete
 `npm install`. The branch is auto-created from the worktree name (the hook
 prefixes `feature/`). Everything you do happens in this worktree.
 
+**Re-dispatched fix, not a fresh issue?** If the orchestrator sent you back into an
+**existing** worktree (a failing CI check's log, or an `mcp-review` finding) — it will say
+so and give you `worktreePath` — skip this step entirely: `cd` into that path, do not call
+`EnterWorktree` again (it would fire `WorktreeCreate` a second time for no reason: a new DB,
+a new port, a fresh `npm install`, against a worktree that already has all of that). Go
+straight to fixing the specific thing you were sent to fix, then repeat steps 4 and 6
+(re-test locally, re-push) and return per step 7.
+
 ### 2. Understand the issue, then plan
 
 Read the issue fully. Inspect the relevant collection(s) under
@@ -88,7 +96,7 @@ npm run test:all
 state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename the DB in
 `demo-site/appsettings.local.json`, restart, re-run `create-api-user.mjs`).
 
-### 5. Review is the orchestrator's job — you do NOT self-review
+### 5. CI-driving and review are the orchestrator's job — you do neither
 
 **Do not run `/security-review` or `/code-review` yourself.** They can't run in a subagent
 (they're `disable-model-invocation: true` — the command reaches you as inert text and
@@ -117,7 +125,8 @@ level.
 
 Once your branch is pushed and the PR is open, **return** the structured report to the
 orchestrator: `{ issue, worktreeName, worktreePath, branch, prNumber, model, tier, status }`
-(`status`: `pr-open`). Leave the worktree on disk (do **not** remove it) — the orchestrator
+(`status`: `pr-open`, or `blocked` with the reason if you stopped early per the Definition
+of done or step 2's ambiguity check). Leave the worktree on disk (do **not** remove it) — the orchestrator
 reuses it to drive the PR's CI green (re-dispatching a fix into this same worktree on a
 failing check) and to fix any `mcp-review` findings. Do not poll CI, do not review your own
 code, and do not wait for human review — driving CI green, marking the issue's outcome, and
