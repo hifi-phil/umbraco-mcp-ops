@@ -29,13 +29,13 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="15"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="16"                                  # bump to force an env-cache rebuild / re-clone
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
 HOOKS_ROOT="$HOME/.claude/ops-hooks"          # plugin-root stand-in for the capture hooks
 SETTINGS="$HOME/.claude/settings.json"
-SKILLS="github-ops loop-dispatch worker-env merge-flow triage-learnings dependabot-rollup auto-release-loop release-and-branching sync-dev rework-loop mcp-issue-loop content-issue-loop mcp-review"
+SKILLS="github-ops loop-dispatch worker-env merge-flow triage-learnings dependabot-rollup auto-release-loop release-and-branching sync-dev rework-loop mcp-issue-loop content-issue-loop mcp-review branch-housekeeping"
 LOG="$HOME/skill-sync.log"
 
 # Anthropic's pr-review-toolkit code-review agents, used by the mcp-review skill. Routines

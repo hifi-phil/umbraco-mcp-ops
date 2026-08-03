@@ -120,7 +120,7 @@ Then work the loop until the goal is met (GitHub actions via `github-ops`):
 
 - Poll the rollup PR's **CI / check-run status** (→ *Get PR CI / check-run status*) until it settles, rather than busy-waiting.
 - On any failure: **read the failing check's log** (→ *Read a failing check's log*), fix the root cause in code, commit, push, re-poll. Treat a CI failure as a real regression to fix — never hand a red PR to the human.
-- **Only once CI is fully green**, **close each superseded Dependabot PR** (→ *Close a PR without merging (+ comment, delete branch)*) with a comment like `Superseded by #<ROLLUP> — rolled into the security rollup.`, then confirm it's closed (→ *Get a PR*). Deleting the merged branch is best-effort — if the environment can't delete it, `branch-housekeeping` will reap it.
+- **Only once CI is fully green**, **close each superseded Dependabot PR** (→ *Close a PR without merging (+ comment, delete branch)*) with a comment like `Superseded by #<ROLLUP> — rolled into the security rollup.`, then confirm it's closed (→ *Get a PR*). Deleting the merged branch is best-effort. This loop is local-only, so `gh` can delete it (github-ops → *Delete a remote branch*); if it fails, leave it — `branch-housekeeping` will **report** it, but it no longer deletes anything, so the durable fix is the repo's "Automatically delete head branches" setting.
 
 The goal is not met — and you must not notify the human — until CI is green **and** every superseded PR is closed. Use `/goal clear` if you abort.
 

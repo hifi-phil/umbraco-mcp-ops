@@ -1,0 +1,22 @@
+{
+  "name": "branch-housekeeping",
+  "version": "2.0.0",
+  "description": "Weekly remote-branch sweep across the configured Umbraco MCP repos. Classifies every non-protected branch by its GitHub PR state — the authoritative signal, since squash merges make git ancestry lie — and posts a digest: merged leftovers to reap, ambiguous branches (closed-unmerged / no PR) for a human to judge, open-PR branches kept silently. Also flags any repo whose 'Automatically delete head branches' setting is off, since that setting is what keeps merged branches from accumulating in the first place. Report-only by default; GitHub work goes through github-ops, so it needs no token and runs as a cloud routine.",
+  "author": {
+    "name": "Phil W",
+    "email": "pjw@umbraco.com",
+    "url": "https://github.com/hifi-phil"
+  },
+  "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/branch-housekeeping",
+  "license": "MIT",
+  "keywords": [
+    "branches",
+    "housekeeping",
+    "cleanup",
+    "pull-request",
+    "slack",
+    "automation",
+    "cloud-routine",
+    "workflow"
+  ]
+}

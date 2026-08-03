@@ -43,7 +43,10 @@ here.
 ## The operation catalog
 
 Every operation a loop needs, with its section anchor in each reference file. Both
-files cover the **same** list — keep them in sync.
+files cover the **same** list — keep them in sync. **One operation is genuinely
+asymmetric:** deleting a remote branch exists locally but has *no* MCP tool, so a loop
+that needs it cannot run in a routine (see the `github-mcp.md` Notes for what to do
+instead).
 
 | Operation | Used by |
 |-----------|---------|
@@ -68,6 +71,9 @@ files cover the **same** list — keep them in sync.
 | Create a branch | triage (shared-skills), content-issue-loop |
 | Create / update / push file(s) | triage (shared-skills), content-issue-loop |
 | Get file contents | any |
+| List branches (name + protection) | branch-housekeeping |
+| Get repo metadata (default branch, `delete_branch_on_merge`, archived) | branch-housekeeping, release-and-branching |
+| **Delete a remote branch — local path only** | branch-housekeeping (opt-in reap); **no MCP equivalent exists** |
 | Detect base branch | all (defer to `release-and-branching`) |
 
 ## Rules that hold in both mechanisms

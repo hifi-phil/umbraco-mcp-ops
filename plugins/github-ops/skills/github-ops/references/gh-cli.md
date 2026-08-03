@@ -48,6 +48,9 @@ gh pr create --base <base> --head chore/<slug> --title "<t>" --body "<b>"
 | Create branch | `git checkout -b <branch>` (then `git push -u origin <branch>`) |
 | Create / update / push file(s) | edit in the working tree → `git add` → `git commit` → `git push` |
 | Get file contents | `git show <ref>:<path>` (or just read the file in the clone) |
+| **List branches (name + protection)** | `gh api repos/<repo>/branches --paginate --jq '.[] \| {name, protected, sha: .commit.sha}'` |
+| **Get repo metadata** (`default_branch`, `delete_branch_on_merge`, `archived`) | `gh api repos/<repo> --jq '{default_branch, delete_branch_on_merge, archived}'` |
+| **Delete a remote branch** | `gh api -X DELETE repos/<repo>/git/refs/heads/<branch>` (404 = already gone). **Local only** — see [`github-mcp.md`](github-mcp.md) Notes; there is no MCP equivalent. |
 
 ## Base branch
 

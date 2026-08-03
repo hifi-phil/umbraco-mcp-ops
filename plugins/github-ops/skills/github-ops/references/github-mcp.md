@@ -52,6 +52,9 @@ straight through the API:
 | Push multiple files at once | `push_files` |
 | Get file contents | `get_file_contents` |
 | Then open the PR | `create_pull_request` (base = detected base) |
+| **List branches (name + protection)** | `list_branches` (page until exhausted; each entry carries `protected` and the head commit) |
+| **Get repo metadata** (`default_branch`, `delete_branch_on_merge`, `archived`) | `search_repositories` with query `repo:OWNER/NAME` and **`minimal_output: false`** — the default minimal shape omits `delete_branch_on_merge` |
+| **Delete a remote branch** | **no tool exists** — see Notes |
 
 ## Base branch
 
@@ -64,7 +67,14 @@ Defer to `release-and-branching` for gitflow vs main-only. To inspect: `list_bra
   checks are non-pending and passing, and confirm the review decision, **before**
   `merge_pull_request`. There is no `--auto` equivalent to lean on — the gate is
   yours to enforce.
-- **Branch deletion after merge:** the server may not expose a delete-branch tool. If
-  not, leave the merged branch for the weekly `branch-housekeeping` routine to reap.
+- **Branch deletion is NOT available on this path — confirmed, not a caveat.** The server
+  exposes no branch- or ref-delete tool: the `repos` toolset has `create_branch` but no
+  delete, the `git` toolset is a single tool (`get_repository_tree`), and
+  `merge_pull_request` has no delete-branch parameter. Verified against the server's tool
+  registration list ([`pkg/github/tools.go`](https://github.com/github/github-mcp-server/blob/main/pkg/github/tools.go)).
+  **Don't design a loop around deleting a branch here.** The right fix is upstream: turn
+  on the repo's **"Automatically delete head branches"** setting (Settings → General →
+  Pull Requests) and GitHub reaps merged branches at merge time. `branch-housekeeping`
+  reports on that setting and on the leftovers; it deletes nothing on this path.
 - **No `git`/`gh` fallback:** don't shell out to `gh` or `git push` here — they're not
   installed / not authenticated. Everything is `mcp__github__*`.

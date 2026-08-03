@@ -125,6 +125,29 @@
       ]
     },
     {
+      "name": "branch-housekeeping",
+      "source": "./plugins/branch-housekeeping",
+      "description": "Weekly remote-branch sweep across the configured Umbraco MCP repos. Classifies every non-protected branch by its GitHub PR state — authoritative where git ancestry isn't, since these repos squash-merge — and posts one Slack digest: merged leftovers that should already be gone, ambiguous branches (closed unmerged / no PR) for a human to judge, and a silent count of open-PR branches. Also flags any repo whose \"Automatically delete head branches\" setting is off, which is what actually keeps merged branches from accumulating. Report-only (the GitHub MCP server has no branch-delete tool), so it needs no token and runs as a cloud routine. Requires github-ops.",
+      "version": "2.0.0",
+      "category": "workflow",
+      "author": {
+        "name": "Phil W",
+        "email": "pjw@umbraco.com",
+        "url": "https://github.com/hifi-phil"
+      },
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/branch-housekeeping",
+      "keywords": [
+        "branches",
+        "housekeeping",
+        "cleanup",
+        "pull-request",
+        "slack",
+        "automation",
+        "cloud-routine",
+        "workflow"
+      ]
+    },
+    {
       "name": "loop-dispatch",
       "source": "./plugins/loop-dispatch",
       "description": "Single front door for a repo's automation loops so one routine per repo can handle every loop event instead of one routine per event. Deterministically routes each triggering GitHub event to the matching loop (via route-event.sh); a non-matching event is a quiet no-op. Router only; each loop owns its guardrails. Also bundles new-loop-routine — the standard config + canonical prompts + UI wiring for standing up one routine per repo. Requires github-ops + the loop skills.",

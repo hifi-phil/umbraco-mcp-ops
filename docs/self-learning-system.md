@@ -172,11 +172,14 @@ For the scheduled routines to act, that **connected app must grant, across both
 - `pull_requests: write` — triage/merge-flow open and merge PRs
 - `contents: write` — create branches, push files
 
-`branch-housekeeping` (a bash script, not a Claude skill) is the exception — it calls
-the REST API with `curl` + a proxy-injected token and only needs `contents: write` +
-`pull_requests: read`. The Claude-driven routines need the broader grant above —
-confirm/expand it before scheduling (a GitHub-App-installation decision, not a
-per-user token).
+`branch-housekeeping` needs **less**: `metadata: read` + `pull_requests: read` only, since
+it's report-only. (It used to be a bash script calling the REST API with `curl` + a
+proxy-injected token — **that did not work in scheduled routines**, so as of v2.0.0 it's
+an MCP-driven skill like the rest. No script in this repo talks to the GitHub API any
+more; don't reintroduce the pattern.)
+
+The Claude-driven routines need the broader grant above — confirm/expand it before
+scheduling (a GitHub-App-installation decision, not a per-user token).
 
 ## Using the loops
 
@@ -199,8 +202,14 @@ per-user token).
   toolchain, worktree DB hooks, `npm run test:all`).
 - **Web runner (event/scheduled):** `gh` is **absent** — routines do GitHub work through
   the **GitHub MCP server** (`mcp__github__*`), per `github-ops`. `triage-learnings`,
-  `merge-flow`, and `auto-release-loop` run here. (The bash `scripts/` — e.g.
-  `branch-housekeeping` — are the separate case that uses `curl`/REST directly.)
+  `merge-flow`, `auto-release-loop`, and `branch-housekeeping` run here. There is no
+  longer a `curl`/REST exception — every loop is a skill on the `github-ops` dual path.
+
+  One consequence to know: the MCP server exposes **no branch-delete tool**, so a routine
+  cannot delete a branch. Turn on each repo's **"Automatically delete head branches"**
+  setting instead (Settings → General → Pull Requests) and GitHub reaps merged branches
+  at merge time; `branch-housekeeping` reports on that setting rather than substituting
+  for it.
 
 ## Scheduled routines
 
@@ -208,7 +217,7 @@ Full inventory of cross-repo routines in this repo:
 
 | Routine | Cadence | Status |
 |---------|---------|--------|
-| `branch-housekeeping` (`scripts/`) | weekly | **live** |
+| `branch-housekeeping` (skill) | weekly | **live** — report-only |
 | `merge-flow` | on `auto-merge` label (event) | **to wire** |
 | `auto-release-loop` | on `auto-release` label (event) | **to wire** |
 | `dependabot-rollup` (skill) | weekly | **local-only** (cloud impossible — Claude GitHub App can't read Dependabot alerts) |
@@ -216,8 +225,8 @@ Full inventory of cross-repo routines in this repo:
 
 `mcp-issue-loop` and `content-issue-loop` are human-initiated and not scheduled.
 `auto-release-loop` is **event-triggered** (a routine on Issue: Labeled → `auto-release`),
-not on a cron. The web routines do GitHub work via the GitHub MCP server (see
-`github-ops`); `branch-housekeeping` is the bash/`curl` exception.
+not on a cron. Every web routine does its GitHub work via the GitHub MCP server (see
+`github-ops`) — there are no exceptions left.
 
 Wiring a cloud routine is two steps: (1) ensure the environment's **setup script**
 delivers the skills it needs — the [`cloud-skill-sync`](../scripts/cloud-skill-sync/)
