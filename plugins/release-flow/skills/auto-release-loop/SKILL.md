@@ -8,7 +8,9 @@ description: >-
   version files + changelog, opens the PR to main, drives CI green, runs the review (a
   BLOCK finding stops it), then publishes (merge, tag, GitHub Release) and syncs main
   back to dev, commenting + closing the triggering issue. Sends a Claude push
-  notification at start and on completion. The deliberate act of labelling the issue is
+  notification at start and on completion, and — for stable releases only — posts a
+  Slack notification to `release-notifications` once published. The deliberate act of
+  labelling the issue is
   the human decision. For gitflow repos. Requires the github-ops skill. Trigger from a
   routine on Issue: Labeled = auto-release, or run manually as "auto-release-loop
   <version>".
@@ -42,7 +44,7 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
 ## The `/goal`
 
 ```
-/goal auto-release <version> of <repo>: release/<version> cut from dev; version files + changelog bumped; PR to main is green; pre-publish review checklist passed with no BLOCK; merged to main; tagged v<version>; GitHub Release published (prerelease if <version> has a pre-release suffix); main synced back to dev; triggering issue commented and closed
+/goal auto-release <version> of <repo>: release/<version> cut from dev; version files + changelog bumped; PR to main is green; pre-publish review checklist passed with no BLOCK; merged to main; tagged v<version>; GitHub Release published (prerelease if <version> has a pre-release suffix); Slack release notification posted to release-notifications (stable releases only); main synced back to dev; triggering issue commented and closed
 ```
 
 ## Step 1 — prepare (autonomous)
@@ -98,6 +100,19 @@ itself).
    automation fires on the version change, confirm it; else do it explicitly.
 3. Verify: `main` contains the release, `v<version>` points at it, the Release is
    published.
+4. **Slack notification — stable releases only.** If `<version>` has **no**
+   `-alpha`/`-beta`/`-rc` suffix, post one message to the Slack channel
+   `release-notifications` via the Slack MCP connector (`slack_search_channels` to
+   resolve the channel, then `slack_send_message` — already wired on every
+   loop-dispatch routine per `new-loop-routine`'s standard config, no new connector
+   config needed). Content: the package name bumped in Step 1 (e.g. `package.json`'s
+   `name`), `v<version>`, the npm link (`https://www.npmjs.com/package/<name>`), the
+   GitHub Release URL (from step 3.2), and a one-line summary condensed from this
+   version's changelog entry (bumped in Step 1) — not the full changelog text.
+   **Pre-release versions never post** — skip silently, no Slack message, nothing
+   extra in the outcome comment. If the post itself fails (connector error, missing
+   channel, etc.), **don't block or roll back the release** — note the failure in the
+   Step 4 outcome comment and continue closing out normally.
 
 ## Step 4 — sync dev + close out (autonomous)
 
@@ -120,6 +135,8 @@ itself).
   classic release mistake.
 - **One release per triggering issue**; take the version only from that issue's title.
 - **Mark pre-releases** (`-alpha` / `-beta` / `-rc`) as GitHub prereleases.
+- **Slack-notify stable releases only, to `release-notifications`; never for
+  pre-releases; a failed post doesn't block the release.**
 - If the version is ambiguous, or CI won't go green, **stop and report on the issue**
   rather than guessing or shipping something unverified.
 
