@@ -8,8 +8,10 @@ description: >-
   human's checkout is never switched, dirtied, or left on a chore branch. Safe to run
   unattended locally — a scheduled local routine whose entire prompt is
   `/dependabot-rollup` is the intended setup — but never as a cloud routine. Invoke as
-  `/dependabot-rollup [base branch]`, or trigger whenever you need to consolidate a
-  repo's open Dependabot security PRs into one verified rollup PR.
+  `/dependabot-rollup [base branch]`; the base defaults to **`dev`** where it exists on
+  `origin` (the usual case in this repo family), otherwise the repository's default branch.
+  Or trigger whenever you need to consolidate a repo's open Dependabot security PRs into one
+  verified rollup PR. Sets a `/goal` so the run survives across turns.
   Requires the `github-ops` skill for all GitHub-API work.
 ---
 
@@ -40,6 +42,21 @@ Invoke as `/dependabot-rollup [base branch]`. The optional base branch defaults 
 - **Verify the lockfile, don't trust the merge.** A clean merge + successful install does **not** mean the bumps landed — see step 5. Never open or update a PR claiming fixes you haven't asserted resolved versions for.
 - **Quiet when idle.** If nothing is in scope, log the classification summary and stop — no worktree, no branch, no PR, no notification.
 - **Notify once, at the end.** Ping the human to review exactly once, only when the rollup PR is open, CI is fully green, and the superseded PRs are closed.
+
+## Run the whole thing under a `/goal`
+
+`/goal` is a native Claude Code command — `/goal [condition|clear]` — that makes Claude keep working **across turns** until the condition holds. **Without it this skill does not survive an unattended run**: a rollup spans many turns (merges, installs, a CI wait, fix rounds), and a routine whose prompt is just `/dependabot-rollup` has nothing else to carry it past the first turn boundary.
+
+So set the goal **as soon as step 2 finds work** — not at the CI loop, which is too late — covering the entire definition of done:
+
+```
+/goal a Dependabot security rollup PR is open on <REPO> against <BASE>, every targeted package verified at its expected resolved lockfile version, all CI checks green, every superseded Dependabot PR closed, the worktree torn down, and the outcome reported — the PR left unmerged
+```
+
+Fill in `<REPO>` and `<BASE>`, and add the PR number once step 7 has it. Then:
+
+- **`/goal clear` on every terminal outcome** — `ROLLUP OPEN`, `NO-OP`, `ALREADY AWAITING REVIEW`, `NEEDS-ME`, or an abort. A goal left set makes the next run inherit a stale objective.
+- Don't set a goal for a run that stops in step 1 or 2 (already-awaiting-review, or a quiet no-op) — there's nothing to persist.
 
 ## Procedure
 
@@ -81,33 +98,19 @@ If **INCLUDE is empty**: print the classification summary and **stop** (quiet no
 
 ### 3. Create the throwaway worktree (idempotent)
 
-All branch work happens in a worktree, so the human's checkout is never switched and never has to be clean. Pick a location the repo **already gitignores**, so the worktree stays inside the folder a local routine is allowed to touch:
+All branch work happens in a worktree, so the human's checkout is never switched and never has to be clean.
 
-```bash
-for CAND in .claude/worktrees .worktrees; do
-  if git check-ignore -q "$CAND"; then WT_DIR="$CAND"; break; fi
-done
-# No ignored candidate → stop and report: ask for `.claude/worktrees/` to be added to .gitignore.
-# Do not fall back to an un-ignored in-repo path (pollutes git status) or an out-of-repo path
-# (a local routine only has access to its one selected folder).
-WT="$REPO/$WT_DIR/dependabot-rollup"
+**Use the repo's own worktree process — do not invent one here.** Worktrees are standardised across these repos, and the repo is the authority on how one is created: read its `CLAUDE.md` worktree section and use the mechanism it documents (typically the **`EnterWorktree`** tool, whose `WorktreeCreate` hook copies the files listed in `.worktreeinclude`, provisions the worktree's database, rewrites ports, and runs the install), or a repo-provided worktree skill if it has one. Following that process is what keeps the worktree consistent with every other worktree in the repo — and its hook-run install is work the rollup needs anyway.
 
-# Clear a stale worktree left by a crashed run — only ever this path.
-git worktree remove --force "$WT" 2>/dev/null; git worktree prune
+Branch naming still comes from this skill: `chore/dependabot-security-rollup-<date>`, or the existing rollup branch found in step 1 when reusing.
 
-# Reusing the open rollup branch found in step 1:
-git worktree add "$WT" <that-branch>
-# Otherwise, cut a fresh one from the base:
-git worktree add "$WT" -b "chore/dependabot-security-rollup-$(date +%Y-%m-%d)" "origin/$BASE"
+Only if the repo documents **no** worktree process, fall back to plain `git worktree add` at a path the repo already gitignores — try `.claude/worktrees` then `.worktrees` via `git check-ignore -q`, and if neither is ignored, stop and ask for one to be added to `.gitignore`. Never place the worktree at an un-ignored in-repo path (it pollutes `git status`) or outside the repo (a local routine only has access to its one selected folder).
 
-cd "$WT"
-```
-
-Use plain `git worktree add` — **not** the `EnterWorktree` tool. Repos in this family register `WorktreeCreate` hooks that provision databases, copy demo sites, and run installs; a dependency rollup needs none of that, and the hook fails outright when Docker isn't running.
+Clear a stale worktree from a crashed run first — via the repo's removal process (step 9), never a blind delete.
 
 When reusing an existing rollup branch, rebase it onto latest `origin/$BASE` inside the worktree before merging anything new.
 
-Every remaining step runs inside `$WT`.
+Call the resulting path `$WT`. Every remaining step runs inside it.
 
 ### 4. Apply the bumps
 
@@ -168,27 +171,25 @@ already exists, **update its body** (→ *Update a PR's body*). Title:
 
 Body lists, per included package: name, `from → to` **as verified in step 5**, highest open advisory severity; a **Deferred (major — handle separately)** section with each DEFER-MAJOR PR number + link; and a **Supersedes** line referencing every INCLUDE PR number.
 
-### 8. Drive to green CI with /goal — THE LOOP
+### 8. Drive to green CI — THE LOOP
 
-`/goal` is a native Claude Code command — `/goal [condition|clear]` — that makes Claude keep working **across turns** until the condition holds. Set it to the full definition of done (substitute the rollup PR number):
-
-```
-/goal rollup PR #<ROLLUP> targets <BASE>, all its CI checks are green, and every superseded Dependabot PR is closed with its branch deleted
-```
-
-Then work the loop until the goal is met (GitHub actions via `github-ops`):
+Update the `/goal` set earlier to name the rollup PR number now that it exists, then work the loop until the goal is met (GitHub actions via `github-ops`):
 
 - Poll the rollup PR's **CI / check-run status** (→ *Get PR CI / check-run status*) until it settles, rather than busy-waiting.
 - On any failure: **read the failing check's log** (→ *Read a failing check's log*), fix the root cause in code, commit, push, re-poll. Treat a CI failure as a real regression to fix — never hand a red PR to the human.
 - **Only once CI is fully green**, **close each superseded Dependabot PR** (→ *Close a PR without merging (+ comment, delete branch)*) with a comment like `Superseded by #<ROLLUP> — rolled into the security rollup.`, then confirm it's closed (→ *Get a PR*). Deleting the merged branch is best-effort — if the environment can't delete it, `branch-housekeeping` will reap it.
 
-The goal is not met — and you must not notify the human — until CI is green **and** every superseded PR is closed. Use `/goal clear` if you abort.
+The goal is not met — and you must not notify the human — until CI is green **and** every superseded PR is closed.
 
 If CI can't be driven green after ~3 genuine fix attempts, **push what you have and stop** with `NEEDS-ME (CI red)` and the PR link. Leave the PR open — a red PR that's been reported is recoverable; a silently abandoned branch isn't.
 
 ### 9. Tear down the worktree — every exit path
 
-Whenever a worktree was created, remove it — on success, on `NEEDS-ME`, and on any error or early stop from step 4 onwards:
+Whenever a worktree was created, remove it — on success, on `NEEDS-ME`, and on any error or early stop from step 3 onwards.
+
+**Use the repo's own worktree removal process**, matching however step 3 created it: the `ExitWorktree` tool with the remove action, or the repo's own cleanup skill (e.g. `/cleanup`) where it documents one. This matters more than creation did — in these repos teardown is destructive and repo-specific: the `WorktreeRemove` hook kills every process still holding files in the worktree (demo-site binaries re-parented to launchd included) and drops the worktree's database. A bare `git worktree remove` leaves both behind, so the directory won't free and the database leaks.
+
+Only if the repo documents no removal process, fall back to:
 
 ```bash
 cd "$REPO"
@@ -196,13 +197,13 @@ git worktree remove --force "$WT"
 git worktree prune
 ```
 
-Only ever remove the `dependabot-rollup` worktree this run created; never another worktree in the repo. The branch stays on `origin`, so nothing is lost — only the local directory goes, and the next run reuses the branch via step 3.
+Either way: only ever remove the `dependabot-rollup` worktree this run created; never another worktree in the repo. The branch stays on `origin`, so nothing is lost — only the local worktree goes, and the next run reuses the branch via step 3.
 
 ### 10. Notify — only now
 
 Emit a single REVIEW-NEEDED summary: the rollup PR link, the count + names of included security fixes **with their verified resolved versions**, the list of closed/superseded PRs, and the DEFER-MAJOR list with the reminder that majors are handled separately on a one-to-one basis. Send it as a push notification when running unattended.
 
-Report exactly one outcome tag: `ROLLUP OPEN` / `NO-OP` / `ALREADY AWAITING REVIEW` / `NEEDS-ME (reason)`. Stay silent for `NO-OP`.
+Report exactly one outcome tag: `ROLLUP OPEN` / `NO-OP` / `ALREADY AWAITING REVIEW` / `NEEDS-ME (reason)`. Stay silent for `NO-OP`. Then `/goal clear`.
 
 ## Success criteria
 
@@ -212,5 +213,6 @@ Report exactly one outcome tag: `ROLLUP OPEN` / `NO-OP` / `ALREADY AWAITING REVI
 - ✅ Every superseded individual Dependabot PR closed with its branch deleted.
 - ✅ Zero major bumps merged; all majors reported for separate handling.
 - ✅ The rollup PR left unmerged for human review.
-- ✅ The human's checkout untouched — same branch, same uncommitted changes as before the run — and no leftover `dependabot-rollup` worktree.
+- ✅ The human's checkout untouched — same branch, same uncommitted changes as before the run — and no leftover `dependabot-rollup` worktree (removed via the repo's own process).
 - ✅ Human notified exactly once — or a quiet no-op if nothing was in scope.
+- ✅ No `/goal` left set.
