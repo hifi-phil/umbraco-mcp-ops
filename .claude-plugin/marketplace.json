@@ -84,7 +84,7 @@
       "name": "github-ops",
       "source": "./plugins/github-ops",
       "description": "Shared reference for GitHub operations in both environments — gh CLI + git locally, the GitHub MCP server (mcp__github__*) on Claude web / in routines. One operation catalog, two reference files; the loop plugins point here instead of each re-explaining the dual path.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
@@ -105,7 +105,7 @@
     {
       "name": "dependabot-rollup",
       "source": "./plugins/dependabot-rollup",
-      "description": "Roll every open Dependabot security PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Discovers PRs on the default branch — Dependabot always raises security updates there, regardless of target-branch — while landing the rollup on the repo's working base. Repo-agnostic and safe to run unattended LOCALLY (e.g. a Desktop scheduled task). Not runnable as a cloud routine — the Claude GitHub App can't read Dependabot alerts. Requires github-ops.",
+      "description": "Roll every open Dependabot security PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Repo-agnostic and safe to run unattended LOCALLY (e.g. a Desktop scheduled task). Not runnable as a cloud routine — the Claude GitHub App can't read Dependabot alerts. Requires github-ops.",
       "version": "1.5.0",
       "category": "workflow",
       "author": {

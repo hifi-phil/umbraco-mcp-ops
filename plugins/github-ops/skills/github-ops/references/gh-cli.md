@@ -20,7 +20,7 @@ is `owner/name`. Mirror of [`github-mcp.md`](github-mcp.md) — keep both in syn
 | Operation | Command |
 |-----------|---------|
 | List by label / state | `gh pr list --repo <repo> --label <label> --state open --json number,title,baseRefName` |
-| List open Dependabot PRs | `gh pr list --repo <repo> --state open --app dependabot --json number,title,headRefName,url --limit 100` |
+| List open Dependabot PRs | `gh pr list --repo <repo> --state open --app dependabot --json number,title,headRefName,baseRefName,url --limit 100` — **no `--base`**, see note below |
 | Get (review decision, mergeable, base) | `gh pr view <n> --repo <repo> --json reviewDecision,mergeable,mergeStateStatus,baseRefName,headRefName` |
 | Get reviews + review comments | `gh pr view <n> --repo <repo> --json reviews,comments`; inline comments: `gh api repos/<repo>/pulls/<n>/comments` |
 | **CI / check-run status** | `gh pr checks <n> --repo <repo>` (add `--watch` to block until done) |
@@ -31,6 +31,8 @@ is `owner/name`. Mirror of [`github-mcp.md`](github-mcp.md) — keep both in syn
 | **Close without merging (+ comment, delete branch)** | `gh pr close <n> --repo <repo> --comment "<why>" --delete-branch` |
 | Re-request review | `gh pr edit <n> --repo <repo> --add-reviewer <user>` |
 | List Dependabot security alerts | `gh api repos/<repo>/dependabot/alerts --paginate --jq '.[] \| select(.state=="open")'` (needs `security_events` scope) |
+
+> **Dependabot PRs: never narrow the list by base.** Dependabot raises **security** updates against the repo's **default branch**; `target-branch` in `dependabot.yml` redirects only the scheduled *version* updates. So in a `dev` + `main` repo the two kinds sit on different branches, and a list scoped to your working base returns version bumps and no security PRs. List them all and read `baseRefName` per PR instead of filtering.
 
 ## Branches & files (for a content PR)
 
