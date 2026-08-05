@@ -41,6 +41,8 @@ Auth is the MCP server's connected GitHub App — no token to paste. Mirror of
 | Re-request / add review | `pull_request_review_write` |
 | List Dependabot security alerts | `list_dependabot_alerts` (security toolset; needs the connected app to grant Dependabot-alerts read) |
 
+> **Dependabot security PRs are raised against the repo's default branch**, always — `target-branch` in `dependabot.yml` redirects only the scheduled *version* updates. In a `dev` + `main` repo the two kinds therefore sit on different branches, so read each PR's base rather than assuming an integration branch like `dev`.
+
 ## Branches & files (for a content PR — no clone)
 
 On the web there's **no working tree** — create the branch and push file contents
