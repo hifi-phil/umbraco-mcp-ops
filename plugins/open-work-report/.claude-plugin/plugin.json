@@ -1,0 +1,23 @@
+{
+  "name": "open-work-report",
+  "version": "1.0.0",
+  "description": "Daily cross-repo digest of every open issue and PR, posted to Slack. Scope comes from the routine's own context — the repos attached to it — so the skill carries no repo list. Splits bot PRs into security updates (listed) and routine version bumps (counted), flags PRs that are ready to merge, blocked on CI, or waiting on a human, and marks anything stale. Report-only, so it needs read scopes only and runs as a scheduled cloud routine. Requires github-ops.",
+  "author": {
+    "name": "Phil W",
+    "email": "pjw@umbraco.com",
+    "url": "https://github.com/hifi-phil"
+  },
+  "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/open-work-report",
+  "license": "MIT",
+  "keywords": [
+    "issues",
+    "pull-request",
+    "report",
+    "digest",
+    "slack",
+    "dependabot",
+    "security",
+    "cloud-routine",
+    "workflow"
+  ]
+}
