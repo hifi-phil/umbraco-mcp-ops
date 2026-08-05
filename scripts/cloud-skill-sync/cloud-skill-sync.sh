@@ -29,7 +29,7 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="18"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="19"                                  # bump to force an env-cache rebuild / re-clone
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
