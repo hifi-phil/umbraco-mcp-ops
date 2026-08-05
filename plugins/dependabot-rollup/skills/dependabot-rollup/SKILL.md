@@ -8,8 +8,9 @@ description: >-
   human's checkout is never switched, dirtied, or left on a chore branch. Safe to run
   unattended locally — a scheduled local routine whose entire prompt is
   `/dependabot-rollup` is the intended setup — but never as a cloud routine. Invoke as
-  `/dependabot-rollup [base branch]`; the base defaults to **`dev`** where it exists on
-  `origin` (the usual case in this repo family), otherwise the repository's default branch.
+  `/dependabot-rollup [base branch]`; the base defaults to the repository's **default
+  branch**, which is where Dependabot raises security PRs — not an integration branch
+  like `dev`.
   Or trigger whenever you need to consolidate a repo's open Dependabot security PRs into one
   verified rollup PR. Sets a `/goal` so the run survives across turns.
   Requires the `github-ops` skill for all GitHub-API work.
@@ -25,7 +26,9 @@ It must be a quiet no-op when there is nothing to do, and it must never lose wor
 
 > **Local only — not a cloud routine.** The Claude GitHub App available to cloud routines has a fixed permission set with **no Dependabot-alerts read** (it can't be granted), so a cloud run can never tell which PRs are security and can only no-op. Run this locally, where `gh` has the scope. See the alerts-permission note in *Discover & classify*.
 
-Invoke as `/dependabot-rollup [base branch]`. The optional base branch defaults to `dev` when it exists on `origin`, otherwise the repository's default branch (detect via `github-ops` → *Detect base branch*).
+Invoke as `/dependabot-rollup [base branch]`. **The base defaults to the repository's default branch**, because that is where Dependabot raises security PRs — the rollup targets the same branch as the PRs it consolidates. Do not default to an integration branch like `dev`: `dependabot.yml`'s `target-branch` redirects only the scheduled *version* updates, so a `dev`-scoped run finds routine bumps and no security PRs at all.
+
+In a `dev` + `main` repo the fix therefore lands on `main` first and reaches `dev` by the repo's normal main→dev sync — the same path the individual Dependabot PRs would have taken had they been merged one by one. Pass an explicit base only if a repo genuinely wants otherwise.
 
 ## GitHub access & environment
 
@@ -35,7 +38,7 @@ Invoke as `/dependabot-rollup [base branch]`. The optional base branch defaults 
 ## Guardrails (read first)
 
 - **Security-only.** Include a Dependabot PR only if at least one package it bumps has an **open Dependabot security alert**. Routine (non-security) version-bump PRs are left untouched.
-- **`$BASE` is where the rollup lands, not where the inputs are.** Dependabot raises security PRs against the **default branch** (`github-ops` → *List open Dependabot PRs* has the rule). Never scope discovery by `$BASE`: it returns routine version bumps only, and a real rollup reports a false `NO-OP`.
+- **`$BASE` is the default branch.** Dependabot raises security PRs there, so the rollup targets the same branch as its inputs. Never point it at an integration branch like `dev` — that finds version bumps only, and reports a false `NO-OP`.
 - **No major bumps — ever.** Exclude any PR whose targeted package crosses a **semver-major** boundary (e.g. `uuid 11 → 14`). This includes multi-package bundles where *any* bundled package is a major bump — if a bundle can't be split cleanly, defer the whole bundle. Majors are handled separately, one-to-one, by a human.
 - **Never lose work.** Closing/deleting the individual Dependabot PRs happens **only after** CI on the rollup PR is green.
 - **Never touch the human's checkout.** Do not `git switch`, `git checkout <branch>`, stash, reset, or pull in the invoking working tree — it may hold uncommitted work, a running dev server, or environment files. A dirty checkout is **not** a reason to abort: all branch work happens in a throwaway worktree (step 3), which is torn down on every exit path (step 9).
@@ -69,19 +72,14 @@ Confirm GitHub access is available (`github-ops` — its mechanism is present) a
 REPO=$(git rev-parse --show-toplevel)
 cd "$REPO"
 git fetch origin --prune
-# origin/HEAD is unset in some clones — fall back rather than proceed with an empty $DEFAULT
-DEFAULT=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
-DEFAULT=${DEFAULT:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)}
-[ -n "$DEFAULT" ] || { echo "cannot resolve default branch"; exit 1; }
-# BASE = the base-branch argument if set; else 'dev' if `git rev-parse --verify origin/dev` succeeds; else $DEFAULT
-git rev-list --count "origin/$BASE..origin/$DEFAULT"   # 0 = $DEFAULT is an ancestor of $BASE
+# BASE = the base-branch argument if set; else the default branch:
+BASE=${1:-$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')}
+[ -n "$BASE" ] || { echo "cannot resolve default branch"; exit 1; }   # origin/HEAD unset in some clones
 ```
 
 The repo is whatever the invoking working tree belongs to — that's what makes `/dependabot-rollup` viable as a whole routine prompt. Ignore `git status`: a dirty checkout is fine and must not abort the run.
 
-`$DEFAULT` is where step 2 finds the security PRs; `$BASE` is where the rollup lands. They differ in a `dev` + `main` repo, which is why that last count matters: every included branch is cut from `$DEFAULT`, so merging one into a `$BASE` that lags `$DEFAULT` would drag unrelated commits into a security rollup. **Non-zero → stop with `NEEDS-ME ($DEFAULT diverged from $BASE — sync needed)`.** Syncing is a one-command human job, and stopping here costs nothing because no worktree exists yet.
-
-Then check whether a previous run already left something for the human — **list the open PRs on `$BASE`** (`github-ops` → *List PRs by label / state*) and look for a `chore/dependabot-security-rollup-*` head branch. This is the only `$BASE`-scoped PR query in the skill; the rollup PR is the one PR guaranteed to be there, because this skill opened it. Keep the result; step 3 needs it.
+Then check whether a previous run already left something for the human — **list the open PRs on `$BASE`** (`github-ops` → *List PRs by label / state*) and look for a `chore/dependabot-security-rollup-*` head branch. Keep the result; step 3 needs it.
 
 - **Open rollup PR whose CI is already green** → it is waiting on review, and there is nothing to add. Report `ALREADY AWAITING REVIEW` with the link and **stop**. Do not open a second rollup, do not rebase it, do not merge it.
 - **Open rollup PR that is red or pending** → continue; step 3 reuses that branch.
@@ -91,18 +89,18 @@ Then check whether a previous run already left something for the human — **lis
 
 Via `github-ops`:
 
-- **List the open Dependabot PRs** (→ *List open Dependabot PRs*) — number, title, head branch, base, url. The operation returns them repo-wide; keep the ones based on `$DEFAULT`, which is the entire candidate set. **Do not narrow the query by base** — `github-ops` explains why on that row.
+- **List the open Dependabot PRs** (→ *List open Dependabot PRs*) — number, title, head branch, base, url. Keep the ones based on `$BASE`.
 - **List open Dependabot security alerts** (→ *List Dependabot security alerts*) — package name, severity, and `first_patched_version`, the version a fix has to reach.
 
 If listing alerts fails with a **permission error** (the connected app / token lacks Dependabot-alerts read — this is **always** the case for the Claude GitHub App used by cloud routines, which is why this skill is local-only), **stop and report that limitation**. Do not guess which PRs are security.
 
-For each candidate PR, parse the package(s) and `from → to` versions from the title (get the PR via `github-ops` → *Get a PR* for multi-package bundles), then classify:
+For each open Dependabot PR, parse the package(s) and `from → to` versions from the title (get the PR via `github-ops` → *Get a PR* for multi-package bundles), then classify:
 
 - **INCLUDE** — open security alert, no major bump, and the `to` version reaches the alert's `first_patched_version`.
 - **DEFER-MAJOR** — security but crosses a major (or a bundle containing any major). Reported, never merged.
 - **SKIP-NONSECURITY** — no open alert, or a bump that lands short of `first_patched_version`. Left alone.
 
-Then walk the **alerts**, not the PRs: every open alert no INCLUDE PR resolves is an **UNCOVERED ALERT**. Dependabot raises no PR for a vulnerable **transitive** dependency that no manifest declares, so a PR-only walk drops those advisories silently. Record package, severity, and `first_patched_version` — all of it from the alerts payload you already have. They never make the run non-idle.
+Then walk the **alerts**, not the PRs: every open alert no INCLUDE PR resolves is an **UNCOVERED ALERT**. Dependabot raises no PR for a vulnerable **transitive** dependency that no manifest declares, so a PR-only walk drops those advisories silently. Record package, severity, and `first_patched_version`. They never make the run non-idle.
 
 If **INCLUDE is empty**: print the classification summary and **stop** (quiet no-op) — before creating any worktree. Still surface any DEFER-MAJOR and UNCOVERED ALERTS as a lightweight note so a human can action them, but this is not the "review the PR" ping.
 
@@ -124,8 +122,6 @@ Call the resulting path `$WT`. Every remaining step runs inside it.
 
 ### 4. Apply the bumps
 
-Step 1 already confirmed `$DEFAULT` is an ancestor of `$BASE`, so merging the INCLUDE branches brings their bumps and nothing else.
-
 Capture exactly what Dependabot resolved (covers direct **and** transitive deps) by merging each INCLUDE branch, then reconcile deterministically:
 
 ```bash
@@ -134,7 +130,7 @@ for BRANCH in <each INCLUDE headRefName>; do
     # Lockfile conflicts are expected when several PRs touch the same lockfile.
     # Keep OURS — the accumulating side, which holds every bump merged so far —
     # then relock against the merged manifests. NEVER --theirs: each Dependabot
-    # branch is cut from $DEFAULT, so its lockfile contains only its own bump,
+    # branch is cut from the base, so its lockfile contains only its own bump,
     # and taking it wholesale silently reverts every preceding merge.
     git checkout --ours <lockfile>
     git add <lockfile>
@@ -183,8 +179,6 @@ already exists, **update its body** (→ *Update a PR's body*). Title:
 
 Body lists, per included package: name, `from → to` **as verified in step 5**, highest open advisory severity; a **Deferred (major — handle separately)** section with each DEFER-MAJOR PR number + link; an **Uncovered alerts** section (package, severity, required version); and a **Supersedes** line referencing every INCLUDE PR number.
 
-If `$DEFAULT` ≠ `$BASE`, add a line: inputs came from `$DEFAULT`, the rollup targets `$BASE`, so the fixes reach `$DEFAULT` via the normal release path.
-
 ### 8. Drive to green CI — THE LOOP
 
 Update the `/goal` set earlier to name the rollup PR number now that it exists, then work the loop until the goal is met (GitHub actions via `github-ops`):
@@ -219,13 +213,12 @@ Emit a single REVIEW-NEEDED summary: the rollup PR link, the count + names of in
 
 Report exactly one outcome tag: `ROLLUP OPEN` / `NO-OP` / `ALREADY AWAITING REVIEW` / `NEEDS-ME (reason)`. Stay silent for `NO-OP`. Then `/goal clear`.
 
-**Every `NO-OP` prints its evidence:** the discovery branch, how many Dependabot PRs it returned, and how many open alerts you reconciled against them. Open alerts that no PR fixes are still a `NO-OP` — but never a silent one; the UNCOVERED ALERTS list is the report.
+**Every `NO-OP` prints its evidence:** the branch you discovered on, how many Dependabot PRs it returned, and how many open alerts you reconciled against them. Open alerts that no PR fixes are still a `NO-OP` — but never a silent one.
 
 ## Success criteria
 
-- ✅ Dependabot PRs discovered on `$DEFAULT`, not on `$BASE`.
+- ✅ One `chore/dependabot-security-rollup-*` PR open against `$BASE` — the default branch — with all in-scope security bumps.
 - ✅ Every open alert accounted for — fixed by the rollup, deferred as a major, or reported as an uncovered alert.
-- ✅ One `chore/dependabot-security-rollup-*` PR open against `$BASE` with all in-scope security bumps.
 - ✅ Every bump verified as a **resolved** lockfile version, with no entry moved backwards.
 - ✅ All CI checks on that PR green.
 - ✅ Every superseded individual Dependabot PR closed with its branch deleted.

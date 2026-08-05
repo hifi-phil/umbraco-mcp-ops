@@ -55,7 +55,7 @@ files cover the **same** list — keep them in sync.
 | Add / remove a label on an issue | triage, merge-flow |
 | Close an issue | triage |
 | List PRs (by label / state) | merge-flow |
-| List a repo's open Dependabot PRs (never scope by base — security PRs target the default branch) | dependabot-rollup |
+| List a repo's open Dependabot PRs (security PRs target the default branch) | dependabot-rollup |
 | List Dependabot security alerts | dependabot-rollup |
 | Get a PR (review decision, mergeable, base) | merge-flow, all loops |
 | Get PR reviews + review comments | merge-flow, review-response |

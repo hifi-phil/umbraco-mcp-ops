@@ -28,7 +28,7 @@ Auth is the MCP server's connected GitHub App — no token to paste. Mirror of
 | Operation | Tool |
 |-----------|------|
 | List by label / state | `list_pull_requests` |
-| List open Dependabot PRs | `search_pull_requests` with `author:app/dependabot state:open` (or `list_pull_requests` filtered by author) — **do not add a `base:` qualifier**, see note below |
+| List open Dependabot PRs | `search_pull_requests` with `author:app/dependabot state:open` (or `list_pull_requests` filtered by author) |
 | Get (review decision, mergeable, base) | `pull_request_read` (`method: "get"`) |
 | Get reviews + review comments | `pull_request_read` (`method: "get_reviews"`; and `get_review_comments`) |
 | **CI / check-run status** | `pull_request_read` (`method: "get_check_runs"`; also `get_status`) — poll until non-pending |
@@ -41,7 +41,7 @@ Auth is the MCP server's connected GitHub App — no token to paste. Mirror of
 | Re-request / add review | `pull_request_review_write` |
 | List Dependabot security alerts | `list_dependabot_alerts` (security toolset; needs the connected app to grant Dependabot-alerts read) |
 
-> **Dependabot PRs: never narrow the list by base.** Dependabot raises **security** updates against the repo's **default branch**; `target-branch` in `dependabot.yml` redirects only the scheduled *version* updates. So in a `dev` + `main` repo the two kinds sit on different branches, and a list scoped to your working base returns version bumps and no security PRs. List them all and read each PR's base instead of filtering.
+> **Dependabot security PRs are raised against the repo's default branch**, always — `target-branch` in `dependabot.yml` redirects only the scheduled *version* updates. In a `dev` + `main` repo the two kinds therefore sit on different branches, so read each PR's base rather than assuming an integration branch like `dev`.
 
 ## Branches & files (for a content PR — no clone)
 
