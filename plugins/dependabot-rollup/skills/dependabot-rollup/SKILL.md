@@ -35,6 +35,7 @@ Invoke as `/dependabot-rollup [base branch]`. The optional base branch defaults 
 ## Guardrails (read first)
 
 - **Security-only.** Include a Dependabot PR only if at least one package it bumps has an **open Dependabot security alert**. Routine (non-security) version-bump PRs are left untouched.
+- **Never filter PR discovery by `$BASE`.** Dependabot **security** updates always target the repository's **default branch** and ignore `target-branch` — so in a `dev` + `main` repo the security PRs sit on `main` while the version-update PRs sit on `dev`. `$BASE` is where the *rollup* lands; it says nothing about where the inputs live. Scoping discovery to `$BASE` makes every security PR invisible and turns a real rollup into a false `NO-OP` — see step 2.
 - **No major bumps — ever.** Exclude any PR whose targeted package crosses a **semver-major** boundary (e.g. `uuid 11 → 14`). This includes multi-package bundles where *any* bundled package is a major bump — if a bundle can't be split cleanly, defer the whole bundle. Majors are handled separately, one-to-one, by a human.
 - **Never lose work.** Closing/deleting the individual Dependabot PRs happens **only after** CI on the rollup PR is green.
 - **Never touch the human's checkout.** Do not `git switch`, `git checkout <branch>`, stash, reset, or pull in the invoking working tree — it may hold uncommitted work, a running dev server, or environment files. A dirty checkout is **not** a reason to abort: all branch work happens in a throwaway worktree (step 3), which is torn down on every exit path (step 9).
@@ -75,6 +76,8 @@ The repo is whatever the invoking working tree belongs to — that's what makes 
 
 Then check whether a previous run already left something for the human — **list the open PRs on `$BASE`** (`github-ops` → *List PRs by label / state*) and look for a `chore/dependabot-security-rollup-*` head branch. Keep the result; step 3 needs it.
 
+This is the **only** base-scoped query in the whole skill — the rollup PR is the one thing guaranteed to be on `$BASE`, because this skill opened it. Do not carry the `--base $BASE` filter into step 2.
+
 - **Open rollup PR whose CI is already green** → it is waiting on review, and there is nothing to add. Report `ALREADY AWAITING REVIEW` with the link and **stop**. Do not open a second rollup, do not rebase it, do not merge it.
 - **Open rollup PR that is red or pending** → continue; step 3 reuses that branch.
 - **None** → continue; step 3 cuts a new branch.
@@ -83,18 +86,22 @@ Then check whether a previous run already left something for the human — **lis
 
 Via `github-ops`:
 
-- **List the open Dependabot PRs** (→ *List open Dependabot PRs*) — number, title, head branch, url.
-- **List open Dependabot security alerts** (→ *List Dependabot security alerts*) and collect the alerting package names.
+- **List the open Dependabot PRs across every base branch** (→ *List open Dependabot PRs*) — number, title, head branch, **baseRefName**, url. The reference command is deliberately base-agnostic: **do not add `--base`**, and capture `baseRefName` because step 4 needs it.
+- **List open Dependabot security alerts** (→ *List Dependabot security alerts*) and collect the alerting package names **with the version range each alert requires you to reach** (`first_patched_version`).
+
+> **Why base-agnostic discovery is not optional.** Dependabot honours `target-branch` for scheduled *version* updates only; **security** updates are always raised against the repository's **default branch** and cannot be redirected. In a `dev` + `main` repo with `target-branch: dev`, that means every PR on `dev` is a routine version bump and the security PRs — the only ones this skill exists to roll up — are on `main`. A run that lists PRs `--base dev` sees seven non-security bumps, classifies all of them SKIP-NONSECURITY, and reports a confident `NO-OP` while real high-severity advisories sit unfixed one query away. If the repo has a `dependabot.yml`, read it: it tells you which bases to expect, and many spell this split out in a comment.
 
 If listing alerts fails with a **permission error** (the connected app / token lacks Dependabot-alerts read — this is **always** the case for the Claude GitHub App used by cloud routines, which is why this skill is local-only), **stop and report that limitation**. Do not guess which PRs are security.
 
 For each open Dependabot PR, parse the package(s) and `from → to` versions from the title (get the PR via `github-ops` → *Get a PR* for multi-package bundles), then classify:
 
-- **INCLUDE** — has an open security alert **and** no major bump.
+- **INCLUDE** — has an open security alert **and** no major bump. Confirm the PR's `to` version actually **reaches the alert's `first_patched_version`**; a bump that lands short of it is not a fix (treat as SKIP-NONSECURITY and report the alert as uncovered below).
 - **DEFER-MAJOR** — security but crosses a major (or a bundle containing any major). Reported, never merged.
 - **SKIP-NONSECURITY** — no open alert. Left alone.
 
-If **INCLUDE is empty**: print the classification summary and **stop** (quiet no-op) — before creating any worktree. Still surface any DEFER-MAJOR items as a lightweight note so a human can action them, but this is not the "review the PR" ping.
+Then close the loop **the other way round** — walk the alerts, not the PRs, and list every open alert that **no** INCLUDE PR resolves. These are invisible to a PR-only walk and are usually the ones that matter: Dependabot cannot raise a PR for a vulnerable **transitive** dependency that no manifest declares, so the advisory simply sits there with nothing to roll up. For each, note the resolved version in `$BASE`'s lockfile, the version the alert needs, and whether closing the gap crosses a major. Report these as **UNCOVERED ALERTS** — they are a finding, not a failure, and they do not by themselves make the run non-idle.
+
+If **INCLUDE is empty**: print the classification summary and **stop** (quiet no-op) — before creating any worktree. Still surface any DEFER-MAJOR and UNCOVERED ALERTS as a lightweight note so a human can action them, but this is not the "review the PR" ping.
 
 ### 3. Create the throwaway worktree (idempotent)
 
@@ -114,7 +121,17 @@ Call the resulting path `$WT`. Every remaining step runs inside it.
 
 ### 4. Apply the bumps
 
-Capture exactly what Dependabot resolved (covers direct **and** transitive deps) by merging each INCLUDE branch, then reconcile deterministically:
+**First, check each INCLUDE branch's base against `$BASE`.** Step 2 collected `baseRefName` precisely for this: a security PR is cut from the default branch, so when `$BASE` is `dev` its branch is **not** cut from `$BASE`, and merging it drags along every commit on the default branch that `dev` doesn't have.
+
+```bash
+# For each INCLUDE branch, with BR = its baseRefName:
+git rev-list --count "origin/$BASE..origin/$BR"    # commits in BR that $BASE lacks
+```
+
+- **`0`** — the PR's base is an ancestor of `$BASE` (the normal `dev`-ahead-of-`main` case). Merging is safe; use the loop below.
+- **non-zero** — the bases have genuinely diverged. **Do not merge the branch**; you would smuggle unrelated commits into a security rollup. Take only the dependency change: `git checkout origin/<headRef> -- <lockfile>` (plus any manifest the PR touched) and commit that, or apply the bump directly with `npm install <pkg>@<to>`. Then verify in step 5 exactly as if you had merged, and note in the PR body that the change was cherry-picked rather than merged.
+
+Then capture exactly what Dependabot resolved (covers direct **and** transitive deps) by merging each safe INCLUDE branch, and reconcile deterministically:
 
 ```bash
 for BRANCH in <each INCLUDE headRefName>; do
@@ -122,8 +139,8 @@ for BRANCH in <each INCLUDE headRefName>; do
     # Lockfile conflicts are expected when several PRs touch the same lockfile.
     # Keep OURS — the accumulating side, which holds every bump merged so far —
     # then relock against the merged manifests. NEVER --theirs: each Dependabot
-    # branch is cut from the base, so its lockfile contains only its own bump,
-    # and taking it wholesale silently reverts every preceding merge.
+    # branch is cut fresh from its own base, so its lockfile contains only its
+    # own bump, and taking it wholesale silently reverts every preceding merge.
     git checkout --ours <lockfile>
     git add <lockfile>
     npm install            # reconciles the lock to the merged manifests
@@ -169,7 +186,9 @@ git push -u origin HEAD
 already exists, **update its body** (→ *Update a PR's body*). Title:
 `chore(deps): security rollup (<date>)`.
 
-Body lists, per included package: name, `from → to` **as verified in step 5**, highest open advisory severity; a **Deferred (major — handle separately)** section with each DEFER-MAJOR PR number + link; and a **Supersedes** line referencing every INCLUDE PR number.
+Body lists, per included package: name, `from → to` **as verified in step 5**, highest open advisory severity; a **Deferred (major — handle separately)** section with each DEFER-MAJOR PR number + link; an **Uncovered alerts** section listing the step-2 findings no PR resolves (package, resolved-in-`$BASE` → required version, severity, whether it crosses a major); and a **Supersedes** line referencing every INCLUDE PR number.
+
+Where an INCLUDE PR's base differed from `$BASE`, say so — note that the PR targeted `<baseRefName>` (Dependabot's default-branch behaviour for security updates) and that the rollup lands on `$BASE` per the repo's branching convention.
 
 ### 8. Drive to green CI — THE LOOP
 
@@ -201,13 +220,17 @@ Either way: only ever remove the `dependabot-rollup` worktree this run created; 
 
 ### 10. Notify — only now
 
-Emit a single REVIEW-NEEDED summary: the rollup PR link, the count + names of included security fixes **with their verified resolved versions**, the list of closed/superseded PRs, and the DEFER-MAJOR list with the reminder that majors are handled separately on a one-to-one basis. Send it as a push notification when running unattended.
+Emit a single REVIEW-NEEDED summary: the rollup PR link, the count + names of included security fixes **with their verified resolved versions**, the list of closed/superseded PRs, the DEFER-MAJOR list with the reminder that majors are handled separately on a one-to-one basis, and the UNCOVERED ALERTS list. Send it as a push notification when running unattended.
 
 Report exactly one outcome tag: `ROLLUP OPEN` / `NO-OP` / `ALREADY AWAITING REVIEW` / `NEEDS-ME (reason)`. Stay silent for `NO-OP`. Then `/goal clear`.
 
+**A `NO-OP` must be able to justify itself.** Before reporting one, be able to state how many open Dependabot PRs you saw **and which base branches they were on**, and how many open alerts you reconciled against them. A `NO-OP` derived from a single base branch is not a `NO-OP` — it's an unfinished query. If the repo has open alerts but no PR fixes them, the outcome is still `NO-OP`, but the UNCOVERED ALERTS list is the substance of the report and must not be silent.
+
 ## Success criteria
 
-- ✅ One `chore/dependabot-security-rollup-*` PR open against `$BASE` with all in-scope security bumps.
+- ✅ Dependabot PRs discovered across **all** base branches, not just `$BASE`.
+- ✅ Every open alert accounted for — fixed by the rollup, deferred as a major, or reported as an uncovered alert.
+- ✅ One `chore/dependabot-security-rollup-*` PR open against `$BASE` with all in-scope security bumps, and no unrelated commits pulled in from a diverged base.
 - ✅ Every bump verified as a **resolved** lockfile version, with no entry moved backwards.
 - ✅ All CI checks on that PR green.
 - ✅ Every superseded individual Dependabot PR closed with its branch deleted.
