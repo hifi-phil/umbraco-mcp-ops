@@ -3,11 +3,12 @@ name: open-work-report
 description: >-
   Daily cross-repo overview of everything currently open — issues and PRs — collected from
   the repos **the routine itself attaches**, so this skill carries no repo list and never
-  invents one. Posts one Slack digest: security bot PRs first (Dependabot security updates
-  are separated from routine version bumps, since only one of them is urgent), then PRs that
-  are ready to merge, blocked on CI, or waiting on a human, then per-repo listings with each
-  item's age and last activity, automation labels called out so loop-owned work reads apart
-  from human work, and anything untouched for 30 days flagged stale. Report-only — it reads
+  invents one. Posts a **counts-only summary** to Slack with **one threaded reply per repo**
+  underneath, so the channel stays glanceable and the detail sits where you'd go looking for
+  it. Every Dependabot PR rolls up to a single line per repo — with the security-declared ones
+  called out by number, since only those are urgent — while human PRs get a line each, bucketed
+  as ready to merge, changes requested, broken CI, or waiting for review, carrying age,
+  automation labels, and a stale flag past 30 days. Report-only — it reads
   GitHub and writes nothing there, so it needs read scopes only; all GitHub work goes through
   the required `github-ops` skill, so there's no token to configure and it runs as a
   scheduled cloud routine. Trigger on "what's open across the repos", "run the open work
@@ -60,7 +61,7 @@ Take the repos from the context you were given, in this order of precedence:
 
 Then, per repo, fetch the repository object (github-ops → *Get repo metadata*) and **skip
 archived repos, naming them** — you can't act on them, so findings there are noise. Echo the
-resolved scope in the digest header so the reader can see exactly what was covered.
+resolved scope in the summary message's header so the reader can see exactly what was covered.
 
 ## Step 2 — collect the open work
 
@@ -123,7 +124,7 @@ usually the most actionable line in the whole digest.
 | PR: checks green **and** approved **and** no conflicts | **Ready to merge** |
 | PR: review decision is changes-requested | **Changes requested** — back with the author |
 | PR: one or more checks failing | **Broken CI** |
-| PR: no review yet, CI green | **Waiting for review** — the commonest actionable state, so it gets its own attention section |
+| PR: no review yet, CI green | **Waiting for review** — the commonest actionable state, so it gets its own count in the summary |
 | PR: draft | **Draft** — counted only |
 | PR: bot-authored **and** security (label or advisory in body) | **Security bot PR** — listed individually, at the top |
 | PR: bot-authored, routine version bump | **Bot** — counted only; add *touches an alerted package* if the optional alerts pass ran and matched |
@@ -133,89 +134,80 @@ usually the most actionable line in the whole digest.
 
 Read approval and merge state from the PR payload — never infer either from anything else.
 
-## Step 5 — the digest
+## Step 5 — post it: a summary, then one thread reply per repo
 
-Print the full digest to stdout **always**, then post it to Slack
-**`#daily-issue-and-pr-overview`** via the Slack integration. If Slack isn't reachable, the
-printed digest stands on its own — say you couldn't post rather than failing the run.
+Print everything to stdout **always**, then post to Slack `#daily-issue-and-pr-overview`:
 
-Shape it like this (Slack mrkdwn), so a reader can compare today against yesterday at a
-glance — a cross-repo attention block first, then one section per repo:
+1. **One parent message that is a summary only** — counts, no item names.
+2. **One threaded reply per repo**, in scope order.
+
+The split exists because a daily report is read in two modes. In the channel you want to know
+whether today needs you at all, which is a handful of numbers; in the thread you want the
+detail, and only for the repo you actually work on. Putting item-level detail in the parent
+made the report a wall nobody read — the shape below is the fix, so keep the parent numeric
+even on a quiet day.
+
+If Slack isn't reachable, the printed output stands on its own — say you couldn't post rather
+than failing the run. If the parent posts but a reply fails, name the repo whose reply is
+missing.
+
+### The parent message
 
 ```
-:clipboard: *Open work — 2026-08-05*  ·  3 repos in scope
-Umbraco-CMS-MCP-Dev · Umbraco-CMS-MCP-Editor · Umbraco-MCP-Base
-
-*:rotating_light: Security bot PRs — Dependabot-declared (2)*
-• <link|Editor #75> Bump `brace-expansion` — GHSA-mh99-v99m-4gvg — open 12d
-• <link|Dev #178> Bump `uuid` 11.1.0 → 14.0.0 — GHSA-w5hq-g745-h8pq — open 61d — *stale*
-
-*:white_check_mark: Ready to merge (2)*
-• <link|Dev #412> Add member-group tools — approved, CI green — `generated-by-ai`
-• <link|Base #57> Fix pagination helper — approved, CI green
-
-*:back: Changes requested (1)*
-• <link|Dev #401> Refactor document tools — open 34d, last activity 2026-07-02 — *stale*
-
-*:x: Broken CI (1)*
-• <link|Editor #91> Add media type tools — 3 checks failing, awaiting review
-
-*:eyes: Waiting for review — CI green (2 of 4 shown, oldest first)*
-• <link|Dev #183> Add outputSchema to mutation tools — open 90d — *stale*
-• <link|Base #228> Support pointing at a local SDK build — open 8d
-
-*:hourglass: Stale issues, no activity 30d+ (2)*
-• <link|Dev #172> Add outputSchema so consumers get types — last activity 2026-04-27
-• <link|Base #121> create-umbraco-mcp-server: composer fix — last activity 2026-05-13
-
-────────────────────────
-*umbraco/Umbraco-CMS-MCP-Dev* — 6 open PRs, 14 open issues
-_PRs (oldest first)_
-• <link|#401> Refactor document tools — changes requested, CI green — open 34d
-• <link|#412> Add member-group tools — approved, CI green — open 4d — `generated-by-ai`
-_Issues (oldest first)_
-• <link|#398> Media picker returns wrong variant — open 64d, last activity 2026-06-14 — `ready-for-ai`
-• <link|#420> Support segment filters in content queries — open 3d — `ai-discuss`
-_Bots: 4 (1 security-declared · 3 version bumps, 1 touching an alerted package) · Drafts: 1_
-
-*umbraco/Umbraco-CMS-MCP-Editor* — 3 open PRs, 5 open issues
-…
-
-*umbraco/Umbraco-MCP-Base* — 2 open PRs, 7 open issues
-…
-────────────────────────
-_Totals: 11 open PRs (5 bot: 1 security, 3 version bumps, 1 security unknown), 26 open issues.
-Read-only report — nothing was commented on, labelled, or merged._
+:clipboard: *Open work — 2026-08-06*  ·  4 repos
+*Needs action:* :rotating_light: 6 security bot PRs · :x: 4 broken CI · :white_check_mark: 0 ready to merge · :back: 0 changes requested
+*Waiting:* :eyes: 9 PRs for review · :memo: 20 open issues (2 stale 30d+)
+*Volume:* 31 open PRs, 22 of them Dependabot
+_Per-repo detail in thread_ :thread:
 ```
 
-Details that keep the digest readable:
+- **Numbers only — no issue or PR names.** A name in the parent is a name everyone scrolls
+  past; the thread is where names earn their place.
+- **Keep the zeroes.** `0 ready to merge` is information at a glance, and dropping the line
+  makes a quiet day look like a broken run.
+- **Security first when it's non-zero** — it's the only count that can be urgent.
 
-- **Short repo prefixes in the attention sections** (`Dev #412`, `Editor #75`) — up there the
-  reader needs the repo, not the org; inside a repo block the bare `#412` is enough.
-- **An item appears once in the attention block.** A stale PR is already in its own bucket
-  carrying `*stale*`, so the stale section lists **issues only** — otherwise the same PR shows
-  up twice and the counts stop meaning anything.
-- **Cap *Waiting for review* at the oldest 5** and say `n of m shown`. In practice this is the
-  fattest bucket (green PRs nobody has looked at yet), and an uncapped list buries the sections
-  above it — which are the ones that need action today.
-- **One line per item, no wrapping prose.** The per-repo blocks are a list, not a narrative.
-- **The `security unknown` count appears in the totals whenever it's non-zero**, and is left
-  out when it's zero — a zero doesn't need saying, a non-zero does.
-- **Keep "Dependabot-declared" in the security heading**, and only mention alerted packages if
-  the alerts pass actually ran. Both bits of wording exist so nobody reads an empty security
-  section as "no vulnerabilities" when it only ever meant "none declared".
+### One threaded reply per repo
 
-Rules for the digest:
+```
+*umbraco/Umbraco-CMS-MCP-Dev* — 5 PRs + 6 Dependabot · 5 issues
+:x: <link|#334> Upgrade v17/dev to 17.6-rc — 1 check failing — 9d
+:x: <link|#351> Prune .claude/.rulesync tooling — 1 check failing — 8d
+:eyes: <link|#183> Add outputSchema to mutation tools — green — 90d *stale*
+:eyes: <link|#314> Upgrade to Umbraco 18.1.0-rc — green — 13d
+:package: *Dependabot: 6* — 2 security-declared (<link|#363>, <link|#178>), 4 version bumps
+:memo: *Issues: 5* — 1 `ready-for-ai`, 3 `generated-by-ai`, 1 stale (oldest <link|#172>, 100d)
+```
 
-- **Zero findings is a result, not silence.** Say "none" per empty section.
+- **One line per human PR**, prefixed with its bucket emoji and ordered urgent → quiet:
+  `:white_check_mark:` ready to merge, `:back:` changes requested, `:x:` broken CI, `:eyes:`
+  waiting for review. Title, the state that put it in that bucket, its age, `*stale*` if it
+  qualifies, and its loop labels — nothing else.
+- **Dependabot rolls up to a single line.** Never one line per bump. This is the change that
+  makes the report readable at all: bot PRs are usually the clear majority of what's open (22
+  of 31 on 2026-08-05), so enumerating them buries every item a human can act on. Give the
+  count, then the **security-declared ones by number** — those are the only bot PRs anyone
+  opens on purpose — plus the version-bump count, the `security unknown` count when non-zero,
+  and the alerted-package count only if that pass actually ran.
+- **Issues roll up to a single line too**: count, the loop-label tally, and the stale count
+  with the oldest one linked. An issue list is a backlog, not a to-do list; the label tally is
+  what tells you whether the loops or a human own it.
+- **A repo with nothing open still gets a reply** saying so — silence reads as a failed run.
+- **Keep each line to one screen line.** Long titles get cut at a word boundary with `…`; a
+  title chopped mid-word (`…duplicated fr`) reads like a bug in the report.
+
+Rules for the whole post:
+
+- **Zero findings is a result, not silence.** Say "none" rather than dropping a line.
 - **Never report a cap as completeness.** If a repo had more open items than the cap, say how
   many you didn't cover.
-- **Say when a repo failed.** A repo you couldn't read is a gap in the report — name it and
-  carry on with the others rather than aborting the run.
+- **Say when a repo failed.** A repo you couldn't read is a gap in the report — name it in the
+  parent and carry on with the others rather than aborting the run.
 - **Nothing beyond the template.** No recommendations, no commentary on what to prioritise;
-  that's where day-to-day consistency goes, and the buckets already carry the signal.
-- **If the digest exceeds Slack's message limit**, post the header plus the attention sections
-  as the message and put the per-repo detail in a threaded reply — never truncate silently.
+  the buckets already carry the signal, and prose is where day-to-day comparability dies.
+- **Keep "security-declared" wording on the Dependabot line**, and mention alerted packages
+  only if the alerts pass ran — so nobody reads a zero as "no vulnerabilities" when it only
+  ever meant "none declared".
 
 ## Guardrails
 
@@ -230,7 +222,8 @@ Rules for the digest:
   declared (plus alert correlation when that's readable); an empty section means "nothing
   declared", and saying more than that would be presenting an assumption as a verified fact.
 - **Skip archived repos**, naming them, rather than reporting phantom findings.
-- **One digest per run**, covering every repo in scope — not one message per repo.
+- **One thread per run** — a summary parent plus one reply per repo. Never several top-level
+  messages, and never per-item detail in the parent.
 
 ## Running as a scheduled routine
 
@@ -238,7 +231,7 @@ Daily (this report isn't event-driven, so it doesn't go through `loop-dispatch`)
 prompt:
 
 ```text
-You are running as a cloud worker; do all GitHub work via the GitHub MCP (github-ops). Run the open-work-report skill over the repos attached to this routine. It is report-only — collect, classify, then post one combined digest to #daily-issue-and-pr-overview. Follow the skill's guardrails verbatim; add no policy of your own, and do not comment on, label, or merge anything.
+You are running as a cloud worker; do all GitHub work via the GitHub MCP (github-ops). Run the open-work-report skill over the repos attached to this routine. It is report-only — collect, classify, then post the counts-only summary to #daily-issue-and-pr-overview with one threaded reply per repo underneath, exactly as the skill's Step 5 templates it. Follow the skill's guardrails verbatim; add no policy of your own, and do not comment on, label, or merge anything.
 ```
 
 Attach the repos you want covered as the routine's `sources`, and add the Slack connector to
