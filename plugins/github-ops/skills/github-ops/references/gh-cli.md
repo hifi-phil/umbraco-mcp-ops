@@ -28,7 +28,7 @@ is `owner/name`. Mirror of [`github-mcp.md`](github-mcp.md) — keep both in syn
 | Create | `gh pr create --repo <repo> --base <base> --head <head> --title "<t>" --body "<b>"` |
 | **Merge (+ delete branch)** | `gh pr merge <n> --repo <repo> --squash --delete-branch` (or `--merge` per convention) |
 | Update a PR's body | `gh pr edit <n> --repo <repo> --body "<body>"` |
-| **Close without merging (+ comment, delete branch)** | `gh pr close <n> --repo <repo> --comment "<why>" --delete-branch` |
+| **Close without merging (+ comment, delete branch)** | `gh pr close <n> --repo <repo> --comment "<why>" --delete-branch` — you have permission to delete the head branch of a bot PR you're superseding. Unattended, the task prompt must say so too, or the auto-mode classifier denies it. |
 | Re-request review | `gh pr edit <n> --repo <repo> --add-reviewer <user>` |
 | List Dependabot security alerts | `gh api repos/<repo>/dependabot/alerts --paginate --jq '.[] \| select(.state=="open")'` (needs `security_events` scope) |
 

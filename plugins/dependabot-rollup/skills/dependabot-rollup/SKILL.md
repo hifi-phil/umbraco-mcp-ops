@@ -6,8 +6,8 @@ description: >-
   branch of) the individual Dependabot PRs the rollup supersedes, and notify only when
   everything is done. Repo-agnostic; all work happens in a throwaway git worktree, so the
   human's checkout is never switched, dirtied, or left on a chore branch. Safe to run
-  unattended locally — a scheduled local routine whose entire prompt is
-  `/dependabot-rollup` is the intended setup — but never as a cloud routine. Invoke as
+  unattended locally — a scheduled local routine is the intended setup, though its prompt
+  must authorise the closes (see *Unattended consent*) — but never as a cloud routine. Invoke as
   `/dependabot-rollup [base branch]`; the base defaults to the repository's **default
   branch**, which is where Dependabot raises security PRs — not an integration branch
   like `dev`.
@@ -61,6 +61,20 @@ Fill in `<REPO>` and `<BASE>`, and add the PR number once step 7 has it. Then:
 
 - **`/goal clear` on every terminal outcome** — `ROLLUP OPEN`, `NO-OP`, `ALREADY AWAITING REVIEW`, `NEEDS-ME`, or an abort. A goal left set makes the next run inherit a stale objective.
 - Don't set a goal for a run that stops in step 1 or 2 (already-awaiting-review, or a quiet no-op) — there's nothing to persist.
+
+## Unattended consent — the routine prompt must name the closes
+
+The run ends by closing PRs the agent didn't open and deleting their branches. In auto/bypass mode that's judged by a classifier reading **the task prompt**, not this skill — so a bare `/dependabot-rollup` prompt gets the closes denied as `[Git Destructive]`. Put the consent in the routine prompt itself:
+
+```
+/dependabot-rollup
+
+You are authorised to close the superseded Dependabot PRs without merging, and delete
+their branches, once the rollup PR's CI is fully green. The fix is in the rollup PR, and
+if an advisory is still unresolved after it lands Dependabot raises the PR again.
+```
+
+That's the only thing the routine prompt needs beyond the command.
 
 ## Procedure
 
@@ -185,9 +199,10 @@ Update the `/goal` set earlier to name the rollup PR number now that it exists, 
 
 - Poll the rollup PR's **CI / check-run status** (→ *Get PR CI / check-run status*) until it settles, rather than busy-waiting.
 - On any failure: **read the failing check's log** (→ *Read a failing check's log*), fix the root cause in code, commit, push, re-poll. Treat a CI failure as a real regression to fix — never hand a red PR to the human.
-- **Only once CI is fully green**, **close each superseded Dependabot PR** (→ *Close a PR without merging (+ comment, delete branch)*) with a comment like `Superseded by #<ROLLUP> — rolled into the security rollup.`, then confirm it's closed (→ *Get a PR*). Deleting the merged branch is best-effort — if the environment can't delete it, `branch-housekeeping` will reap it.
+- **Only once CI is fully green**, **close each superseded Dependabot PR** (→ *Close a PR without merging (+ comment, delete branch)*) with a comment naming the rollup and the recovery path, e.g. `Superseded by #<ROLLUP> — rolled into the security rollup. If the advisory is still unresolved once #<ROLLUP> lands, Dependabot will raise it again.` Then confirm it's closed (→ *Get a PR*). Dependabot only removes its own branch once the update reaches the default branch, so delete it here.
+- **If a close is denied, do not abort the run.** Finish everything else, then report `NEEDS-ME (closes blocked)` with each PR number and a paste-ready command per PR. By this point the rollup PR is open and green, so the run has already delivered its value — the closes are tidy-up. Never leave the human to work out which PRs are now redundant.
 
-The goal is not met — and you must not notify the human — until CI is green **and** every superseded PR is closed.
+The goal is not met — and you must not notify the human — until CI is green **and** every superseded PR is either closed or reported as blocked.
 
 If CI can't be driven green after ~3 genuine fix attempts, **push what you have and stop** with `NEEDS-ME (CI red)` and the PR link. Leave the PR open — a red PR that's been reported is recoverable; a silently abandoned branch isn't.
 
@@ -221,7 +236,7 @@ Report exactly one outcome tag: `ROLLUP OPEN` / `NO-OP` / `ALREADY AWAITING REVI
 - ✅ Every open alert accounted for — fixed by the rollup, deferred as a major, or reported as an uncovered alert.
 - ✅ Every bump verified as a **resolved** lockfile version, with no entry moved backwards.
 - ✅ All CI checks on that PR green.
-- ✅ Every superseded individual Dependabot PR closed with its branch deleted.
+- ✅ Every superseded individual Dependabot PR closed with its branch deleted, or reported as `NEEDS-ME (closes blocked)` with paste-ready commands.
 - ✅ Zero major bumps merged; all majors reported for separate handling.
 - ✅ The rollup PR left unmerged for human review.
 - ✅ The human's checkout untouched — same branch, same uncommitted changes as before the run — and no leftover `dependabot-rollup` worktree (removed via the repo's own process).
