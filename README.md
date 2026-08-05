@@ -86,6 +86,7 @@ Install from this repo inside Claude Code:
 /plugin install release-flow@umbraco-mcp-ops
 /plugin install github-ops@umbraco-mcp-ops
 /plugin install dependabot-rollup@umbraco-mcp-ops
+/plugin install open-work-report@umbraco-mcp-ops
 /reload-plugins
 ```
 
@@ -96,6 +97,7 @@ Install from this repo inside Claude Code:
 | [`merge-flow`](plugins/merge-flow/) | Guardrail loop that merges PRs labelled `auto-merge` — but only once they're approved, CI-green (polled, never `--auto`), conflict-free, and on the right base. Replaces error-prone manual merges; drives each to a clean merge (branch deleted) or flags the blocker. Uses `/goal`. Repo-agnostic; local or scheduled cloud routine. |
 | [`github-ops`](plugins/github-ops/) | Shared reference the other loops point at for GitHub work in **both** environments — `gh` CLI + `git` locally, the **GitHub MCP server** (`mcp__github__*`) on Claude web / in routines. One operation catalog, two reference files; keeps the dual path in one place instead of duplicated across skills. |
 | [`dependabot-rollup`](plugins/dependabot-rollup/) | Roll every open Dependabot **security** PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Repo-agnostic; safe to run unattended (weekly routine). |
+| [`open-work-report`](plugins/open-work-report/) | Daily cross-repo digest of everything currently open, posted to Slack `#daily-issue-and-pr-overview`. **Scope comes from the routine's own context** — the repos attached to it — so the skill carries no repo list and stops rather than guessing if it can't resolve one. Separates Dependabot **security** updates (listed individually) from routine version bumps (counted), flags the PRs that are ready to merge, blocked on CI, or waiting on a human, calls out the automation labels so loop-owned work reads apart from human work, and marks anything untouched for 30 days as stale. **Report-only** — read scopes only, nothing is commented on, labelled, or merged. Requires `github-ops`. |
 
 > **Note:** `mcp-issue-loop` drives local worktrees, builds, and integration tests,
 > so it runs on a developer machine (or a runner with the full .NET/Umbraco

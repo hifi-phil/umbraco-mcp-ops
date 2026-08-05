@@ -125,6 +125,30 @@
       ]
     },
     {
+      "name": "open-work-report",
+      "source": "./plugins/open-work-report",
+      "description": "Daily cross-repo digest of every open issue and PR, posted to Slack. Scope comes from the routine's own context — the repos attached to it — so the skill carries no repo list and never invents one. Splits bot PRs into security updates (listed individually) and routine version bumps (counted), flags PRs that are ready to merge, blocked on CI, or waiting on a human, calls out the automation labels, and marks anything untouched for 30 days as stale. Report-only, so it needs read scopes only and runs as a scheduled cloud routine. Requires github-ops.",
+      "version": "1.0.0",
+      "category": "workflow",
+      "author": {
+        "name": "Phil W",
+        "email": "pjw@umbraco.com",
+        "url": "https://github.com/hifi-phil"
+      },
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/open-work-report",
+      "keywords": [
+        "issues",
+        "pull-request",
+        "report",
+        "digest",
+        "slack",
+        "dependabot",
+        "security",
+        "cloud-routine",
+        "workflow"
+      ]
+    },
+    {
       "name": "loop-dispatch",
       "source": "./plugins/loop-dispatch",
       "description": "Single front door for a repo's automation loops so one routine per repo can handle every loop event instead of one routine per event. Deterministically routes each triggering GitHub event to the matching loop (via route-event.sh); a non-matching event is a quiet no-op. Router only; each loop owns its guardrails. Also bundles new-loop-routine — the standard config + canonical prompts + UI wiring for standing up one routine per repo. Requires github-ops + the loop skills.",
