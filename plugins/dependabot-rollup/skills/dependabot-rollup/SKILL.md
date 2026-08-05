@@ -2,13 +2,12 @@
 name: dependabot-rollup
 description: >-
   Roll every open Dependabot SECURITY update (excluding semver-major bumps) into a
-  single chore branch + PR, drive it to green CI with /goal, close the individual
-  Dependabot PRs the rollup supersedes (leaving their branches to Dependabot), and notify
-  only when everything is done. A scheduled routine's prompt must explicitly authorise
-  those closes — see *Unattended consent*. Repo-agnostic; all work happens in a throwaway git worktree, so the
+  single chore branch + PR, drive it to green CI with /goal, close (and delete the
+  branch of) the individual Dependabot PRs the rollup supersedes, and notify only when
+  everything is done. Repo-agnostic; all work happens in a throwaway git worktree, so the
   human's checkout is never switched, dirtied, or left on a chore branch. Safe to run
-  unattended locally — a scheduled local routine whose entire prompt is
-  `/dependabot-rollup` is the intended setup — but never as a cloud routine. Invoke as
+  unattended locally — a scheduled local routine is the intended setup, though its prompt
+  must authorise the closes (see *Unattended consent*) — but never as a cloud routine. Invoke as
   `/dependabot-rollup [base branch]`; the base defaults to the repository's **default
   branch**, which is where Dependabot raises security PRs — not an integration branch
   like `dev`.
@@ -65,22 +64,17 @@ Fill in `<REPO>` and `<BASE>`, and add the PR number once step 7 has it. Then:
 
 ## Unattended consent — the routine prompt must name the closes
 
-An unattended run ends by **closing other people's PRs** (bot-authored, but not the agent's). In auto/bypass mode that is judged by a classifier which reads **the task prompt**, not this skill — so a routine prompt of bare `/dependabot-rollup` gets the closes denied, with wording like:
-
-> [Git Destructive] Closing PRs #259/#260 … the scheduled-task prompt does not meet the consent bar — the user must name closing those PRs and deleting their branches.
-
-Observed on the 05-08-2026 run against `umbraco/Umbraco-MCP-Base`: rollup PR #262 opened, verified, CI green — then the closes were refused and `#259`/`#260` were left open. So the routine prompt has to carry the consent itself:
+The run ends by closing PRs the agent didn't open and deleting their branches. In auto/bypass mode that's judged by a classifier reading **the task prompt**, not this skill — so a bare `/dependabot-rollup` prompt gets the closes denied as `[Git Destructive]`. Put the consent in the routine prompt itself:
 
 ```
 /dependabot-rollup
 
-You are authorised to close the superseded Dependabot PRs, without merging, once the
-rollup PR's CI is fully green. Closing them is expected and safe: the fix is in the
-rollup PR, and if an advisory is still unresolved after it lands Dependabot raises the
-PR again. Do not delete their branches — Dependabot removes its own.
+You are authorised to close the superseded Dependabot PRs without merging, and delete
+their branches, once the rollup PR's CI is fully green. The fix is in the rollup PR, and
+if an advisory is still unresolved after it lands Dependabot raises the PR again.
 ```
 
-That is the **only** thing that belongs in the routine prompt beyond the command itself. Everything else lives here. If a run is still denied, the fallback is a `gh pr close` permission rule in the repo's `.claude/settings.json` — but prefer the prompt: it's scoped to this task rather than granting the verb everywhere.
+That's the only thing the routine prompt needs beyond the command.
 
 ## Procedure
 
@@ -205,8 +199,7 @@ Update the `/goal` set earlier to name the rollup PR number now that it exists, 
 
 - Poll the rollup PR's **CI / check-run status** (→ *Get PR CI / check-run status*) until it settles, rather than busy-waiting.
 - On any failure: **read the failing check's log** (→ *Read a failing check's log*), fix the root cause in code, commit, push, re-poll. Treat a CI failure as a real regression to fix — never hand a red PR to the human.
-- **Only once CI is fully green**, **close each superseded Dependabot PR** (→ *Close without merging (+ comment)*) with a comment naming the rollup and the recovery path, e.g. `Superseded by #<ROLLUP> — rolled into the security rollup. If the advisory is still unresolved once #<ROLLUP> lands, Dependabot will raise it again.` Then confirm it's closed (→ *Get a PR*).
-- **Do not pass `--delete-branch`.** It isn't needed: Dependabot deletes its own `dependabot/**` branch when its PR closes (verified 05-08-2026 — a plain close of `umbraco/Umbraco-MCP-Base#259`/`#260` removed both branches). And it's what breaks unattended runs — deleting a branch the agent didn't create is a destructive write on someone else's work, and the auto-mode classifier denies it. If a branch does linger, `branch-housekeeping` reports it.
+- **Only once CI is fully green**, **close each superseded Dependabot PR** (→ *Close a PR without merging (+ comment, delete branch)*) with a comment naming the rollup and the recovery path, e.g. `Superseded by #<ROLLUP> — rolled into the security rollup. If the advisory is still unresolved once #<ROLLUP> lands, Dependabot will raise it again.` Then confirm it's closed (→ *Get a PR*). Dependabot only removes its own branch once the update reaches the default branch, so delete it here.
 - **If a close is denied, do not abort the run.** Finish everything else, then report `NEEDS-ME (closes blocked)` with each PR number and a paste-ready command per PR. By this point the rollup PR is open and green, so the run has already delivered its value — the closes are tidy-up. Never leave the human to work out which PRs are now redundant.
 
 The goal is not met — and you must not notify the human — until CI is green **and** every superseded PR is either closed or reported as blocked.
@@ -243,7 +236,7 @@ Report exactly one outcome tag: `ROLLUP OPEN` / `NO-OP` / `ALREADY AWAITING REVI
 - ✅ Every open alert accounted for — fixed by the rollup, deferred as a major, or reported as an uncovered alert.
 - ✅ Every bump verified as a **resolved** lockfile version, with no entry moved backwards.
 - ✅ All CI checks on that PR green.
-- ✅ Every superseded individual Dependabot PR closed (branch left to Dependabot), or reported as `NEEDS-ME (closes blocked)` with paste-ready commands.
+- ✅ Every superseded individual Dependabot PR closed with its branch deleted, or reported as `NEEDS-ME (closes blocked)` with paste-ready commands.
 - ✅ Zero major bumps merged; all majors reported for separate handling.
 - ✅ The rollup PR left unmerged for human review.
 - ✅ The human's checkout untouched — same branch, same uncommitted changes as before the run — and no leftover `dependabot-rollup` worktree (removed via the repo's own process).

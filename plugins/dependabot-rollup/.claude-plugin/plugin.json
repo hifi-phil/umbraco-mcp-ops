@@ -1,7 +1,7 @@
 {
   "name": "dependabot-rollup",
   "version": "1.6.0",
-  "description": "Roll every open Dependabot security PR (excluding semver-major bumps) into one branch + PR, verify the bumps actually landed as resolved lockfile versions, drive it to green CI, and close the superseded individual PRs (branches left to Dependabot). A scheduled routine's prompt must explicitly authorise those closes or the auto-mode classifier denies them. All work happens in a throwaway worktree, so the invoking checkout is never switched or dirtied. Repo-agnostic and safe to run unattended LOCALLY — a scheduled local routine whose entire prompt is `/dependabot-rollup` is the intended setup. Not runnable as a cloud routine — the Claude GitHub App can't read Dependabot alerts. Requires github-ops.",
+  "description": "Roll every open Dependabot security PR (excluding semver-major bumps) into one branch + PR, verify the bumps actually landed as resolved lockfile versions, drive it to green CI, and close the superseded individual PRs. All work happens in a throwaway worktree, so the invoking checkout is never switched or dirtied. Repo-agnostic and safe to run unattended LOCALLY — a scheduled local routine is the intended setup, though its prompt must authorise the closes. Not runnable as a cloud routine — the Claude GitHub App can't read Dependabot alerts. Requires github-ops.",
   "author": {
     "name": "Phil W",
     "email": "pjw@umbraco.com",
