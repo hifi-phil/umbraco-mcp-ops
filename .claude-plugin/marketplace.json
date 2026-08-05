@@ -105,7 +105,7 @@
     {
       "name": "dependabot-rollup",
       "source": "./plugins/dependabot-rollup",
-      "description": "Roll every open Dependabot security PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Discovers PRs across all base branches — Dependabot raises security updates against the default branch regardless of target-branch. Repo-agnostic and safe to run unattended LOCALLY (e.g. a Desktop scheduled task). Not runnable as a cloud routine — the Claude GitHub App can't read Dependabot alerts. Requires github-ops.",
+      "description": "Roll every open Dependabot security PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Discovers PRs on the default branch — Dependabot always raises security updates there, regardless of target-branch — while landing the rollup on the repo's working base. Repo-agnostic and safe to run unattended LOCALLY (e.g. a Desktop scheduled task). Not runnable as a cloud routine — the Claude GitHub App can't read Dependabot alerts. Requires github-ops.",
       "version": "1.5.0",
       "category": "workflow",
       "author": {
