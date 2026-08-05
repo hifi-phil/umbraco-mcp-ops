@@ -176,7 +176,10 @@ _Per-repo detail in thread_ :thread:
 :eyes: <link|#183> Add outputSchema to mutation tools — green — 90d *stale*
 :eyes: <link|#314> Upgrade to Umbraco 18.1.0-rc — green — 13d
 :package: *Dependabot: 6* — 2 security-declared (<link|#363>, <link|#178>), 4 version bumps
-:memo: *Issues: 5* — 1 `ready-for-ai`, 3 `generated-by-ai`, 1 stale (oldest <link|#172>, 100d)
+:memo: *Issues: 5*
+• <link|#172> Add outputSchema so consumers get types — 100d *stale* — `enhancement`
+• <link|#329> Prune .claude/.rulesync tooling — 11d — `ready-for-ai`
+• <link|#333> Upgrade v17/dev to 17.6-rc — 9d — `generated-by-ai`
 ```
 
 - **One line per human PR**, prefixed with its bucket emoji and ordered urgent → quiet:
@@ -189,9 +192,10 @@ _Per-repo detail in thread_ :thread:
   count, then the **security-declared ones by number** — those are the only bot PRs anyone
   opens on purpose — plus the version-bump count, the `security unknown` count when non-zero,
   and the alerted-package count only if that pass actually ran.
-- **Issues roll up to a single line too**: count, the loop-label tally, and the stale count
-  with the oldest one linked. An issue list is a backlog, not a to-do list; the label tally is
-  what tells you whether the loops or a human own it.
+- **One line per issue**, same treatment as the human PRs: title, age, `*stale*` if it
+  qualifies, and **every label it carries** — on an issue the labels *are* the state, so
+  `bug` and `enhancement` matter as much as the automation ones. Oldest first, since age is
+  what makes a backlog item interesting. Only Dependabot rolls up.
 - **A repo with nothing open still gets a reply** saying so — silence reads as a failed run.
 - **Keep each line to one screen line.** Long titles get cut at a word boundary with `…`; a
   title chopped mid-word (`…duplicated fr`) reads like a bug in the report.
