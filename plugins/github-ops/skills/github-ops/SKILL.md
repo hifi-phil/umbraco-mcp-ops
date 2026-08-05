@@ -65,7 +65,7 @@ files cover the **same** list — keep them in sync.
 | Create a PR | all loops |
 | **Merge a PR (+ delete branch)** | merge-flow |
 | Update a PR's body | dependabot-rollup |
-| **Close a PR without merging (+ comment, delete branch)** | dependabot-rollup |
+| **Close without merging (+ comment)** | dependabot-rollup |
 | Create a branch | triage (shared-skills), content-issue-loop |
 | Create / update / push file(s) | triage (shared-skills), content-issue-loop |
 | Get file contents | any |

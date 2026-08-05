@@ -28,7 +28,8 @@ is `owner/name`. Mirror of [`github-mcp.md`](github-mcp.md) — keep both in syn
 | Create | `gh pr create --repo <repo> --base <base> --head <head> --title "<t>" --body "<b>"` |
 | **Merge (+ delete branch)** | `gh pr merge <n> --repo <repo> --squash --delete-branch` (or `--merge` per convention) |
 | Update a PR's body | `gh pr edit <n> --repo <repo> --body "<body>"` |
-| **Close without merging (+ comment, delete branch)** | `gh pr close <n> --repo <repo> --comment "<why>" --delete-branch` |
+| **Close without merging (+ comment)** | `gh pr close <n> --repo <repo> --comment "<why>"` |
+| Close *and* delete the head branch | `gh pr close <n> --repo <repo> --comment "<why>" --delete-branch` — **avoid by default.** Deleting a branch the agent didn't create is a destructive write on someone else's work, and an unattended run will be denied it by the auto-mode classifier. Bot PRs don't need it: Dependabot deletes its own branch when its PR closes (verified 05-08-2026 — closing `umbraco/Umbraco-MCP-Base#259`/`#260` removed both `dependabot/**` branches without the flag). Use the plain close and let `branch-housekeeping` report anything that lingers. |
 | Re-request review | `gh pr edit <n> --repo <repo> --add-reviewer <user>` |
 | List Dependabot security alerts | `gh api repos/<repo>/dependabot/alerts --paginate --jq '.[] \| select(.state=="open")'` (needs `security_events` scope) |
 
