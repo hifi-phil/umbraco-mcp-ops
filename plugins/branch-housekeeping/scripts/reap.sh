@@ -51,7 +51,9 @@ fi
 
 deleted=0; already=0; skipped=0; failed=0
 
-while IFS=$'\t' read -r repo branch pr; do
+# sweep.sh writes 4 columns; read all of them or the last variable swallows the rest of the
+# line. sweep's sha is informational only — the guards below re-fetch their own.
+while IFS=$'\t' read -r repo branch pr _sweep_sha; do
   [ -z "${repo:-}" ] || [ -z "${branch:-}" ] && continue
 
   # --- guard: protected list from repos.conf ---
@@ -76,12 +78,14 @@ while IFS=$'\t' read -r repo branch pr; do
     skipped=$((skipped + 1)); continue ;;
   esac
 
-  binfo="$(gh api "repos/$repo/branches/$branch" --jq '.protected' 2>/dev/null || true)"
+  binfo="$(gh api "repos/$repo/branches/$branch" --jq '[.protected, .commit.sha] | @tsv' 2>/dev/null || true)"
   if [ -z "$binfo" ]; then
     echo "  GONE  $repo  $branch  — branch no longer exists"
     already=$((already + 1)); continue
   fi
-  if [ "$binfo" = "true" ]; then
+  b_protected="$(cut -f1 <<<"$binfo")"
+  b_sha="$(cut -f2 <<<"$binfo")"
+  if [ "$b_protected" = "true" ]; then
     echo "  SKIP  $repo  $branch  — GitHub branch protection is on"
     skipped=$((skipped + 1)); continue
   fi
@@ -91,7 +95,7 @@ while IFS=$'\t' read -r repo branch pr; do
   # `length==0 then empty` matters: max_by on an empty array yields null, and the
   # stringified nulls would read as a real merged PR. An empty verdict must mean "no PR".
   verdict="$(gh api "repos/$repo/pulls?head=${owner}:${branch}&state=all&per_page=100" \
-              --jq 'if length==0 then empty else (max_by(.number) | [(.number|tostring), .state, (.merged_at // "null")] | @tsv) end' \
+              --jq 'if length==0 then empty else (max_by(.number) | [(.number|tostring), .state, (.merged_at // "null"), .head.sha] | @tsv) end' \
               2>/dev/null || true)"
   if [ -z "$verdict" ]; then
     echo "  SKIP  $repo  $branch  — no PR found now (list is stale); left for review"
@@ -99,8 +103,19 @@ while IFS=$'\t' read -r repo branch pr; do
   fi
   v_state="$(cut -f2 <<<"$verdict")"
   v_merged="$(cut -f3 <<<"$verdict")"
+  v_head_sha="$(cut -f4 <<<"$verdict")"
   if [ "$v_state" = "open" ] || [ "$v_merged" = "null" ] || [ -z "$v_merged" ]; then
     echo "  SKIP  $repo  $branch  — not merged on re-check (state=$v_state); left alone"
+    skipped=$((skipped + 1)); continue
+  fi
+
+  # --- guard: the branch must not have been REUSED since its PR merged ---
+  # A merged PR does not make the branch disposable: recurring branches get pushed to
+  # again afterwards and can hold commits that were never merged anywhere. A closed PR's
+  # head.sha is frozen at what it merged, so tip != head.sha means new work. Deleting
+  # here would destroy it, and this is the last line of defence, so check independently.
+  if [ -n "$v_head_sha" ] && [ -n "$b_sha" ] && [ "$b_sha" != "$v_head_sha" ]; then
+    echo "  SKIP  $repo  $branch  — REUSED since PR #$pr merged (tip ${b_sha:0:7} != merged ${v_head_sha:0:7}); left for review"
     skipped=$((skipped + 1)); continue
   fi
 

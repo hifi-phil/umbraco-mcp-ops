@@ -12,6 +12,30 @@ Changing scope means editing `repos.conf` in a PR — never hand-editing a live 
 All configured repos are swept in **one run**, producing one digest. Pass `OWNER/REPO`
 arguments to `sweep.sh` only to narrow a one-off investigation.
 
+## A merged PR does not mean the branch is disposable
+
+**The trap this skill exists to avoid.** `chore/merge-main-to-dev` on `Umbraco-MCP-Base` had
+its PR (#251) merged on 2026-07-31 — and was then **pushed to again**, because the
+`sync-main-to-dev` automation reuses the same branch name every cycle. On 2026-08-06 its tip
+was 2 commits ahead of `dev`, including a security rollup. "Newest PR is merged" was true; "the
+branch is disposable" was false. Deleting it would have destroyed that day's work.
+
+A containment check can't distinguish the two cases: a legitimately **squash-merged** branch is
+also not an ancestor of its base — which is the whole reason this skill reads PR state rather
+than git ancestry. So the guard uses the sha instead:
+
+> A closed PR's `head.sha` is **frozen** at what it actually merged. If the branch tip still
+> equals it, nothing has been pushed since and the branch is disposable. If it differs, the
+> branch was reused.
+
+Both scripts apply it independently. `sweep.sh` classifies a moved-on branch as **REUSED** and
+files it under *needs review* with its divergence measured against **the PR's own base** (these
+PRs target `dev` or `v17/dev`, so measuring against `main` reports a number for the wrong
+branch). `reap.sh` re-checks it from the API immediately before deleting.
+
+On the first full run under this guard it rescued exactly one branch of 51 — but that one was a
+live sync branch holding a security rollup, so the guard pays for itself.
+
 ## The three guards
 
 A branch is skipped if **any** of these holds, checked independently every run:

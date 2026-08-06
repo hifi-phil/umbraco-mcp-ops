@@ -106,6 +106,12 @@ the digest, so **relay it, don't rewrite it**.
 - **`CLOSED-unmerged` and `NO-PR` are permanently human decisions.** They go to Slack. No
   amount of age makes them auto-deletable.
 - **`merged_at` is the only merge signal.** Not `state: closed`, not git ancestry.
+- **A merged PR does not make a branch disposable.** Recurring branches (`chore/merge-main-to-dev`,
+  `merge/v17-*`) get pushed to again after their PR merges, so they can hold work that was never
+  merged anywhere. Both scripts guard against it by comparing the branch tip to the closed PR's
+  frozen `head.sha`; a mismatch means REUSED, which goes to review and is never deleted. Don't
+  weaken that guard to make a stubborn branch reapable — read the explanation in
+  [`references/sweep-config.md`](references/sweep-config.md) first.
 - **Never edit `repos.conf` to make a run "work".** If a branch you expected to be reaped got
   skipped as protected, that's the guard doing its job — check
   [`references/sweep-config.md`](references/sweep-config.md) before touching the list.
