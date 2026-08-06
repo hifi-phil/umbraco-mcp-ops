@@ -82,8 +82,10 @@ Comment confirming the merge. If the merge itself fails, report it — never ret
 **Then delete the head branch, best-effort.** Locally `gh` does it as part of the merge.
 **In a cloud routine it cannot be done** — the GitHub MCP server has no branch-delete
 tool (see the `github-mcp.md` Notes), so don't treat a surviving branch as a failed
-merge. The durable fix is the repo's **"Automatically delete head branches"** setting,
-which reaps it at merge time; `branch-housekeeping` reports any repo where that's off.
+merge, and don't go hunting for a tool that does it. Two things clean up after you: the
+repo's **"Automatically delete head branches"** setting reaps it at merge time (on for all
+three MCP repos), and failing that the weekly local `branch-housekeeping` run reaps it and
+flags any repo where the setting is off.
 
 ## Step 4 — when a gate fails
 

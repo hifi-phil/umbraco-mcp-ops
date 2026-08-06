@@ -31,11 +31,14 @@ flowchart LR
   server** is → use [`references/github-mcp.md`](references/github-mcp.md). Auth is
   the MCP server's connected GitHub App (no token to paste).
 
-Both are first-class, and they are the **only** two paths. Detect with `command -v gh`
-(or: if the `mcp__github__*` tools are present, you're on the MCP path). There is no
-longer a third case: no bash script in this repo calls the GitHub REST API with `curl`,
-and reintroducing one would reintroduce the token problem that killed the old
-`branch-housekeeping` script in routines.
+Both are first-class. Detect with `command -v gh` (or: if the `mcp__github__*` tools are
+present, you're on the MCP path).
+
+**Plugin scripts under `plugins/*/scripts/` are not a third path** — they're the local path,
+scripted. They shell out to `gh`, so they inherit your login and need no token, and they only
+run where `gh` does. What *was* a third path — a bash script calling `api.github.com` with
+`curl` and a `GH_TOKEN` — is gone, because the proxy-injected token never worked in scheduled
+routines. Don't reintroduce it.
 
 > The MCP reference uses the tool names from the current `github/github-mcp-server`.
 > Server versions differ — **confirm against the live `mcp__github__*` tool list**
@@ -59,7 +62,7 @@ instead).
 | Add / remove a label on an issue | triage, merge-flow |
 | Close an issue | triage |
 | List PRs (by label / state) | merge-flow |
-| List a repo's open Dependabot PRs | dependabot-rollup |
+| List a repo's open Dependabot PRs (security PRs target the default branch) | dependabot-rollup |
 | List Dependabot security alerts | dependabot-rollup |
 | Get a PR (review decision, mergeable, base) | merge-flow, all loops |
 | Get PR reviews + review comments | merge-flow, review-response |

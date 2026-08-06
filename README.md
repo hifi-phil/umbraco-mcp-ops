@@ -17,11 +17,16 @@ environment plumbing, not a GitHub workflow.
 plugins/
   mcp-issue-loop/           # plugin: autonomous ready-for-ai issue loop
   branch-housekeeping/      # plugin: weekly branch sweep + Slack digest
-lib/                       # shared helpers (currently unused — no script talks to
-  slack.sh                 #   an external API since branch-housekeeping became a skill)
+    scripts/                #   sweep.sh (read-only classify) + reap.sh (delete merged)
+lib/                       # shared helpers (currently unused — the plugin scripts use
+  slack.sh                 #   gh + the Slack connector, not a webhook)
 scripts/
   cloud-skill-sync/        # cloud-env setup script: load these skills into cloud routines
 ```
+
+Some plugins ship **deterministic shell scripts** under `plugins/<plugin>/scripts/` for the
+parts of a loop that have one right answer (classifying a branch, deleting a ref, resolving a
+default branch). They use `gh`, never a raw token, and are shellchecked in CI.
 
 Each plugin gets its own folder under `plugins/<plugin>/` and is listed in
 `.claude-plugin/marketplace.json`.
@@ -33,13 +38,16 @@ Each plugin gets its own folder under `plugins/<plugin>/` and is listed in
 All GitHub work goes through the **`github-ops`** skill, which picks the mechanism per
 environment: the `gh` CLI locally, and the **GitHub MCP server** (`mcp__github__*`) in
 Claude web / scheduled routines, authenticated by the **Claude GitHub App installed on
-the Umbraco org**.
+the Umbraco org**. The plugin scripts under `plugins/*/scripts/` are on the local path —
+they call `gh`, which carries your login, so there's still no token to configure.
 
-> **Historical note:** the routines used to run a bash script that called
-> `api.github.com` with `curl` and a `GH_TOKEN`, relying on the web runner's egress
-> proxy to inject the real credential. **That did not work in scheduled routines**, so
-> `branch-housekeeping` was rewritten as an MCP-driven skill (v2.0.0) and no script in
-> this repo talks to the GitHub API any more. Don't reintroduce the pattern.
+> **Historical note:** the weekly branch sweep used to be a bash script calling
+> `api.github.com` with `curl` and a `GH_TOKEN`, relying on the web runner's egress proxy
+> to inject the real credential. **That did not work in scheduled routines.**
+> `branch-housekeeping` is now a **local-only** skill whose scripts use `gh` instead
+> (v3.0.0). Don't reintroduce the `curl`+token pattern — if something needs GitHub from a
+> cloud routine, it goes through the MCP server, and if it can't (branch deletion has no
+> MCP tool), it belongs on the local path.
 
 Which repos and permissions are reachable is a GitHub-App-installation decision made by
 an **Umbraco org owner** — see [`docs/self-learning-system.md`](docs/self-learning-system.md)
@@ -69,6 +77,7 @@ Install from this repo inside Claude Code:
 /plugin install release-flow@umbraco-mcp-ops
 /plugin install github-ops@umbraco-mcp-ops
 /plugin install dependabot-rollup@umbraco-mcp-ops
+/plugin install open-work-report@umbraco-mcp-ops
 /plugin install branch-housekeeping@umbraco-mcp-ops
 /reload-plugins
 ```
@@ -80,7 +89,8 @@ Install from this repo inside Claude Code:
 | [`merge-flow`](plugins/merge-flow/) | Guardrail loop that merges PRs labelled `auto-merge` — but only once they're approved, CI-green (polled, never `--auto`), conflict-free, and on the right base. Replaces error-prone manual merges; drives each to a clean merge (branch deleted) or flags the blocker. Uses `/goal`. Repo-agnostic; local or scheduled cloud routine. |
 | [`github-ops`](plugins/github-ops/) | Shared reference the other loops point at for GitHub work in **both** environments — `gh` CLI + `git` locally, the **GitHub MCP server** (`mcp__github__*`) on Claude web / in routines. One operation catalog, two reference files; keeps the dual path in one place instead of duplicated across skills. |
 | [`dependabot-rollup`](plugins/dependabot-rollup/) | Roll every open Dependabot **security** PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Repo-agnostic; safe to run unattended (weekly routine). |
-| [`branch-housekeeping`](plugins/branch-housekeeping/) | Weekly remote-branch sweep across the configured MCP repos. Classifies every non-protected branch by its **GitHub PR state** — authoritative where git ancestry isn't, since these repos squash-merge — and posts one Slack digest: merged leftovers that should already be gone, ambiguous branches (closed unmerged / no PR) for a human to judge, and a silent count of open-PR branches left alone. Also flags any repo whose **"Automatically delete head branches"** setting is off, which is what actually stops merged branches accumulating. **Report-only**: the GitHub MCP server has no branch-delete tool, so nothing is deleted in a routine (an opt-in local reap clears the pre-setting backlog). Scope lives in the skill's `sweep-config.md`. Requires `github-ops`. |
+| [`open-work-report`](plugins/open-work-report/) | Daily cross-repo digest of everything currently open, posted to Slack `#daily-issue-and-pr-overview`. **Scope comes from the routine's own context** — the repos attached to it — so the skill carries no repo list and stops rather than guessing if it can't resolve one. Separates Dependabot **security** updates (listed individually) from routine version bumps (counted), flags the PRs that are ready to merge, blocked on CI, or waiting on a human, calls out the automation labels so loop-owned work reads apart from human work, and marks anything untouched for 30 days as stale. **Report-only** — read scopes only, nothing is commented on, labelled, or merged. Requires `github-ops`. |
+| [`branch-housekeeping`](plugins/branch-housekeeping/) | Weekly remote-branch sweep across **every** configured MCP repo in one run, then a Slack digest to `#umbraco-mcp-housekeeping`. Two deterministic scripts do the work: `sweep.sh` classifies every non-protected branch by its **GitHub PR state** — authoritative where git ancestry isn't, since these repos squash-merge — and `reap.sh` deletes the merged ones. Ambiguous branches (PR closed unmerged, or no PR) are never touched; they go to Slack for a human to judge. Also flags any repo whose **"Automatically delete head branches"** setting is off, since that setting is what stops merged branches accumulating in the first place. **Local-only**, like `dependabot-rollup` — the deletes need `gh`, which cloud routines don't have. Reaping needs explicit authorisation in the routine prompt; without it the run is report-only. Requires `github-ops`. |
 
 > **Note:** `mcp-issue-loop` drives local worktrees, builds, and integration tests,
 > so it runs on a developer machine (or a runner with the full .NET/Umbraco

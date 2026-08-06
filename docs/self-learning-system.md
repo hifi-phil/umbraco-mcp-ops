@@ -184,11 +184,11 @@ For the scheduled routines to act, that **connected app must grant, across both
 - `pull_requests: write` — triage/merge-flow open and merge PRs
 - `contents: write` — create branches, push files
 
-`branch-housekeeping` needs **less**: `metadata: read` + `pull_requests: read` only, since
-it's report-only. (It used to be a bash script calling the REST API with `curl` + a
-proxy-injected token — **that did not work in scheduled routines**, so as of v2.0.0 it's
-an MCP-driven skill like the rest. No script in this repo talks to the GitHub API any
-more; don't reintroduce the pattern.)
+`branch-housekeeping` doesn't use the App at all — it's **local-only** and runs on your `gh`
+login (`metadata: read` + `pull_requests: read` to classify, `contents: write` to reap). It
+used to be a bash script calling the REST API with `curl` + a proxy-injected token, and
+**that did not work in scheduled routines**; as of v3.0.0 its `gh`-based scripts run locally
+instead. Don't reintroduce the `curl`+token pattern.
 
 The Claude-driven routines need the broader grant above — confirm/expand it before
 scheduling (a GitHub-App-installation decision, not a per-user token).
@@ -219,18 +219,20 @@ scheduling (a GitHub-App-installation decision, not a per-user token).
 
 ## Runtime: dev machine vs web runner
 
-- **Dev machine:** `gh` available; `mcp-issue-loop` *must* run here (Umbraco
-  toolchain, worktree DB hooks, `npm run test:all`).
+- **Dev machine:** `gh` available. `mcp-issue-loop` *must* run here (Umbraco toolchain,
+  worktree DB hooks, `npm run test:all`), and so must the two loops whose capability the
+  cloud path lacks: `dependabot-rollup` (can't read Dependabot alerts) and
+  `branch-housekeeping` (can't delete a branch).
 - **Web runner (event/scheduled):** `gh` is **absent** — routines do GitHub work through
   the **GitHub MCP server** (`mcp__github__*`), per `github-ops`. `triage-learnings`,
-  `merge-flow`, `auto-release-loop`, and `branch-housekeeping` run here. There is no
-  longer a `curl`/REST exception — every loop is a skill on the `github-ops` dual path.
+  `merge-flow`, `auto-release-loop`, and `open-work-report` run here. There is no longer a
+  `curl`/REST exception — every loop is a skill on the `github-ops` dual path.
 
-  One consequence to know: the MCP server exposes **no branch-delete tool**, so a routine
-  cannot delete a branch. Turn on each repo's **"Automatically delete head branches"**
-  setting instead (Settings → General → Pull Requests) and GitHub reaps merged branches
-  at merge time; `branch-housekeeping` reports on that setting rather than substituting
-  for it.
+  One consequence to know: the MCP server exposes **no branch-delete tool**, so a cloud
+  routine cannot delete a branch and a merged branch surviving a cloud merge is expected.
+  Two fixes, in order: turn on each repo's **"Automatically delete head branches"** setting
+  (Settings → General → Pull Requests) so GitHub reaps at merge time — all three MCP repos
+  have this on as of 2026-08-06 — or let the weekly local `branch-housekeeping` run reap it.
 
 ## Scheduled routines
 
@@ -238,7 +240,7 @@ Full inventory of cross-repo routines in this repo:
 
 | Routine | Cadence | Status |
 |---------|---------|--------|
-| `branch-housekeeping` (skill) | weekly | **live** — report-only |
+| `branch-housekeeping` (skill) | weekly | **local-only** (cloud impossible — no branch-delete tool on the MCP path). One routine sweeps every repo in `repos.conf`; reaps only if the routine prompt authorises it |
 | `merge-flow` | on `auto-merge` label (event) | **to wire** |
 | `auto-release-loop` | on `auto-release` label (event) | **to wire** |
 | `dependabot-rollup` (skill) | weekly | **local-only** (cloud impossible — Claude GitHub App can't read Dependabot alerts) |

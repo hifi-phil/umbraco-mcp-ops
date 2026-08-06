@@ -41,6 +41,8 @@ Auth is the MCP server's connected GitHub App — no token to paste. Mirror of
 | Re-request / add review | `pull_request_review_write` |
 | List Dependabot security alerts | `list_dependabot_alerts` (security toolset; needs the connected app to grant Dependabot-alerts read) |
 
+> **Dependabot security PRs are raised against the repo's default branch**, always — `target-branch` in `dependabot.yml` redirects only the scheduled *version* updates. In a `dev` + `main` repo the two kinds therefore sit on different branches, so read each PR's base rather than assuming an integration branch like `dev`.
+
 ## Branches & files (for a content PR — no clone)
 
 On the web there's **no working tree** — create the branch and push file contents
@@ -73,9 +75,11 @@ Defer to `release-and-branching` for gitflow vs main-only. To inspect: `list_bra
   delete, the `git` toolset is a single tool (`get_repository_tree`), and
   `merge_pull_request` has no delete-branch parameter. Verified against the server's tool
   registration list ([`pkg/github/tools.go`](https://github.com/github/github-mcp-server/blob/main/pkg/github/tools.go)).
-  **Don't design a loop around deleting a branch here.** The right fix is upstream: turn
-  on the repo's **"Automatically delete head branches"** setting (Settings → General →
-  Pull Requests) and GitHub reaps merged branches at merge time. `branch-housekeeping`
-  reports on that setting and on the leftovers; it deletes nothing on this path.
+  **Don't design a loop around deleting a branch here** — that's why `branch-housekeeping`
+  is local-only. Two fixes, in order of preference: turn on the repo's **"Automatically
+  delete head branches"** setting (Settings → General → Pull Requests) so GitHub reaps
+  merged branches at merge time; or leave the branch for the weekly local
+  `branch-housekeeping` run, whose `reap.sh` deletes it with `gh`. Either way, a cloud
+  routine leaving a merged branch behind is expected, not a bug.
 - **No `git`/`gh` fallback:** don't shell out to `gh` or `git push` here — they're not
   installed / not authenticated. Everything is `mcp__github__*`.
