@@ -16,7 +16,9 @@ on:
       - 'plugins/*/scripts/**'
 
 jobs:
-  lint:
+  # Named distinctly on purpose: cloud-skill-sync-test.yml also has a `lint` job, and the
+  # PR check list shows the job name, so two `lint`s are indistinguishable at a glance.
+  plugin-scripts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
