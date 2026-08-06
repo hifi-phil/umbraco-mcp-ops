@@ -62,8 +62,8 @@ while IFS=$'\t' read -r repo branch pr _sweep_sha; do
   [ -n "$csv" ] && prot+="${csv//,/ } "
 
   # --- guard: live default branch + live branch protection ---
-  meta="$(gh api "repos/$repo" --jq '{d:.default_branch, a:.archived}' 2>/dev/null || true)"
-  if [ -z "$meta" ]; then
+  # Same exit-code rule as the branch lookup below — an error body is not data.
+  if ! meta="$(gh api "repos/$repo" --jq '{d:.default_branch, a:.archived}' 2>/dev/null)"; then
     echo "  SKIP  $repo  $branch  — cannot read repo metadata"
     skipped=$((skipped + 1)); continue
   fi
@@ -78,8 +78,10 @@ while IFS=$'\t' read -r repo branch pr _sweep_sha; do
     skipped=$((skipped + 1)); continue ;;
   esac
 
-  binfo="$(gh api "repos/$repo/branches/$branch" --jq '[.protected, .commit.sha] | @tsv' 2>/dev/null || true)"
-  if [ -z "$binfo" ]; then
+  # Branch on the EXIT CODE, not on output emptiness: `gh api` prints the error body to
+  # stdout on a 404, so `[ -z "$out" ]` never fires and the JSON ({"message":…) gets read
+  # as a sha. That made a second run misreport an already-deleted branch as REUSED.
+  if ! binfo="$(gh api "repos/$repo/branches/$branch" --jq '[.protected, .commit.sha] | @tsv' 2>/dev/null)"; then
     echo "  GONE  $repo  $branch  — branch no longer exists"
     already=$((already + 1)); continue
   fi

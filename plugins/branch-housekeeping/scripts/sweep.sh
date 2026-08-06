@@ -84,8 +84,9 @@ for entry in "${ENTRIES[@]}"; do
   protected_csv="${entry#*|}"
   owner="${repo%%/*}"
 
-  meta="$(gh api "repos/$repo" --jq '{d:.default_branch, x:.delete_branch_on_merge, a:.archived}' 2>/dev/null || true)"
-  if [ -z "$meta" ]; then
+  # Branch on the EXIT CODE, not output emptiness: `gh api` writes the error body to
+  # stdout on failure, so a `-z` test treats {"message":…} as valid data.
+  if ! meta="$(gh api "repos/$repo" --jq '{d:.default_branch, x:.delete_branch_on_merge, a:.archived}' 2>/dev/null)"; then
     FAILED_REPOS+=("$repo")
     continue
   fi
@@ -106,7 +107,8 @@ for entry in "${ENTRIES[@]}"; do
   branches_json="$(gh api "repos/$repo/branches" --paginate \
                     --jq '.[] | {name:.name, protected:.protected, sha:.commit.sha}' 2>/dev/null \
                     | jq -s '.' || true)"
-  if [ -z "$branches_json" ]; then
+  # jq -s always yields valid JSON, so check for a usable array rather than emptiness.
+  if [ "$(jq 'if type=="array" then length else 0 end' <<<"$branches_json" 2>/dev/null || echo 0)" = "0" ]; then
     FAILED_REPOS+=("$repo")
     continue
   fi
@@ -182,7 +184,8 @@ for entry in "${ENTRIES[@]}"; do
       REUSED|CLOSED|NONE)
         last="$(gh api "repos/$repo/branches/$branch" \
                  --jq '.commit.commit.committer.date' 2>/dev/null | cut -c1-10 || true)"
-        [ -n "$last" ] || last="unknown"
+        # Must look like YYYY-MM-DD; a vanished branch or an error body yields junk.
+        case "$last" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) last="unknown" ;; esac
         case "$state" in
           REUSED)
             # How far it has diverged is the number a human needs to judge it.
