@@ -34,9 +34,16 @@ structural — do not restate or re-derive it:
 
 - **Gathering** the `ready-for-ai` backlog and setting the durable `/goal`.
 - **Rolling dispatch, cap 3** — one worktree + subagent per issue.
-- **Review + hand off** — the orchestrator runs `mcp-review` over each returned green PR,
-  fixes findings (re-testing locally), then **hands off**: no human-review phase here — the
-  reviewer's change-requests go to `rework-loop` (`auto-rework`), and `merge-flow` merges.
+- **CI-driving** — a build subagent returns once its branch is pushed and its PR is open;
+  it never polls CI. The orchestrator polls each returned PR's check-run status until every
+  check passes or the 8-attempt cap trips, re-dispatching a subagent into that same
+  worktree with a failing check's log to fix it. Identical to `mcp-issue-loop` — nothing
+  content-loop-specific here.
+- **Review + hand off** — once a PR's CI is green, the orchestrator runs `mcp-review` over
+  it, fixes findings (re-testing locally, re-greening CI). Only once that's clean/addressed
+  does it do the issue's outcome-label swap, then **hands off**: no human-review phase
+  here — the reviewer's change-requests go to `rework-loop` (`auto-rework`), and
+  `merge-flow` merges.
 - **Model selection** — orchestrator inherits the session model; pick per issue.
   Content work skews lighter: `sonnet` default, `haiku` for pure-docs/typo fixes,
   `opus` for intricate skill/plugin logic. **Never `fable`.**
@@ -73,18 +80,18 @@ mcp-issue-loop's build playbook.
      touched the capture hook; validate any JSON/YAML/bash you changed.
    - Other repos: run their documented lint/test (a `package.json` script, a linter)
      if present. A pure-docs change may have nothing to run — that's fine.
-4. **Review is the orchestrator's job — you do NOT self-review.** Don't run
+4. **CI-driving and review are the orchestrator's job — you do neither.** Don't run
    `/security-review` / `/code-review` (they can't run in a subagent and self-review is
-   weak). After you return a CI-green PR, the orchestrator runs
+   weak). After you return an open PR, the orchestrator drives its CI green, then runs
    [`mcp-review`](../mcp-review/SKILL.md) over it and hands back any findings. For a
    pure-prose change the review will find little — that's fine.
 5. **Commit, push, open the PR** against the base branch (detect via
    `release-and-branching` — never assume it; these repos don't share one model).
-   Link the issue (`Closes #N`), ready for review, never draft. Drive CI green
-   (the 8-attempt cap applies; `umbraco-mcp-ops` runs the hook-test workflow when
-   `hooks/**` changes).
-6. **Return** as in mcp-issue-loop (`pr-open-green` or `blocked`); leave the worktree
-   for the review phase. Capture is automatic — do nothing.
+   Link the issue (`Closes #N`), ready for review, never draft. CI-driving is the
+   orchestrator's job from here (`umbraco-mcp-ops` runs the hook-test workflow when
+   `hooks/**` changes), not yours.
+6. **Return** as in mcp-issue-loop (`pr-open`, or `blocked` with the reason); leave the worktree for the orchestrator to
+   drive CI green and run the review phase. Capture is automatic — do nothing.
 
 ## Scope guardrail
 
