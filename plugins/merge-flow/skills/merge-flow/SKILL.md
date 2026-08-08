@@ -21,8 +21,8 @@ to delete the branch). You label a PR `auto-merge`; this loop merges it **only w
 every gate holds**, and never otherwise.
 
 `/goal` makes "done" unambiguous: the loop keeps working until every `auto-merge`
-PR is either **merged with its branch deleted** or **flagged with the reason it
-couldn't be**. No half-done merges.
+PR is either **merged** (branch deleted where the environment can — see Step 3) or
+**flagged with the reason it couldn't be**. No half-done merges.
 
 ## Runtime & auth
 
@@ -75,10 +75,17 @@ For each candidate, all must hold — if any fails, **do not merge** (go to Step
 
 ## Step 3 — merge
 
-**Merge the PR and delete its branch** (github-ops → *Merge a PR (+ delete branch)*)
-using the repo's convention — detect it via `release-and-branching` (gitflow usually
-squash-into-`dev`; main-only per that repo). Comment confirming the merge. If the
-merge itself fails, report it — never retry a force.
+**Merge the PR** (github-ops → *Merge a PR*) using the repo's convention — detect it via
+`release-and-branching` (gitflow usually squash-into-`dev`; main-only per that repo).
+Comment confirming the merge. If the merge itself fails, report it — never retry a force.
+
+**Then delete the head branch, best-effort.** Locally `gh` does it as part of the merge.
+**In a cloud routine it cannot be done** — the GitHub MCP server has no branch-delete
+tool (see the `github-mcp.md` Notes), so don't treat a surviving branch as a failed
+merge, and don't go hunting for a tool that does it. Two things clean up after you: the
+repo's **"Automatically delete head branches"** setting reaps it at merge time (on for all
+three MCP repos), and failing that the weekly local `branch-housekeeping` run reaps it and
+flags any repo where the setting is off.
 
 ## Step 4 — when a gate fails
 

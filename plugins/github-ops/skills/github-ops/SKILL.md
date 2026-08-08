@@ -31,10 +31,14 @@ flowchart LR
   server** is → use [`references/github-mcp.md`](references/github-mcp.md). Auth is
   the MCP server's connected GitHub App (no token to paste).
 
-Both are first-class. Detect with `command -v gh` (or: if the `mcp__github__*` tools
-are present, you're on the MCP path). **Bash scripts** under `scripts/` are a third,
-separate case — they call the REST API with `curl` directly and are out of scope
-here.
+Both are first-class. Detect with `command -v gh` (or: if the `mcp__github__*` tools are
+present, you're on the MCP path).
+
+**Plugin scripts under `plugins/*/scripts/` are not a third path** — they're the local path,
+scripted. They shell out to `gh`, so they inherit your login and need no token, and they only
+run where `gh` does. What *was* a third path — a bash script calling `api.github.com` with
+`curl` and a `GH_TOKEN` — is gone, because the proxy-injected token never worked in scheduled
+routines. Don't reintroduce it.
 
 > The MCP reference uses the tool names from the current `github/github-mcp-server`.
 > Server versions differ — **confirm against the live `mcp__github__*` tool list**
@@ -43,7 +47,10 @@ here.
 ## The operation catalog
 
 Every operation a loop needs, with its section anchor in each reference file. Both
-files cover the **same** list — keep them in sync.
+files cover the **same** list — keep them in sync. **One operation is genuinely
+asymmetric:** deleting a remote branch exists locally but has *no* MCP tool, so a loop
+that needs it cannot run in a routine (see the `github-mcp.md` Notes for what to do
+instead).
 
 | Operation | Used by |
 |-----------|---------|
@@ -69,6 +76,9 @@ files cover the **same** list — keep them in sync.
 | Create a branch | triage (shared-skills), content-issue-loop |
 | Create / update / push file(s) | triage (shared-skills), content-issue-loop |
 | Get file contents | any |
+| List branches (name + protection) | branch-housekeeping |
+| Get repo metadata (default branch, `delete_branch_on_merge`, archived) | branch-housekeeping, release-and-branching |
+| **Delete a remote branch — local path only** | branch-housekeeping (opt-in reap); **no MCP equivalent exists** |
 | Detect base branch | all (defer to `release-and-branching`) |
 
 ## Rules that hold in both mechanisms

@@ -149,6 +149,29 @@
       ]
     },
     {
+      "name": "branch-housekeeping",
+      "source": "./plugins/branch-housekeeping",
+      "description": "Weekly remote-branch sweep across every configured Umbraco MCP repo in one run, then a Slack digest. Two deterministic scripts do the work: sweep.sh classifies every non-protected branch by its GitHub PR state — authoritative where git ancestry isn't, since these repos squash-merge — and reap.sh deletes the merged ones. Ambiguous branches (PR closed unmerged, or no PR) are never touched; they go to Slack for a human to judge. Also flags any repo whose \"Automatically delete head branches\" setting is off, since that setting is what stops merged branches accumulating in the first place. LOCAL-ONLY, like dependabot-rollup: the deletes need gh, which cloud routines don't have. Reaping requires explicit authorisation in the routine prompt; without it the run is report-only. Requires github-ops.",
+      "version": "3.0.0",
+      "category": "workflow",
+      "author": {
+        "name": "Phil W",
+        "email": "pjw@umbraco.com",
+        "url": "https://github.com/hifi-phil"
+      },
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/branch-housekeeping",
+      "keywords": [
+        "branches",
+        "housekeeping",
+        "cleanup",
+        "pull-request",
+        "slack",
+        "automation",
+        "local-only",
+        "workflow"
+      ]
+    },
+    {
       "name": "loop-dispatch",
       "source": "./plugins/loop-dispatch",
       "description": "Single front door for a repo's automation loops so one routine per repo can handle every loop event instead of one routine per event. Deterministically routes each triggering GitHub event to the matching loop (via route-event.sh); a non-matching event is a quiet no-op. Router only; each loop owns its guardrails. Also bundles new-loop-routine — the standard config + canonical prompts + UI wiring for standing up one routine per repo. Requires github-ops + the loop skills.",

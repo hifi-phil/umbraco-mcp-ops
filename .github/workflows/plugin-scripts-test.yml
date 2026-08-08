@@ -1,0 +1,56 @@
+name: plugin scripts
+
+# Static checks for the shell scripts the plugins ship (branch-housekeeping's sweep/reap,
+# dependabot-rollup's preflight/commit-and-push). Their real behaviour needs an
+# authenticated gh and live repos, so CI guards syntax + common shell bugs — which is
+# exactly what matters for reap.sh, the one script here that deletes anything.
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/*/scripts/**'
+      - '.github/workflows/plugin-scripts-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/*/scripts/**'
+
+jobs:
+  # Named distinctly on purpose: cloud-skill-sync-test.yml also has a `lint` job, and the
+  # PR check list shows the job name, so two `lint`s are indistinguishable at a glance.
+  plugin-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y shellcheck
+
+      - name: Collect scripts
+        id: collect
+        run: |
+          mapfile -t files < <(find plugins -path '*/scripts/*' -name '*.sh' | sort)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "no plugin scripts found — the path filter and this job disagree" >&2
+            exit 1
+          fi
+          printf 'found %d script(s):\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
+          printf '%s\n' "${files[@]}" > /tmp/scripts.txt
+
+      - name: bash -n (syntax)
+        run: xargs -a /tmp/scripts.txt -I{} bash -n {}
+
+      - name: Executable bit set
+        run: |
+          rc=0
+          while read -r f; do
+            [ -x "$f" ] || { echo "not executable: $f"; rc=1; }
+          done < /tmp/scripts.txt
+          exit $rc
+
+      - name: shellcheck (gate on errors)
+        run: xargs -a /tmp/scripts.txt shellcheck --severity=error
+
+      - name: shellcheck (warnings, informational)
+        run: xargs -a /tmp/scripts.txt shellcheck --severity=warning || true
