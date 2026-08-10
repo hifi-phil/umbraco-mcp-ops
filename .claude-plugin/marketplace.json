@@ -151,8 +151,8 @@
     {
       "name": "branch-housekeeping",
       "source": "./plugins/branch-housekeeping",
-      "description": "Weekly remote-branch sweep across every configured Umbraco MCP repo in one run, then a Slack digest. Two deterministic scripts do the work: sweep.sh classifies every non-protected branch by its GitHub PR state — authoritative where git ancestry isn't, since these repos squash-merge — and reap.sh deletes the merged ones. Ambiguous branches (PR closed unmerged, or no PR) are never touched; they go to Slack for a human to judge. Also flags any repo whose \"Automatically delete head branches\" setting is off, since that setting is what stops merged branches accumulating in the first place. LOCAL-ONLY, like dependabot-rollup: the deletes need gh, which cloud routines don't have. Reaping requires explicit authorisation in the routine prompt; without it the run is report-only. Requires github-ops.",
-      "version": "3.0.0",
+      "description": "Two halves, deliberately separate. The branch-housekeeping SKILL reports the state of the remote branches across every configured Umbraco MCP repo in one run and posts a Slack digest — classifying each non-protected branch by its GitHub PR state (authoritative where git ancestry isn't, since these repos squash-merge) into safe-to-remove, merged-but-reused-since, closed unmerged, no PR, and open. It is read-only and never deletes, so it's free of consequence to run or schedule. The /clean-branches COMMAND is the separate, deliberate cleanup: a purely mechanical script with no model in the loop, which re-verifies every branch against the API — protected lists, live default branch, live protection, merged_at, and that the tip still matches what the PR merged — before deleting it. Run it only when you want branches gone. Local-only: the GitHub MCP server exposes no branch-delete tool. Also flags any repo whose \"Automatically delete head branches\" setting is off, which is the durable fix cleanup only works around.",
+      "version": "4.0.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
@@ -163,10 +163,10 @@
       "keywords": [
         "branches",
         "housekeeping",
+        "report",
         "cleanup",
         "pull-request",
         "slack",
-        "automation",
         "local-only",
         "workflow"
       ]

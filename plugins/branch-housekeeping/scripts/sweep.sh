@@ -27,6 +27,7 @@
 #   $OUT/merged.tsv   repo <TAB> branch <TAB> pr_number <TAB> branch_tip_sha  (reap.sh's input)
 #   $OUT/review.tsv   repo <TAB> branch <TAB> reason <TAB> last_commit <TAB> link
 #   $OUT/setting-off.tsv  repo                              (delete_branch_on_merge false)
+#   $OUT/failed.tsv       repo                              (could not be read — a real gap)
 
 set -euo pipefail
 
@@ -54,7 +55,8 @@ gh auth status >/dev/null 2>&1 || { echo "sweep.sh: gh is not authenticated — 
 
 [ -n "$OUT" ] || OUT="$(mktemp -d)"
 mkdir -p "$OUT"
-: > "$OUT/merged.tsv"; : > "$OUT/review.tsv"; : > "$OUT/setting-off.tsv"; : > "$OUT/skipped.tsv"
+: > "$OUT/merged.tsv"; : > "$OUT/review.tsv"; : > "$OUT/setting-off.tsv"
+: > "$OUT/skipped.tsv"; : > "$OUT/failed.tsv"
 
 # ---- resolve scope ----------------------------------------------------------------
 # Each entry stays in the pipe-separated form from repos.conf so the protected list
@@ -268,7 +270,13 @@ fi
 
 if [ ${#FAILED_REPOS[@]} -gt 0 ]; then
   printf '\n*Could not read (gap in this sweep):*\n'
-  for r in "${FAILED_REPOS[@]}"; do printf '• %s\n' "$r"; done
+  for r in "${FAILED_REPOS[@]}"; do
+    printf '• %s\n' "$r"
+    # Machine-readable too: a caller that only consumes merged.tsv (reap.sh) would
+    # otherwise read an unreadable repo as "nothing to do" — a typo'd repo name must
+    # not look like success.
+    printf '%s\n' "$r" >> "$OUT/failed.tsv"
+  done
 fi
 
 printf '\nOUT=%s\n' "$OUT" >&2

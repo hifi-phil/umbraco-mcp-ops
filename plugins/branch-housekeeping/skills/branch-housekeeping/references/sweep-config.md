@@ -12,6 +12,10 @@ Changing scope means editing `repos.conf` in a PR — never hand-editing a live 
 All configured repos are swept in **one run**, producing one digest. Pass `OWNER/REPO`
 arguments to `sweep.sh` only to narrow a one-off investigation.
 
+Both halves read this file: the **report** (`sweep.sh`, run by the skill) and the **cleanup**
+(`reap.sh`, run only by `/clean-branches`). One scope, two entry points — which is why the
+guards below are described once here rather than per script.
+
 ## A merged PR does not mean the branch is disposable
 
 **The trap this skill exists to avoid.** `chore/merge-main-to-dev` on `Umbraco-MCP-Base` had
@@ -80,9 +84,11 @@ As of 2026-08-06 all three swept repos have it **on**, and the effect is visible
 went from 13 merged leftovers to 1 in three days. Treat that as a snapshot — the sweep re-reads
 it live every run, so the digest is the authority, not this paragraph.
 
-That's why this skill's ongoing value is mostly the **review categories** and the settings
-check. The reap matters for the pre-setting backlog, branches merged outside a PR, and any repo
-where the setting gets switched back off.
+That's why the **report** is the part with ongoing value — the review categories and the
+settings check — and why cleanup is an occasional, manual `/clean-branches`. What's left for it
+to do is narrow: the pre-setting backlog, branches merged outside a PR, and any repo where the
+setting gets switched back off. If you find yourself wanting to schedule the cleanup, check the
+settings line in the digest first; that's almost always the real fix.
 
 ## Caps
 

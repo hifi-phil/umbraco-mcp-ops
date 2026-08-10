@@ -1,21 +1,29 @@
 #!/usr/bin/env bash
 #
-# reap.sh — delete the remote branches sweep.sh classified as MERGED.
+# reap.sh — delete the remote branches whose PR was merged and which have not been
+# touched since. Run it only when you want branches gone; nothing schedules it.
 #
-# This is the only destructive step in the skill, so it does not trust its input:
-# every branch is INDEPENDENTLY re-verified against the GitHub API immediately before
-# deletion, and re-checked against repos.conf's protected list plus the repo's live
-# default branch and live branch protection. A stale merged.tsv therefore cannot cause
-# a wrong delete — it can only cause a skip.
+# Self-contained: with no --list it runs sweep.sh itself to build a FRESH candidate list,
+# so cleaning is one command with no plumbing. Pass --list to reuse an existing sweep.
 #
-# Deterministic and idempotent: 204 (deleted) and 404 (already gone) are both success.
+# Purely mechanical — no interpretation, no judgement, no LLM in the loop. Same input,
+# same actions, every time.
 #
-# Requires: gh (authenticated), jq. Local-only — cloud routines have no gh, and the
-# GitHub MCP server exposes no branch-delete tool at all.
+# It does not trust its input. Every branch is INDEPENDENTLY re-verified against the
+# GitHub API immediately before deletion: repos.conf's protected list, the repo's live
+# default branch, live branch protection, that its newest PR really is merged, and that
+# the branch tip still matches what that PR merged. A stale list can only cause a skip.
+#
+# Idempotent: deleted and already-gone are both success.
+#
+# Requires: gh (authenticated), jq. Local-only — the GitHub MCP server exposes no
+# branch-delete tool, so this cannot run in a cloud routine.
 #
 # Usage:
-#   reap.sh --list DIR/merged.tsv [--dry-run]
-#     --dry-run  verify everything and print what would happen, delete nothing
+#   reap.sh [--dry-run] [OWNER/REPO ...]      sweep fresh, then delete
+#   reap.sh --list DIR/merged.tsv [--dry-run] use a list sweep.sh already produced
+#     --dry-run  run every check and print what would happen, delete nothing
+#     OWNER/REPO limit the fresh sweep to those repos (default: all of repos.conf)
 #
 # Exit: 0 if every candidate was deleted, already gone, or safely skipped;
 #       1 if any delete was attempted and failed.
@@ -27,22 +35,54 @@ CONF="$SCRIPT_DIR/repos.conf"
 
 LIST=""
 DRY=false
+REPOS_ARG=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --list) LIST="${2:?--list needs a file}"; shift 2 ;;
     --dry-run) DRY=true; shift ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
-    *) echo "reap.sh: unknown argument $1" >&2; exit 2 ;;
+    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+    -*) echo "reap.sh: unknown option $1" >&2; exit 2 ;;
+    *) REPOS_ARG+=("$1"); shift ;;
   esac
 done
 
-[ -n "$LIST" ] || { echo "reap.sh: --list DIR/merged.tsv is required" >&2; exit 2; }
-[ -f "$LIST" ] || { echo "reap.sh: no such list: $LIST" >&2; exit 2; }
-
 for c in gh jq; do
-  command -v "$c" >/dev/null 2>&1 || { echo "reap.sh: '$c' is required (local-only skill)" >&2; exit 1; }
+  command -v "$c" >/dev/null 2>&1 || { echo "reap.sh: '$c' is required (local-only)" >&2; exit 1; }
 done
 gh auth status >/dev/null 2>&1 || { echo "reap.sh: gh is not authenticated — run 'gh auth login'" >&2; exit 1; }
+
+# No list given → sweep now. A fresh sweep is the safer default anyway: the older a list
+# is, the more likely a branch has been reused since it was written.
+if [ -z "$LIST" ]; then
+  SWEEP_OUT="$(mktemp -d)"
+  sweep_log="$SWEEP_OUT/sweep.stderr"
+  echo "reap.sh: sweeping fresh for candidates..." >&2
+  # Hold the sweep's own chatter back, but surface it if the sweep actually fails —
+  # a silent classification failure would look like "nothing to clean".
+  if ! "$SCRIPT_DIR/sweep.sh" --out "$SWEEP_OUT" ${REPOS_ARG[@]+"${REPOS_ARG[@]}"} \
+        >/dev/null 2>"$sweep_log"; then
+    echo "reap.sh: the sweep failed — refusing to delete anything. Its output:" >&2
+    sed 's/^/  /' "$sweep_log" >&2
+    exit 1
+  fi
+  LIST="$SWEEP_OUT/merged.tsv"
+  # An unreadable repo is a gap, not an absence. Without this, a typo'd repo name sweeps
+  # nothing, finds no candidates, and exits 0 — reading as "already clean".
+  if [ -s "$SWEEP_OUT/failed.tsv" ]; then
+    echo "reap.sh: WARNING — could not read these repo(s), so they were NOT considered:" >&2
+    sed 's/^/  /' "$SWEEP_OUT/failed.tsv" >&2
+    if [ ! -s "$LIST" ]; then
+      echo "reap.sh: nothing was readable and nothing to reap — check the repo name(s)." >&2
+      exit 1
+    fi
+  fi
+  echo "reap.sh: $(wc -l < "$LIST" | tr -d ' ') candidate(s) found" >&2
+elif [ ${#REPOS_ARG[@]} -gt 0 ]; then
+  echo "reap.sh: --list and OWNER/REPO are mutually exclusive (the list already fixes the scope)" >&2
+  exit 2
+fi
+
+[ -f "$LIST" ] || { echo "reap.sh: no such list: $LIST" >&2; exit 2; }
 
 if [ ! -s "$LIST" ]; then
   echo "reap.sh: nothing to reap (list is empty)"

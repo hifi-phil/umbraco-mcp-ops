@@ -185,10 +185,12 @@ For the scheduled routines to act, that **connected app must grant, across both
 - `contents: write` — create branches, push files
 
 `branch-housekeeping` doesn't use the App at all — it's **local-only** and runs on your `gh`
-login (`metadata: read` + `pull_requests: read` to classify, `contents: write` to reap). It
-used to be a bash script calling the REST API with `curl` + a proxy-injected token, and
-**that did not work in scheduled routines**; as of v3.0.0 its `gh`-based scripts run locally
-instead. Don't reintroduce the `curl`+token pattern.
+login. It splits in two: the **skill reports** (`metadata: read` + `pull_requests: read`, no
+write scope, never deletes) and the **`/clean-branches` command** does the deleting
+(`contents: write`), run by hand only when you want branches gone. It used to be a bash script
+calling the REST API with `curl` + a proxy-injected token, and **that did not work in scheduled
+routines**; as of v3.0.0 its `gh`-based scripts run locally instead. Don't reintroduce the
+`curl`+token pattern.
 
 The Claude-driven routines need the broader grant above — confirm/expand it before
 scheduling (a GitHub-App-installation decision, not a per-user token).
@@ -222,7 +224,8 @@ scheduling (a GitHub-App-installation decision, not a per-user token).
 - **Dev machine:** `gh` available. `mcp-issue-loop` *must* run here (Umbraco toolchain,
   worktree DB hooks, `npm run test:all`), and so must the two loops whose capability the
   cloud path lacks: `dependabot-rollup` (can't read Dependabot alerts) and
-  `branch-housekeeping` (can't delete a branch).
+  `branch-housekeeping` (its `/clean-branches` command can't delete a branch from the cloud;
+  the report half is local only because it shares the same script).
 - **Web runner (event/scheduled):** `gh` is **absent** — routines do GitHub work through
   the **GitHub MCP server** (`mcp__github__*`), per `github-ops`. `triage-learnings`,
   `merge-flow`, `auto-release-loop`, and `open-work-report` run here. There is no longer a
@@ -232,7 +235,8 @@ scheduling (a GitHub-App-installation decision, not a per-user token).
   routine cannot delete a branch and a merged branch surviving a cloud merge is expected.
   Two fixes, in order: turn on each repo's **"Automatically delete head branches"** setting
   (Settings → General → Pull Requests) so GitHub reaps at merge time — all three MCP repos
-  have this on as of 2026-08-06 — or let the weekly local `branch-housekeeping` run reap it.
+  have this on as of 2026-08-06 — or run `/clean-branches` by hand when it's worth it. The
+  weekly `branch-housekeeping` report will not clean up for you; that's deliberate.
 
 ## Scheduled routines
 
@@ -240,7 +244,7 @@ Full inventory of cross-repo routines in this repo:
 
 | Routine | Cadence | Status |
 |---------|---------|--------|
-| `branch-housekeeping` (skill) | weekly | **local-only** (cloud impossible — no branch-delete tool on the MCP path). One routine sweeps every repo in `repos.conf`; reaps only if the routine prompt authorises it |
+| `branch-housekeeping` (skill) | weekly | **local-only**, **report-only** — one routine covers every repo in `repos.conf` and posts one digest. Deletes nothing ever, so it needs no authorisation and is safe to schedule. Cleanup is the separate `/clean-branches` command, run by hand — never scheduled |
 | `merge-flow` | on `auto-merge` label (event) | **to wire** |
 | `auto-release-loop` | on `auto-release` label (event) | **to wire** |
 | `dependabot-rollup` (skill) | weekly | **local-only** (cloud impossible — Claude GitHub App can't read Dependabot alerts) |
