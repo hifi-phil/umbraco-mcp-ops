@@ -12,50 +12,25 @@ Changing scope means editing `repos.conf` in a PR — never hand-editing a live 
 All configured repos are swept in **one run**, producing one digest. Pass `OWNER/REPO`
 arguments to `sweep.sh` only to narrow a one-off investigation.
 
-Both halves read this file: the **report** (`sweep.sh`, run by the skill) and the **cleanup**
-(`reap.sh`, run only by `/clean-branches`). One scope, two entry points — which is why the
-guards below are described once here rather than per script.
+Everything reads this file: the **report** (`sweep.sh` locally, the MCP path in a cloud
+routine) and the **cleanup** (`reap.sh`, run only by `/clean-branches`). One scope, three
+executions.
 
-## A merged PR does not mean the branch is disposable
+## The rules are not here
 
-**The trap this skill exists to avoid.** `chore/merge-main-to-dev` on `Umbraco-MCP-Base` had
-its PR (#251) merged on 2026-07-31 — and was then **pushed to again**, because the
-`sync-main-to-dev` automation reuses the same branch name every cycle. On 2026-08-06 its tip
-was 2 commits ahead of `dev`, including a security rollup. "Newest PR is merged" was true; "the
-branch is disposable" was false. Deleting it would have destroyed that day's work.
+How a branch is classified — the three protection guards, the PR-state categories, the reuse
+guard, the caps — lives in **[`classification.md`](classification.md)**, which is canonical for
+every path. This file covers only **scope**: which repos, which branches are exempt, and why
+those particular entries.
 
-A containment check can't distinguish the two cases: a legitimately **squash-merged** branch is
-also not an ancestor of its base — which is the whole reason this skill reads PR state rather
-than git ancestry. So the guard uses the sha instead:
+`reap.sh` additionally re-derives all of it from the API immediately before deleting, so a stale
+candidate list can only cause a skip, never a wrong delete.
 
-> A closed PR's `head.sha` is **frozen** at what it actually merged. If the branch tip still
-> equals it, nothing has been pushed since and the branch is disposable. If it differs, the
-> branch was reused.
-
-Both scripts apply it independently. `sweep.sh` classifies a moved-on branch as **REUSED** and
-files it under *needs review* with its divergence measured against **the PR's own base** (these
-PRs target `dev` or `v17/dev`, so measuring against `main` reports a number for the wrong
-branch). `reap.sh` re-checks it from the API immediately before deleting.
-
-On the first full run under this guard it rescued exactly one branch of 51 — but that one was a
-live sync branch holding a security rollup, so the guard pays for itself.
-
-## The three guards
-
-A branch is skipped if **any** of these holds, checked independently every run:
-
-1. it's in that repo's list in `repos.conf`;
-2. it is the repo's **live default branch** (read from the API, not assumed);
-3. it reports **live GitHub branch protection**.
-
-`reap.sh` re-applies all three immediately before deleting, *plus* re-verifies MERGED against
-the API — so a stale `merged.tsv` can only cause a skip, never a wrong delete.
-
-**Don't assume guards 2 and 3 always cover you.** They're only as good as each repo's
-configuration. `Umbraco-CMS-MCP-Editor` has **no branch protection at all** — `main` and `dev`
-both report `protected: false` — so on that repo guard 3 is inert and `dev` is held *only* by
-its `repos.conf` row. The three guards are defence in depth, not three independent certainties.
-Enabling branch protection on Editor would be a real improvement, independent of this skill.
+One thing worth repeating here, because it's about *these* repos rather than the algorithm:
+**don't assume the live guards carry the load.** `Umbraco-CMS-MCP-Editor` has **no branch
+protection at all** — `main` and `dev` both report `protected: false` — so on that repo the
+protection guard is inert and `dev` is held *only* by its `repos.conf` row below. Enabling branch
+protection there would be a real improvement, independent of this skill.
 
 ## Why the entries are what they are
 
@@ -92,19 +67,11 @@ settings line in the digest first; that's almost always the real fix.
 
 ## Caps
 
-Both are in `sweep.sh` as `BRANCH_CAP` and `PR_PAGES`:
+The values live in [`classification.md`](classification.md) (and in `sweep.sh` as `BRANCH_CAP`
+and `PR_PAGES`) — not here, so there's one number to change.
 
-| Thing | Value |
-|-------|-------|
-| Branches classified per repo per run | **200** |
-| Newest PRs pre-fetched per repo for the head→PR map | **500** (5 pages of 100) |
-
-`Umbraco-CMS-MCP-Dev` passed 300 PRs on 2026-08-03, which is why the map cap is 500. Exceeding
-it is not a correctness problem — branches the map misses fall through to a per-branch
-`head:`-filtered lookup — it just costs extra calls. Raise it when a repo outgrows it.
-
-Exceeding `BRANCH_CAP` **is** a coverage gap, so `sweep.sh` reports the uncovered count in the
-digest rather than truncating silently.
+The only scope-specific note: `Umbraco-CMS-MCP-Dev` passed 300 PRs on 2026-08-03, which is why
+the PR pre-fetch cap is 500 rather than 300. Raise it again when a repo outgrows it.
 
 ## Slack destination
 

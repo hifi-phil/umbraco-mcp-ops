@@ -16,7 +16,8 @@ environment plumbing, not a GitHub workflow.
   marketplace.json         # marketplace manifest listing the plugins below
 plugins/
   mcp-issue-loop/           # plugin: autonomous ready-for-ai issue loop
-  branch-housekeeping/      # plugin: weekly branch sweep + Slack digest
+  branch-housekeeping/      # plugin: branch-state report (skill) + cleanup (command)
+    commands/               #   /clean-branches — the deliberate, local-only cleanup
     scripts/                #   sweep.sh (read-only classify) + reap.sh (delete merged)
 lib/                       # shared helpers (currently unused — the plugin scripts use
   slack.sh                 #   gh + the Slack connector, not a webhook)
@@ -44,10 +45,12 @@ they call `gh`, which carries your login, so there's still no token to configure
 > **Historical note:** the weekly branch sweep used to be a bash script calling
 > `api.github.com` with `curl` and a `GH_TOKEN`, relying on the web runner's egress proxy
 > to inject the real credential. **That did not work in scheduled routines.**
-> `branch-housekeeping` is now a **local-only** skill whose scripts use `gh` instead
-> (v3.0.0). Don't reintroduce the `curl`+token pattern — if something needs GitHub from a
-> cloud routine, it goes through the MCP server, and if it can't (branch deletion has no
-> MCP tool), it belongs on the local path.
+> `branch-housekeeping` now splits the work by what each environment can actually do: the
+> **report** runs either side (a `gh` script locally, MCP tools in a routine), while the
+> **`/clean-branches` command** is local-only because branch deletion has no MCP tool at all.
+> Don't reintroduce the `curl`+token pattern — if something needs GitHub from a cloud routine
+> it goes through the MCP server, and if the capability isn't there, it belongs on the local
+> path rather than behind a token.
 
 Which repos and permissions are reachable is a GitHub-App-installation decision made by
 an **Umbraco org owner** — see [`docs/self-learning-system.md`](docs/self-learning-system.md)
@@ -90,7 +93,7 @@ Install from this repo inside Claude Code:
 | [`github-ops`](plugins/github-ops/) | Shared reference the other loops point at for GitHub work in **both** environments — `gh` CLI + `git` locally, the **GitHub MCP server** (`mcp__github__*`) on Claude web / in routines. One operation catalog, two reference files; keeps the dual path in one place instead of duplicated across skills. |
 | [`dependabot-rollup`](plugins/dependabot-rollup/) | Roll every open Dependabot **security** PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Repo-agnostic; safe to run unattended (weekly routine). |
 | [`open-work-report`](plugins/open-work-report/) | Daily cross-repo digest of everything currently open, posted to Slack `#daily-issue-and-pr-overview`. **Scope comes from the routine's own context** — the repos attached to it — so the skill carries no repo list and stops rather than guessing if it can't resolve one. Separates Dependabot **security** updates (listed individually) from routine version bumps (counted), flags the PRs that are ready to merge, blocked on CI, or waiting on a human, calls out the automation labels so loop-owned work reads apart from human work, and marks anything untouched for 30 days as stale. **Report-only** — read scopes only, nothing is commented on, labelled, or merged. Requires `github-ops`. |
-| [`branch-housekeeping`](plugins/branch-housekeeping/) | **Two halves, deliberately separate.** The **skill** reports the state of the remote branches across **every** configured MCP repo in one run and posts a digest to `#umbraco-mcp-housekeeping`, classifying each non-protected branch by its **GitHub PR state** — authoritative where git ancestry isn't, since these repos squash-merge — into safe-to-remove, **merged-but-reused-since** (looks disposable, isn't), closed unmerged, no PR, and open. It is **read-only and never deletes**, so running or scheduling it is free of consequence. The **`/clean-branches` command** is the separate, deliberate cleanup: a purely mechanical script with no model in the loop, re-verifying every branch against the API (protected lists, live default branch, live protection, `merged_at`, and that the tip still matches what the PR merged) before deleting. Run it only when you want branches gone. **Local-only** — the GitHub MCP server exposes no branch-delete tool. Also flags any repo whose **"Automatically delete head branches"** setting is off, which is the durable fix that cleanup only works around. |
+| [`branch-housekeeping`](plugins/branch-housekeeping/) | **Two halves, deliberately separate.** The **skill** reports the state of the remote branches across **every** configured MCP repo in one run and posts a digest to `#umbraco-mcp-housekeeping`, classifying each non-protected branch by its **GitHub PR state** — authoritative where git ancestry isn't, since these repos squash-merge — into safe-to-remove, **merged-but-reused-since** (looks disposable, isn't), closed unmerged, no PR, and open. It is **informational and read-only — never deletes**, so it needs no write scope and runs as a **scheduled cloud routine** as well as locally. The **`/clean-branches` command** is the separate, deliberate cleanup: a purely mechanical script with no model in the loop, re-verifying every branch against the API (protected lists, live default branch, live protection, `merged_at`, and that the tip still matches what the PR merged) before deleting. Run it only when you want branches gone. The **command** is local-only — the GitHub MCP server exposes no branch-delete tool, so cleanup can't be scheduled at all. Also flags any repo whose **"Automatically delete head branches"** setting is off, which is the durable fix that cleanup only works around. |
 
 > **Note:** `mcp-issue-loop` drives local worktrees, builds, and integration tests,
 > so it runs on a developer machine (or a runner with the full .NET/Umbraco
