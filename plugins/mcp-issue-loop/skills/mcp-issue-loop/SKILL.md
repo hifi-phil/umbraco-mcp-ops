@@ -34,15 +34,21 @@ human reviews and never merges** — there is no review-response phase here.
 In **local mode** you are the **orchestrator**: a loop (surviving across turns / wake-ups)
 whose terminal condition is *every open `ready-for-ai` issue has a CI-green, mcp-reviewed PR
 handed off, or is blocked-with-a-comment*. You reach it by dispatching **one build subagent
-per issue, each in its own git worktree** (cap **3**), then reviewing each returned PR with
-`mcp-review`. Each issue's lifecycle is **build → review → hand off**:
+per issue, each in its own git worktree** (cap **3**), then driving each returned PR's CI
+green and reviewing it with `mcp-review`. Each issue's lifecycle is **build → CI-green →
+review → hand off**:
 
 1. **Build** — finite, autonomous, parallel (cap 3). A subagent implements the issue, tests
-   locally, pushes, greens CI, opens a PR. See
+   locally, pushes, and opens a PR — it does **not** poll or wait on CI. See
    [`references/issue-lifecycle.md`](references/issue-lifecycle.md).
-2. **Review** — you run `mcp-review` over the returned PR and fix any findings (re-testing
-   locally, re-greening CI). Then hand off — the human reviews, `rework-loop` handles their
-   change-requests, `merge-flow` merges.
+2. **CI-green** — once a subagent returns an open PR, **you** poll its check-run status
+   until every check passes or the 8-attempt cap trips, re-dispatching a subagent into that
+   same worktree with a failing check's log to fix the root cause on any failure.
+3. **Review** — you run `mcp-review` over the CI-green PR and fix any findings (re-testing
+   locally, re-greening CI). Once clean/addressed, swap the issue's outcome label. Then hand
+   off — the human reviews, `rework-loop` handles their change-requests, `merge-flow` merges.
+
+Steps 2 and 3 both live in [Step 3](#step-3--build-ci-and-review-rolling-cap-3) below.
 
 `/goal` keeps the loop alive across build/CI waits — set it in Step 2, clear it when every
 issue is handed off or blocked.
@@ -101,7 +107,7 @@ merged (a blocked issue or an un-reviewed PR must not keep the loop alive foreve
 Clear it with `/goal clear` when the goal is met or you abort. See
 [Stop conditions](#stop-conditions) for exactly when the loop ends.
 
-## Step 3 — build phase (rolling, cap 3)
+## Step 3 — build, CI, and review (rolling, cap 3)
 
 Dispatch a **build subagent per issue**, at most 3 running at once. Dispatch the
 first 3 in a single message (parallel); each subsequent dispatch happens when a
@@ -119,22 +125,38 @@ Triage the issue's scope and pass the fitting tier as the Agent `model`.
 
 Track each subagent's result:
 `{issue, worktreeName, worktreePath, branch, prNumber, model, tier}`.
-A build subagent's job is done when its PR is open and CI is green. **The build subagent
-does not review its own code** — when it returns a CI-green PR, **you (the orchestrator)
-run [`mcp-review`](../mcp-review/SKILL.md) over that PR** (the faithful 5-lens + security
-scan) before handing it off. If it raises findings, fix them (re-dispatch into that
-worktree, or fix inline), then **re-run the local tests before pushing** — all testing is
-local (the worktree's Umbraco + the diff's tests / suite), and the review→fix cycle must
-re-test locally and only then re-green CI, never leaning on CI to catch a fix's regressions.
-Running the review here, not in the build subagent, is what makes it independent. If a build
-subagent reports it could not finish (e.g. the issue is ambiguous, or CI can't be greened),
-record it as **blocked** —
-the subagent will have labelled the issue `ai-blocked` (removing `ready-for-ai`) and
-commented the reason as its outcome step (build playbook step 8); just confirm that
-happened and move on — don't let one bad issue stall the queue.
+A build subagent's job is done when its PR is open — it does not poll CI or block on it.
 
-Keep dispatching until the queue is empty, all build subagents have returned, and each
-green PR has been through `mcp-review`.
+**Driving CI green happens here, on the orchestrator/main thread, not inside the
+subagent.** Once a subagent returns an open PR, poll its check-run status (github-ops →
+*Get PR CI / check-run status*) until every check passes or the **8-attempt cap** trips. On
+a failing check, read the log (github-ops → *Read a failing check's log*) and
+**re-dispatch a subagent into that same worktree** with the log to fix the root cause,
+re-test locally, re-push, and re-check — the same shape as the `mcp-review` fix cycle
+below, just triggered by a failing check instead of a review finding. Never re-push an
+identical fix that already failed (**no-progress guard**).
+
+Once CI is green, **run [`mcp-review`](../mcp-review/SKILL.md) over that PR** (the faithful
+5-lens + security scan). **The build subagent does not review its own code** — running the
+review here, at the orchestrator level, is what makes it independent. If it raises
+findings, fix them (re-dispatch into that worktree, or fix inline), then **re-run the local
+tests before pushing** — all testing is local (the worktree's Umbraco + the diff's tests /
+suite), and the review→fix cycle must re-test locally and only then re-green CI, never
+leaning on CI to catch a fix's regressions. Only once `mcp-review` is clean/addressed do the
+**outcome-label swap**: remove `ready-for-ai`, add `generated-by-ai`, and comment the PR
+link on the triggering issue (github-ops → *Add / remove a label* and *Comment on an
+issue*) — the swap is what marks the issue done, so it must wait until review is actually
+finished, not just CI.
+
+If a build subagent reports it could not finish (e.g. the issue is genuinely ambiguous), or
+the CI-green cap or no-progress guard trips while driving CI **or** while fixing an
+`mcp-review` finding, record the issue as **blocked**: remove `ready-for-ai`, add
+`ai-blocked`, and comment the specific reason (the last failing CI log, the ambiguity, what
+was tried) — that outcome swap is yours too now; don't let one bad issue stall the queue.
+
+Keep dispatching until the queue is empty, all build subagents have returned, every PR's CI
+is green (or the issue is blocked), and each green PR has been through `mcp-review` and had
+its outcome label swapped.
 
 ## Step 4 — hand off (no human-review phase here)
 
@@ -185,25 +207,26 @@ go stale as versions advance. Valid choices here are `opus`, `sonnet`, and
 ## Stop conditions
 
 The loop ends when **no actionable work remains**. Actionable work = a queued issue, a
-running build subagent, or a returned green PR not yet run through `mcp-review`. When none
-of those exist, every remaining issue is terminal: **handed off** (a CI-green, mcp-reviewed
-PR — the human, `rework-loop`, and `merge-flow` take it from here) or **blocked** (labelled
-`ai-blocked` with a comment). This loop does **not** wait on human review — that's
-`rework-loop`'s trigger, not a state this loop sits in.
+running build subagent, a returned open PR whose CI isn't green yet, or a CI-green PR not
+yet run through `mcp-review`. When none of those exist, every remaining issue is terminal:
+**handed off** (a CI-green, mcp-reviewed PR — the human, `rework-loop`, and `merge-flow`
+take it from here) or **blocked** (labelled `ai-blocked` with a comment). This loop does
+**not** wait on human review — that's `rework-loop`'s trigger, not a state this loop sits
+in.
 
 - **Local / interactive** → once every issue is handed off or blocked, stop. `/goal clear`
   and hand back a summary: what's handed off, what's blocked and why.
 - **Cloud** → one-shot per issue (see [Cloud mode](#cloud-mode)); stop at the handed-off PR.
 
 **Safety backstops (all modes) — stop touching an issue, label it `ai-blocked`
-(remove `ready-for-ai`, comment why — build playbook step 8), and hand back if any
-trips:**
+(remove `ready-for-ai`, comment why — see [Step 3](#step-3--build-ci-and-review-rolling-cap-3)
+above), and hand back if any trips:**
 
 - **CI-green cap** — at most **8** attempts to green one PR's CI. After that, the
   issue is `ai-blocked` (comment the last failure).
 - **No-progress guard** — never retry the same failing command/action verbatim.
-  If a build or review-fix pass produces no new state, treat the issue as blocked
-  rather than looping.
+  If a CI-fix, build, or review-fix pass produces no new state, treat the issue as
+  blocked rather than looping.
 - **Global backstop (unattended)** — bound total wake-ups / dispatches (or a wall-
   clock/date limit). When it trips, `log` what was left undone — never silently
   drop issues.
@@ -248,15 +271,19 @@ is *not* to fix learnings inline — leave that to Loop B.
 - **Never touch an issue without the `ready-for-ai` label.** The label is the
   only gate. If a human removes it mid-flight, stop work on that issue. The one
   exception is the **outcome swap**: the loop itself removes `ready-for-ai` and adds
-  `generated-by-ai` (green PR) or `ai-blocked` (backstop tripped) (build playbook step 8) — that's the
-  loop finishing the issue, not a human pulling the gate.
+  `generated-by-ai` (green PR) or `ai-blocked` (backstop tripped) — this is now the
+  orchestrator's own step (see [Step 3](#step-3--build-ci-and-review-rolling-cap-3) above), not
+  the build subagent's — and it's the loop finishing the issue, not a human pulling the
+  gate.
 - **One worktree per issue, hook-backed.** Always create via `EnterWorktree`
   (fires this repo's `WorktreeCreate` hook: fresh DB, `.env`, dynamic port,
   `npm install`). Never hand-roll `git worktree add` and never use the Agent
   tool's generic `isolation: worktree` for these repos.
 - **Build subagents are finite; the orchestrator owns the build/CI waits.** A subagent
-  returns once its PR is green. This loop never waits on a human review at all — that's
-  `rework-loop`'s trigger. The waits that live under `/goal` are build + CI, not human ones.
+  returns once its PR is open — it does not poll or wait on CI; the orchestrator drives CI
+  green after it returns (see Step 3). This loop never waits on a human review at all —
+  that's `rework-loop`'s trigger. The waits that live under `/goal` are build + CI, not
+  human ones.
 - **Reviews are non-negotiable — and run at the top level, honestly reported.** Every
   buildable PR is reviewed with [`mcp-review`](../mcp-review/SKILL.md) — the faithful 5-lens
   code review + security scan — run by **you, the orchestrator**, never by the build subagent
@@ -338,16 +365,24 @@ open `ready-for-ai` issue; none → quiet no-op):
      Fix locally until green **before** pushing. Because the local run is SQL Server
      (CI-parity), a green local gate means CI passes first time — much quicker than pushing
      and looping on remote CI failures (the 8-attempt cap).
-   - **The build subagent does NOT review its own code.** No `/security-review` /
-     `/code-review` here — those slash commands can't run in a subagent anyway, and
-     self-review is weak. The **base session** runs the review after you return (step 4).
-3. Push, open the PR against `<base>`, and **drive CI green** from the logs (github-ops →
-   *Read a failing check's log*; the **8-attempt** cap applies). Since you tested on SQL
-   Server (CI-parity), CI should pass first time — this step is then just a confirmation,
-   not a fix loop; a surprise CI failure usually means the local run was on SQLite or the
-   diff wasn't fully covered by `test:changed`.
-4. **Review the PR with `mcp-review` — from the base session, not the subagent.** Once the
-   build subagent has returned a CI-green PR, the **base session** runs the
+   - **The build subagent does NOT review its own code, and does NOT drive CI.** No
+     `/security-review` / `/code-review` here — those slash commands can't run in a
+     subagent anyway, and self-review is weak. Once local tests are green, **commit, push,
+     and open the PR** against `<base>` (github-ops → *Create a PR*), linking the issue
+     (`Closes #N`), ready for review, not draft — then **return**. Driving that PR's CI
+     green (step 3) and reviewing it with `mcp-review` (step 4) are the **base session's**
+     job, not yours — you do not poll CI or wait for review.
+3. **Drive CI green — from the base session, not the subagent.** Once the build subagent
+   returns an open PR, poll its check-run status (github-ops → *Get PR CI / check-run
+   status*) until every check passes or the **8-attempt cap** trips. Since you tested on SQL
+   Server (CI-parity), CI should pass first time — this is usually just a confirmation, not a
+   fix loop; a surprise CI failure usually means the local run was on SQLite or the diff
+   wasn't fully covered by `test:changed`. On a failing check, read the log (github-ops →
+   *Read a failing check's log*) and **re-dispatch a subagent into that same checkout** with
+   the log to fix the root cause, re-test locally, re-push, and re-check. Never re-push an
+   identical fix that already failed (no-progress guard).
+4. **Review the PR with `mcp-review` — from the base session, not the subagent.** Once CI
+   is green (step 3), the **base session** runs the
    **[`mcp-review`](../mcp-review/SKILL.md)** skill over that PR (the faithful 5-lens code
    review + security scan). It spawns its own review subagents, so it must run here at the
    top level — that's also what makes it an *independent* reviewer rather than the author
@@ -358,7 +393,7 @@ open `ready-for-ai` issue; none → quiet no-op):
    didn't run.
 5. **Mark the issue complete, then stop at the CI-green PR.** Once CI is green **and
    mcp-review is clean/addressed**,
-   run build-playbook **step 8** on the triggering issue — remove `ready-for-ai`, add
+   do the **outcome-label swap** on the triggering issue — remove `ready-for-ai`, add
    `generated-by-ai`, comment the PR link. Removing `ready-for-ai` is what stops this
    routine re-firing on the same issue. Then **stop**: do **not** enter a review phase and
    do **not** merge — review-response is [`rework-loop`](../rework-loop/SKILL.md)'s job (it
