@@ -1,0 +1,22 @@
+{
+  "name": "branch-housekeeping",
+  "version": "4.1.0",
+  "description": "Two halves, deliberately separate. The `branch-housekeeping` SKILL reports the state of the remote branches across every configured Umbraco MCP repo in one run and posts a Slack digest — classifying each non-protected branch by its GitHub PR state (authoritative where git ancestry isn't, since these repos squash-merge) into safe-to-remove, merged-but-reused-since, closed unmerged, no PR, and open. It is informational and read-only — never deletes — so it needs no write scope and runs as a scheduled cloud routine as well as locally. The `/clean-branches` COMMAND is the separate, deliberate cleanup: a purely mechanical script with no model in the loop that re-verifies every branch against the API before deleting it. Run it only when you want branches gone. The command is local-only — the GitHub MCP server has no branch-delete tool, so cleanup cannot be scheduled at all.",
+  "author": {
+    "name": "Phil W",
+    "email": "pjw@umbraco.com",
+    "url": "https://github.com/hifi-phil"
+  },
+  "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/branch-housekeeping",
+  "license": "MIT",
+  "keywords": [
+    "branches",
+    "housekeeping",
+    "report",
+    "cleanup",
+    "pull-request",
+    "slack",
+    "cloud-routine",
+    "workflow"
+  ]
+}

@@ -1,12 +1,13 @@
 # umbraco-mcp-ops
 
-Cross-repo operations tooling for the Umbraco MCP repositories. Scripts here
-act on *several* repos via the GitHub API rather than belonging to any one product, so
-they live in their own home and are run on a schedule (Claude routines) or by hand.
+Cross-repo operations tooling for the Umbraco MCP repositories. The workflows here
+act on *several* repos rather than belonging to any one product, so they live in
+their own home and are run on a schedule (Claude routines) or by hand.
 
-This repo is also a **Claude Code plugin marketplace** — the interactive
-workflows that drive the MCP repos are distributed as installable plugins
-(see [Plugins](#plugins-claude-code-marketplace)).
+This repo is a **Claude Code plugin marketplace** — the workflows that drive the MCP
+repos are distributed as installable plugins (see
+[Plugins](#plugins-claude-code-marketplace)). The one remaining `scripts/` entry is
+environment plumbing, not a GitHub workflow.
 
 ## Layout
 
@@ -15,60 +16,53 @@ workflows that drive the MCP repos are distributed as installable plugins
   marketplace.json         # marketplace manifest listing the plugins below
 plugins/
   mcp-issue-loop/           # plugin: autonomous ready-for-ai issue loop
-lib/                       # shared helpers reused across scripts
-  slack.sh                 #   post_to_slack() — posts to the $SLACK_WEBHOOK_URL channel
+  branch-housekeeping/      # plugin: branch-state report (skill) + cleanup (command)
+    commands/               #   /clean-branches — the deliberate, local-only cleanup
+    scripts/                #   sweep.sh (read-only classify) + reap.sh (delete merged)
+lib/                       # shared helpers (currently unused — the plugin scripts use
+  slack.sh                 #   gh + the Slack connector, not a webhook)
 scripts/
-  branch-housekeeping/     # weekly: delete merged branches, flag ambiguous ones on Slack
   cloud-skill-sync/        # cloud-env setup script: load these skills into cloud routines
 ```
 
-Each script tool gets its own folder under `scripts/<tool>/` and reuses `lib/`.
+Some plugins ship **deterministic shell scripts** under `plugins/<plugin>/scripts/` for the
+parts of a loop that have one right answer (classifying a branch, deleting a ref, resolving a
+default branch). They use `gh`, never a raw token, and are shellchecked in CI.
+
 Each plugin gets its own folder under `plugins/<plugin>/` and is listed in
 `.claude-plugin/marketplace.json`.
 
-## Requirements
+## Requirements & authentication
 
-- `curl`, `jq` — both pre-installed on the Claude Code on the web runners these
-  routines execute on.
-- `GH_TOKEN` — a GitHub token with access to the target repos (metadata +
-  pull-requests read to classify branches, contents write to delete them). The
-  runner injects one automatically. The GitHub CLI (`gh`) is intentionally **not**
-  required — it isn't installed on the runners, so the scripts call the GitHub
-  REST API directly.
-- `SLACK_WEBHOOK_URL` — a Slack incoming-webhook URL (optional; if unset, the
-  summary is printed to stdout and a routine relays it to Slack instead).
+**Nothing to configure — no token, no PAT, no webhook secret.**
 
-## Authentication
+All GitHub work goes through the **`github-ops`** skill, which picks the mechanism per
+environment: the `gh` CLI locally, and the **GitHub MCP server** (`mcp__github__*`) in
+Claude web / scheduled routines, authenticated by the **Claude GitHub App installed on
+the Umbraco org**. The plugin scripts under `plugins/*/scripts/` are on the local path —
+they call `gh`, which carries your login, so there's still no token to configure.
 
-These tools talk to repos in the **Umbraco org**, and you do **not** need a
-personal access token (PAT) to run them.
+> **Historical note:** the weekly branch sweep used to be a bash script calling
+> `api.github.com` with `curl` and a `GH_TOKEN`, relying on the web runner's egress proxy
+> to inject the real credential. **That did not work in scheduled routines.**
+> `branch-housekeeping` now splits the work by what each environment can actually do: the
+> **report** runs either side (a `gh` script locally, MCP tools in a routine), while the
+> **`/clean-branches` command** is local-only because branch deletion has no MCP tool at all.
+> Don't reintroduce the `curl`+token pattern — if something needs GitHub from a cloud routine
+> it goes through the MCP server, and if the capability isn't there, it belongs on the local
+> path rather than behind a token.
 
-They are designed to run inside **Claude Code on the web**. There, outbound
-HTTPS goes through the runner's egress proxy, which authenticates calls to
-`api.github.com` itself using the **Claude GitHub App installed on the Umbraco
-org**. The `GH_TOKEN` environment variable the runner sets is only the literal
-placeholder `proxy-injected` — the real credential is injected proxy-side, so
-the `Authorization` header the scripts send is effectively ignored for GitHub.
-(`GH_TOKEN` being non-empty is all the scripts check before starting.)
+Which repos and permissions are reachable is a GitHub-App-installation decision made by
+an **Umbraco org owner** — see [`docs/self-learning-system.md`](docs/self-learning-system.md)
+for the scopes each loop needs.
 
-What this means in practice:
+`cloud-skill-sync` needs only `git` and `jq`, both present on the runners, and clones
+this public repo anonymously.
 
-- **No PAT, no secret to configure.** Nothing to paste into environment
-  variables. Branch deletion works because the org's GitHub App grants
-  `contents: write` (plus `pull_requests: read` and `metadata: read`).
-- **Run it on the web, not externally.** The only place a real token would be
-  needed is running these scripts somewhere *without* that proxy — a laptop or a
-  generic CI runner. Since the repos live in the Umbraco org (where individual
-  PATs may not be available), run the routine inside Claude Code on the web,
-  where auth is handled for you.
-- Adjusting which repos/permissions are reachable is a GitHub-App-installation
-  decision made by an **Umbraco org owner**, not a per-user token setting.
+## Scripts
 
-## Tools
-
-| Tool | What it does |
-|------|--------------|
-| [`branch-housekeeping`](scripts/branch-housekeeping/) | Weekly sweep: deletes branches whose PR was merged, keeps open-PR branches, and posts ambiguous branches to Slack for review. |
+| Script | What it does |
+|--------|--------------|
 | [`cloud-skill-sync`](scripts/cloud-skill-sync/) | Cloud-environment **setup script**: clones this (public) repo and copies the ops skills into the session skills dir, so cloud routines can invoke them. See [Running skills in cloud routines](#running-skills-in-cloud-routines). |
 
 ## Plugins (Claude Code marketplace)
@@ -87,6 +81,7 @@ Install from this repo inside Claude Code:
 /plugin install github-ops@umbraco-mcp-ops
 /plugin install dependabot-rollup@umbraco-mcp-ops
 /plugin install open-work-report@umbraco-mcp-ops
+/plugin install branch-housekeeping@umbraco-mcp-ops
 /reload-plugins
 ```
 
@@ -98,10 +93,11 @@ Install from this repo inside Claude Code:
 | [`github-ops`](plugins/github-ops/) | Shared reference the other loops point at for GitHub work in **both** environments — `gh` CLI + `git` locally, the **GitHub MCP server** (`mcp__github__*`) on Claude web / in routines. One operation catalog, two reference files; keeps the dual path in one place instead of duplicated across skills. |
 | [`dependabot-rollup`](plugins/dependabot-rollup/) | Roll every open Dependabot **security** PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Repo-agnostic; safe to run unattended (weekly routine). |
 | [`open-work-report`](plugins/open-work-report/) | Daily cross-repo digest of everything currently open, posted to Slack `#daily-issue-and-pr-overview`. **Scope comes from the routine's own context** — the repos attached to it — so the skill carries no repo list and stops rather than guessing if it can't resolve one. Separates Dependabot **security** updates (listed individually) from routine version bumps (counted), flags the PRs that are ready to merge, blocked on CI, or waiting on a human, calls out the automation labels so loop-owned work reads apart from human work, and marks anything untouched for 30 days as stale. **Report-only** — read scopes only, nothing is commented on, labelled, or merged. Requires `github-ops`. |
+| [`branch-housekeeping`](plugins/branch-housekeeping/) | **Two halves, deliberately separate.** The **skill** reports the state of the remote branches across **every** configured MCP repo in one run and posts a digest to `#umbraco-mcp-housekeeping`, classifying each non-protected branch by its **GitHub PR state** — authoritative where git ancestry isn't, since these repos squash-merge — into safe-to-remove, **merged-but-reused-since** (looks disposable, isn't), closed unmerged, no PR, and open. It is **informational and read-only — never deletes**, so it needs no write scope and runs as a **scheduled cloud routine** as well as locally. The **`/clean-branches` command** is the separate, deliberate cleanup: a purely mechanical script with no model in the loop, re-verifying every branch against the API (protected lists, live default branch, live protection, `merged_at`, and that the tip still matches what the PR merged) before deleting. Run it only when you want branches gone. The **command** is local-only — the GitHub MCP server exposes no branch-delete tool, so cleanup can't be scheduled at all. Also flags any repo whose **"Automatically delete head branches"** setting is off, which is the durable fix that cleanup only works around. |
 
 > **Note:** `mcp-issue-loop` drives local worktrees, builds, and integration tests,
 > so it runs on a developer machine (or a runner with the full .NET/Umbraco
-> toolchain), not the lightweight web runners the `scripts/` routines target.
+> toolchain), not the lightweight web runners the scheduled routines target.
 
 ### Running skills in cloud routines
 

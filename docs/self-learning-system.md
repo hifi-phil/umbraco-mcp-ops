@@ -120,9 +120,12 @@ environment can invoke the skills and spawn the agents.
 - Include at least **`github-ops`** (every loop references it by name) plus whichever
   loops you want in cloud — e.g. **`loop-dispatch`** (the front-door router),
   **`triage-learnings`**, **`merge-flow`**, **`rework-loop`**, **`mcp-issue-loop`**,
-  **`issue-discuss-loop`** (edit the script's `SKILLS` list; `loop-dispatch` is already listed).
+  **`issue-discuss-loop`**, **`open-work-report`**, **`branch-housekeeping`** (edit the
+  script's `SKILLS` list; `loop-dispatch` is already listed).
   (**`dependabot-rollup` is local-only** — the Claude GitHub App can't read Dependabot
-  alerts, so it can't run as a cloud routine.) `mcp-issue-loop` runs in cloud in its **cloud mode** (one session per issue,
+  alerts, so it can't run as a cloud routine. **`branch-housekeeping`'s report runs in cloud,
+  but its `/clean-branches` command does not** — `commands/` aren't copied to the env, which is
+  correct: there's no branch-delete tool there to call.) `mcp-issue-loop` runs in cloud in its **cloud mode** (one session per issue,
   CI as the test gate — no local Umbraco); its **local mode** (worktrees + `test:all` +
   the review loop + capture hooks) is dev-machine-only.
 - **Refresh after a skill change:** bump `VERSION` in the script and re-save (the env
@@ -184,11 +187,20 @@ For the scheduled routines to act, that **connected app must grant, across both
 - `pull_requests: write` — triage/merge-flow open and merge PRs
 - `contents: write` — create branches, push files
 
-`branch-housekeeping` (a bash script, not a Claude skill) is the exception — it calls
-the REST API with `curl` + a proxy-injected token and only needs `contents: write` +
-`pull_requests: read`. The Claude-driven routines need the broader grant above —
-confirm/expand it before scheduling (a GitHub-App-installation decision, not a
-per-user token).
+`branch-housekeeping` splits in two, and only one half needs the App:
+
+- The **skill is informational** — it classifies and reports, never deletes. It needs
+  `metadata: read` + `pull_requests: read` and **no write scope**, so it runs happily as a
+  **scheduled cloud routine** on the App (or locally via its script — same rules either way).
+- The **`/clean-branches` command** does the deleting and is **local-only**, on your `gh` login
+  (`contents: write`). Not because of permissions but because the capability doesn't exist on
+  the cloud path: the MCP server has no branch-delete tool. Nothing schedules it.
+
+It used to be a bash script calling the REST API with `curl` + a proxy-injected token, and
+**that did not work in scheduled routines**. Don't reintroduce the `curl`+token pattern.
+
+The Claude-driven routines need the broader grant above — confirm/expand it before
+scheduling (a GitHub-App-installation decision, not a per-user token).
 
 ## Using the loops
 
@@ -217,12 +229,23 @@ per-user token).
 
 ## Runtime: dev machine vs web runner
 
-- **Dev machine:** `gh` available; `mcp-issue-loop` *must* run here (Umbraco
-  toolchain, worktree DB hooks, `npm run test:all`).
+- **Dev machine:** `gh` available. `mcp-issue-loop` *must* run here (Umbraco toolchain,
+  worktree DB hooks, `npm run test:all`), and so must the two loops whose capability the
+  cloud path lacks: `dependabot-rollup` (can't read Dependabot alerts) and
+  **`/clean-branches`** (no branch-delete tool on the MCP path). Note that's the *command*
+  only — `branch-housekeeping`'s report is informational and runs in either environment.
 - **Web runner (event/scheduled):** `gh` is **absent** — routines do GitHub work through
   the **GitHub MCP server** (`mcp__github__*`), per `github-ops`. `triage-learnings`,
-  `merge-flow`, and `auto-release-loop` run here. (The bash `scripts/` — e.g.
-  `branch-housekeeping` — are the separate case that uses `curl`/REST directly.)
+  `merge-flow`, `auto-release-loop`, `open-work-report`, and the `branch-housekeeping` **report**
+  run here. There is no longer a `curl`/REST exception — every loop is a skill on the
+  `github-ops` dual path.
+
+  One consequence to know: the MCP server exposes **no branch-delete tool**, so a cloud
+  routine cannot delete a branch and a merged branch surviving a cloud merge is expected.
+  Two fixes, in order: turn on each repo's **"Automatically delete head branches"** setting
+  (Settings → General → Pull Requests) so GitHub reaps at merge time — all three MCP repos
+  have this on as of 2026-08-06 — or run `/clean-branches` by hand when it's worth it. The
+  weekly `branch-housekeeping` report will not clean up for you; that's deliberate.
 
 ## Scheduled routines
 
@@ -230,7 +253,7 @@ Full inventory of cross-repo routines in this repo:
 
 | Routine | Cadence | Status |
 |---------|---------|--------|
-| `branch-housekeeping` (`scripts/`) | weekly | **live** |
+| `branch-housekeeping` (skill) | weekly | **report-only**, runs **cloud or local** — one routine covers every repo in `repos.conf` and posts one digest. Deletes nothing ever, so it needs no authorisation and is safe to schedule. Cleanup is the separate **local-only** `/clean-branches` command, run by hand — never scheduled |
 | `merge-flow` | on `auto-merge` label (event) | **to wire** |
 | `auto-release-loop` | on `auto-release` label (event) | **to wire** |
 | `dependabot-rollup` (skill) | weekly | **local-only** (cloud impossible — Claude GitHub App can't read Dependabot alerts) |
@@ -238,8 +261,8 @@ Full inventory of cross-repo routines in this repo:
 
 `mcp-issue-loop` and `content-issue-loop` are human-initiated and not scheduled.
 `auto-release-loop` is **event-triggered** (a routine on Issue: Labeled → `auto-release`),
-not on a cron. The web routines do GitHub work via the GitHub MCP server (see
-`github-ops`); `branch-housekeeping` is the bash/`curl` exception.
+not on a cron. Every web routine does its GitHub work via the GitHub MCP server (see
+`github-ops`) — there are no exceptions left.
 
 Wiring a cloud routine is two steps: (1) ensure the environment's **setup script**
 delivers the skills it needs — the [`cloud-skill-sync`](../scripts/cloud-skill-sync/)
