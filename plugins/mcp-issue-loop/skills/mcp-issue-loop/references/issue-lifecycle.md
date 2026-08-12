@@ -20,8 +20,8 @@ issue from `ready-for-ai` to an open, CI-green PR. The orchestrator then reviews
 >
 > **Definition of done (all must hold before you return):**
 > a hook-backed worktree exists for this issue; the change is implemented
-> following established MCP patterns; the local test gate passes — **`npm run
-> test:all`** in local mode (steps 1 & 4 below); **cloud mode overrides steps 1 & 4**
+> following established MCP patterns; the local test gate passes — **the repo's own
+> tests, scaled to your diff** in local mode (steps 1 & 4 below); **cloud mode overrides steps 1 & 4**
 > (no worktree; boot Umbraco via `worker-env` and gate on the diff's tests,
 > `npm run test:changed` — see the main SKILL.md → *Cloud mode*);
 > the branch is pushed; a PR is open against the base branch; its CI
@@ -40,11 +40,12 @@ prefixes `feature/`). Everything you do happens in this worktree.
 
 ### 2. Understand the issue, then plan
 
-Read the issue fully. Inspect the relevant collection(s) under
-`src/umbraco-api/tools/`. Decide what the change is: a new tool, a change to an
-existing tool, a bug fix, docs, etc. If the issue is genuinely ambiguous about
-the intended behaviour, return blocked with the specific question — don't invent
-scope.
+Read the issue fully. Inspect the relevant area — the collection(s) under
+`src/umbraco-api/tools/` on a server repo, or the relevant workspace under
+`packages/` / `template/` / `plugins/` in the SDK monorepo. Decide what the change is:
+a new tool, a change to an existing tool, a bug fix, docs, etc. If the issue is
+genuinely ambiguous about the intended behaviour, return blocked with the specific
+question — don't invent scope.
 
 ### 3. Implement — follow established patterns, skip nothing
 
@@ -74,16 +75,28 @@ never rely on pre-existing Umbraco content.
 
 ### 4. Run the tests locally — they must pass
 
-Start Umbraco in this worktree if it isn't running (`npm run start:umbraco`;
-first run does the unattended install and can take minutes — wait for
-`.demo-site-port` and the base URL to respond). Then:
+**Read `package.json` first — don't assume the script names.** A server repo has
+`start:umbraco` / `test:all` / `test:changed`; the SDK monorepo (`Umbraco-MCP-Base`) has
+`npm test`, `test:integration`, `test:e2e`, `test:template`, `test:cli`. Use what's there.
 
-```bash
-npm run test:all
-```
+**Scale the gate to your diff** — the same rule cloud mode uses:
 
-`npm run compile` alone is not enough. Fix failures locally until green. If
-state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename the DB in
+- **Tests covering what you touched** are the default gate (`npm run test:changed` on a
+  server repo; the workspace's own test script in the monorepo — e.g.
+  `npm test -w packages/mcp-server-sdk`).
+- **The full suite** when the change reaches beyond its diff — a shared helper, a
+  schema/generated-client change, cross-cutting logic, or the focused run hinting at
+  wider breakage.
+- **A docs-only or skills-only diff** (no `packages/**`, no `src/**`) needs neither a
+  running Umbraco nor the suite. Don't pay for an Umbraco boot to fix a typo — say in
+  your return what you ran and why.
+
+If the gate needs a running Umbraco, start it in this worktree if it isn't already
+(`npm run start:umbraco` on a server repo; first run does the unattended install and can
+take minutes — wait for `.demo-site-port` and the base URL to respond).
+
+`npm run compile` alone is not enough for a code change. Fix failures locally until
+green. If state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename the DB in
 `demo-site/appsettings.local.json`, restart, re-run `create-api-user.mjs`).
 
 ### 5. Review is the orchestrator's job — you do NOT self-review

@@ -56,10 +56,22 @@ issue is handed off or blocked.
 | Base branch | detect via the `release-and-branching` skill (gitflow → `dev`) | `dev` |
 | Concurrency cap | fixed | **3** |
 
-This skill assumes an **Umbraco MCP repo** — the `@umbraco-cms/mcp-*` server
-family. Confirm the repo looks like one (has `src/umbraco-api/tools/`, a
-`CLAUDE.md`, worktree hooks in `.claude/settings.json`). If it doesn't, stop and
-say so — the build playbook's MCP/test conventions won't apply.
+This skill assumes an **Umbraco MCP repo**, in either of its two shapes. Confirm the
+repo looks like one — a `CLAUDE.md` and worktree hooks in `.claude/settings.json`, plus:
+
+| Shape | Marker | Notes |
+|---|---|---|
+| **Server repo** — the `@umbraco-cms/mcp-*` family | `src/umbraco-api/tools/` | The common case. |
+| **SDK monorepo** — `umbraco/Umbraco-MCP-Base` | `packages/mcp-server-sdk` | Also `packages/hosted-mcp`, `packages/create-mcp-server`, `template`, and `plugins/umbraco-mcp-skills`. **Use this loop even for a skills-only change** — the repo has a real toolchain, so the content loop's playbook doesn't fit. |
+
+If it matches neither, stop and say so — the build playbook's MCP/test conventions
+won't apply. (A repo with no build/test toolchain at all — the ops repo, docs repos —
+belongs to [`content-issue-loop`](../content-issue-loop/SKILL.md).)
+
+**Don't assume the repo's scripts.** The two shapes don't share script names: server
+repos have `npm run test:all` / `test:changed` / `start:umbraco`; the SDK monorepo has
+`npm test`, `test:integration`, `test:e2e`, `test:template`, `test:cli`, and builds with
+`npm run build` / `build:all`. **Read `package.json`** and use what's actually there.
 
 **GitHub operations** (list issues, open/merge PRs, check CI, read failing logs,
 etc.) go through the **`github-ops`** skill — name the *operation*, never a raw `gh`

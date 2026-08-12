@@ -89,9 +89,10 @@ Invoke the matched skill exactly as its own dedicated routine would, scoped to t
 specific issue/PR, and **follow that skill's instructions verbatim**:
 
 - `ready-for-ai` issue → **`/mcp-issue-loop`** in **cloud mode** for that issue (local
-  run → its local mode). **On a non-MCP repo** (the ops repo, `Umbraco-MCP-Base`, docs)
-  use **`/content-issue-loop`** instead — same `route=mcp-issue-loop` signal, but that
-  repo has no MCP toolchain to build against.
+  run → its local mode). **On a non-MCP repo** (the ops repo, docs/plugin repos) use
+  **`/content-issue-loop`** instead — same `route=mcp-issue-loop` signal, but that repo
+  has no MCP toolchain to build against. `Umbraco-MCP-Base` **is** an MCP repo (SDK
+  monorepo, full test suite) — it takes `/mcp-issue-loop` like the server repos.
 - `auto-merge` PR → **`/merge-flow`** (it sweeps all `auto-merge` PRs; the event is
   just the wake-up).
 - PR review changes-requested → **`/rework-loop`** for that PR.
