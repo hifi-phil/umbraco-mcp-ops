@@ -19,41 +19,11 @@ one per repo. Sweeping every repo in one pass exists so there's a single thing t
 
 ## The template
 
-```
-:broom: *Umbraco MCP branch housekeeping* — 2026-08-12
-
-*Repos missing "Automatically delete head branches": 1*
-• umbraco/Umbraco-MCP-Base — turn it on: Settings → General → Pull Requests
-
-*Merged — safe to delete, work already in mainline: 2*
-• umbraco/Umbraco-CMS-MCP-Dev  `release/18.0.2`  (PR #338)
-• umbraco/Umbraco-MCP-Base  `chore/thing`  (PR #251)
-
-*Needs review — never auto-actioned: 3*
-• <https://github.com/umbraco/Umbraco-MCP-Base/compare/dev...chore/merge-main-to-dev|umbraco/Umbraco-MCP-Base@chore/merge-main-to-dev> — PR #251 merged BUT branch reused since (2 commit(s) not in dev) — NOT deleted, last commit 2026-08-06
-• <https://github.com/umbraco/Umbraco-CMS-MCP-Dev/pull/99|umbraco/Umbraco-CMS-MCP-Dev@claude/install-dotnet-U6yLm> — PR #99 closed unmerged, last commit 2026-01-22
-• <https://github.com/umbraco/Umbraco-CMS-MCP-Dev/tree/spike/idea|umbraco/Umbraco-CMS-MCP-Dev@spike/idea> — no PR found, last commit 2026-05-15
-
-_Kept 18 branch(es) with open PRs untouched._
-```
-
-Empty sections keep their line and say so — `• none` for the merged list, `• none :tada:` for
-the review list, and for the settings check:
-
-```
-• none — all swept repos reap merged branches at merge time :tada:
-```
-
-Two sections appear **only when they apply**, after the kept-count line:
-
-```
-*Not fully covered:*
-• umbraco/Some-Repo — archived, skipped
-• umbraco/Other-Repo — 12 branch(es) past the 200 cap, NOT classified
-
-*Could not read (gap in this sweep):*
-• umbraco/Whatever
-```
+The exact digest format — including the empty-section wording and the two
+only-when-they-apply sections — lives in
+[`assets/digest-template.txt`](../assets/digest-template.txt). Build the cloud-path
+digest to match it exactly: same sections, same order, same wording, even when a
+section is empty.
 
 ## Per-line rules
 
@@ -73,13 +43,9 @@ Two sections appear **only when they apply**, after the kept-count line:
 The failure mode is tidying the digest, so don't:
 
 - **Zero findings is a result, not silence.** Every empty section says so.
-- **The settings check** — the most actionable line, because fixing it removes the need to clean
-  up at all.
-- **`REUSED` stays in *needs review*.** Never promote it to the safe list.
-- **Coverage gaps** — *Not fully covered* and *Could not read*. These exist so a capped or
-  unreadable repo can't be mistaken for a clean one.
-- **The open-PR count** — one line, no names. It tells the reader the sweep saw active work and
-  deliberately left it alone.
+- **Every category and gap classification.md defines** — the settings-off finding, REUSED,
+  coverage gaps, the open-PR count — keeps its line even when empty; don't collapse or drop
+  one because it looks small this run.
 
 ## Naming the cleanup, without doing it
 

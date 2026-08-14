@@ -49,7 +49,7 @@ per repo, this needs none — it's pure API.
 
 The skill must be present in the environment: keep `branch-housekeeping` (and `github-ops`) in
 the `SKILLS` list of
-[`cloud-skill-sync`](../../../../scripts/cloud-skill-sync/cloud-skill-sync.sh), and bump that
+[`cloud-skill-sync`](../../../../../scripts/cloud-skill-sync/cloud-skill-sync.sh), and bump that
 script's `VERSION` after changing this skill so the env cache rebuilds.
 
 **Two things deliberately don't reach the cloud env**, because that script copies only `skills/`
