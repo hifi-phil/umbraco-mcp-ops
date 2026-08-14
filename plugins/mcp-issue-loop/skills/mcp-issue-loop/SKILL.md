@@ -3,18 +3,15 @@ name: mcp-issue-loop
 description: >-
   Work the open GitHub issues labelled `ready-for-ai` in an Umbraco MCP repo, driving each
   to a CI-green, mcp-reviewed PR — then hand off (human change-requests → rework-loop, merge
-  → merge-flow). Two modes: LOCAL — orchestrated, one hook-backed git worktree + build
-  subagent per issue (max 3 parallel), capture hooks; CLOUD — one event-triggered session
-  per issue, no worktree. Both boot a local Umbraco (worker-env), gate on local tests before
-  pushing, and run the mcp-review skill (5-lens code review + security scan) over the PR.
-  This loop never responds to human reviews and never merges. Repo-agnostic across Umbraco
-  MCP repos; github-ops required. Trigger on "work the ready issues", "run the issue loop",
-  or a routine on Issue: Labeled `ready-for-ai` (cloud).
+  → merge-flow). This loop never responds to human reviews and never merges. Repo-agnostic
+  across Umbraco MCP repos; github-ops required. Trigger on "work the ready issues", "run the
+  issue loop", or a routine on Issue: Labeled `ready-for-ai` (cloud).
 ---
 
 # mcp-issue-loop
 
-A durable loop that turns the `ready-for-ai` GitHub backlog into merged PRs.
+A durable loop that turns the `ready-for-ai` GitHub backlog into CI-green, reviewed,
+handed-off PRs.
 
 **Two modes, set by the caller** (default **local**; a routine states **cloud mode**
 explicitly):
@@ -25,30 +22,17 @@ explicitly):
   (cross-issue parallelism comes from separate sessions); no worktree. See
   [Cloud mode](#cloud-mode).
 
-**Both modes end the same way:** each issue reaches a **CI-green PR that `mcp-review` has
-passed**, then you **stop and hand off**. Human change-requests are actioned by
-[`rework-loop`](../rework-loop/SKILL.md) (the reviewer adds the `auto-rework` label);
-merging is `merge-flow`'s job (`auto-merge` once approved). **This loop never responds to
-human reviews and never merges** — there is no review-response phase here.
+**Both modes end the same way:** each issue reaches a CI-green, mcp-reviewed PR, then you
+stop and hand off (see Step 3 and Step 4) — **this loop never responds to human reviews and
+never merges.**
 
 In **local mode** you are the **orchestrator**: a loop (surviving across turns / wake-ups)
 whose terminal condition is *every open `ready-for-ai` issue has a CI-green, mcp-reviewed PR
 handed off, or is blocked-with-a-comment*. You reach it by dispatching **one build subagent
 per issue, each in its own git worktree** (cap **3**), then driving each returned PR's CI
 green and reviewing it with `mcp-review`. Each issue's lifecycle is **build → CI-green →
-review → hand off**:
-
-1. **Build** — finite, autonomous, parallel (cap 3). A subagent implements the issue, tests
-   locally, pushes, and opens a PR — it does **not** poll or wait on CI. See
-   [`references/issue-lifecycle.md`](references/issue-lifecycle.md).
-2. **CI-green** — once a subagent returns an open PR, **you** poll its check-run status
-   until every check passes or the 8-attempt cap trips, re-dispatching a subagent into that
-   same worktree with a failing check's log to fix the root cause on any failure.
-3. **Review** — you run `mcp-review` over the CI-green PR and fix any findings (re-testing
-   locally, re-greening CI). Once clean/addressed, swap the issue's outcome label. Then hand
-   off — the human reviews, `rework-loop` handles their change-requests, `merge-flow` merges.
-
-Steps 2 and 3 both live in [Step 3](#step-3--build-ci-and-review-rolling-cap-3) below.
+review → hand off** — detail in [`references/issue-lifecycle.md`](references/issue-lifecycle.md)
+(build) and Step 3/4 below (the rest).
 
 `/goal` keeps the loop alive across build/CI waits — set it in Step 2, clear it when every
 issue is handed off or blocked.
@@ -201,8 +185,7 @@ choice in this loop.
 model.)
 
 The tier names resolve to the current model in each family, so the skill doesn't
-go stale as versions advance. Valid choices here are `opus`, `sonnet`, and
-`haiku` only — `fable` is never used (see the floor above).
+go stale as versions advance.
 
 ## Stop conditions
 
@@ -244,15 +227,12 @@ nothing here (or in any subagent) ever edits skills or `CLAUDE.md` inline.
 anything by hand.** Two async hooks (shipped by this plugin) do it off the
 critical path:
 
-- **`SubagentStop`** → after each issue subagent finishes, a read-only analyzer
-  reads its transcript and files a `proto-learning` issue if something non-obvious
-  happened at the **issue level** (a diagnosed CI failure, a repeated mistake, an
-  unclear/missing pattern, a repo gotcha, a blocker).
-- **`SessionEnd`** → once, at the end of the orchestration session, an analyzer
-  reads *this* session's transcript and files **loop-level** learnings you're the
-  only one positioned to reveal: a backstop that tripped, a class of issue that
-  consistently needed `opus`, an `mcp-review` finding that recurs across issues, a
-  recurring blocker.
+- **`SubagentStop`** → after each issue subagent finishes, a read-only analyzer reads its
+  transcript and files a `proto-learning` issue if something non-obvious happened at the
+  **issue level** (see `hooks/analyzer-subagent.md` for what qualifies).
+- **`SessionEnd`** → once, at the end of the orchestration session, an analyzer reads *this*
+  session's transcript and files **loop-level** learnings you're the only one positioned to
+  reveal (see `hooks/analyzer-orchestrator.md` for what qualifies).
 
 Properties that make this the capture mechanism (vs. self-reporting): it **can't
 be skipped** (fires even if a subagent crashes), it's **unbiased** (a fresh
@@ -275,15 +255,10 @@ is *not* to fix learnings inline — leave that to Loop B.
   orchestrator's own step (see [Step 3](#step-3--build-ci-and-review-rolling-cap-3) above), not
   the build subagent's — and it's the loop finishing the issue, not a human pulling the
   gate.
-- **One worktree per issue, hook-backed.** Always create via `EnterWorktree`
-  (fires this repo's `WorktreeCreate` hook: fresh DB, `.env`, dynamic port,
-  `npm install`). Never hand-roll `git worktree add` and never use the Agent
-  tool's generic `isolation: worktree` for these repos.
-- **Build subagents are finite; the orchestrator owns the build/CI waits.** A subagent
-  returns once its PR is open — it does not poll or wait on CI; the orchestrator drives CI
-  green after it returns (see Step 3). This loop never waits on a human review at all —
-  that's `rework-loop`'s trigger. The waits that live under `/goal` are build + CI, not
-  human ones.
+- **One worktree per issue, hook-backed.** Always create via `EnterWorktree` (see
+  `references/issue-lifecycle.md`'s worktree step for what the hook does). Never
+  hand-roll `git worktree add` and never use the Agent tool's generic
+  `isolation: worktree` for these repos.
 - **Reviews are non-negotiable — and run at the top level, honestly reported.** Every
   buildable PR is reviewed with [`mcp-review`](../mcp-review/SKILL.md) — the faithful 5-lens
   code review + security scan — run by **you, the orchestrator**, never by the build subagent
@@ -297,113 +272,9 @@ is *not* to fix learnings inline — leave that to Loop B.
   and the `release-and-branching` skill — obey those.
 - **Recap as you go.** After each dispatch, each subagent completion, each `mcp-review`,
   give a one-line status (queue depth, in-flight issues, PRs handed off).
-- **Capture, never fix.** Learnings are filed as `proto-learning` issues (see
-  [Capturing learnings](#capturing-learnings-compounding)); the triage routine
-  turns them into PRs. Do not edit skills or `CLAUDE.md` from inside this loop.
 
 ## Cloud mode
 
-Everything above (Config → Rules) is **local mode**. **Cloud mode** is set explicitly by
-the caller — the routine prompt says *run in cloud mode*. It's **event-triggered, one
-session per `ready-for-ai` issue**, so there's **no cap-3 queue and no worktrees** —
-cross-issue parallelism comes from separate sessions firing. The session is a **thin
-orchestrator on a cheap base model**: it triages the one issue and dispatches a **single**
-build subagent on the best-fit model — the same *Model selection* logic as local, just one
-subagent instead of up to three.
-
-**Know the environment first.** Before triaging, consult the **[`worker-env`](../../../loop-dispatch/skills/worker-env/SKILL.md)** skill
-(`cat /root/env-manifest.md`) — it tells you what this cloud worker provides (.NET SDK,
-whether SQL Server is available, the ops `run-umbraco.sh`). Cloud sessions **do** get a
-local Umbraco now: the build subagent boots one and runs a real local test gate (below) —
-this is no longer a compile-only, CI-is-the-only-gate flow. Run these sessions in a **SQL
-Server** worker-env so the local run is **CI-parity** — the subagent tests on the same
-provider CI uses, greens the suite locally, and skips the slow push → CI-fail → fix →
-re-push loop. (SQLite is a degraded fallback only — a different provider that throws
-false failures and false passes; see step 2.)
-
-For the one triggering issue (identify it from the event; if unclear, take the **oldest**
-open `ready-for-ai` issue; none → quiet no-op):
-
-1. **Triage + dispatch.** Read the issue, pick its tier from
-   [Model selection](#model-selection) (`opus` / `sonnet` / `haiku`; never `fable`; floor
-   `sonnet` for code-touching work), and spawn **one** build subagent on that model
-   (Agent/Task tool with the chosen `model`). The base session stays on a cheap model — it
-   only triages, dispatches, and reports. *If the routine environment can't spawn a
-   subagent with a model override, do the build **inline** on the routine's own model
-   instead (set that to a sensible default, e.g. `sonnet`) and note it.*
-2. **Build (in the subagent).** Work **directly in the session's checkout** — no
-   `EnterWorktree` (cloud sessions are already isolated, and the worktree hooks need the
-   local DB/toolchain). Implement the issue following the **shared build playbook**
-   ([`references/issue-lifecycle.md`](references/issue-lifecycle.md)) and the MCP skills,
-   with two substitutions for playbook steps 1 and 4:
-   - **Instead of the worktree (playbook step 1):** work directly in the session checkout.
-   - **Instead of `npm run start:umbraco` + `npm run test:all` (playbook step 4):** bring up
-     a local Umbraco via the **[`worker-env`](../../../loop-dispatch/skills/worker-env/SKILL.md)**
-     skill and run a local test gate **on SQL Server**. As your **first action** (so Umbraco
-     boots while you implement — first boot runs the unattended install, ~1–2 min):
-     ```
-     bash /root/.umbraco-ops/run-umbraco.sh --provider sqlserver >/tmp/umbraco-run.log 2>&1 &
-     ```
-     **Default to SQL Server** — it's the provider CI uses, so the results are trustworthy.
-     **SQLite is a last resort**, not an equivalent: it's a different provider and produces
-     provider-specific false failures *and* false passes. Use `--provider sqlite` only when
-     `worker-env` reports no mssql image (a sqlite-only env), or for a quick smoke of a single
-     focused change where speed matters — and in either case its results aren't authoritative:
-     confirm anything surprising on SQL Server, and treat CI as the real gate. Implement, then **wait for Umbraco
-     ready** (`.demo-site-port` exists and `/umbraco/management/api/v1/server/status` returns
-     200) and run:
-     - **`npm run test:changed`** — the integration tests touching your diff. The **default
-       gate** for a focused change. If the repo doesn't have that script yet, fall back to
-       `npm run test:one -- --testPathPattern='<collection>/__tests__/<tool>'` for each area
-       you touched.
-     - **`npm run test:all`** — the full suite. Run it **when you suspect the change reaches
-       beyond its diff** — a shared helper, a schema/generated-client change, cross-cutting
-       logic, or `test:changed` surfacing something that hints at wider breakage. For an
-       obviously self-contained change, don't pay the full-suite cost — `test:changed` is
-       enough.
-
-     Fix locally until green **before** pushing. Because the local run is SQL Server
-     (CI-parity), a green local gate means CI passes first time — much quicker than pushing
-     and looping on remote CI failures (the 8-attempt cap).
-   - **The build subagent does NOT review its own code, and does NOT drive CI.** No
-     `/security-review` / `/code-review` here — those slash commands can't run in a
-     subagent anyway, and self-review is weak. Once local tests are green, **commit, push,
-     and open the PR** against `<base>` (github-ops → *Create a PR*), linking the issue
-     (`Closes #N`), ready for review, not draft — then **return**. Driving that PR's CI
-     green (step 3) and reviewing it with `mcp-review` (step 4) are the **base session's**
-     job, not yours — you do not poll CI or wait for review.
-3. **Drive CI green — from the base session, not the subagent.** Once the build subagent
-   returns an open PR, poll its check-run status (github-ops → *Get PR CI / check-run
-   status*) until every check passes or the **8-attempt cap** trips. Since you tested on SQL
-   Server (CI-parity), CI should pass first time — this is usually just a confirmation, not a
-   fix loop; a surprise CI failure usually means the local run was on SQLite or the diff
-   wasn't fully covered by `test:changed`. On a failing check, read the log (github-ops →
-   *Read a failing check's log*) and **re-dispatch a subagent into that same checkout** with
-   the log to fix the root cause, re-test locally, re-push, and re-check. Never re-push an
-   identical fix that already failed (no-progress guard).
-4. **Review the PR with `mcp-review` — from the base session, not the subagent.** Once CI
-   is green (step 3), the **base session** runs the
-   **[`mcp-review`](../mcp-review/SKILL.md)** skill over that PR (the faithful 5-lens code
-   review + security scan). It spawns its own review subagents, so it must run here at the
-   top level — that's also what makes it an *independent* reviewer rather than the author
-   grading itself. Fix any surviving findings (dispatch a fix on the build subagent's model,
-   or fix inline), then **re-run the local tests before pushing** (the same local SQL Server
-   gate from step 2 — the review→fix cycle re-tests locally, never leaning on CI), re-green
-   CI, and **report only what mcp-review actually found** — never claim a review passed that
-   didn't run.
-5. **Mark the issue complete, then stop at the CI-green PR.** Once CI is green **and
-   mcp-review is clean/addressed**,
-   do the **outcome-label swap** on the triggering issue — remove `ready-for-ai`, add
-   `generated-by-ai`, comment the PR link. Removing `ready-for-ai` is what stops this
-   routine re-firing on the same issue. Then **stop**: do **not** enter a review phase and
-   do **not** merge — review-response is [`rework-loop`](../rework-loop/SKILL.md)'s job (it
-   fires on the PR-review event), and merging is `merge-flow`'s.
-
-**Not used in cloud mode:** the cap-3 queue, worktrees, and the review-response phase. The
-**capture hooks** (SubagentStop/SessionEnd → `proto-learning` issues) *are* delivered to
-cloud sessions by the [`cloud-skill-sync`](../../../../scripts/cloud-skill-sync/) setup
-script, so self-learning capture runs in cloud too — filing via `gh` locally, or the
-GitHub **REST API with the env's token** where `gh` is absent (cloud), and log-and-skip
-only if neither `jq`/`claude` nor any token is present. The same guardrails still hold —
-`ready-for-ai` is the only gate, reviews are non-negotiable, follow the repo's `CLAUDE.md`,
-never leave CI red, and a blocked issue gets labelled `ai-blocked` + a comment, then stop.
+Everything above (Config → Rules) is **local mode**. Cloud mode is a full, parallel
+one-shot-per-issue playbook, set explicitly by the caller — see
+[`references/cloud-mode.md`](references/cloud-mode.md).
