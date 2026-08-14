@@ -194,6 +194,28 @@
         "cloud-routine",
         "workflow"
       ]
+    },
+    {
+      "name": "skill-tighten",
+      "source": "./plugins/skill-tighten",
+      "description": "Iteratively trims a Claude Code skill (SKILL.md + its bundled resources) down to exactly what it needs — repeated review/fix rounds against a concrete duplication-and-bloat checklist, with a fresh independent reviewer each round, until two consecutive rounds find nothing left to change (or a hard cap is hit and reported as non-convergence, never silently accepted). Bundles the skill-tighten skill and its read-only skill-tightener-reviewer agent.",
+      "version": "1.0.0",
+      "category": "workflow",
+      "author": {
+        "name": "Phil W",
+        "email": "pjw@umbraco.com",
+        "url": "https://github.com/hifi-phil"
+      },
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/skill-tighten",
+      "keywords": [
+        "skills",
+        "skill-creator",
+        "meta",
+        "refactoring",
+        "documentation",
+        "review",
+        "progressive-disclosure"
+      ]
     }
   ]
 }

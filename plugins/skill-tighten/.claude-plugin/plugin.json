@@ -1,0 +1,21 @@
+{
+  "name": "skill-tighten",
+  "version": "1.0.0",
+  "description": "Iteratively trims a Claude Code skill down to exactly what it needs via repeated review/fix rounds against a concrete checklist, using a fresh independent reviewer each round until two consecutive clean rounds (or a hard cap, reported as non-convergence, never silently accepted as done). Bundles the skill-tighten skill and its read-only skill-tightener-reviewer agent.",
+  "author": {
+    "name": "Phil W",
+    "email": "pjw@umbraco.com",
+    "url": "https://github.com/hifi-phil"
+  },
+  "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/skill-tighten",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "skill-creator",
+    "meta",
+    "refactoring",
+    "documentation",
+    "review",
+    "progressive-disclosure"
+  ]
+}
