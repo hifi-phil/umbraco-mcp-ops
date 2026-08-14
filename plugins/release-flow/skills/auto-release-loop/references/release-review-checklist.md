@@ -4,10 +4,8 @@ The pre-publish sanity gate for `auto-release-loop` (Step 2.5). Because publishi
 irreversible and un-gated by a human, review the release PR against **every** check
 below before merging/tagging/publishing.
 
-- A **BLOCK** finding **stops the publish** — comment the finding on the triggering
-  issue, leave the PR open, and do **not** merge/tag/publish.
-- A **WARN** finding does **not** block — note it in the completion comment so a human
-  can glance at it.
+- A **BLOCK** finding **must stop the publish**; a **WARN** finding **must not** — see
+  `auto-release-loop`'s Step 2.5 for exactly what happens on each.
 - Judge each check from what's observable on the PR (title/branch/issue, the diff, CI,
   mergeability). If a check can't be evaluated, treat it as a BLOCK and say why.
 - **Reason beyond the list.** These checks are a *floor*, not a ceiling — also step back

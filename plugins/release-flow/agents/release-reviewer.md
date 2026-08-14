@@ -20,16 +20,12 @@ your entire job is to judge. The loop that called you will act on your verdict.
 The caller passes the release PR's facts: PR number / head branch / base, the target
 **version**, the **triggering issue** title, the **diff** (changed files + size), **CI**
 status, and **mergeability**. The release branch is checked out, so you may **Read** repo
-files directly (e.g. version files, changelog) to verify. Judge only from what's
-observable; if a required check can't be evaluated, treat it as **BLOCK** and say why.
+files directly (e.g. version files, changelog) to verify.
 
 ## What to do
-1. **Check every item** in the `auto-release-loop` skill's
-   `references/release-review-checklist.md` against this PR. For each: PASS, or
-   BLOCK/WARN with the specific reason.
-2. **Reason about the PR as a whole** — beyond the checklist, ask *"does anything here
-   look wrong or risky to ship?"* The checklist is a **floor, not a ceiling**: flag novel
-   problems it doesn't cover (**BLOCK** if clearly wrong, **WARN** if merely suspect).
+**Check every item** in the `auto-release-loop` skill's
+`references/release-review-checklist.md` against this PR, including that file's own
+"Reason beyond the list" step — for each: PASS, or BLOCK/WARN with the specific reason.
 
 ## Output
 A compact verdict:
