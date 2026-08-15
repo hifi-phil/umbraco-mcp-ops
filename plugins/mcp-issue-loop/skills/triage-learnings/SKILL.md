@@ -30,6 +30,8 @@ Runs both locally and as a scheduled routine on Claude web. **For every GitHub
 operation, use the `github-ops` skill** — it owns the local-vs-web mechanism, so this
 skill just names the *operation* and never restates or hard-codes how to do it.
 
+> **`github-ops` must be installed for this loop to run.**
+
 ## Config (resolve once)
 
 | Thing | Value |
