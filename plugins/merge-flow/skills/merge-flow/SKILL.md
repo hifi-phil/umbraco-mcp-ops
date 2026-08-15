@@ -73,7 +73,8 @@ For each candidate, all must hold — if any fails, **do not merge** (go to Step
 ## Step 3 — merge
 
 **Merge the PR** (github-ops → *Merge a PR*) using the repo's convention (see Config).
-Comment confirming the merge. If the merge itself fails, report it — never retry a force.
+**Never force a merge past a failing gate.** Comment confirming the merge. If the merge
+itself fails, report it — never retry with a force.
 
 **Then delete the head branch, best-effort.** Locally `gh` does it as part of the merge.
 **In a cloud routine it cannot be done** — the GitHub MCP server has no branch-delete
