@@ -18,6 +18,7 @@ Branch off **`main`**.
   # fallback if $CLAUDE_PLUGIN_ROOT is unset (source checkout of the ops repo):
   bash plugins/release-flow/scripts/post-merge-cleanup.sh main
   ```
+- Worktree/DB teardown isn't handled by the script — see SKILL.md's common rules for why.
 
 ## Cutting a release
 No separate `dev` means the flow is short:
