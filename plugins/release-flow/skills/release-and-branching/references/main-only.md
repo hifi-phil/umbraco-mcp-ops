@@ -30,8 +30,7 @@ No separate `dev` means the flow is short:
      bump, which is all the tag automation needs.
 
 ## After the release reaches `main`
-- Add the **Tag + Release** automation if missing — it fires from the version-bump commit on
-  `main` (see SKILL.md's *Release tagging* section).
+- Add the **Tag + Release** automation if missing (see SKILL.md's *Release tagging* section).
 - There is **no `sync-main-to-dev` step** in this model (there's no `dev`). Ignore
   `assets/sync-main-to-dev.yml` — it's gitflow-only.
 
