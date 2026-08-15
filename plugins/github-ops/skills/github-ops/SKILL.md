@@ -3,8 +3,7 @@ name: github-ops
 description: >-
   Shared how-to for GitHub operations in both environments this system runs in —
   locally with the `gh` CLI + `git`, and on Claude web / in scheduled routines with
-  the GitHub MCP server (`mcp__github__*`, no `gh` there). One operation catalog,
-  two reference files (one per mechanism). Other skills — mcp-issue-loop,
+  the GitHub MCP server (`mcp__github__*`, no `gh` there). Other skills — mcp-issue-loop,
   content-issue-loop, triage-learnings, merge-flow, auto-release-loop — point here instead
   of each re-explaining the dual path. Load this whenever a loop needs to touch
   GitHub (list/create issues, open/merge PRs, check CI, push files) and you need the
@@ -40,9 +39,8 @@ run where `gh` does. What *was* a third path — a bash script calling `api.gith
 `curl` and a `GH_TOKEN` — is gone, because the proxy-injected token never worked in scheduled
 routines. Don't reintroduce it.
 
-> The MCP reference uses the tool names from the current `github/github-mcp-server`.
-> Server versions differ — **confirm against the live `mcp__github__*` tool list**
-> and use the tool that performs the operation if a name doesn't match.
+> Tool names can drift across `github-mcp-server` versions — see the note at the top of
+> `github-mcp.md`.
 
 ## The operation catalog
 
@@ -88,6 +86,7 @@ These are policy, not mechanism — they apply whichever reference you use:
 - **Never merge without green CI + approval** (poll status; don't rely on an
   auto-merge that bypasses the gate). See `merge-flow`.
 - **Never force-push; never edit a protected branch directly.**
-- **On the web, no local clone** — create the branch and push file contents through
-  the MCP server; you don't have a working tree.
 - Branch model / base branch is **detected via `release-and-branching`**, not assumed.
+
+**MCP/web only:** no local clone — create the branch and push file contents through the
+MCP server; you don't have a working tree (locally you do — see `gh-cli.md`).
