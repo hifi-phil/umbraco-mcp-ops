@@ -40,11 +40,17 @@ detection — follow it.
 - **Repo-specific details live in the repo, not here.** Version-bump file lists, test/build
   commands, and worktree/DB cleanup belong in the repo's `CLAUDE.md` — follow those, don't
   duplicate them in this skill.
+- **After merging, tidy the local repo** with `scripts/post-merge-cleanup.sh <integration-branch>`
+  (`dev` or `main` — the reference file for each model gives the exact invocation). It's safe to
+  run unattended — see the script's own header/inline comments for exactly what it does and why
+  (squash-aware, `gh`-confirmed before any delete, never a blind delete). If you only want to
+  return to the latest integration branch with no branch cleanup (e.g. you merged via the GitHub
+  UI), the **`sync-dev`** skill is the lighter alternative for the gitflow model.
 
 ## Release tagging (both models)
 
 A release finishes by tagging `v<version>` and creating a GitHub Release. **If the repo has no
 automation for this, add it:** copy `assets/release-tag.yml` into `.github/workflows/` and
-adjust the trigger branch + the version-source step for the repo's stack. The example is
-idempotent — it only fires when the version actually changes (it skips if the tag exists).
-The reference file for each model says exactly where tagging fits.
+adjust the trigger branch + the version-source step for the repo's stack (see the file's own
+header comment for its idempotency behavior). The reference file for each model says exactly
+where tagging fits.

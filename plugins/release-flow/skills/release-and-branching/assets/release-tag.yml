@@ -1,7 +1,7 @@
 # Example: tag + GitHub Release when the version on the release branch changes.
 #
 # Copy to .github/workflows/release-tag.yml in the target repo, then adjust two things:
-#   1. `branches:` — the branch a release lands on (main-only: main; gitflow: main).
+#   1. `branches:` — the branch a release lands on (`main` in both models).
 #   2. the "Read version" step — swap the version source for the repo's stack.
 #
 # Idempotent: it computes v<version> from the manifest and skips if that tag already
