@@ -143,6 +143,8 @@ agent is read-only and can't publish itself).
 ## Running as a routine
 
 Set up a routine with trigger **Issue: Labeled**, filtered to **Labels is one of
-`auto-release`** — firing is instant, so labelling a `release <version>` issue kicks
-it off immediately. The version comes from the issue, so nothing else needs
-configuring per run. *(The `auto-release` label must exist on the target repo.)*
+`auto-release`**, on an environment that has this skill (+ `github-ops`,
+`release-and-branching`, `sync-dev`) — firing is instant, so labelling a
+`release <version>` issue kicks it off immediately. The version comes from the issue, so
+nothing else needs configuring per run. *(The `auto-release` label must exist on the
+target repo.)*
