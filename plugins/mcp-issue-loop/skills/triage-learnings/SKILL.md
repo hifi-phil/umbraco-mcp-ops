@@ -3,36 +3,26 @@ name: triage-learnings
 description: >-
   Loop B of the self-learning system — triage the open `proto-learning` issues on
   the umbraco-mcp-ops repo. Reads the captured proto-learnings, dedupes and clusters
-  them, applies a promotion threshold, and routes each cluster to the right home:
-  a tracked issue on the specific Umbraco MCP repo it affects (domain-specific
-  learnings only), a gated PR to the shared umbraco-mcp-skills (Umbraco-MCP-Base) for
-  cross-repo/generalizable ones, or a `loop-improvement` issue on the ops repo for
-  learnings about the loop itself. Loop B files issues to owning repos and only
-  drafts PRs for the shared tooling — it never hand-edits a product repo. Nothing
-  auto-merges; discarded learnings are closed with a reason. Runs locally or as a
-  scheduled cloud routine; GitHub work goes through the required `github-ops` skill.
-  Trigger on "triage the learnings", "triage proto-learnings", "run loop B",
-  "process the learning backlog".
+  them, applies a promotion threshold, and routes each cluster to the repo or process
+  that owns it, never hand-editing a product repo directly. Nothing auto-merges; discarded
+  learnings are closed with a reason. Runs locally or as a scheduled cloud routine;
+  GitHub work goes through the required `github-ops` skill. Trigger on "triage the
+  learnings", "triage proto-learnings", "run loop B", "process the learning backlog".
 ---
 
 # triage-learnings (Loop B)
 
-The capture half (the `SubagentStop`/`SessionEnd` hooks) files **proto-learnings**
-as `proto-learning` GitHub issues on `hifi-phil/umbraco-mcp-ops`. This skill is the
-**triage half**: on a schedule, it turns that raw backlog into reviewed work by
-routing each learning to the repo that owns it.
+The capture half (see the
+[schema](../mcp-issue-loop/references/proto-learning-schema.md) for the filing
+mechanism) hands this skill a raw backlog of **proto-learning** GitHub issues on
+`hifi-phil/umbraco-mcp-ops`. This skill is the **triage half**: on a schedule, it
+turns that raw backlog into reviewed work by routing each learning to the repo that
+owns it.
 
 **The learning loop is repo-agnostic.** A proto-learning's `sourceRepo` is
 **whichever Umbraco MCP repo** the loop was working — `umbraco/Umbraco-CMS-MCP-Editor`
 is only one example; there are many, and this skill must treat them all the same.
 Never assume the Editor MCP.
-
-**Loop B does not hand-edit product repos.** For anything specific to one MCP, it
-files a **tracked issue on that MCP repo** for that repo's own process (a human, or
-its own `ready-for-ai` loop) to implement. It drafts an actual **PR only for the
-shared tooling** (`umbraco-mcp-skills`), and files a **`loop-improvement` issue** for
-changes to the loop itself. Everything is gated — nothing auto-merges, and no
-product repo's content is edited unreviewed.
 
 ## Runtime & auth
 
@@ -40,22 +30,20 @@ Runs both locally and as a scheduled routine on Claude web. **For every GitHub
 operation, use the `github-ops` skill** — it owns the local-vs-web mechanism, so this
 skill just names the *operation* and never restates or hard-codes how to do it.
 
-> **`github-ops` must be installed for this loop to run.**
-
 ## Config (resolve once)
 
 | Thing | Value |
 |-------|-------|
 | Inbox repo | `hifi-phil/umbraco-mcp-ops` |
-| Inbox filter | open issues, label `proto-learning`, **not** label `triaged` |
+| Inbox filter | see Step 1 |
 | Homes | see the routing table below |
-| Base branch (shared-skills PR) | **detect** via the `release-and-branching` skill |
-| Routed items per run cap | **10** total, of which **≤ 5** are PRs (see Caps) |
+| Base branch (shared-skills PR) | see Step 4 |
+| Routed items per run cap | see Caps & guardrails |
 
 ### Routing table
 
-The proto-learning's `guessedHome` is a **hint**; you decide. The deciding test is
-*"would a **different** Umbraco MCP repo benefit from this?"*
+The proto-learning's `guessedHome` is a **hint**; you decide — see the table's "When" column
+for the test.
 
 | Home | Where it goes | Mechanism | When |
 |------|---------------|-----------|------|
@@ -64,11 +52,10 @@ The proto-learning's `guessedHome` is a **hint**; you decide. The deciding test 
 | `loop-self` | `hifi-phil/umbraco-mcp-ops` | **`loop-improvement` issue** | About how the loop / orchestrator itself behaves. The loop must not rewrite its own definition unreviewed. |
 | *discard* | — | close | Not actionable, stale, or wrong → close the source issue with a reason. |
 
-**Domain-specific vs. generalizable is the core judgment.** A learning goes to a
-specific MCP repo **only** when it affects that MCP and no other. The moment it would
-help a second MCP repo, it belongs in `shared-mcp-skills`, not duplicated into one
-repo. When genuinely unsure, prefer `shared-mcp-skills` if it's a tooling/pattern
-lesson, or hold it (leave the proto-learning open) rather than mis-filing.
+**Domain-specific vs. generalizable is the core judgment** (see the table above). Don't
+duplicate a generalizable lesson into one repo. When genuinely unsure, prefer
+`shared-mcp-skills` if it's a tooling/pattern lesson, or hold it (leave the
+proto-learning open) rather than mis-filing.
 
 ## Step 1 — gather the inbox
 
@@ -102,11 +89,9 @@ Loop-self clusters are not threshold-gated — route them whenever they're actio
 
 Assign each cluster a home from the routing table, then:
 
-All GitHub actions below use `github-ops` for the concrete command/tool.
-
 **`mcp-repo` (domain-specific → issue on that MCP repo):**
-1. Confirm the lesson truly affects only `sourceRepo`. If it would help another MCP
-   repo, re-route to `shared-mcp-skills` instead.
+1. Re-check against the routing table's test above; if it now looks like it'd help
+   another MCP repo, re-route to `shared-mcp-skills` instead.
 2. **Create an issue** on `sourceRepo` — a clear title (prefix `[from-learnings] `),
    what should change and why, and — from the analyzer's `notes` — a hint whether it
    belongs in that repo's `CLAUDE.md` (keep lean) or a project-local skill. Let that
@@ -146,8 +131,6 @@ and the occurrence count (threshold evidence). Reviewers approve facts, not vibe
 - **≤ 10 routed items per run, of which ≤ 5 are PRs.** If more clusters are ready,
   route the highest-value ones, `log` how many were deferred, and leave the rest for
   the next run — never silently drop them.
-- **Domain-specific only for a specific MCP repo.** Generalizable learnings go to
-  `shared-mcp-skills`, never duplicated into one repo's `CLAUDE.md`/skills.
 - **Shared-skill PRs require the threshold + provenance.** No exceptions.
 - **Never auto-merge; never force-push; never edit a protected branch directly; never
   hand-edit a product MCP repo's content — file an issue there instead.**
@@ -156,8 +139,5 @@ and the occurrence count (threshold evidence). Reviewers approve facts, not vibe
 ## Running as a scheduled routine
 
 Schedule this skill weekly as a Claude Code cloud routine (see the `schedule`
-skill). The routine wakes, runs Steps 1–5 against the current inbox, routes up to 10
-clusters, and stops — issues sit in their owning repos and any shared PR sits for
-review. Because capture is continuous and triage is periodic, a weekly cadence keeps
-the inbox from growing without flooding anyone. All GitHub work goes through the
-`github-ops` skill.
+skill) — because capture is continuous and triage is periodic, a weekly cadence keeps
+the inbox from growing without flooding anyone.
