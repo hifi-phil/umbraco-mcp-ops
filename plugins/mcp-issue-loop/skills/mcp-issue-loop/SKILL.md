@@ -275,6 +275,7 @@ is *not* to fix learnings inline — leave that to Loop B.
 
 ## Cloud mode
 
-Everything above (Config → Rules) is **local mode**. Cloud mode is a full, parallel
-one-shot-per-issue playbook, set explicitly by the caller — see
+Everything above (Config → Rules) is **local mode**. Cloud mode is a full,
+one-shot-per-issue playbook (cross-issue parallelism comes from separate sessions
+firing, not a queue), set explicitly by the caller — see
 [`references/cloud-mode.md`](references/cloud-mode.md).
