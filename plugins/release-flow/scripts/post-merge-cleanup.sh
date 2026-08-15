@@ -15,8 +15,8 @@
 # PR is actually MERGED before deleting. Confirmed-merged, not a blind -D.
 #
 # It deliberately does NOT touch worktrees, databases, or running
-# processes - that teardown is destructive and repo-specific; use the
-# `/cleanup` skill (WorktreeRemove hook) for stale worktrees instead.
+# processes - that teardown is destructive and repo-specific; see the
+# repo's own CLAUDE.md for how it wants that handled.
 #
 # Usage:  bash post-merge-cleanup.sh [integration-branch]   (default: dev)
 
@@ -84,4 +84,4 @@ fi
 
 echo ""
 echo "done: ${deleted} branch(es) deleted, ${skipped} skipped."
-echo "note: for stale worktrees + their databases, use the /cleanup skill."
+echo "note: for stale worktrees + their databases, see the repo's own CLAUDE.md."
