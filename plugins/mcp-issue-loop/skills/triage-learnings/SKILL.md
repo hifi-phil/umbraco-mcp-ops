@@ -22,7 +22,6 @@ owns it.
 **The learning loop is repo-agnostic.** A proto-learning's `sourceRepo` is
 **whichever Umbraco MCP repo** the loop was working — `umbraco/Umbraco-CMS-MCP-Editor`
 is only one example; there are many, and this skill must treat them all the same.
-Never assume the Editor MCP.
 
 ## Runtime & auth
 
@@ -82,8 +81,7 @@ Compounding means *a pattern*, not a one-off:
 - **Recurred** (a cluster with ≥ **2** distinct source issues, or the same lesson
   seen across ≥ 2 `sourceRepo`s) → eligible for **`shared-mcp-skills`**.
 - **Single occurrence** that is domain-specific → **`mcp-repo`** issue, or **hold**
-  (leave open, uncommented) if it's too thin to act on yet. Do not promote a single
-  incident into a shared skill.
+  (leave open, uncommented) if it's too thin to act on yet.
 
 Loop-self clusters are not threshold-gated — route them whenever they're actionable.
 
@@ -122,7 +120,7 @@ and the occurrence count (threshold evidence). Reviewers approve facts, not vibe
 - **`shared-mcp-skills` (PR):** for each source issue in the cluster, **comment**
   with the PR link and add the **`triaged`** label (so the next run skips it) — but
   **leave it open** until the PR merges, so a rejected PR doesn't silently lose the
-  learning. Never close a proto-learning just because you opened a PR for it.
+  learning.
 - **`mcp-repo` and `loop-self` (issues):** **close** each source proto-learning with
   a comment linking the new issue — the learning lives in that issue now, so closing
   is safe (no risk of a rejected PR losing it).
@@ -133,10 +131,8 @@ and the occurrence count (threshold evidence). Reviewers approve facts, not vibe
 - **≤ 10 routed items per run, of which ≤ 5 are PRs.** If more clusters are ready,
   route the highest-value ones, `log` how many were deferred, and leave the rest for
   the next run — never silently drop them.
-- **Shared-skill PRs require the threshold + provenance.** No exceptions.
 - **Never auto-merge; never force-push; never edit a protected branch directly; never
   hand-edit a product MCP repo's content — file an issue there instead.**
-- One cluster → one routed item → one home. Don't bundle unrelated lessons.
 
 ## Running as a scheduled routine
 
