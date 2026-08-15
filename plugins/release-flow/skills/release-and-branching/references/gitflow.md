@@ -1,7 +1,6 @@
 # Two-branch gitflow (`dev` + `main`)
 
-Use this when the repo has both a `dev` branch **and** a `main` branch. The branches are
-always `dev` and `main`.
+Use this when the repo has both a `dev` branch **and** a `main` branch.
 
 ## Branching (all work)
 - **Start on latest `dev`.** Before creating a branch, get the main worktree onto an
@@ -42,9 +41,10 @@ eval is often flaky — but confirm it, don't assume it.
 
 ## After the release reaches `main`
 Two pieces of automation should run (add them if missing — see `assets/`):
-- **Tag + Release** (`assets/release-tag.yml`) creates the `v<version>` tag + GitHub Release.
-- **Sync back to dev** (`assets/sync-main-to-dev.yml`) merges `main` back into `dev` (via a
-  `chore/merge-main-to-dev` branch) so `dev` picks up the version bump and any release fixes.
+- **Tag + Release** (`assets/release-tag.yml`) — see SKILL.md's *Release tagging* section for
+  what it does and how to add it.
+- **Sync back to dev** (`assets/sync-main-to-dev.yml`) — see the file's own header comment for
+  what it does and how.
 - If the sync fails, do the merge-back-to-dev by hand (the repo's `CLAUDE.md` should document
   the manual steps).
 - **Once `sync-main-to-dev` has merged, run the `sync-dev` skill** — the automation only

@@ -20,8 +20,6 @@ git branch -a --format='%(refname:short)' | sed 's#^origin/##' | sort -u
 - Neither / mixed / genuinely unclear → **ask the user which model to follow** before doing
   anything. Never invent a `dev` branch.
 
-Gitflow here always means the branches `dev` and `main`.
-
 If the repo's own `CLAUDE.md`/`README` documents a branching model, that wins over this
 detection — follow it.
 
@@ -42,8 +40,8 @@ detection — follow it.
   duplicate them in this skill.
 - **After merging, tidy the local repo** with `scripts/post-merge-cleanup.sh <integration-branch>`
   (`dev` or `main` — the reference file for each model gives the exact invocation). It's safe to
-  run unattended — see the script's own header/inline comments for exactly what it does and why
-  (squash-aware, `gh`-confirmed before any delete, never a blind delete). If you only want to
+  run unattended — see the script's own header/inline comments for exactly what it does and why.
+  If you only want to
   return to the latest integration branch with no branch cleanup (e.g. you merged via the GitHub
   UI), the **`sync-dev`** skill is the lighter alternative for the gitflow model.
 
