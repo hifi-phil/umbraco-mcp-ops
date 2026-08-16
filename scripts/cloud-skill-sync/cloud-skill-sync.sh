@@ -29,13 +29,13 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="22"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="23"                                  # bump to force an env-cache rebuild / re-clone
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
 HOOKS_ROOT="$HOME/.claude/ops-hooks"          # plugin-root stand-in for the capture hooks
 SETTINGS="$HOME/.claude/settings.json"
-SKILLS="github-ops loop-dispatch worker-env merge-flow triage-learnings dependabot-rollup auto-release-loop release-and-branching sync-dev rework-loop mcp-issue-loop content-issue-loop mcp-review issue-discuss-loop open-work-report branch-housekeeping"
+SKILLS="github-ops loop-dispatch worker-env merge-flow triage-learnings proto-learning-capture dependabot-rollup auto-release-loop release-and-branching sync-dev rework-loop mcp-issue-loop content-issue-loop mcp-review issue-discuss-loop open-work-report branch-housekeeping"
 LOG="$HOME/skill-sync.log"
 
 # Anthropic's pr-review-toolkit code-review agents, used by the mcp-review skill. Routines
@@ -81,10 +81,10 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     plug="$(find "$OPS_DIR/plugins" -maxdepth 1 -type d -name self-learning 2>/dev/null | head -1)"
     if [ -n "$plug" ] && [ -d "$plug/hooks" ]; then
       rm -rf "$HOOKS_ROOT"
-      mkdir -p "$HOOKS_ROOT/hooks" "$HOOKS_ROOT/skills/triage-learnings/references"
+      mkdir -p "$HOOKS_ROOT/hooks" "$HOOKS_ROOT/skills/proto-learning-capture/references"
       cp -r "$plug/hooks/." "$HOOKS_ROOT/hooks/"
-      schema="$plug/skills/triage-learnings/references/proto-learning-schema.md"
-      [ -f "$schema" ] && cp "$schema" "$HOOKS_ROOT/skills/triage-learnings/references/"
+      schema="$plug/skills/proto-learning-capture/references/proto-learning-schema.md"
+      [ -f "$schema" ] && cp "$schema" "$HOOKS_ROOT/skills/proto-learning-capture/references/"
       chmod +x "$HOOKS_ROOT/hooks/"*.sh 2>/dev/null || true
       echo "installed hooks: $(ls -1 "$HOOKS_ROOT/hooks" 2>/dev/null | tr '\n' ' ')"
       # Register SubagentStop + SessionEnd (idempotent). CLAUDE_PLUGIN_ROOT is set inline

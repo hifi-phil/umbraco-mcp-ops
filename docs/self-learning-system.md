@@ -71,7 +71,7 @@ working repo and the ops repo to share a GitHub App installation, which silently
 isn't true once a cloud routine works an `umbraco/*` repo (a different org) —
 captures from those runs were being lost. The canvas has no org boundary, so it
 replaced the GitHub path rather than supplementing it. See the
-[proto-learning schema](../plugins/self-learning/skills/triage-learnings/references/proto-learning-schema.md)
+[proto-learning schema](../plugins/self-learning/skills/proto-learning-capture/references/proto-learning-schema.md)
 for the exact row shape.
 
 **The compounding gate:** an `mcp-repo` or `loop-improvement` issue routed out of
