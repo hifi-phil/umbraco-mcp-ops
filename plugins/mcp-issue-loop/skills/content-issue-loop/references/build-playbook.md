@@ -19,7 +19,7 @@ the per-issue prompt substituted into each build subagent, in place of `mcp-issu
    - Editing **bash/scripts** → `bash -n`, and `shellcheck` if available.
    - **No MCP skills, no `npm run test:all`, no Orval/generate.** Those don't apply.
 3. **Run whatever checks the repo actually has.** Detect them — don't assume:
-   - `umbraco-mcp-ops`: `bash plugins/mcp-issue-loop/hooks/test/run.sh` if you
+   - `umbraco-mcp-ops`: `bash plugins/self-learning/hooks/test/run.sh` if you
      touched the capture hook; validate any JSON/YAML/bash you changed.
    - Other repos: run their documented lint/test (a `package.json` script, a linter)
      if present. A pure-docs change may have nothing to run — that's fine.

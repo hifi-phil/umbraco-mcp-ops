@@ -91,10 +91,6 @@ open `ready-for-ai` issue; none → quiet no-op):
    fires on the PR-review event), and merging is `merge-flow`'s.
 
 **Not used in cloud mode:** the cap-3 queue, worktrees, and the review-response phase. The
-**capture hooks** (SubagentStop/SessionEnd → `proto-learning` issues) *are* delivered to
-cloud sessions by the [`cloud-skill-sync`](../../../../../scripts/cloud-skill-sync/) setup
-script, so self-learning capture runs in cloud too — filing via `gh` locally, or the
-GitHub **REST API with the env's token** where `gh` is absent (cloud), and log-and-skip
-only if neither `jq`/`claude` nor any token is present. The same guardrails still hold —
-`ready-for-ai` is the only gate, reviews are non-negotiable, follow the repo's `CLAUDE.md`,
-never leave CI red, and a blocked issue gets labelled `ai-blocked` + a comment, then stop.
+same guardrails still hold — `ready-for-ai` is the only gate, reviews are non-negotiable,
+follow the repo's `CLAUDE.md`, never leave CI red, and a blocked issue gets labelled
+`ai-blocked` + a comment, then stop.
