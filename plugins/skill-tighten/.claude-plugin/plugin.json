@@ -1,7 +1,7 @@
 {
   "name": "skill-tighten",
   "version": "1.0.0",
-  "description": "Iteratively trims a Claude Code skill down to exactly what it needs via repeated review/fix rounds against a concrete checklist, using a fresh independent reviewer each round until two consecutive clean rounds (or a hard cap, reported as non-convergence, never silently accepted as done). Bundles the skill-tighten skill and its read-only skill-tightener-reviewer agent.",
+  "description": "Iteratively trims a Claude Code skill down to exactly what it needs via repeated review/fix rounds against a concrete checklist, using a fresh independent reviewer each round until two consecutive clean rounds (or a hard cap, reported as non-convergence, never silently accepted as done). After convergence, a cross-model skill-creator-validator and lossless-reviewer catch structural quality issues and any content silently lost to over-trimming. Bundles the skill-tighten skill and its skill-tightener-reviewer, skill-creator-validator, and lossless-reviewer agents.",
   "author": {
     "name": "Phil W",
     "email": "pjw@umbraco.com",
