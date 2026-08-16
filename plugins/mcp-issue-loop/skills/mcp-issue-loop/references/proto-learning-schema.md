@@ -9,13 +9,23 @@ home.
 
 Because the plugin is read-only once installed (and absent on stateless runners),
 proto-learnings can't be stored in the skill. They are filed as **GitHub issues
-on the ops repo** `hifi-phil/umbraco-mcp-ops`, labelled `proto-learning`.
+on the ops repo** `hifi-phil/umbraco-mcp-ops`, labelled `proto-learning`, **and**
+appended as a row to the shared **"MCP Loop Learnings" Slack canvas**
+(`F0BQ31E4R8F`, posted in the private `#mcp-ops-learning` channel). Both happen
+for every capture — the GitHub write needs the working repo and
+`hifi-phil/umbraco-mcp-ops` to share a GitHub App installation, which isn't true
+when a cloud routine works an `umbraco/*` repo (a different org), so it can
+silently fail to file; the canvas has no org boundary and is the path that
+always lands. `triage-learnings` (Loop B) reads both.
 
 **Capture is automatic — this file is the contract, not a manual checklist.** The
-plugin's `SubagentStop`/`SessionEnd` hooks run a read-only analyzer over the
-finished transcript; the analyzer applies the rules below and emits a decision,
-and the hook files the issue. Nobody files by hand. This doc tells the analyzer
-(a) when a learning is worth filing and (b) the exact record shape to emit.
+plugin's `SubagentStop`/`SessionEnd` hooks run an analyzer over the finished
+transcript; the analyzer applies the rules below and emits a decision. The hook
+(read-only tools) files the GitHub issue deterministically from that decision;
+the analyzer itself (given one narrow Slack-canvas write) appends the canvas
+row directly, since a bash hook can't call Slack tools. Nobody files by hand.
+This doc tells the analyzer (a) when a learning is worth filing and (b) the
+exact record shape to emit — for both destinations.
 
 ## When to file — and when not to
 
@@ -80,10 +90,25 @@ One proto-learning per distinct lesson; don't bundle unrelated observations.
 - about how the loop / orchestrator itself behaves → `loop-self`,
 - not sure → `unsure` (Loop B will decide).
 
-## How it's filed (analyzer → hook)
+## The canvas row shape
 
-You (the analyzer) do **not** file anything — you have read-only tools. Emit a
-single JSON object and the hook (`hooks/capture-proto-learning.sh`) files it:
+The canvas's `## Log` table (see the canvas itself for the live header) uses
+the same fields, flattened to one row plus a triage-state field the GitHub
+issue doesn't need:
+
+`Date | Source Repo#Issue | Category | Lesson | Guessed Home | Status | Notes`
+
+`Date` is the capture date (`YYYY-MM-DD`), `Source Repo#Issue` is
+`sourceRepo`#`sourceIssue`, `Category`/`Lesson`/`Guessed Home` map directly to
+`category`/`lesson`/`guessedHome`, `Notes` holds `detail` + `fix` (and the `pr`
+number if set). `Status` starts as `New` at capture time — Loop B (below) is
+what changes it to `Actioned`/`Discarded`.
+
+## How it's filed (analyzer → hook, and analyzer → canvas)
+
+You (the analyzer) do **not** file the GitHub issue — you have read-only tools
+over the transcript/repo. Emit a single JSON object and the hook
+(`hooks/capture-proto-learning.sh`) files it:
 
 ```json
 {"file":true,"title":"[proto-learning] <source-repo>#<issue>: <lesson>","record":{ ...the record fields above... },"notes":"optional freeform context"}
@@ -95,3 +120,8 @@ The hook then creates the issue (title from `.title`, body = the fenced `record`
 JSON followed by **Notes:**), and skips an obvious exact-title duplicate itself.
 Deeper deduping and clustering is Loop B's job, not the analyzer's — when in
 doubt about whether a learning is worth it, err toward `{"file":false}`.
+
+**You do append the canvas row yourself** — that's the one write tool you're
+given (see the hook prompts for the exact `slack_read_canvas` /
+`slack_update_canvas` steps). Do it whenever `file:true`, independent of
+whether the GitHub issue above is expected to succeed.

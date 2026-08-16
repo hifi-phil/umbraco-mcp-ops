@@ -4,21 +4,31 @@
 #   $1 = scope: "subagent" (SubagentStop) | "orchestrator" (SessionEnd)
 #
 # Reads the hook event JSON from stdin, finds the transcript, and — only if it
-# belongs to an mcp-issue-loop run — asks a read-only analyzer whether anything
-# worth improving happened. If so, files ONE `proto-learning` issue on the ops
-# repo. The analyzer has no write tools; this script does the deterministic
-# `gh issue create`. Runs off the critical path (hook is async).
+# belongs to an mcp-issue-loop run — asks an analyzer whether anything worth
+# improving happened. If so, this script files ONE `proto-learning` issue on
+# the ops repo (deterministic `gh issue create` / REST fallback — the analyzer
+# has no GitHub write tools). The analyzer is ALSO given narrow write access to
+# one Slack canvas (see MCP_ISSUE_LOOP_CANVAS_ID below) and appends the same
+# record there itself — the GitHub write above needs the ops repo and the
+# working repo to share a GitHub App installation, which isn't true when a
+# cloud routine works an `umbraco/*` repo (different org from
+# hifi-phil/umbraco-mcp-ops); the canvas has no such org boundary, so it's the
+# capture path that survives when the GitHub one silently can't file. Runs off
+# the critical path (hook is async).
 #
 # Env knobs (ops + test):
 #   MCP_ISSUE_LOOP_DRY_RUN=1      log the intended issue instead of filing (no gh)
 #   MCP_ISSUE_LOOP_ANALYZER_OUT   inject a canned analyzer decision (skip `claude`)
 #   MCP_ISSUE_LOOP_LOG            override the log file path
+#   MCP_ISSUE_LOOP_CANVAS_ID      Slack canvas to append to (default: the shared
+#                                 "MCP Loop Learnings" canvas in #mcp-ops-learning)
 #   MCP_ISSUE_LOOP_CAPTURE=1      re-entry guard (set internally; do not set by hand)
 set -uo pipefail
 
 SCOPE="${1:-subagent}"
 OPS_REPO="hifi-phil/umbraco-mcp-ops"
 LABEL="proto-learning"
+CANVAS_ID="${MCP_ISSUE_LOOP_CANVAS_ID:-F0BQ31E4R8F}"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SCHEMA="$PLUGIN_ROOT/skills/mcp-issue-loop/references/proto-learning-schema.md"
 LOG="${MCP_ISSUE_LOOP_LOG:-${HOME}/.cache/mcp-issue-loop/capture.log}"
@@ -65,10 +75,11 @@ fi
 PROMPT_FILE="$PLUGIN_ROOT/hooks/analyzer-$SCOPE.md"
 [ -f "$PROMPT_FILE" ] || { log "no prompt file $PROMPT_FILE — skipping"; exit 0; }
 
-# --- Analyze (read-only) ---------------------------------------------------
+# --- Analyze (read-only over GitHub/repo, one narrow Slack write) ----------
 PROMPT="$(sed -e "s#{{TRANSCRIPT}}#$TRANSCRIPT#g" \
               -e "s#{{SCHEMA}}#$SCHEMA#g" \
-              -e "s#{{OPS_REPO}}#$OPS_REPO#g" "$PROMPT_FILE")"
+              -e "s#{{OPS_REPO}}#$OPS_REPO#g" \
+              -e "s#{{CANVAS_ID}}#$CANVAS_ID#g" "$PROMPT_FILE")"
 
 log "analyzing $TRANSCRIPT"
 if [ -n "${MCP_ISSUE_LOOP_ANALYZER_OUT:-}" ]; then
@@ -76,7 +87,13 @@ if [ -n "${MCP_ISSUE_LOOP_ANALYZER_OUT:-}" ]; then
   OUT="$MCP_ISSUE_LOOP_ANALYZER_OUT"
 else
   command -v claude >/dev/null 2>&1 || { log "missing claude — skipping capture"; exit 0; }
-  OUT="$(claude -p "$PROMPT" --model sonnet --allowedTools "Read,Grep" 2>>"$LOG")" || {
+  # Read,Grep stay read-only over the transcript/schema/repo; the two Slack
+  # tools are the one narrow write this analyzer has, scoped to a single
+  # canvas — present only if the environment has the Slack connector attached,
+  # which the analyzer prompt is told to tolerate the absence of.
+  OUT="$(claude -p "$PROMPT" --model sonnet \
+    --allowedTools "Read,Grep,mcp__Slack__slack_read_canvas,mcp__Slack__slack_update_canvas" \
+    2>>"$LOG")" || {
     log "analyzer invocation failed"; exit 0; }
 fi
 

@@ -2,15 +2,17 @@
 name: triage-learnings
 description: >-
   Loop B of the self-learning system — triage the open `proto-learning` issues on
-  the umbraco-mcp-ops repo. Reads the captured proto-learnings, dedupes and clusters
-  them, applies a promotion threshold, and routes each cluster to the right home:
-  a tracked issue on the specific Umbraco MCP repo it affects (domain-specific
-  learnings only), a gated PR to the shared umbraco-mcp-skills (Umbraco-MCP-Base) for
-  cross-repo/generalizable ones, or a `loop-improvement` issue on the ops repo for
-  learnings about the loop itself. Loop B files issues to owning repos and only
-  drafts PRs for the shared tooling — it never hand-edits a product repo. Nothing
-  auto-merges; discarded learnings are closed with a reason. Runs locally or as a
-  scheduled cloud routine; GitHub work goes through the required `github-ops` skill.
+  the umbraco-mcp-ops repo plus the "MCP Loop Learnings" Slack canvas (the
+  cross-org-safe capture path). Reads the captured proto-learnings from both,
+  dedupes and clusters them, applies a promotion threshold, and routes each cluster
+  to the right home: a tracked issue on the specific Umbraco MCP repo it affects
+  (domain-specific learnings only), a gated PR to the shared umbraco-mcp-skills
+  (Umbraco-MCP-Base) for cross-repo/generalizable ones, or a `loop-improvement`
+  issue on the ops repo for learnings about the loop itself. Loop B files issues to
+  owning repos and only drafts PRs for the shared tooling — it never hand-edits a
+  product repo. Nothing auto-merges; discarded learnings are closed/marked with a
+  reason. Runs locally or as a scheduled cloud routine; GitHub work goes through the
+  required `github-ops` skill, canvas work through the Slack connector directly.
   Trigger on "triage the learnings", "triage proto-learnings", "run loop B",
   "process the learning backlog".
 ---
@@ -39,8 +41,13 @@ product repo's content is edited unreviewed.
 Runs both locally and as a scheduled routine on Claude web. **For every GitHub
 operation, use the `github-ops` skill** — it owns the local-vs-web mechanism, so this
 skill just names the *operation* and never restates or hard-codes how to do it.
+**For the canvas inbox, use `slack_read_canvas`/`slack_update_canvas` directly**
+— the Slack connector must be attached to this routine (same connector the
+capture hooks use).
 
-> **`github-ops` must be installed for this loop to run.**
+> **`github-ops` must be installed for this loop to run.** The Slack connector
+> must be attached for the canvas half of the inbox (Step 1) — without it,
+> this skill still runs, just over the GitHub inbox alone.
 
 ## Config (resolve once)
 
@@ -48,6 +55,8 @@ skill just names the *operation* and never restates or hard-codes how to do it.
 |-------|-------|
 | Inbox repo | `hifi-phil/umbraco-mcp-ops` |
 | Inbox filter | open issues, label `proto-learning`, **not** label `triaged` |
+| Canvas inbox | `F0BQ31E4R8F` ("MCP Loop Learnings", posted in `#mcp-ops-learning`) |
+| Canvas filter | `## Log` table rows where `Status` = `New` |
 | Homes | see the routing table below |
 | Base branch (shared-skills PR) | **detect** via the `release-and-branching` skill |
 | Routed items per run cap | **10** total, of which **≤ 5** are PRs (see Caps) |
@@ -72,19 +81,33 @@ lesson, or hold it (leave the proto-learning open) rather than mis-filing.
 
 ## Step 1 — gather the inbox
 
-**List** the open `proto-learning` issues on `hifi-phil/umbraco-mcp-ops` (via
-`github-ops`), filtering out any also carrying `triaged`. For each, parse the fenced
-```json record from the body (see the
-[schema](../mcp-issue-loop/references/proto-learning-schema.md)). Skip malformed ones
-with a comment asking for a reformat. If the inbox is empty, report "nothing to
-triage" and stop.
+Two sources, both feeding the same cluster-and-route pipeline:
+
+1. **GitHub.** **List** the open `proto-learning` issues on
+   `hifi-phil/umbraco-mcp-ops` (via `github-ops`), filtering out any also
+   carrying `triaged`. For each, parse the fenced ```json record from the body
+   (see the [schema](../mcp-issue-loop/references/proto-learning-schema.md)).
+   Skip malformed ones with a comment asking for a reformat.
+2. **Slack canvas.** `slack_read_canvas` on `F0BQ31E4R8F`, and take every
+   `## Log` row where `Status` = `New`. Parse the row into the same record
+   shape (`Source Repo#Issue` → `sourceRepo`/`sourceIssue`, `Category` →
+   `category`, `Lesson` → `lesson`, `Guessed Home` → `guessedHome`, `Notes` →
+   `detail`/`fix`), keeping the row's position (needed in Step 5 to update it).
+
+The analyzer appends to **both** on every capture (Step captures aren't
+either/or), so the same finding can legitimately show up as a GitHub issue
+*and* a canvas row — that's expected, not a bug; Step 2's dedupe collapses it
+back to one item regardless of which source(s) it came from. If both inboxes
+are empty, report "nothing to triage" and stop.
 
 ## Step 2 — cluster & dedupe
 
-Group issues that express the **same lesson** (same `sourceRepo` + `category` +
-semantically-equivalent `lesson`). Each cluster becomes **one** routed item and
-carries the full list of source issue numbers as **provenance**. Deduping across the
-whole open set is the whole point — do it here, in reasoning, not per-issue.
+Group entries — from either or both sources — that express the **same lesson**
+(same `sourceRepo` + `category` + semantically-equivalent `lesson`). Each
+cluster becomes **one** routed item and carries the full list of source
+issue numbers **and/or** canvas row references as **provenance**. Deduping
+across the whole open set — GitHub and canvas together — is the whole point;
+do it here, in reasoning, not per-entry.
 
 ## Step 3 — promotion threshold
 
@@ -132,14 +155,25 @@ and the occurrence count (threshold evidence). Reviewers approve facts, not vibe
 
 ## Step 5 — mark processed
 
-- **`shared-mcp-skills` (PR):** for each source issue in the cluster, **comment**
+For each source in the cluster, mark it in whichever inbox(es) it came from:
+
+- **`shared-mcp-skills` (PR):** for each source GitHub issue, **comment**
   with the PR link and add the **`triaged`** label (so the next run skips it) — but
   **leave it open** until the PR merges, so a rejected PR doesn't silently lose the
   learning. Never close a proto-learning just because you opened a PR for it.
-- **`mcp-repo` and `loop-self` (issues):** **close** each source proto-learning with
+  For each source canvas row, `slack_update_canvas` (`replace` on that row) to
+  set `Status` to `Actioned` and `Notes` to the PR link — canvas rows have no
+  open/closed state, so this is the equivalent of "leave it open but marked."
+- **`mcp-repo` and `loop-self` (issues):** **close** each source GitHub issue with
   a comment linking the new issue — the learning lives in that issue now, so closing
-  is safe (no risk of a rejected PR losing it).
-- **Discarded:** close the source issue with a one-line reason.
+  is safe (no risk of a rejected PR losing it). For each source canvas row, set
+  `Status` to `Actioned` and `Notes` to the new issue link.
+- **Discarded:** close the source GitHub issue with a one-line reason; set the
+  source canvas row's `Status` to `Discarded` and `Notes` to the same reason.
+
+As in Step 1, re-read the canvas (`slack_read_canvas`) immediately before each
+`slack_update_canvas` call in this step — section IDs go stale after every
+edit, including your own from a moment ago.
 
 ## Caps & guardrails
 
@@ -156,8 +190,12 @@ and the occurrence count (threshold evidence). Reviewers approve facts, not vibe
 ## Running as a scheduled routine
 
 Schedule this skill weekly as a Claude Code cloud routine (see the `schedule`
-skill). The routine wakes, runs Steps 1–5 against the current inbox, routes up to 10
-clusters, and stops — issues sit in their owning repos and any shared PR sits for
-review. Because capture is continuous and triage is periodic, a weekly cadence keeps
-the inbox from growing without flooding anyone. All GitHub work goes through the
-`github-ops` skill.
+skill). Attach the Slack connector (same one the capture hooks use) alongside
+`github-ops`, or Step 1's canvas half silently has nothing to read. The routine
+wakes, runs Steps 1–5 against the current inbox (GitHub + canvas), routes up to
+10 clusters, and stops — issues sit in their owning repos, any shared PR sits
+for review, and canvas rows sit at their new `Status`. Because capture is
+continuous and triage is periodic, a weekly cadence keeps the inbox from
+growing without flooding anyone. All GitHub work goes through the `github-ops`
+skill; all canvas work goes through `slack_read_canvas`/`slack_update_canvas`
+directly.
