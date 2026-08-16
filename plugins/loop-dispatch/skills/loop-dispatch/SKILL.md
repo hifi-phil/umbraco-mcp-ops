@@ -3,11 +3,10 @@ name: loop-dispatch
 description: >-
   Single front door for a repo's automation loops, so one routine per repo can
   handle every loop event instead of one routine per event. Deterministically
-  routes each triggering GitHub event (parsed from the trigger block, decided by
-  route-event.sh) to the matching loop skill; a non-matching event is a quiet
-  no-op. It only routes; each loop owns its own guardrails. Repo-agnostic;
-  github-ops required. Trigger from one per-repo routine wired to all the loop
-  events.
+  routes each triggering GitHub event to the matching loop skill; a non-matching
+  event is a quiet no-op. It only routes; each loop owns its own guardrails.
+  Repo-agnostic; github-ops required. Trigger from one per-repo routine wired to
+  all the loop events.
 ---
 
 # loop-dispatch
@@ -25,7 +24,8 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 
 `route-event.sh` (run **at the edge** by the caller workflow — see new-loop-routine and
 [`references/webhook-context.md`](references/webhook-context.md), not here) maps the exact
-`(event, action, label|state)` tuple to a loop. Anything unmatched → the routine is
+`(event, action, label|state)` tuple to a loop. After changing the routing table, run
+`test/run.sh` to verify its decisions stay correct. Anything unmatched → the routine is
 **never fired**. The mapping it applies:
 
 | event | action | label / state | Run |
@@ -39,21 +39,9 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 
 The `issue_comment` row is the only one that isn't a label event: it carries the **next round of
 an `ai-discuss` conversation**. The comment payload has no `.label`, so the router reads the
-labels already **on the issue** (`.issue.labels[]`) instead, plus four gates that matter:
-
-- **The comment must be unsigned.** `issue-discuss-loop` posts as the **maintainer's own
-  account** (not a bot — verified), so nothing in the author fields tells its reply from a
-  human's. It therefore signs every comment with `<!-- issue-discuss-loop -->`, and a signed
-  comment routes nowhere. Without this the loop would answer itself indefinitely.
-- **A comment starting `//` addresses a person, not the loop.** Comments are for the loop by
-  default; the prefix is the opt-out that lets colleagues talk to each other on an issue the
-  loop is watching. Anchored, so a `//` inside a URL still routes.
-- **The commenter must be trusted** — `OWNER`, `MEMBER`, or `COLLABORATOR`. These repos are
-  public, so otherwise any user could wake a cloud session by commenting.
-- **The issue must be open**, and it must be an issue: PR conversation comments arrive as
-  `issue_comment` too and route nowhere.
-
-All of them fail closed — a missing or unexpected field routes nowhere.
+labels already **on the issue** (`.issue.labels[]`) instead, plus the gates in the table row
+above. See `references/webhook-context.md` for the exact fields and why each gate exists —
+all of them fail closed, a missing or unexpected field routes nowhere.
 
 Rework is a **label**, not the review event — uniform with the rest, and it works with one
 account (you can't fire a `pull_request_review` workflow by reviewing your *own* PR, and
@@ -68,8 +56,8 @@ stops immediately, waking no routine.
 
 ## Config (resolve once)
 
-- **Repo** — identify the current repo (github-ops → *Detect base branch / repo*).
-- **github-ops required** — every downstream loop uses it; it must be installed.
+- **github-ops required** — every downstream loop uses it; it must be installed. Name the
+  operation; it owns the command/tool.
 
 ## Step 1 — take the resolved route
 
@@ -95,7 +83,7 @@ specific issue/PR, and **follow that skill's instructions verbatim**:
   monorepo, full test suite) — it takes `/mcp-issue-loop` like the server repos.
 - `auto-merge` PR → **`/merge-flow`** (it sweeps all `auto-merge` PRs; the event is
   just the wake-up).
-- PR review changes-requested → **`/rework-loop`** for that PR.
+- `auto-rework` PR label → **`/rework-loop`** for that PR.
 - `auto-release` issue → **`/auto-release-loop`**, version taken from the issue title.
 - `ai-discuss` issue, or a comment on one → **`/issue-discuss-loop`** for that issue. It
   discusses only: no code, no PR, and it never clears its own label (the human owns
@@ -112,17 +100,10 @@ loop skill directly.)
 
 ## Rules
 
-- **Route, never reimplement.** loop-dispatch only invokes the loop skills. All
-  merge/build/release/review policy, models, caps, and notifications live in those
-  skills — defer to them completely.
-- **Re-check preconditions.** Never act on a stale event; if the label's gone or the
-  PR/issue is closed, quiet no-op.
-- **One event, one loop.** No chaining within a single fire.
 - **Respect each loop's gate** — `ready-for-ai` for building, `auto-merge` as the
   merge approval, `auto-release` to ship. loop-dispatch does not relax any of them.
 - **Quiet by default.** Say nothing unless a delegated loop does — don't add a
   dispatch-level notification on top of the loop's own.
-- **github-ops for all GitHub work.** Name the operation; it owns the command/tool.
 - **Never use `fable`.** The dispatcher runs on a cheap base model (inherit the
   routine's model); the real work — and its model choice — happens inside the loop
   skills and their subagents.
