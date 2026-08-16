@@ -23,6 +23,11 @@ concrete threshold to decide against.
 
 ## Verification — invoke these, don't just read about them
 
+This section is about skill-tighten's own *optional* Step 6, gated by trim size — not
+the mandatory Steps 4-5 (`skill-creator-validator`, `lossless-reviewer`), which always
+run after convergence regardless of trim size. The two mechanisms below actually
+*execute* the skill against real prompts; Steps 4-5 only read files.
+
 1. **Blind comparison.** skill-creator's "Advanced: Blind comparison" section
    (`agents/comparator.md` + `agents/analyzer.md`). Use after skill-tighten converges,
    for a substantial trim (rough trigger: SKILL.md's line count dropped by more than
