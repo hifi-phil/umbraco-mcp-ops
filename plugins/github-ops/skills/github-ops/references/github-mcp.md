@@ -21,6 +21,7 @@ Auth is the MCP server's connected GitHub App — no token to paste. Mirror of
 | Rewrite the body | `issue_write` (`method: "update"`, set `body`) — send the whole body; it replaces, never appends |
 | Add / remove label | `issue_write` (`method: "update"`, set the `labels` array). `label_write` manages label *definitions*, not application. |
 | Close | `issue_write` (`method: "update"`, `state: "closed"`) |
+| Search | `search_issues` |
 
 ## Pull requests
 
@@ -36,6 +37,7 @@ Auth is the MCP server's connected GitHub App — no token to paste. Mirror of
 | **Merge** | `merge_pull_request` (pass the merge method; branch deletion may not be exposed — see Notes) |
 | Update a PR's body | `update_pull_request` |
 | **Close without merging (+ comment)** | `update_pull_request` (`state: "closed"`) + `add_issue_comment` (branch deletion may not be exposed — see Notes) |
+| Update branch (bring up to date) | `update_pull_request_branch` |
 | Re-request / add review | `pull_request_review_write` |
 | List Dependabot security alerts | `list_dependabot_alerts` (security toolset; needs the connected app to grant Dependabot-alerts read) |
 
