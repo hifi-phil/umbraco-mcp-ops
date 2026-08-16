@@ -1,6 +1,6 @@
 # Discover & classify — which PRs are in scope
 
-Detail for **step 2**. All GitHub operations go through `github-ops`.
+Detail for **step 2**.
 
 ## Gather the two inputs
 
@@ -16,8 +16,8 @@ limitation**. Do not guess which PRs are security.
 
 ## Classify each PR
 
-Parse the package(s) and `from → to` versions from the title (get the PR via `github-ops`
-→ *Get a PR* for multi-package bundles), then:
+Parse the package(s) and `from → to` versions from the title (get the PR → *Get a PR*
+for multi-package bundles), then:
 
 - **INCLUDE** — open security alert, no major bump, and the `to` version reaches the
   alert's `first_patched_version`.

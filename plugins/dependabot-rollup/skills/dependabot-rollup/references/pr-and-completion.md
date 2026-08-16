@@ -1,7 +1,7 @@
 # The PR, the CI loop, and reporting
 
 Detail for **step 7** (open/update the PR), **step 8** (drive to green, close the
-superseded PRs) and **step 10** (notify). All GitHub operations go through `github-ops`.
+superseded PRs) and **step 10** (notify).
 
 ## The rollup PR — step 7
 
