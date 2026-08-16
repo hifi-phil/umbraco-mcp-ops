@@ -17,13 +17,11 @@ improving.
    this repo's automated loops, whichever one it is — nothing worthwhile
    exists: output `{"file":false}` and stop. Don't assume it's `mcp-issue-loop`
    specifically; judge from what the transcript actually shows.
-2. If it was, decide whether something **non-obvious** happened that a future
-   run or the skills should benefit from: a CI failure you had to diagnose, a
-   repeated mistake, an unclear/missing/wrong pattern, a repo-specific gotcha, a
-   cross-repo pattern, a tooling problem, or a blocker. Apply the schema's
-   **signal-not-noise** bar: if the run was clean and by-the-book, output
-   `{"file":false}`. When in doubt, do **not** file. One learning per finding —
-   pick the single most valuable one if several exist.
+2. If it was, decide whether something **non-obvious** happened, per the schema's
+   when-to-capture categories. Apply the schema's **signal-not-noise** bar: if the
+   run was clean and by-the-book, output `{"file":false}`. When in doubt, do
+   **not** file. One learning per finding — pick the single most valuable one if
+   several exist.
 3. Extract provenance from the transcript: source repo (`owner/name`), the
    issue or PR number this was working (whichever applies — some loops work a
    PR directly, some a repo-wide sweep with neither), the model tier the

@@ -10,7 +10,9 @@ description: >-
   from scratch or running eval benchmarks (use skill-creator for that) or for a one-off
   spot check (just ask for a review of the file). Trigger on "tighten this skill",
   "trim <skill> down to essentials", "make this skill skinny", "boil this skill down",
-  or "run skill-tighten on <path>".
+  or "run skill-tighten on <path>" — and whenever the user says a skill has grown
+  bloated, repetitive, or too long for what it does, even if they never use the word
+  "tighten".
 ---
 
 # skill-tighten
@@ -35,8 +37,9 @@ mean.
 | Clean-streak target | **2** consecutive rounds with no findings |
 | Hard iteration cap | **8** rounds |
 | Reviewer | fresh `skill-tightener-reviewer` agent every round |
+| Verification model | different from whichever model is running this skill right now — check your own identity. Default: `opus`, unless you *are* already Opus, then `sonnet`. |
 
-## Step 0 — note any pre-existing changes
+## Step 0 — note any pre-existing changes, snapshot the directory
 
 Run `git status` on the skill's directory before starting. If it's already dirty, say
 so before making any edits of your own — the loop's edits land on top of whatever's
@@ -44,11 +47,18 @@ already there, and the user should be able to tell their own in-progress changes
 from the loop's when they look at the final diff. This is disclosure, not a gate — it
 doesn't block starting.
 
+Also copy the skill's directory to a scratch location (`cp -r <skill-dir>
+"$(mktemp -d)/snapshot"`) regardless of git state. Step 5's lossless review diffs
+against this snapshot, not git history, so it works the same whether or not the
+directory was already dirty.
+
 ## Step 1 — review round
 
 Spawn the **`skill-tightener-reviewer`** agent (defined in this plugin) against the
-skill directory and this skill's own `references/` folder. It returns either
-**CLEAN** or **FINDINGS**, per the agent's own output contract.
+skill directory and this skill's own `references/` folder — `tightening-checklist.md`
+(the checks it grades against) and `generic-skill-shape.md` (the router, determinism,
+and output-material tests behind checklist rows 4-6). It returns either **CLEAN** or
+**FINDINGS**, per the agent's own output contract.
 
 ## Step 2 — apply
 
@@ -70,12 +80,45 @@ just clean ones.
   not run another round.
 - Otherwise → return to Step 1 for a fresh round over the now-edited files.
 
-## Step 4 — optional verification via skill-creator
+## Step 4 — skill-creator structural validation
 
-Once converged, decide whether the trim is worth the extra confidence of actually
-*running* the skill rather than just reading it — the structural review never executes
-anything. See "Verification" in `references/skill-creator-guide.md` for which
-skill-creator mechanism to invoke and when it's worth the setup cost.
+Run this whether the loop converged or hit the cap — validate whatever the final
+state is either way. Locate the installed `skill-creator` plugin by globbing
+`**/plugins/skill-creator/skills/skill-creator/SKILL.md` under the plugin marketplace
+directory (typically `~/.claude/plugins/marketplaces/`). If it isn't installed, skip
+this step and Step 6, and say so in the Output — the tightening loop's result still
+stands without them.
+
+Otherwise spawn the **`skill-creator-validator`** agent (defined in this plugin)
+against the skill directory and that `SKILL.md`, using the Verification model (see
+Config) — a different model than the one that ran the tightening rounds, so it isn't
+grading its own blind spots. It returns **CLEAN** or **FINDINGS**.
+
+If findings, apply them directly (mechanical, same as Step 2). This is a single
+audit-and-fix pass, not a loop to convergence — skill-creator's guide is a quality
+bar, not something that oscillates round to round the way duplication does.
+
+## Step 5 — lossless review
+
+Spawn the **`lossless-reviewer`** agent (defined in this plugin) against the current
+skill directory and the Step 0 snapshot, using the Verification model (see Config).
+It returns **LOSSLESS** or **FINDINGS** — every line any round removed, checked for
+whether it's genuinely covered elsewhere or just gone.
+
+If findings, restore or fix each one directly, then run the lossless-reviewer once
+more against the updated skill and the same Step 0 snapshot. Two rounds is enough
+here — this step catches "did tightening cut too far," not "is there still
+duplication," so it doesn't need the main loop's clean-streak/cap machinery. If the
+second round still finds something, report it as **lossless review incomplete**
+rather than silently looping — a human should look.
+
+## Step 6 — optional deeper verification via skill-creator
+
+Once Steps 4-5 are done, decide whether the trim is *also* worth the extra confidence
+of actually **running** the skill rather than just reading it. See "Verification" in
+`references/skill-creator-guide.md` for which heavier skill-creator mechanism to
+invoke, when it's worth the setup cost, and how this step differs from the mandatory
+Steps 4-5.
 
 ## Output
 
@@ -83,7 +126,10 @@ Report, regardless of outcome:
 - rounds run, and what each round fixed (one line per finding)
 - starting vs. final line count of `SKILL.md` — the "skinnier" signal
 - **converged** or **not converged** — never blur the two
-- whether Step 4 verification ran, and what it found, if it did
+- skill-creator validation (Step 4): what it found, if anything, and what was fixed
+- lossless review (Step 5): **lossless**, or what was found + restored, or
+  **incomplete** if the second round still found something
+- whether Step 6's optional deeper verification ran, and what it found, if it did
 
 ## Guardrails
 

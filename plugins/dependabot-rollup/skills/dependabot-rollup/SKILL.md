@@ -7,7 +7,7 @@ description: >-
   worktree, so the invoking checkout is never switched or dirtied. The rollup always lands
   on `dev`. Invoke as `/dependabot-rollup`, or whenever a repo's open Dependabot security
   PRs need consolidating into one verified rollup PR. Runs unattended as a scheduled **local**
-  routine (never a cloud one — no Dependabot-alerts read). Requires the `github-ops` skill.
+  routine (never a cloud one). Requires the `github-ops` skill.
 ---
 
 # dependabot-rollup
@@ -36,16 +36,17 @@ merge straight to `$SOURCE` — so there's nothing for this skill to do: stop.
 ## Environment
 
 **GitHub-API work** goes through the **`github-ops`** skill (`gh` locally, GitHub MCP on
-Claude web); it must be available for this skill to run. Steps and references name the
-*operation* — `github-ops` has the command. **Working-tree work** (merges, lockfiles,
-install, build) needs a clone and the repo's toolchain locally, not just API access.
+Claude web); it must be available for this skill to run, and its commands are what the
+"→ *operation*" references throughout these steps actually invoke. **Working-tree
+work** (merges, lockfiles, install, build) needs a clone and the repo's toolchain
+locally, not just API access.
 
 ## Procedure
 
 ### 1. Preflight — resolve the repo, the default branch, and prior state
 
-Confirm `github-ops` is present and auth is live (locally `gh auth status`; stop and report
-if not). Then, **without changing branches**, run `scripts/preflight.sh`:
+Confirm auth is live (locally `gh auth status`; stop and report if not). Then,
+**without changing branches**, run `scripts/preflight.sh`:
 
 ```bash
 bash "$CLAUDE_PLUGIN_ROOT/scripts/preflight.sh"
@@ -54,9 +55,8 @@ bash plugins/dependabot-rollup/scripts/preflight.sh
 ```
 
 It fetches, resolves `REPO` and `SOURCE` (the default branch — `origin/HEAD` is occasionally
-unset), and confirms `origin/dev` exists — exiting loudly if either check fails, since no
-`dev` means Dependabot's PRs already merge straight to `SOURCE` and there's nothing to roll
-up. Take `REPO` and `SOURCE` from its output. Ignore `git status` — a dirty checkout is
+unset), and confirms `origin/dev` exists — exiting loudly if either check fails (see
+above). Take `REPO` and `SOURCE` from its output. Ignore `git status` — a dirty checkout is
 fine and must not abort the run.
 
 Then **list the open PRs on `dev`** (→ *List PRs by label / state*) looking for a
@@ -96,13 +96,9 @@ bash plugins/dependabot-rollup/scripts/commit-and-push.sh
 
 ### 8. Drive to green, then close the superseded PRs → same file
 
-Strictly in that order: the closes are the only thing standing between a failed rollup and
-lost security fixes.
+Strictly in that order.
 
 ### 9. Tear down the worktree → [`references/worktree.md`](references/worktree.md)
-
-Whenever a worktree was created — on success, on `NEEDS-ME`, and on any error or early stop
-from step 3 onwards.
 
 ### 10. Notify → [`references/pr-and-completion.md`](references/pr-and-completion.md)
 

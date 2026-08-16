@@ -29,9 +29,6 @@ It **writes issues, not code.** No branches, no PRs, no `ready-for-ai`.
 
 ## Trigger & scope
 
-- Fired when an issue is **labelled `ai-discuss`**, or when a **new comment** lands on an issue
-  that already carries it (both routed by the loop-dispatch Action), or run manually as
-  "discuss issue #N".
 - **The user removes `ai-discuss`, not you.** Unlike every other loop, the label here means
   *discussion is open*, not *work pending*, so it stays on until they're satisfied. The round cap
   is the only exception.
@@ -62,9 +59,9 @@ because missing either one breaks the loop rather than just degrading it.
 
 ## Step 1 — read the thread, then the code
 
-Follow [`thread-protocol.md`](references/thread-protocol.md): get the issue and every comment
-(github-ops → *Get / read an issue*), split them into yours / `//` / addressed-to-you, check the
-round count, and stop early if there's nothing new aimed at you.
+Follow [`thread-protocol.md`](references/thread-protocol.md): get the issue and every comment,
+split them into yours / `//` / addressed-to-you, check the round count, and stop early if
+there's nothing new aimed at you.
 
 Then **read the code** the issue is about — see the "read the code before writing any of it" rule
 in [`good-issues.md`](references/good-issues.md).
@@ -123,34 +120,21 @@ they want it built.
 
 ## Guardrails
 
-- **Issues only.** No code, no branches, no PRs, no `ready-for-ai`. The only writes are issue
-  comments and the issue body (freely for a stub; on the user's say-so when it was already
-  written).
-- **One comment per fire.** Not three in a row.
-- **Sign every comment**, or the loop answers itself.
-- **Never answer a `//` comment.**
-- **Nothing new addressed to you → quiet no-op.** Say nothing rather than something.
-- **Round cap: 10** marked comments since the last cap marker → post the cap comment, remove
-  `ai-discuss`, stop.
-- **Only the maintainers steer.** Comments from people without write access never redirect the
-  issue or trigger a body rewrite.
-- **Simplest wins, always.** Never recommend the bigger plan without saying why the smaller one
-  won't do.
-- **Consensus, not compliance.** Push back on over-engineering — the user's included — and take
-  good pushback in return. Stuck? Name the question.
-- **Don't grow the issue.** Critique may say "cut this" and should flag scope creep; it must never
-  bolt on features nobody asked for.
-- **Never clear `ai-discuss`** (the user owns it — the round cap is the sole exception) and
-  **never add `ready-for-ai`** (their call too).
-- **Read the code before asking.** Questions are for intent and trade-offs; anything the repo can
-  answer, look up yourself.
+The only writes are issue comments and the issue body (freely for a stub; on the user's
+say-so when it was already written), plus the round cap's one-time label removal (see
+`thread-protocol.md`). See the two rules above, `thread-protocol.md`, and `good-issues.md`
+for everything else — the two guardrails below only add what those three sources don't
+already cover:
+
+- **Don't grow the issue.** Critique may say "cut this" and should flag scope creep; it must
+  never bolt on features nobody asked for.
 - **Re-check before acting.** If the label's gone or the issue is closed by the time you run,
   **quiet no-op**.
 
 ## Running as a routine
 
-Trigger: an issue labelled **`ai-discuss`**, or a new comment on an issue that carries it — both
-routed by the loop-dispatch Action. One issue per fire. It reads and writes prose, so use a
+Both trigger paths route through the loop-dispatch Action. One issue per fire. It reads
+and writes prose, so use a
 capable model (Sonnet or better); the thinking is the product here. State cloud vs local in the
 routine prompt. No local toolchain is needed — it never builds anything.
 

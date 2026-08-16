@@ -141,17 +141,19 @@ case "$event/$action" in
     # loop SIGNS every comment with `<!-- issue-discuss-loop -->` and this gate skips signed
     # comments. That works the same in cloud and local runs, whoever the account is.
     #
-    # Six gates, all required, all fail-closed (a missing/unknown field routes nowhere):
+    # Seven gates, all required, all fail-closed (a missing/unknown field routes nowhere):
     #   1. the issue carries `ai-discuss` — the label IS "the conversation is open"
     #   2. the comment is NOT signed by the loop — the anti-self-reply guard
     #   3. the comment does NOT start with `//` — that prefix means "I'm talking to a
     #      colleague, not the loop". Comments are for the loop by default; `//` opts out, so
     #      people can hold a conversation on an issue the loop is watching.
-    #   4. the commenter is trusted (OWNER / MEMBER / COLLABORATOR). These repos are public:
-    #      without this, any GitHub user could burn a cloud session — or steer a rewrite of
-    #      the issue body — just by commenting.
-    #   5. the issue is still open
-    #   6. it's an issue, not a PR (GitHub sends PR conversation comments as issue_comment)
+    #   4. the commenter's association is trusted (OWNER / MEMBER / COLLABORATOR). These repos
+    #      are public: without this, any GitHub user could burn a cloud session — or steer a
+    #      rewrite of the issue body — just by commenting.
+    #   5. the commenter is a real user, not a bot or app (author_type == User) — distinct from
+    #      #4: a trusted-looking association doesn't rule out an automated/bot author.
+    #   6. the issue is still open
+    #   7. it's an issue, not a PR (GitHub sends PR conversation comments as issue_comment)
     if labels_include "$issue_labels" ai-discuss \
        && [ -z "$self_marked" ] \
        && [ -z "$human_only" ] \

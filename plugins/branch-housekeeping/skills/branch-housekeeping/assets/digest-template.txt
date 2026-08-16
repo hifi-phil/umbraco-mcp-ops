@@ -1,0 +1,33 @@
+:broom: *Umbraco MCP branch housekeeping* — 2026-08-12
+
+*Repos missing "Automatically delete head branches": 1*
+• umbraco/Umbraco-MCP-Base — turn it on: Settings → General → Pull Requests
+
+*Merged — safe to delete, work already in mainline: 2*
+• umbraco/Umbraco-CMS-MCP-Dev  `release/18.0.2`  (PR #338)
+• umbraco/Umbraco-MCP-Base  `chore/thing`  (PR #199)
+
+*Needs review — never auto-actioned: 3*
+• <https://github.com/umbraco/Umbraco-MCP-Base/compare/dev...chore/merge-main-to-dev|umbraco/Umbraco-MCP-Base@chore/merge-main-to-dev> — PR #251 merged BUT branch reused since (2 commit(s) not in dev) — NOT deleted, last commit 2026-08-06
+• <https://github.com/umbraco/Umbraco-CMS-MCP-Dev/pull/99|umbraco/Umbraco-CMS-MCP-Dev@claude/install-dotnet-U6yLm> — PR #99 closed unmerged, last commit 2026-01-22
+• <https://github.com/umbraco/Umbraco-CMS-MCP-Dev/tree/spike/idea|umbraco/Umbraco-CMS-MCP-Dev@spike/idea> — no PR found, last commit 2026-05-15
+
+_Kept 18 branch(es) with open PRs untouched._
+
+---
+
+Empty sections keep their line and say so — `• none` for the merged list, `• none :tada:` for
+the review list, and for the settings check:
+
+• none — all swept repos reap merged branches at merge time :tada:
+
+---
+
+Two sections appear only when they apply, after the kept-count line:
+
+*Not fully covered:*
+• umbraco/Some-Repo — archived, skipped
+• umbraco/Other-Repo — 12 branch(es) past the 200 cap, NOT classified
+
+*Could not read (gap in this sweep):*
+• umbraco/Whatever

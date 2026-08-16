@@ -1,11 +1,9 @@
 ---
 name: new-loop-routine
 description: >-
-  Stand up the standardised loop automation for a repo — one loop-dispatch routine per
-  repo, fired by a committed GitHub Action (not UI event triggers), with identical env,
-  model, tools, connections, and a thin prompt every time. The Action routes at the edge
-  and only fires the routine on a real match. Use when onboarding a new repo to the
-  loops, or to standardise/rewrite existing routines. Interactive/local.
+  Stand up the standardised loop-dispatch routine and caller GitHub Action for a repo —
+  the one-time setup that onboards a repo to the loop automation. Use when onboarding a
+  new repo to the loops, or to standardise/rewrite existing routines. Interactive/local.
 ---
 
 # new-loop-routine
@@ -42,7 +40,8 @@ Never use `fable`. Never put secrets in the prompt or config.
 
 **Preconditions (once per repo):**
 1. **Labels exist**: `ready-for-ai`, `generated-by-ai`, `ai-blocked`, `auto-merge`,
-   `auto-release`, `release-blocked`, `ai-discuss` (see `self-learning-system.md` §2).
+   `ai-discuss` (see `self-learning-system.md`'s "Setup § 2. Labels"); `auto-release` and
+   `release-blocked` are `auto-release-loop`'s own (see that skill's `SKILL.md`).
 2. **Skills reach the env** — `loop-dispatch` (and the loops) are in the
    `cloud-skill-sync` `SKILLS` list and the env has been rebuilt (bump `VERSION`, re-paste).
 3. **Org Actions policy** allows calling a reusable workflow from `hifi-phil/umbraco-mcp-ops`
@@ -76,8 +75,6 @@ gh api "search/code?q=repo:umbraco/<repo>+filename:loop-dispatch.yml+path:.githu
 
 ## Rules
 
-- **One routine + one caller workflow per repo.** The routine is fired by the Action's
-  Fire URL — no UI event triggers.
 - **Both templates are locked** — the routine prompt (`routine-prompts.md`) and the caller
   workflow (`caller-workflow.yml`) are copied **verbatim**; changing them means editing
   those files **in a PR**, never hand-editing a live routine or repo workflow.
@@ -85,4 +82,3 @@ gh api "search/code?q=repo:umbraco/<repo>+filename:loop-dispatch.yml+path:.githu
   loop skills and must not drift per repo.
 - **Standard config always.** Don't hand-tune per repo beyond `sources`/name and the two
   secrets.
-- **Never use `fable`.**
