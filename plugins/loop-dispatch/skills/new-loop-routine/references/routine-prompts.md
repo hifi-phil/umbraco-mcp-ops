@@ -16,15 +16,11 @@ a live routine's prompt. Substitution is the *only* per-repo change.
 Name: `loop-dispatch → {{OWNER_REPO}}`
 
 ```text
-You are running as a cloud worker; do all GitHub work via the GitHub MCP (github-ops). A GitHub loop event fired on {{OWNER_REPO}}. First consult the worker-env skill (read /root/env-manifest.md) to learn what this environment provides — .NET SDK, whether SQL Server is running, the v17/v18 demo instances, and run-umbraco.sh. Then run the loop-dispatch skill: read the <github-trigger-context> block, run route-event.sh to get the route, and dispatch to the matching loop exactly as loop-dispatch specifies, or quiet no-op when route=none. Follow loop-dispatch's guardrails verbatim; add no policy of your own.
+You are running as a cloud worker; do all GitHub work via the GitHub MCP (github-ops). A GitHub loop event fired on {{OWNER_REPO}}. Run the loop-dispatch skill: take the already-resolved route from this fire (the edge already ran route-event.sh) and dispatch to the matching loop exactly as loop-dispatch specifies, or quiet no-op when no route is given. Follow loop-dispatch's guardrails verbatim; add no policy of your own.
 ```
 
 The routine has **no UI event triggers** — it's fired by the committed GitHub Action
 ([`caller-workflow.yml`](caller-workflow.yml)), which subscribes to all the loop events
-and routes them at the edge via `route-event.sh`. The event → loop mapping it enforces:
-- Issue labelled `ready-for-ai` → **mcp-issue-loop** (or **content-issue-loop** on non-MCP repos)
-- PR labelled `auto-merge` → **merge-flow**
-- PR labelled `auto-rework` → **rework-loop**
-- Issue labelled `auto-release` → **auto-release-loop**
-- Issue labelled `ai-discuss`, **or a human comment on an issue that already carries it** →
-  **issue-discuss-loop**
+and routes them at the edge via `route-event.sh`. The exact event → loop mapping is
+`loop-dispatch`'s routing table (`../../loop-dispatch/SKILL.md` § The routing table) — not
+restated here to avoid drift; that table is the one `test/run.sh` verifies.
