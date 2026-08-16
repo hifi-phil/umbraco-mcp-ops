@@ -13,7 +13,7 @@
     {
       "name": "mcp-issue-loop",
       "source": "./plugins/mcp-issue-loop",
-      "description": "Label-driven loops that take an issue from rough idea to merged PR: `ai-discuss` talks it into shape before anyone builds it, `ready-for-ai` builds it to a CI-green PR, `auto-rework` acts on your review feedback. Bundles issue-discuss-loop, mcp-issue-loop, content-issue-loop (for repos with no Umbraco toolchain), rework-loop, and mcp-review. Runs locally (worktrees + parallel subagents + local tests) or as a cloud routine. Repo-agnostic. Install the separate `self-learning` plugin alongside this one to get automatic run capture.",
+      "description": "Label-driven loops that take an issue from rough idea to merged PR: `ai-discuss` talks it into shape before anyone builds it, `ready-for-ai` builds it to a CI-green PR, `auto-rework` acts on your review feedback. Bundles issue-discuss-loop, mcp-issue-loop, content-issue-loop (for repos with no Umbraco toolchain), rework-loop, and mcp-review. Runs locally (worktrees + parallel subagents + local tests) or as a cloud routine. Repo-agnostic.",
       "version": "1.9.0",
       "category": "workflow",
       "author": {

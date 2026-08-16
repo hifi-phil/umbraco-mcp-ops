@@ -216,21 +216,6 @@ above), and hand back if any trips:**
 - **Label / issue changes** — if the `ready-for-ai` label is removed or the issue
   is closed mid-flight, drop it from the loop immediately.
 
-## Capturing learnings (compounding)
-
-This loop's runs feed their own improvement, but not via anything in this
-skill — the **`self-learning` plugin** (a separate plugin, not bundled here)
-hooks `SubagentStop`/`SessionEnd` and captures automatically, for this loop and
-every other one in this repo, with no reference to `mcp-issue-loop` needed on
-either side. If it's installed, it just happens; if it isn't, this loop still
-works, it just isn't captured. Nothing here (or in any subagent) ever edits
-skills or `CLAUDE.md` inline — that's Loop B's job, once a human promotes a
-learning.
-
-**Your only capture-related duty: do the work well and don't fix learnings
-inline.** See the [self-learning system doc](../../../../docs/self-learning-system.md)
-for how capture and triage actually work.
-
 ## Rules
 
 - **Never touch an issue without the `ready-for-ai` label.** The label is the

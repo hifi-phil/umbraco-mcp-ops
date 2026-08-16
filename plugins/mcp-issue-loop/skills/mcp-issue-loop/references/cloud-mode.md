@@ -90,9 +90,7 @@ open `ready-for-ai` issue; none → quiet no-op):
    do **not** merge — review-response is [`rework-loop`](../../rework-loop/SKILL.md)'s job (it
    fires on the PR-review event), and merging is `merge-flow`'s.
 
-**Not used in cloud mode:** the cap-3 queue, worktrees, and the review-response phase. Capture
-still runs in cloud if the `self-learning` plugin's hooks are delivered to the session (see
-[cloud-skill-sync](../../../../../scripts/cloud-skill-sync/)) — nothing in this loop's own
-behavior changes either way. The same guardrails still hold —
-`ready-for-ai` is the only gate, reviews are non-negotiable, follow the repo's `CLAUDE.md`,
-never leave CI red, and a blocked issue gets labelled `ai-blocked` + a comment, then stop.
+**Not used in cloud mode:** the cap-3 queue, worktrees, and the review-response phase. The
+same guardrails still hold — `ready-for-ai` is the only gate, reviews are non-negotiable,
+follow the repo's `CLAUDE.md`, never leave CI red, and a blocked issue gets labelled
+`ai-blocked` + a comment, then stop.

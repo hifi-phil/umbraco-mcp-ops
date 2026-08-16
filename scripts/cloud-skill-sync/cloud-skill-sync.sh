@@ -29,7 +29,7 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="21"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="22"                                  # bump to force an env-cache rebuild / re-clone
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
@@ -81,10 +81,10 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     plug="$(find "$OPS_DIR/plugins" -maxdepth 1 -type d -name self-learning 2>/dev/null | head -1)"
     if [ -n "$plug" ] && [ -d "$plug/hooks" ]; then
       rm -rf "$HOOKS_ROOT"
-      mkdir -p "$HOOKS_ROOT/hooks" "$HOOKS_ROOT/references"
+      mkdir -p "$HOOKS_ROOT/hooks" "$HOOKS_ROOT/skills/triage-learnings/references"
       cp -r "$plug/hooks/." "$HOOKS_ROOT/hooks/"
-      [ -f "$plug/references/proto-learning-schema.md" ] && \
-        cp "$plug/references/proto-learning-schema.md" "$HOOKS_ROOT/references/"
+      schema="$plug/skills/triage-learnings/references/proto-learning-schema.md"
+      [ -f "$schema" ] && cp "$schema" "$HOOKS_ROOT/skills/triage-learnings/references/"
       chmod +x "$HOOKS_ROOT/hooks/"*.sh 2>/dev/null || true
       echo "installed hooks: $(ls -1 "$HOOKS_ROOT/hooks" 2>/dev/null | tr '\n' ' ')"
       # Register SubagentStop + SessionEnd (idempotent). CLAUDE_PLUGIN_ROOT is set inline

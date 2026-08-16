@@ -35,7 +35,7 @@ set -uo pipefail
 SCOPE="${1:-subagent}"
 CANVAS_ID="${SELF_LEARNING_CANVAS_ID:-F0BQ31E4R8F}"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-SCHEMA="$PLUGIN_ROOT/references/proto-learning-schema.md"
+SCHEMA="$PLUGIN_ROOT/skills/triage-learnings/references/proto-learning-schema.md"
 LOG="${SELF_LEARNING_LOG:-${HOME}/.cache/self-learning/capture.log}"
 mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
 log() { printf '%s [%s] %s\n' "$(date -u +%FT%TZ 2>/dev/null || echo now)" "$SCOPE" "$*" >>"$LOG" 2>/dev/null || true; }

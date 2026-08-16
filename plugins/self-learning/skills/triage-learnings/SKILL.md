@@ -81,7 +81,10 @@ lesson, or hold it (leave the row at `Status` = `New`) rather than mis-filing.
 ## Step 1 — gather the inbox
 
 `slack_read_canvas` on `F0BQ31E4R8F`, and take every `## Log` row where
-`Status` = `New`. Keep each row's position (needed in Step 5 to update it). If
+`Status` = `New`. Each row's fields (`Category`, `Guessed Home`, etc.) follow the
+[proto-learning schema](references/proto-learning-schema.md) — the same doc the
+capture hooks use to decide what to write, so this is the row shape's single
+source of truth. Keep each row's position (needed in Step 5 to update it). If
 the inbox is empty, report "nothing to triage" and stop.
 
 ## Step 2 — cluster & dedupe
