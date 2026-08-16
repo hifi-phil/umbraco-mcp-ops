@@ -74,6 +74,10 @@ unbounded/mistimed poll). Just wait on the process itself and trust its exit sta
 ```
 wait "$RUN_PID" || { echo "Umbraco did not become ready — tail /tmp/umbraco-run.log (script's own boot log) or /tmp/run-umbraco-wrapper.log (this wrapper's output)"; exit 1; }
 ```
+Once ready, get the live base URL (for MCP chaining to the running CMS, not just running tests):
+```
+grep UMBRACO_BASE_URL .env   # the ready base URL the tests use
+```
 
 Then run the change's tests:
 
