@@ -32,6 +32,8 @@ gh absent   (cloud routine) →  classify via mcp__github__*  (MCP reference)
 Both are supported and produce the **same digest** — see
 [Step 1](#step-1--classify-every-branch). Detect with `command -v gh`.
 
+> **`github-ops` must be installed for this skill to run.**
+
 Permissions: `metadata: read` + `pull_requests: read`. **No write scope at all.** If a run
 seems to want one, something has drifted from this skill — stop and say so.
 
