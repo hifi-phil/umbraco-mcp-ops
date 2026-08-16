@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
 # Deterministic tests for capture-proto-learning.sh.
-# Hermetic: no `claude`, no `gh`, no network. Uses the MCP_ISSUE_LOOP_ANALYZER_OUT
-# and MCP_ISSUE_LOOP_DRY_RUN seams and an overridden log path. Requires only jq + bash.
-#
-# Usage: bash run.sh   (exits non-zero if any case fails)
+# Hermetic: no `claude`, no network. Uses the MCP_ISSUE_LOOP_ANALYZER_OUT seam
+# and an overridden log path. Requires only jq + bash. The actual canvas write
+# happens inside the analyzer's own (mocked-out here) `claude -p` call, so
+# these tests only exercise the hook's prefilter/guards/logging around it.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,7 +39,7 @@ run_case() {
   fi
 }
 
-FILE_JSON='{"file":true,"title":"[proto-learning] umbraco/Umbraco-CMS-MCP-Editor#52: versionId needs z.guid()","record":{"sourceRepo":"umbraco/Umbraco-CMS-MCP-Editor","sourceIssue":52,"pr":141,"category":"repo-gotcha","lesson":"use z.guid() for Umbraco version ids","detail":"CI -32602 with z.string().uuid()","fix":"z.guid()","guessedHome":"shared-mcp-skills","modelTier":"sonnet","phase":"build"},"notes":"add-tool should mention this"}'
+FILE_JSON='{"file":true,"lesson":"use z.guid() for Umbraco version ids"}'
 
 # 1. Pre-filter rejects a non-loop transcript (never reaches the analyzer)
 run_case prefilter subagent "no loop signature — skipping" \
@@ -49,14 +49,15 @@ run_case prefilter subagent "no loop signature — skipping" \
 run_case skip subagent "analyzer decided SKIP" MCP_ISSUE_LOOP_ANALYZER_OUT='{"file":false}' \
   < <(event_for "$FIX/loop-build.jsonl")
 
-# 3. Injected FILE + DRY_RUN — parse + body build, nothing filed
-run_case file_dryrun subagent "DRY_RUN — would file title: [proto-learning] umbraco/Umbraco-CMS-MCP-Editor#52" \
-  MCP_ISSUE_LOOP_DRY_RUN=1 MCP_ISSUE_LOOP_ANALYZER_OUT="$FILE_JSON" \
+# 3. Injected FILE decision — the analyzer already wrote the canvas row itself
+# (mocked out here); the hook only logs the summary, no write of its own.
+run_case file_captured subagent "captured: use z.guid() for Umbraco version ids" \
+  MCP_ISSUE_LOOP_ANALYZER_OUT="$FILE_JSON" \
   < <(event_for "$FIX/loop-build.jsonl")
 
-# 4. Orchestrator scope path (SessionEnd) also parses + dry-run files
-run_case orchestrator_dryrun orchestrator "DRY_RUN — would file title:" \
-  MCP_ISSUE_LOOP_DRY_RUN=1 MCP_ISSUE_LOOP_ANALYZER_OUT="$FILE_JSON" \
+# 4. Orchestrator scope path (SessionEnd) also parses + logs the capture
+run_case orchestrator_captured orchestrator "captured: use z.guid() for Umbraco version ids" \
+  MCP_ISSUE_LOOP_ANALYZER_OUT="$FILE_JSON" \
   < <(event_for "$FIX/loop-build.jsonl" SessionEnd)
 
 # 5. Re-entry guard: exits immediately, writes nothing
@@ -75,9 +76,9 @@ run_case bad_json subagent "analyzer output not JSON" MCP_ISSUE_LOOP_ANALYZER_OU
 # 8. Once-per-session guard: a second SubagentStop for the same session skips
 #    re-analysis (mirrors a resumed subagent firing another SubagentStop).
 guard_dir="$WORK/once"; mkdir -p "$guard_dir"; guard2_log="$guard_dir/capture.log"
-env MCP_ISSUE_LOOP_LOG="$guard2_log" MCP_ISSUE_LOOP_DRY_RUN=1 MCP_ISSUE_LOOP_ANALYZER_OUT="$FILE_JSON" \
+env MCP_ISSUE_LOOP_LOG="$guard2_log" MCP_ISSUE_LOOP_ANALYZER_OUT="$FILE_JSON" \
   bash "$SCRIPT" subagent < <(event_for "$FIX/loop-build.jsonl") >/dev/null 2>&1
-env MCP_ISSUE_LOOP_LOG="$guard2_log" MCP_ISSUE_LOOP_DRY_RUN=1 MCP_ISSUE_LOOP_ANALYZER_OUT="$FILE_JSON" \
+env MCP_ISSUE_LOOP_LOG="$guard2_log" MCP_ISSUE_LOOP_ANALYZER_OUT="$FILE_JSON" \
   bash "$SCRIPT" subagent < <(event_for "$FIX/loop-build.jsonl") >/dev/null 2>&1
 if grep -qF "already analysed — skipping" "$guard2_log" 2>/dev/null; then
   echo "PASS [once_per_session]"; pass=$((pass+1))

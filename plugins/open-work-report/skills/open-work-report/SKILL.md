@@ -129,7 +129,7 @@ usually the most actionable line in the whole digest.
 | PR: bot-authored **and** security (label or advisory in body) | **Security bot PR** — listed individually, at the top |
 | PR: bot-authored, routine version bump | **Bot** — counted only; add *touches an alerted package* if the optional alerts pass ran and matched |
 | PR: bot-authored, security signal unreadable | **Bot, `security unknown`** — counted, and the count is said out loud |
-| Item labelled `ready-for-ai`, `ai-discuss`, `auto-merge`, `generated-by-ai`, `ai-blocked`, `proto-learning` | tag the line with that label, so loop-owned work reads apart from human work |
+| Item labelled `ready-for-ai`, `ai-discuss`, `auto-merge`, `generated-by-ai`, `ai-blocked` | tag the line with that label, so loop-owned work reads apart from human work |
 | Item with no activity for **more than 30 days** | additionally flagged **stale** |
 
 Read approval and merge state from the PR payload — never infer either from anything else.

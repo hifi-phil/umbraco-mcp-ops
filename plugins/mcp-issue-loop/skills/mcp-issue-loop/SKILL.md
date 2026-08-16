@@ -244,23 +244,26 @@ nothing here (or in any subagent) ever edits skills or `CLAUDE.md` inline.
 anything by hand.** Two async hooks (shipped by this plugin) do it off the
 critical path:
 
-- **`SubagentStop`** → after each issue subagent finishes, a read-only analyzer
-  reads its transcript and files a `proto-learning` issue if something non-obvious
+- **`SubagentStop`** → after each issue subagent finishes, an analyzer reads its
+  transcript and appends a `proto-learning` row if something non-obvious
   happened at the **issue level** (a diagnosed CI failure, a repeated mistake, an
   unclear/missing pattern, a repo gotcha, a blocker).
 - **`SessionEnd`** → once, at the end of the orchestration session, an analyzer
-  reads *this* session's transcript and files **loop-level** learnings you're the
-  only one positioned to reveal: a backstop that tripped, a class of issue that
-  consistently needed `opus`, an `mcp-review` finding that recurs across issues, a
-  recurring blocker.
+  reads *this* session's transcript and appends **loop-level** learnings you're
+  the only one positioned to reveal: a backstop that tripped, a class of issue
+  that consistently needed `opus`, an `mcp-review` finding that recurs across
+  issues, a recurring blocker.
 
 Properties that make this the capture mechanism (vs. self-reporting): it **can't
 be skipped** (fires even if a subagent crashes), it's **unbiased** (a fresh
 analyzer reads the transcript, not the agent grading itself), and it's **off the
-critical path**. Proto-learnings are **GitHub issues labelled `proto-learning` on
-`hifi-phil/umbraco-mcp-ops`** — the plugin is read-only and may run on a stateless
-runner, so it can't store them itself. The analyzers enforce **signal, not
-noise**: one issue only when something non-obvious happened; nothing for a clean
+critical path**. Proto-learnings are rows on the shared **"MCP Loop Learnings"
+Slack canvas** (`#mcp-ops-learning`) — the plugin is read-only and may run on a
+stateless runner, so it can't store them itself, and a GitHub-issue inbox turned
+out to silently lose captures across the org boundary between an `umbraco/*`
+repo and the ops repo (see the schema doc for why). The analyzer appends the row
+itself, given one narrow Slack write tool. The analyzers enforce **signal, not
+noise**: one row only when something non-obvious happened; nothing for a clean
 run. See `hooks/` and the [schema](references/proto-learning-schema.md).
 
 So: **do the work well and let the hooks capture.** Your only capture-related duty
@@ -297,9 +300,10 @@ is *not* to fix learnings inline — leave that to Loop B.
   and the `release-and-branching` skill — obey those.
 - **Recap as you go.** After each dispatch, each subagent completion, each `mcp-review`,
   give a one-line status (queue depth, in-flight issues, PRs handed off).
-- **Capture, never fix.** Learnings are filed as `proto-learning` issues (see
-  [Capturing learnings](#capturing-learnings-compounding)); the triage routine
-  turns them into PRs. Do not edit skills or `CLAUDE.md` from inside this loop.
+- **Capture, never fix.** Learnings are appended as `proto-learning` canvas rows
+  (see [Capturing learnings](#capturing-learnings-compounding)); the triage
+  routine turns them into PRs. Do not edit skills or `CLAUDE.md` from inside
+  this loop.
 
 ## Cloud mode
 
@@ -400,10 +404,10 @@ open `ready-for-ai` issue; none → quiet no-op):
    fires on the PR-review event), and merging is `merge-flow`'s.
 
 **Not used in cloud mode:** the cap-3 queue, worktrees, and the review-response phase. The
-**capture hooks** (SubagentStop/SessionEnd → `proto-learning` issues) *are* delivered to
+**capture hooks** (SubagentStop/SessionEnd → `proto-learning` canvas rows) *are* delivered to
 cloud sessions by the [`cloud-skill-sync`](../../../../scripts/cloud-skill-sync/) setup
-script, so self-learning capture runs in cloud too — filing via `gh` locally, or the
-GitHub **REST API with the env's token** where `gh` is absent (cloud), and log-and-skip
-only if neither `jq`/`claude` nor any token is present. The same guardrails still hold —
+script, so self-learning capture runs in cloud too — the analyzer appends to the canvas
+directly (its one Slack write tool) wherever it runs, local or cloud; it logs and skips
+only if `jq`/`claude` is missing or the transcript isn't readable. The same guardrails still hold —
 `ready-for-ai` is the only gate, reviews are non-negotiable, follow the repo's `CLAUDE.md`,
 never leave CI red, and a blocked issue gets labelled `ai-blocked` + a comment, then stop.

@@ -43,10 +43,8 @@ development process above:
 
 ```mermaid
 flowchart TD
-    LOOP["a loop run<br/>(mcp-issue-loop / content-issue-loop)"] -. "SubagentStop / SessionEnd hooks<br/>(analyzer, narrow Slack write)" .-> PROTO["proto-learning issues<br/>(umbraco-mcp-ops)"]
-    LOOP -. "same hooks, same analyzer" .-> CANVAS["MCP Loop Learnings canvas<br/>(#mcp-ops-learning)"]
-    PROTO --> TRIAGE["triage-learnings (Loop B)<br/>weekly · dedupe + threshold"]
-    CANVAS --> TRIAGE
+    LOOP["a loop run<br/>(mcp-issue-loop / content-issue-loop)"] -. "SubagentStop / SessionEnd hooks<br/>(analyzer, narrow Slack write)" .-> CANVAS["MCP Loop Learnings canvas<br/>(#mcp-ops-learning)"]
+    CANVAS --> TRIAGE["triage-learnings (Loop B)<br/>weekly · dedupe + threshold"]
     TRIAGE -->|domain-specific| MREPO["issue on that MCP repo"]
     TRIAGE -->|generalizable| SHARED["PR to Umbraco-MCP-Base<br/>(shared umbraco-mcp-skills)"]
     TRIAGE -->|about the loop| LOOPIMP["loop-improvement issue<br/>(umbraco-mcp-ops)"]
@@ -54,20 +52,21 @@ flowchart TD
     LOOPIMP -. "human adds ready-for-ai" .-> BACK
 ```
 
-**Two capture destinations, one reason.** Every capture writes **both** a
-`proto-learning` GitHub issue on `hifi-phil/umbraco-mcp-ops` **and** a row on the
-**"MCP Loop Learnings" Slack canvas** (`F0BQ31E4R8F`, posted in the private
-`#mcp-ops-learning` channel). The GitHub write needs the working repo and the ops
-repo to share a GitHub App installation — not true when a cloud routine works an
-`umbraco/*` repo (a different org from `hifi-phil/umbraco-mcp-ops`), so it can
-silently fail to file. The canvas has no org boundary, so it's the path that always
-lands; `triage-learnings` reads both and dedupes across them. See the
+**Capture lands on a Slack canvas, not a GitHub issue.** Every capture appends a
+row to the **"MCP Loop Learnings" Slack canvas** (`F0BQ31E4R8F`, posted in the
+private `#mcp-ops-learning` channel) — the analyzer does this itself, with one
+narrow Slack write tool. An earlier version of this system filed `proto-learning`
+GitHub issues on `hifi-phil/umbraco-mcp-ops` instead; that write needed the
+working repo and the ops repo to share a GitHub App installation, which silently
+isn't true once a cloud routine works an `umbraco/*` repo (a different org) —
+captures from those runs were being lost. The canvas has no org boundary, so it
+replaced the GitHub path rather than supplementing it. See the
 [proto-learning schema](../plugins/mcp-issue-loop/skills/mcp-issue-loop/references/proto-learning-schema.md)
-for the exact record shape in each.
+for the exact row shape.
 
-**The compounding gate:** a proto-learning or loop-improvement issue only re-enters
-the development process when a **human adds `ready-for-ai`** — nothing self-triggers.
-Generalizable lessons instead become a drafted PR to the shared skills, so every MCP
+**The compounding gate:** an `mcp-repo` or `loop-improvement` issue routed out of
+triage only re-enters the development process when a **human adds `ready-for-ai`**
+— nothing self-triggers. Generalizable lessons instead become a drafted PR to the shared skills, so every MCP
 repo benefits next time.
 
 ## The loops at a glance
@@ -78,8 +77,8 @@ repo benefits next time.
 | `mcp-issue-loop` | mcp-issue-loop | Works `ready-for-ai` issues on an **MCP** repo → CI-green PR. *Local:* worktrees + parallel subagents + local tests + review loop. *Cloud:* one session/issue, CI-driven (no local Umbraco), stop at green PR | Dev machine **or** cloud routine (Issue: Labeled `ready-for-ai`) | label `ready-for-ai` |
 | `rework-loop` | mcp-issue-loop | Address a PR's review feedback → re-green CI → re-request review (never merges) | Cloud routine (PR: Labeled `auto-rework`) or local | label a PR `auto-rework` |
 | `content-issue-loop` | mcp-issue-loop | Same, for repos **without** the toolchain (this repo, docs/plugin repos — *not* `Umbraco-MCP-Base`, which is a full MCP repo) | Dev machine or runner | "work the ready ops issues" |
-| capture hooks | mcp-issue-loop | After each subagent, analyze the transcript and file `proto-learning` issues **and** append a row to the MCP Loop Learnings canvas | Wherever the loop runs | automatic (`SubagentStop`/`SessionEnd`) |
-| `triage-learnings` | mcp-issue-loop | Route proto-learnings (GitHub + canvas) → MCP-repo issue / shared-skills PR / loop-improvement issue | Web runner (scheduled) | "triage the learnings" |
+| capture hooks | mcp-issue-loop | After each subagent, analyze the transcript and append a row to the MCP Loop Learnings canvas | Wherever the loop runs | automatic (`SubagentStop`/`SessionEnd`) |
+| `triage-learnings` | mcp-issue-loop | Route proto-learnings (canvas) → MCP-repo issue / shared-skills PR / loop-improvement issue | Web runner (scheduled) | "triage the learnings" |
 | `merge-flow` | merge-flow | Merge PRs labelled `auto-merge` once green + conflict-free (the label is the approval) | Cloud routine (weekdays) | label `auto-merge` |
 | `auto-release-loop` | release-flow | Cut branch, drive CI green, publish + tag + Release, sync `dev` — CI-gated, no approval pause | Cloud routine (Issue: Labeled) | label an issue `auto-release` |
 | `loop-dispatch` | loop-dispatch | Front door that routes a triggering event → the matching loop above. Lets **one routine per repo** handle every loop event | Cloud routine (all loop events) or manual | any loop event on the repo |
@@ -155,17 +154,13 @@ The system is label-driven. Create the labels on the repos that need them:
 | `ready-for-ai` | every MCP repo (and any repo a loop should work) | The only gate a loop acts on |
 | `generated-by-ai` | every MCP repo a loop works | Set by `mcp-issue-loop` on success (replaces `ready-for-ai` when the CI-green PR opens) |
 | `ai-blocked` | every MCP repo a loop works | Set by `mcp-issue-loop` when a backstop trips (replaces `ready-for-ai`; comment says why). Re-add `ready-for-ai` to retry |
-| `proto-learning` | `hifi-phil/umbraco-mcp-ops` | Capture inbox |
-| `triaged` | `hifi-phil/umbraco-mcp-ops` | Loop B routed it to a PR (skip next run) |
-| `loop-improvement` | `hifi-phil/umbraco-mcp-ops` | A change to the loop itself, promoted from a learning |
+| `loop-improvement` | `hifi-phil/umbraco-mcp-ops` | A change to the loop itself, promoted from a learning (Loop B's routed output — the capture inbox itself is the Slack canvas, not a label) |
 | `auto-merge` | any repo where `merge-flow` runs | Merge me once approved + green |
 | `auto-rework` | every MCP repo a loop works | On a PR: address the review feedback (rework-loop). Add it after leaving your comments |
 
 ```bash
 # ops repo (inbox + loop bookkeeping)
 gh label create ready-for-ai     --repo hifi-phil/umbraco-mcp-ops --color 0e8a16
-gh label create proto-learning   --repo hifi-phil/umbraco-mcp-ops --color c5def5
-gh label create triaged          --repo hifi-phil/umbraco-mcp-ops --color ededed
 gh label create loop-improvement --repo hifi-phil/umbraco-mcp-ops --color 5319e7
 gh label create auto-merge       --repo hifi-phil/umbraco-mcp-ops --color 0e8a16
 gh label create ai-discuss       --repo hifi-phil/umbraco-mcp-ops --color d876e3
@@ -270,7 +265,7 @@ Full inventory of cross-repo routines in this repo:
 | `merge-flow` | on `auto-merge` label (event) | **to wire** |
 | `auto-release-loop` | on `auto-release` label (event) | **to wire** |
 | `dependabot-rollup` (skill) | weekly | **local-only** (cloud impossible — Claude GitHub App can't read Dependabot alerts) |
-| `triage-learnings` | weekly | **to wire** — attach the Slack connector alongside `github-ops`, or the canvas half of the inbox reads as empty |
+| `triage-learnings` | weekly | **to wire** — attach the Slack connector alongside `github-ops`, or the (only) inbox reads as empty |
 
 `mcp-issue-loop` and `content-issue-loop` are human-initiated and not scheduled.
 `auto-release-loop` is **event-triggered** (a routine on Issue: Labeled → `auto-release`),

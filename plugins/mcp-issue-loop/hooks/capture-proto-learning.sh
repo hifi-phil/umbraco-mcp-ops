@@ -5,19 +5,15 @@
 #
 # Reads the hook event JSON from stdin, finds the transcript, and — only if it
 # belongs to an mcp-issue-loop run — asks an analyzer whether anything worth
-# improving happened. If so, this script files ONE `proto-learning` issue on
-# the ops repo (deterministic `gh issue create` / REST fallback — the analyzer
-# has no GitHub write tools). The analyzer is ALSO given narrow write access to
-# one Slack canvas (see MCP_ISSUE_LOOP_CANVAS_ID below) and appends the same
-# record there itself — the GitHub write above needs the ops repo and the
-# working repo to share a GitHub App installation, which isn't true when a
-# cloud routine works an `umbraco/*` repo (different org from
-# hifi-phil/umbraco-mcp-ops); the canvas has no such org boundary, so it's the
-# capture path that survives when the GitHub one silently can't file. Runs off
-# the critical path (hook is async).
+# improving happened. The analyzer captures directly: it appends a row to the
+# shared "MCP Loop Learnings" Slack canvas itself (its one write tool) when
+# something's worth recording — there is no GitHub issue path. Filing
+# proto-learnings as issues on hifi-phil/umbraco-mcp-ops needed that repo and
+# the working repo to share a GitHub App installation, which silently isn't
+# true once a cloud routine works an `umbraco/*` repo (a different org); the
+# canvas has no such boundary. Runs off the critical path (hook is async).
 #
 # Env knobs (ops + test):
-#   MCP_ISSUE_LOOP_DRY_RUN=1      log the intended issue instead of filing (no gh)
 #   MCP_ISSUE_LOOP_ANALYZER_OUT   inject a canned analyzer decision (skip `claude`)
 #   MCP_ISSUE_LOOP_LOG            override the log file path
 #   MCP_ISSUE_LOOP_CANVAS_ID      Slack canvas to append to (default: the shared
@@ -26,8 +22,6 @@
 set -uo pipefail
 
 SCOPE="${1:-subagent}"
-OPS_REPO="hifi-phil/umbraco-mcp-ops"
-LABEL="proto-learning"
 CANVAS_ID="${MCP_ISSUE_LOOP_CANVAS_ID:-F0BQ31E4R8F}"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SCHEMA="$PLUGIN_ROOT/skills/mcp-issue-loop/references/proto-learning-schema.md"
@@ -44,7 +38,7 @@ export MCP_ISSUE_LOOP_CAPTURE=1
 
 # --- Preconditions ---------------------------------------------------------
 # jq is always needed; `claude` only when actually analyzing (not when a canned
-# response is injected), `gh` only when actually filing (checked at those points).
+# response is injected).
 command -v jq >/dev/null 2>&1 || { log "missing jq — skipping capture"; exit 0; }
 
 EVENT="$(cat)"
@@ -75,10 +69,9 @@ fi
 PROMPT_FILE="$PLUGIN_ROOT/hooks/analyzer-$SCOPE.md"
 [ -f "$PROMPT_FILE" ] || { log "no prompt file $PROMPT_FILE — skipping"; exit 0; }
 
-# --- Analyze (read-only over GitHub/repo, one narrow Slack write) ----------
+# --- Analyze + capture (the analyzer appends to the canvas itself) --------
 PROMPT="$(sed -e "s#{{TRANSCRIPT}}#$TRANSCRIPT#g" \
               -e "s#{{SCHEMA}}#$SCHEMA#g" \
-              -e "s#{{OPS_REPO}}#$OPS_REPO#g" \
               -e "s#{{CANVAS_ID}}#$CANVAS_ID#g" "$PROMPT_FILE")"
 
 log "analyzing $TRANSCRIPT"
@@ -87,10 +80,10 @@ if [ -n "${MCP_ISSUE_LOOP_ANALYZER_OUT:-}" ]; then
   OUT="$MCP_ISSUE_LOOP_ANALYZER_OUT"
 else
   command -v claude >/dev/null 2>&1 || { log "missing claude — skipping capture"; exit 0; }
-  # Read,Grep stay read-only over the transcript/schema/repo; the two Slack
-  # tools are the one narrow write this analyzer has, scoped to a single
-  # canvas — present only if the environment has the Slack connector attached,
-  # which the analyzer prompt is told to tolerate the absence of.
+  # Read,Grep stay read-only over the transcript/schema; the two Slack tools
+  # are the one write this analyzer has, scoped to a single canvas — present
+  # only if the environment has the Slack connector attached, which the
+  # analyzer prompt is told to tolerate the absence of.
   OUT="$(claude -p "$PROMPT" --model sonnet \
     --allowedTools "Read,Grep,mcp__Slack__slack_read_canvas,mcp__Slack__slack_update_canvas" \
     2>>"$LOG")" || {
@@ -101,63 +94,14 @@ fi
 # subagent) doesn't re-run the analyzer over the same growing transcript.
 [ -n "$MARKER" ] && { : >"$MARKER" 2>/dev/null || true; }
 
-# The analyzer outputs a single JSON object (optionally fenced). Strip fences.
+# The analyzer performs the canvas write itself (its own tool call, above) and
+# reports back a small JSON summary purely for this log — nothing below takes
+# any write action of its own.
 JSON="$(printf '%s' "$OUT" | sed -e 's/^```json//' -e 's/^```//' -e 's/```$//' | jq -c . 2>/dev/null)"
 if [ -z "$JSON" ]; then log "analyzer output not JSON: $(printf '%s' "$OUT" | head -c 200)"; exit 0; fi
 
-if [ "$(printf '%s' "$JSON" | jq -r '.file // false')" != "true" ]; then
-  log "analyzer decided SKIP"; exit 0
-fi
-
-TITLE="$(printf '%s' "$JSON" | jq -r '.title // empty')"
-RECORD="$(printf '%s' "$JSON" | jq '.record // {}')"
-NOTES="$(printf '%s' "$JSON" | jq -r '.notes // ""')"
-[ -n "$TITLE" ] || { log "no title in analyzer output — skipping"; exit 0; }
-
-BODY="$(printf '```json\n%s\n```\n\n**Notes:** %s\n' "$(printf '%s' "$RECORD" | jq .)" "$NOTES")"
-
-# --- Dry-run: log the intended issue and stop (no gh, fully hermetic) -------
-if [ -n "${MCP_ISSUE_LOOP_DRY_RUN:-}" ]; then
-  log "DRY_RUN — would file title: $TITLE"
-  log "DRY_RUN — would file body: $(printf '%s' "$BODY" | tr '\n' '|')"
-  exit 0
-fi
-
-# --- File it: gh locally, or the REST API via curl+token in cloud ----------
-# Local dev has an authed `gh`. Cloud routine sessions don't (they drive GitHub via the
-# MCP server, which a bash hook can't call) — but a GitHub token is present in the env,
-# so fall back to curl + the REST API. Dedup by exact open title either way.
-API="https://api.github.com/repos/$OPS_REPO/issues"
-TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
-
-if command -v gh >/dev/null 2>&1; then
-  if gh issue list --repo "$OPS_REPO" --label "$LABEL" --state open --search "$TITLE" \
-       --json title --jq '.[].title' 2>/dev/null | grep -qxF "$TITLE"; then
-    log "duplicate open proto-learning, skipping: $TITLE"; exit 0
-  fi
-  if URL="$(gh issue create --repo "$OPS_REPO" --label "$LABEL" --title "$TITLE" --body "$BODY" 2>>"$LOG")"; then
-    log "filed proto-learning: $URL"
-  else
-    log "gh issue create failed for: $TITLE"
-  fi
-elif [ -n "$TOKEN" ] && command -v curl >/dev/null 2>&1; then
-  gh_api() { curl -sS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
-                  -H "X-GitHub-Api-Version: 2022-11-28" "$@" 2>>"$LOG"; }
-  if gh_api "$API?state=open&labels=$LABEL&per_page=100" | jq -r '.[].title' 2>/dev/null | grep -qxF "$TITLE"; then
-    log "duplicate open proto-learning, skipping: $TITLE"; exit 0
-  fi
-  payload="$(jq -nc --arg t "$TITLE" --arg b "$BODY" --arg l "$LABEL" '{title:$t,body:$b,labels:[$l]}')"
-  # Capture status + body so a failure (e.g. a 403 from a scope/auth problem) is
-  # logged, not swallowed — an empty .html_url used to hide the real reason.
-  resp="$(gh_api -w $'\n%{http_code}' -X POST "$API" -d "$payload")"
-  http="$(printf '%s' "$resp" | tail -n1)"
-  body="$(printf '%s' "$resp" | sed '$d')"
-  URL="$(printf '%s' "$body" | jq -r '.html_url // empty' 2>/dev/null)"
-  if [ "$http" = "201" ] && [ -n "$URL" ]; then
-    log "filed proto-learning (rest api): $URL"
-  else
-    log "REST issue create failed (HTTP ${http:-?}) for: $TITLE — $(printf '%s' "$body" | tr -d '\n' | head -c 300)"
-  fi
+if [ "$(printf '%s' "$JSON" | jq -r '.file // false')" = "true" ]; then
+  log "captured: $(printf '%s' "$JSON" | jq -r '.lesson // "(no summary)"')"
 else
-  log "no gh and no token — skipping capture"; exit 0
+  log "analyzer decided SKIP"
 fi

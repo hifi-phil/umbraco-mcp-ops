@@ -146,8 +146,9 @@ code, and do not wait for human review — driving CI green, marking the issue's
 review are all the orchestrator's job now; human feedback is `rework-loop`'s.
 
 > **Learnings are captured automatically — you do nothing here.** When you finish,
-> a `SubagentStop` hook analyses this transcript off the critical path and files
-> a `proto-learning` issue if something worth improving happened (see
+> a `SubagentStop` hook analyses this transcript off the critical path and appends
+> a `proto-learning` row to a shared Slack canvas if something worth improving
+> happened (see
 > [Capturing learnings](../SKILL.md#capturing-learnings-compounding)). Just do
 > the work well and return; the capture is not your responsibility.
 
