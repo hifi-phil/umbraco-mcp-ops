@@ -1,17 +1,28 @@
 #!/usr/bin/env bash
 #
-# Async proto-learning capture for mcp-issue-loop.
+# Async proto-learning capture, shared across every automated loop in this
+# repo's self-learning system — see the pre-filter below for how it decides
+# "loop-driven" without naming any of them individually.
 #   $1 = scope: "subagent" (SubagentStop) | "orchestrator" (SessionEnd)
 #
 # Reads the hook event JSON from stdin, finds the transcript, and — only if it
-# belongs to an mcp-issue-loop run — asks an analyzer whether anything worth
-# improving happened. The analyzer captures directly: it appends a row to the
-# shared "MCP Loop Learnings" Slack canvas itself (its one write tool) when
-# something's worth recording — there is no GitHub issue path. Filing
-# proto-learnings as issues on hifi-phil/umbraco-mcp-ops needed that repo and
-# the working repo to share a GitHub App installation, which silently isn't
-# true once a cloud routine works an `umbraco/*` repo (a different org); the
-# canvas has no such boundary. Runs off the critical path (hook is async).
+# looks like one of this repo's automated loops ran — asks an analyzer whether
+# anything worth improving happened. The analyzer captures directly: it
+# appends a row to the shared "MCP Loop Learnings" Slack canvas itself (its
+# one write tool) when something's worth recording — there is no GitHub issue
+# path. Filing proto-learnings as issues on hifi-phil/umbraco-mcp-ops needed
+# that repo and the working repo to share a GitHub App installation, which
+# silently isn't true once a cloud routine works an `umbraco/*` repo (a
+# different org); the canvas has no such boundary. Runs off the critical path
+# (hook is async).
+#
+# This hook lives in the mcp-issue-loop plugin (it owns the shared capture
+# infra and is what cloud-skill-sync delivers), but it fires on every
+# SubagentStop/SessionEnd in the session regardless of which loop is running —
+# hooks aren't scoped to the skill that triggered them. Deliberately does not
+# hardcode any other loop's name: adding a new loop to this repo needs no edit
+# here, since the pre-filter below matches on this ecosystem's shared
+# conventions (`github-ops`, `/goal`), not an enumerated list.
 #
 # Env knobs (ops + test):
 #   MCP_ISSUE_LOOP_ANALYZER_OUT   inject a canned analyzer decision (skip `claude`)
@@ -47,9 +58,15 @@ if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
   log "no readable transcript_path — skipping"; exit 0
 fi
 
-# --- Cheap pre-filter: only act on mcp-issue-loop runs ---------------------
-# Avoids spawning an analyzer for unrelated subagents/sessions.
-if ! grep -qiE 'mcp-issue-loop|content-issue-loop|ready-for-ai' "$TRANSCRIPT" 2>/dev/null; then
+# --- Cheap pre-filter: only act on this repo's automated loops -------------
+# Avoids spawning an analyzer for unrelated subagents/sessions. Matches on
+# ecosystem-wide conventions every loop here follows (github-ops is the shared
+# GitHub dependency every loop defers to; /goal drives the autonomous ones;
+# ready-for-ai is the issue-driven ones' trigger label) rather than naming
+# individual loops — a new loop needs no edit here. False positives are cheap:
+# the analyzer below makes the real, content-based call and just answers
+# `{"file":false}` if this wasn't loop-driven work after all.
+if ! grep -qiE 'github-ops|/goal|ready-for-ai' "$TRANSCRIPT" 2>/dev/null; then
   log "transcript has no loop signature — skipping"; exit 0
 fi
 

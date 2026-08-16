@@ -43,7 +43,7 @@ development process above:
 
 ```mermaid
 flowchart TD
-    LOOP["a loop run<br/>(mcp-issue-loop / content-issue-loop)"] -. "SubagentStop / SessionEnd hooks<br/>(analyzer, narrow Slack write)" .-> CANVAS["MCP Loop Learnings canvas<br/>(#mcp-ops-learning)"]
+    LOOP["a run of any loop in this repo<br/>(mcp-issue-loop, content-issue-loop,<br/>rework-loop, merge-flow, auto-release-loop,<br/>issue-discuss-loop, branch-housekeeping,<br/>dependabot-rollup, triage-learnings, loop-dispatch)"] -. "SubagentStop / SessionEnd hooks<br/>(analyzer, narrow Slack write)" .-> CANVAS["MCP Loop Learnings canvas<br/>(#mcp-ops-learning)"]
     CANVAS --> TRIAGE["triage-learnings (Loop B)<br/>weekly · dedupe + threshold"]
     TRIAGE -->|domain-specific| MREPO["issue on that MCP repo"]
     TRIAGE -->|generalizable| SHARED["PR to Umbraco-MCP-Base<br/>(shared umbraco-mcp-skills)"]
@@ -51,6 +51,14 @@ flowchart TD
     MREPO -. "human adds ready-for-ai" .-> BACK(["← re-enters the development process<br/>as a ready-for-ai issue"])
     LOOPIMP -. "human adds ready-for-ai" .-> BACK
 ```
+
+**Capture covers every loop in this repo, not just `mcp-issue-loop`.** The hooks
+live in the `mcp-issue-loop` plugin (it owns the shared capture infra and is
+what `cloud-skill-sync` delivers), but they fire on every `SubagentStop`/
+`SessionEnd` in a session regardless of which loop triggered it, and the
+pre-filter matches on this ecosystem's shared conventions (`github-ops`,
+`/goal`) rather than an enumerated list of loop names — a new loop needs no
+edit to the hook to get captured.
 
 **Capture lands on a Slack canvas, not a GitHub issue.** Every capture appends a
 row to the **"MCP Loop Learnings" Slack canvas** (`F0BQ31E4R8F`, posted in the

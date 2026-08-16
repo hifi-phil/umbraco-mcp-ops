@@ -1,11 +1,13 @@
 # Proto-learning schema
 
-A **proto-learning** is a raw, un-triaged observation captured while working an
-issue — a CI failure you had to diagnose, a mistake you repeated, review feedback
-that revealed a pattern, a blocker, or a gap in the skills / `CLAUDE.md`. It is
-**not** a fix; it's a note that *something is worth improving somewhere*. A later
-triage routine (Loop B) reads these, clusters them, and opens PRs to the right
-home.
+A **proto-learning** is a raw, un-triaged observation captured while any of
+this repo's automated loops ran — a CI failure you had to diagnose, a mistake
+you repeated, review feedback that revealed a pattern, a blocker, or a gap in
+the skills / `CLAUDE.md`. This is shared infrastructure, not specific to
+`mcp-issue-loop` — every loop in this repo captures through the same hooks and
+the same canvas. It is **not** a fix; it's a note that *something is worth
+improving somewhere*. A later triage routine (Loop B) reads these, clusters
+them, and opens PRs to the right home.
 
 Proto-learnings are captured as a row on the shared **"MCP Loop Learnings" Slack
 canvas** (`F0BQ31E4R8F`, posted in the private `#mcp-ops-learning` channel) —
@@ -48,12 +50,12 @@ The canvas's `## Log` table (see the canvas itself for the live header):
 | Field | Meaning |
 |-------|---------|
 | `Date` | Capture date, `YYYY-MM-DD`. |
-| `Source Repo#Issue` | `owner/name#issue` of the repo/issue being worked — an MCP repo (mcp-issue-loop) or a non-MCP repo like the ops / shared-skills repos (content-issue-loop). For an orchestrator-level (loop-self) row, this is `mcp-issue-loop` itself. |
+| `Source Repo#Issue` | `owner/name#issue` (or `#PR`) of what was being worked — any repo the loop touched, MCP or not. Not every loop has a single issue/PR to point at (a repo-wide sweep, a loop-level/orchestrator observation) — in that case just the repo, or the loop's own name if the learning is about the loop itself rather than any one repo. |
 | `Category` | One of: `ci-failure`, `review-feedback`, `pattern-gap`, `repo-gotcha`, `cross-repo-pattern`, `tooling`, `blocked`, `test`, `other`. |
 | `Lesson` | One-line actionable takeaway. |
 | `Guessed Home` | Best guess at the final home (Loop B decides for real): `mcp-repo`, `shared-mcp-skills`, `loop-self`, `unsure`. |
 | `Status` | Always `New` at capture time — only Loop B changes it (`Actioned`/`Discarded`). |
-| `Notes` | Self-contained detail — what happened, what resolved it (if anything), the PR number if one exists. The transcript will be gone by the time this is read back, so make it stand alone. |
+| `Notes` | Self-contained detail — what happened, what resolved it (if anything), the PR number if one exists, and which loop/phase this came from (the analyzer's own words — no fixed enum, since loops name their steps differently). The transcript will be gone by the time this is read back, so make it stand alone. |
 
 `Guessed Home` heuristic (`Source Repo` is **any** Umbraco MCP repo, not a specific one):
 - affects only *that* MCP — a domain-specific quirk of its content/collections →

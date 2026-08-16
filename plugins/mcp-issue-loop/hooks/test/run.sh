@@ -49,6 +49,11 @@ run_case prefilter subagent "no loop signature — skipping" \
 run_case skip subagent "analyzer decided SKIP" MCP_ISSUE_LOOP_ANALYZER_OUT='{"file":false}' \
   < <(event_for "$FIX/loop-build.jsonl")
 
+# 2b. A non-mcp-issue-loop transcript (merge-flow, via github-ops) still reaches
+# the analyzer — the pre-filter matches on shared conventions, not loop names.
+run_case other_loop subagent "analyzer decided SKIP" MCP_ISSUE_LOOP_ANALYZER_OUT='{"file":false}' \
+  < <(event_for "$FIX/other-loop.jsonl")
+
 # 3. Injected FILE decision — the analyzer already wrote the canvas row itself
 # (mocked out here); the hook only logs the summary, no write of its own.
 run_case file_captured subagent "captured: use z.guid() for Umbraco version ids" \

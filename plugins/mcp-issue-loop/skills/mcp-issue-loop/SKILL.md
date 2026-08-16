@@ -235,14 +235,16 @@ above), and hand back if any trips:**
 
 ## Capturing learnings (compounding)
 
-The loop feeds its own improvement by emitting **proto-learnings** — raw
-observations that *something is worth improving somewhere* — which a separate
-scheduled routine (Loop B) later triages into PRs. This half only **captures**;
-nothing here (or in any subagent) ever edits skills or `CLAUDE.md` inline.
+This loop, and every other automated loop in this repo, feeds its own
+improvement by emitting **proto-learnings** — raw observations that *something
+is worth improving somewhere* — which a separate scheduled routine (Loop B)
+later triages into PRs. This half only **captures**; nothing here (or in any
+subagent, in any loop) ever edits skills or `CLAUDE.md` inline.
 
 **Capture is fully automatic and hook-driven — neither you nor the subagents file
-anything by hand.** Two async hooks (shipped by this plugin) do it off the
-critical path:
+anything by hand.** Two async hooks (shipped by this plugin, but firing for
+whichever loop is actually running — they don't name or special-case
+`mcp-issue-loop`) do it off the critical path:
 
 - **`SubagentStop`** → after each issue subagent finishes, an analyzer reads its
   transcript and appends a `proto-learning` row if something non-obvious
@@ -253,6 +255,11 @@ critical path:
   the only one positioned to reveal: a backstop that tripped, a class of issue
   that consistently needed `opus`, an `mcp-review` finding that recurs across
   issues, a recurring blocker.
+
+(That's this loop's shape of it — a different loop's `SubagentStop`/`SessionEnd`
+capture looks at whatever *its* subagents and top-level run actually do; the
+hooks and analyzer judge from the transcript, not from an assumption about
+which loop is running.)
 
 Properties that make this the capture mechanism (vs. self-reporting): it **can't
 be skipped** (fires even if a subagent crashes), it's **unbiased** (a fresh
