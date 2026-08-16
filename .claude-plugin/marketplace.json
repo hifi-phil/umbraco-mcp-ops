@@ -13,8 +13,8 @@
     {
       "name": "mcp-issue-loop",
       "source": "./plugins/mcp-issue-loop",
-      "description": "Label-driven loops that take an issue from rough idea to merged PR: `ai-discuss` talks it into shape before anyone builds it, `ready-for-ai` builds it to a CI-green PR, `auto-rework` acts on your review feedback. Bundles issue-discuss-loop, mcp-issue-loop, content-issue-loop (for repos with no Umbraco toolchain), rework-loop, mcp-review, and triage-learnings, plus hooks that capture what each run learned. Runs locally (worktrees + parallel subagents + local tests) or as a cloud routine. Repo-agnostic.",
-      "version": "1.8.0",
+      "description": "Label-driven loops that take an issue from rough idea to merged PR: `ai-discuss` talks it into shape before anyone builds it, `ready-for-ai` builds it to a CI-green PR, `auto-rework` acts on your review feedback. Bundles issue-discuss-loop, mcp-issue-loop, content-issue-loop (for repos with no Umbraco toolchain), rework-loop, and mcp-review. Runs locally (worktrees + parallel subagents + local tests) or as a cloud routine. Repo-agnostic. Install the separate `self-learning` plugin alongside this one to get automatic run capture.",
+      "version": "1.9.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
@@ -30,6 +30,29 @@
         "subagent",
         "ci",
         "pull-request",
+        "automation",
+        "cloud-routine"
+      ]
+    },
+    {
+      "name": "self-learning",
+      "source": "./plugins/self-learning",
+      "description": "The self-learning system shared by every automated loop in this repo. SubagentStop/SessionEnd hooks capture proto-learnings — raw observations worth improving — as rows on a shared Slack canvas (not GitHub issues, which silently lose captures across an org boundary). The hooks fire for any loop, matching on shared conventions (github-ops, /goal) rather than naming individual loops, so a new loop needs no integration here. Bundles the triage-learnings skill (Loop B), which weekly dedupes/clusters the canvas inbox and routes each cluster to a tracked issue on the owning MCP repo, a gated PR to the shared umbraco-mcp-skills, or a loop-improvement issue on this repo. Install alongside any loop plugin to get capture for free.",
+      "version": "1.0.0",
+      "category": "workflow",
+      "author": {
+        "name": "Phil W",
+        "email": "pjw@umbraco.com",
+        "url": "https://github.com/hifi-phil"
+      },
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/self-learning",
+      "keywords": [
+        "umbraco",
+        "mcp",
+        "self-learning",
+        "capture",
+        "slack",
+        "hooks",
         "automation",
         "cloud-routine"
       ]

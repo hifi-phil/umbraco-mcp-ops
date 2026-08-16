@@ -9,8 +9,8 @@
 #   - Anthropic's pr-review-toolkit code-review agents (used by mcp-review), fetched at a
 #     pinned commit from github.com/anthropics/claude-plugins-official → $HOME/.claude/agents
 #     (routines can't use the marketplace; locally these come from the installed marketplace)
-#   - the mcp-issue-loop learning hooks → $HOME/.claude/ops-hooks, then registers
-#     them (SubagentStop/SessionEnd) in $HOME/.claude/settings.json so the
+#   - the self-learning plugin's capture hooks → $HOME/.claude/ops-hooks, then
+#     registers them (SubagentStop/SessionEnd) in $HOME/.claude/settings.json so the
 #     proto-learning capture that runs locally as a plugin also runs in cloud
 #     sessions (installed plugins auto-wire their hooks; a copied skill does not,
 #     so the setup script wires them here).
@@ -29,7 +29,7 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="20"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="21"                                  # bump to force an env-cache rebuild / re-clone
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
@@ -73,17 +73,18 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     find "$OPS_DIR/plugins" -type f -path "*/agents/*.md" 2>/dev/null | while read -r a; do
       cp "$a" "$AGENTS_DEST/" && echo "installed agent: $(basename "$a")"
     done
-    # Hooks: deliver the mcp-issue-loop learning hooks (+ their schema) under a plugin-root
-    # stand-in, then register them in settings.json. An installed plugin auto-wires its
-    # hooks via ${CLAUDE_PLUGIN_ROOT}; a copied skill does not, so we wire them by hand.
-    plug="$(find "$OPS_DIR/plugins" -maxdepth 1 -type d -name mcp-issue-loop 2>/dev/null | head -1)"
+    # Hooks: deliver the self-learning plugin's capture hooks (+ their schema) under a
+    # plugin-root stand-in, then register them in settings.json. An installed plugin
+    # auto-wires its hooks via ${CLAUDE_PLUGIN_ROOT}; a copied skill does not, so we
+    # wire them by hand. Not gated by $SKILLS — capture should run wherever this
+    # script runs, regardless of which loop skills a given environment lists.
+    plug="$(find "$OPS_DIR/plugins" -maxdepth 1 -type d -name self-learning 2>/dev/null | head -1)"
     if [ -n "$plug" ] && [ -d "$plug/hooks" ]; then
       rm -rf "$HOOKS_ROOT"
-      mkdir -p "$HOOKS_ROOT/hooks" "$HOOKS_ROOT/skills/mcp-issue-loop/references"
+      mkdir -p "$HOOKS_ROOT/hooks" "$HOOKS_ROOT/references"
       cp -r "$plug/hooks/." "$HOOKS_ROOT/hooks/"
-      [ -f "$plug/skills/mcp-issue-loop/references/proto-learning-schema.md" ] && \
-        cp "$plug/skills/mcp-issue-loop/references/proto-learning-schema.md" \
-           "$HOOKS_ROOT/skills/mcp-issue-loop/references/"
+      [ -f "$plug/references/proto-learning-schema.md" ] && \
+        cp "$plug/references/proto-learning-schema.md" "$HOOKS_ROOT/references/"
       chmod +x "$HOOKS_ROOT/hooks/"*.sh 2>/dev/null || true
       echo "installed hooks: $(ls -1 "$HOOKS_ROOT/hooks" 2>/dev/null | tr '\n' ' ')"
       # Register SubagentStop + SessionEnd (idempotent). CLAUDE_PLUGIN_ROOT is set inline
@@ -109,7 +110,7 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
         echo "WARN: jq missing — hooks copied but NOT registered in settings.json"
       fi
     else
-      echo "NOT FOUND in source: mcp-issue-loop hooks"
+      echo "NOT FOUND in source: self-learning hooks"
     fi
   else
     echo "ERROR: no source available (clone failed: $REPO, and no OPS_SRC provided)"

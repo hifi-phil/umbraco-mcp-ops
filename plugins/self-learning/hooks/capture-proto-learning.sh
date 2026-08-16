@@ -16,27 +16,27 @@
 # different org); the canvas has no such boundary. Runs off the critical path
 # (hook is async).
 #
-# This hook lives in the mcp-issue-loop plugin (it owns the shared capture
-# infra and is what cloud-skill-sync delivers), but it fires on every
-# SubagentStop/SessionEnd in the session regardless of which loop is running —
-# hooks aren't scoped to the skill that triggered them. Deliberately does not
-# hardcode any other loop's name: adding a new loop to this repo needs no edit
-# here, since the pre-filter below matches on this ecosystem's shared
-# conventions (`github-ops`, `/goal`), not an enumerated list.
+# This is its own plugin (not bundled into mcp-issue-loop or any other loop)
+# because it's shared infrastructure: it fires on every SubagentStop/SessionEnd
+# in the session regardless of which loop is running — hooks aren't scoped to
+# the skill that triggered them. Deliberately does not hardcode any other
+# loop's name: adding a new loop to this repo needs no edit here, since the
+# pre-filter below matches on this ecosystem's shared conventions
+# (`github-ops`, `/goal`), not an enumerated list.
 #
 # Env knobs (ops + test):
-#   MCP_ISSUE_LOOP_ANALYZER_OUT   inject a canned analyzer decision (skip `claude`)
-#   MCP_ISSUE_LOOP_LOG            override the log file path
-#   MCP_ISSUE_LOOP_CANVAS_ID      Slack canvas to append to (default: the shared
-#                                 "MCP Loop Learnings" canvas in #mcp-ops-learning)
-#   MCP_ISSUE_LOOP_CAPTURE=1      re-entry guard (set internally; do not set by hand)
+#   SELF_LEARNING_ANALYZER_OUT   inject a canned analyzer decision (skip `claude`)
+#   SELF_LEARNING_LOG            override the log file path
+#   SELF_LEARNING_CANVAS_ID      Slack canvas to append to (default: the shared
+#                                "MCP Loop Learnings" canvas in #mcp-ops-learning)
+#   SELF_LEARNING_CAPTURE=1      re-entry guard (set internally; do not set by hand)
 set -uo pipefail
 
 SCOPE="${1:-subagent}"
-CANVAS_ID="${MCP_ISSUE_LOOP_CANVAS_ID:-F0BQ31E4R8F}"
+CANVAS_ID="${SELF_LEARNING_CANVAS_ID:-F0BQ31E4R8F}"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-SCHEMA="$PLUGIN_ROOT/skills/mcp-issue-loop/references/proto-learning-schema.md"
-LOG="${MCP_ISSUE_LOOP_LOG:-${HOME}/.cache/mcp-issue-loop/capture.log}"
+SCHEMA="$PLUGIN_ROOT/references/proto-learning-schema.md"
+LOG="${SELF_LEARNING_LOG:-${HOME}/.cache/self-learning/capture.log}"
 mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
 log() { printf '%s [%s] %s\n' "$(date -u +%FT%TZ 2>/dev/null || echo now)" "$SCOPE" "$*" >>"$LOG" 2>/dev/null || true; }
 
@@ -44,8 +44,8 @@ log() { printf '%s [%s] %s\n' "$(date -u +%FT%TZ 2>/dev/null || echo now)" "$SCO
 # The analyzer below is itself a `claude` session that loads this plugin, so its
 # own SessionEnd/SubagentStop would re-invoke this script. The env var is
 # inherited by that child and its hooks, so they exit here instead of recursing.
-if [ -n "${MCP_ISSUE_LOOP_CAPTURE:-}" ]; then exit 0; fi
-export MCP_ISSUE_LOOP_CAPTURE=1
+if [ -n "${SELF_LEARNING_CAPTURE:-}" ]; then exit 0; fi
+export SELF_LEARNING_CAPTURE=1
 
 # --- Preconditions ---------------------------------------------------------
 # jq is always needed; `claude` only when actually analyzing (not when a canned
@@ -92,9 +92,9 @@ PROMPT="$(sed -e "s#{{TRANSCRIPT}}#$TRANSCRIPT#g" \
               -e "s#{{CANVAS_ID}}#$CANVAS_ID#g" "$PROMPT_FILE")"
 
 log "analyzing $TRANSCRIPT"
-if [ -n "${MCP_ISSUE_LOOP_ANALYZER_OUT:-}" ]; then
+if [ -n "${SELF_LEARNING_ANALYZER_OUT:-}" ]; then
   # Test seam: inject a canned analyzer response instead of calling the model.
-  OUT="$MCP_ISSUE_LOOP_ANALYZER_OUT"
+  OUT="$SELF_LEARNING_ANALYZER_OUT"
 else
   command -v claude >/dev/null 2>&1 || { log "missing claude — skipping capture"; exit 0; }
   # Read,Grep stay read-only over the transcript/schema; the two Slack tools

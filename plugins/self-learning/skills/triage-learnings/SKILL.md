@@ -129,8 +129,8 @@ All GitHub actions below use `github-ops` for the concrete command/tool.
 **`loop-self` (→ `loop-improvement` issue on the ops repo):**
 1. **Create an issue** on `hifi-phil/umbraco-mcp-ops` with label `loop-improvement`:
    a clear title, what the loop does today vs. what should change, and why.
-2. Do **not** draft a PR editing the `mcp-issue-loop` skill — a human frames the
-   change.
+2. Do **not** draft a PR editing whichever loop's skill this is about — a human
+   frames the change.
 
 Every routed item — issue or PR — carries **provenance**: the source canvas
 rows it came from (repo/issue + capture date), and the occurrence count

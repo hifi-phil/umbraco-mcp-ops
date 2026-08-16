@@ -52,13 +52,15 @@ flowchart TD
     LOOPIMP -. "human adds ready-for-ai" .-> BACK
 ```
 
-**Capture covers every loop in this repo, not just `mcp-issue-loop`.** The hooks
-live in the `mcp-issue-loop` plugin (it owns the shared capture infra and is
-what `cloud-skill-sync` delivers), but they fire on every `SubagentStop`/
-`SessionEnd` in a session regardless of which loop triggered it, and the
-pre-filter matches on this ecosystem's shared conventions (`github-ops`,
-`/goal`) rather than an enumerated list of loop names — a new loop needs no
-edit to the hook to get captured.
+**Capture covers every loop in this repo, and lives in its own plugin.** The
+hooks + `triage-learnings` are bundled in the **`self-learning`** plugin, not
+`mcp-issue-loop` or any other loop — install it alongside whichever loop
+plugins you use and capture just happens, with no reference needed on either
+side. They fire on every `SubagentStop`/`SessionEnd` in a session regardless of
+which loop triggered it, and the pre-filter matches on this ecosystem's shared
+conventions (`github-ops`, `/goal`) rather than an enumerated list of loop
+names — a new loop needs no edit to the hook, and no dependency on
+`self-learning`, to get captured.
 
 **Capture lands on a Slack canvas, not a GitHub issue.** Every capture appends a
 row to the **"MCP Loop Learnings" Slack canvas** (`F0BQ31E4R8F`, posted in the
@@ -69,7 +71,7 @@ working repo and the ops repo to share a GitHub App installation, which silently
 isn't true once a cloud routine works an `umbraco/*` repo (a different org) —
 captures from those runs were being lost. The canvas has no org boundary, so it
 replaced the GitHub path rather than supplementing it. See the
-[proto-learning schema](../plugins/mcp-issue-loop/skills/mcp-issue-loop/references/proto-learning-schema.md)
+[proto-learning schema](../plugins/self-learning/references/proto-learning-schema.md)
 for the exact row shape.
 
 **The compounding gate:** an `mcp-repo` or `loop-improvement` issue routed out of
@@ -85,8 +87,8 @@ repo benefits next time.
 | `mcp-issue-loop` | mcp-issue-loop | Works `ready-for-ai` issues on an **MCP** repo → CI-green PR. *Local:* worktrees + parallel subagents + local tests + review loop. *Cloud:* one session/issue, CI-driven (no local Umbraco), stop at green PR | Dev machine **or** cloud routine (Issue: Labeled `ready-for-ai`) | label `ready-for-ai` |
 | `rework-loop` | mcp-issue-loop | Address a PR's review feedback → re-green CI → re-request review (never merges) | Cloud routine (PR: Labeled `auto-rework`) or local | label a PR `auto-rework` |
 | `content-issue-loop` | mcp-issue-loop | Same, for repos **without** the toolchain (this repo, docs/plugin repos — *not* `Umbraco-MCP-Base`, which is a full MCP repo) | Dev machine or runner | "work the ready ops issues" |
-| capture hooks | mcp-issue-loop | After each subagent, analyze the transcript and append a row to the MCP Loop Learnings canvas | Wherever the loop runs | automatic (`SubagentStop`/`SessionEnd`) |
-| `triage-learnings` | mcp-issue-loop | Route proto-learnings (canvas) → MCP-repo issue / shared-skills PR / loop-improvement issue | Web runner (scheduled) | "triage the learnings" |
+| capture hooks | self-learning | After each subagent, analyze the transcript and append a row to the MCP Loop Learnings canvas — for any loop above, not just this one | Wherever any loop runs (if `self-learning` is installed) | automatic (`SubagentStop`/`SessionEnd`) |
+| `triage-learnings` | self-learning | Route proto-learnings (canvas) → MCP-repo issue / shared-skills PR / loop-improvement issue | Web runner (scheduled) | "triage the learnings" |
 | `merge-flow` | merge-flow | Merge PRs labelled `auto-merge` once green + conflict-free (the label is the approval) | Cloud routine (weekdays) | label `auto-merge` |
 | `auto-release-loop` | release-flow | Cut branch, drive CI green, publish + tag + Release, sync `dev` — CI-gated, no approval pause | Cloud routine (Issue: Labeled) | label an issue `auto-release` |
 | `loop-dispatch` | loop-dispatch | Front door that routes a triggering event → the matching loop above. Lets **one routine per repo** handle every loop event | Cloud routine (all loop events) or manual | any loop event on the repo |
@@ -111,6 +113,7 @@ Inside Claude Code:
 ```
 /plugin marketplace add hifi-phil/umbraco-mcp-ops
 /plugin install mcp-issue-loop@umbraco-mcp-ops
+/plugin install self-learning@umbraco-mcp-ops
 /plugin install merge-flow@umbraco-mcp-ops
 /plugin install release-flow@umbraco-mcp-ops
 /plugin install github-ops@umbraco-mcp-ops
@@ -147,7 +150,11 @@ environment can invoke the skills and spawn the agents.
   but its `/clean-branches` command does not** — `commands/` aren't copied to the env, which is
   correct: there's no branch-delete tool there to call.) `mcp-issue-loop` runs in cloud in its **cloud mode** (one session per issue,
   CI as the test gate — no local Umbraco); its **local mode** (worktrees + `test:all` +
-  the review loop + capture hooks) is dev-machine-only.
+  the review loop) is dev-machine-only.
+- **Capture hooks are delivered unconditionally**, not gated by the `SKILLS` list — the
+  script always looks for the `self-learning` plugin in the cloned repo and wires its
+  hooks into `settings.json` regardless of which loop skills this particular environment
+  lists, since capture should apply to whatever loop actually runs there.
 - **Refresh after a skill change:** bump `VERSION` in the script and re-save (the env
   snapshot is cached ~7 days; changing the source repo alone doesn't bust it). The repo
   stays the source of truth.

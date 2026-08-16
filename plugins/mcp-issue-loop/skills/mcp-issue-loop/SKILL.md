@@ -235,46 +235,18 @@ above), and hand back if any trips:**
 
 ## Capturing learnings (compounding)
 
-This loop, and every other automated loop in this repo, feeds its own
-improvement by emitting **proto-learnings** — raw observations that *something
-is worth improving somewhere* — which a separate scheduled routine (Loop B)
-later triages into PRs. This half only **captures**; nothing here (or in any
-subagent, in any loop) ever edits skills or `CLAUDE.md` inline.
+This loop's runs feed their own improvement, but not via anything in this
+skill — the **`self-learning` plugin** (a separate plugin, not bundled here)
+hooks `SubagentStop`/`SessionEnd` and captures automatically, for this loop and
+every other one in this repo, with no reference to `mcp-issue-loop` needed on
+either side. If it's installed, it just happens; if it isn't, this loop still
+works, it just isn't captured. Nothing here (or in any subagent) ever edits
+skills or `CLAUDE.md` inline — that's Loop B's job, once a human promotes a
+learning.
 
-**Capture is fully automatic and hook-driven — neither you nor the subagents file
-anything by hand.** Two async hooks (shipped by this plugin, but firing for
-whichever loop is actually running — they don't name or special-case
-`mcp-issue-loop`) do it off the critical path:
-
-- **`SubagentStop`** → after each issue subagent finishes, an analyzer reads its
-  transcript and appends a `proto-learning` row if something non-obvious
-  happened at the **issue level** (a diagnosed CI failure, a repeated mistake, an
-  unclear/missing pattern, a repo gotcha, a blocker).
-- **`SessionEnd`** → once, at the end of the orchestration session, an analyzer
-  reads *this* session's transcript and appends **loop-level** learnings you're
-  the only one positioned to reveal: a backstop that tripped, a class of issue
-  that consistently needed `opus`, an `mcp-review` finding that recurs across
-  issues, a recurring blocker.
-
-(That's this loop's shape of it — a different loop's `SubagentStop`/`SessionEnd`
-capture looks at whatever *its* subagents and top-level run actually do; the
-hooks and analyzer judge from the transcript, not from an assumption about
-which loop is running.)
-
-Properties that make this the capture mechanism (vs. self-reporting): it **can't
-be skipped** (fires even if a subagent crashes), it's **unbiased** (a fresh
-analyzer reads the transcript, not the agent grading itself), and it's **off the
-critical path**. Proto-learnings are rows on the shared **"MCP Loop Learnings"
-Slack canvas** (`#mcp-ops-learning`) — the plugin is read-only and may run on a
-stateless runner, so it can't store them itself, and a GitHub-issue inbox turned
-out to silently lose captures across the org boundary between an `umbraco/*`
-repo and the ops repo (see the schema doc for why). The analyzer appends the row
-itself, given one narrow Slack write tool. The analyzers enforce **signal, not
-noise**: one row only when something non-obvious happened; nothing for a clean
-run. See `hooks/` and the [schema](references/proto-learning-schema.md).
-
-So: **do the work well and let the hooks capture.** Your only capture-related duty
-is *not* to fix learnings inline — leave that to Loop B.
+**Your only capture-related duty: do the work well and don't fix learnings
+inline.** See the [self-learning system doc](../../../../docs/self-learning-system.md)
+for how capture and triage actually work.
 
 ## Rules
 
@@ -410,11 +382,9 @@ open `ready-for-ai` issue; none → quiet no-op):
    do **not** merge — review-response is [`rework-loop`](../rework-loop/SKILL.md)'s job (it
    fires on the PR-review event), and merging is `merge-flow`'s.
 
-**Not used in cloud mode:** the cap-3 queue, worktrees, and the review-response phase. The
-**capture hooks** (SubagentStop/SessionEnd → `proto-learning` canvas rows) *are* delivered to
-cloud sessions by the [`cloud-skill-sync`](../../../../scripts/cloud-skill-sync/) setup
-script, so self-learning capture runs in cloud too — the analyzer appends to the canvas
-directly (its one Slack write tool) wherever it runs, local or cloud; it logs and skips
-only if `jq`/`claude` is missing or the transcript isn't readable. The same guardrails still hold —
-`ready-for-ai` is the only gate, reviews are non-negotiable, follow the repo's `CLAUDE.md`,
-never leave CI red, and a blocked issue gets labelled `ai-blocked` + a comment, then stop.
+**Not used in cloud mode:** the cap-3 queue, worktrees, and the review-response phase. Capture
+still runs in cloud if the `self-learning` plugin's hooks are delivered to the session (see
+[cloud-skill-sync](../../../../scripts/cloud-skill-sync/)) — nothing in this loop's own
+behavior changes either way. The same guardrails still hold — `ready-for-ai` is the only
+gate, reviews are non-negotiable, follow the repo's `CLAUDE.md`, never leave CI red, and a
+blocked issue gets labelled `ai-blocked` + a comment, then stop.
