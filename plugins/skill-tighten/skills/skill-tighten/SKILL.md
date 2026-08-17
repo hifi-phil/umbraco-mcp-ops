@@ -94,15 +94,10 @@ against the skill directory and that `SKILL.md`, using the Verification model (s
 Config) — a different model than the one that ran the tightening rounds, so it isn't
 grading its own blind spots. It returns **CLEAN** or **FINDINGS**.
 
-Split findings by scope before applying:
-- **Text-level fixes** — reword, move existing content between files, inline a
-  pointer's target, add a missing rationale line. Apply directly, same as Step 2.
-- **Scope-expanding findings** — anything that adds infrastructure the skill didn't
-  already have (a new script, a new bundled file with no prior equivalent). Don't
-  apply these. List them in the Output as deferred and ask the user before adding
-  any — skill-tighten's job is trimming an existing skill to its skinniest correct
-  form, not growing it with new scope. (The `skill-creator-validator` agent already
-  excludes the most common case of this, missing `evals/` — see its own definition.)
+Apply findings directly (mechanical, same as Step 2) — except a finding that would
+add infrastructure the skill didn't already have (a new script, a new bundled file
+with no prior equivalent). Defer those instead: list them in the Output and ask the
+user, since skill-tighten trims an existing skill, it doesn't grow it with new scope.
 
 This is a single audit-and-fix pass either way, not a loop to convergence —
 skill-creator's guide is a quality bar, not something that oscillates round to
