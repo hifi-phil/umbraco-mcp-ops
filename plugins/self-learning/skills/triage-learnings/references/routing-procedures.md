@@ -34,3 +34,8 @@ concrete command/tool. Issue/PR bodies use
 2. Do **not** draft a PR editing whichever loop's skill this is about — a human
    frames the change.
 3. Mark the source row: `Status` → `Actioned`, `Notes` → the new issue link.
+
+## discard (not actionable → mark `Discarded`)
+
+1. No GitHub action — nothing is created.
+2. Mark the source row: `Status` → `Discarded`, `Notes` → a one-line reason.

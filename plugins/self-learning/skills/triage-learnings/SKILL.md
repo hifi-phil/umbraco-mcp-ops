@@ -40,6 +40,7 @@ and never restates or hard-codes how to do it.
 |-------|-------|
 | Canvas inbox | `F0BQ31E4R8F` ("MCP Loop Learnings", posted in `#mcp-ops-learning`) |
 | Canvas filter | `## Log` table rows where `Status` = `New` |
+| Canvas row shape | `Date \| Source Repo#Issue \| Category \| Lesson \| Guessed Home \| Status \| Notes` — `Guessed Home` is one of `mcp-repo`, `shared-mcp-skills`, `loop-self`, `unsure`. Full field-by-field contract: [proto-learning-schema.md](../proto-learning-capture/references/proto-learning-schema.md) — read it if the live canvas header disagrees with this. |
 | Homes | see the routing table below |
 | Base branch (shared-skills PR) | **detect** via the `release-and-branching` skill |
 | Routed items per run cap | see Caps & guardrails |
@@ -55,7 +56,7 @@ Home selection follows the `Guessed Home` heuristic in
 | `mcp-repo` | the learning's `Source Repo` — **any** Umbraco MCP repo | **Issue** on that repo | — |
 | `shared-mcp-skills` | `umbraco/Umbraco-MCP-Base` (the `umbraco-mcp-skills` source) | **PR** (drafted) | **Requires the promotion threshold.** |
 | `loop-self` | `hifi-phil/umbraco-mcp-ops` | **`loop-improvement` issue** | The loop must not rewrite its own definition unreviewed. |
-| *discard* | — | mark `Discarded` | Not actionable, stale, or wrong → mark the source row with a reason. |
+| *discard* | — | mark `Discarded` | Not actionable, stale, or wrong. |
 
 **When genuinely unsure** (the schema's heuristic doesn't resolve it): lean
 toward `shared-mcp-skills` if it's a tooling/pattern lesson **and it clears
@@ -105,10 +106,9 @@ rows it came from (repo/issue + capture date), and the occurrence count
 
 ## Step 5 — mark processed
 
-Marking a routed cluster's `Status`/`Notes` is the closing step of its home's
-procedure in `references/routing-procedures.md`. For a **discarded** cluster
-(no home assigned): `slack_update_canvas` to set `Status` → `Discarded`,
-`Notes` → a one-line reason.
+Marking a routed cluster's `Status`/`Notes` — including a discarded cluster
+with no home assigned — is the closing step of its home's procedure in
+`references/routing-procedures.md`.
 
 Re-read the canvas (`slack_read_canvas`) immediately before each
 `slack_update_canvas` call — section IDs go stale after every edit, including
@@ -125,7 +125,10 @@ created.
   bandwidth, not correctness. If more clusters are ready, route the
   highest-value ones, note the deferred count in the run's final report, and
   leave the rest for the next run — never silently drop them.
-- Don't bundle unrelated lessons into one routed item.
+- Don't bundle unrelated lessons into one routed item — a reviewer can only
+  approve or reject the whole item, so a bundle forces an all-or-nothing call
+  on changes that deserve separate verdicts. Step 2 clusters the *same*
+  lesson; it doesn't merge different ones to save slots.
 
 ## Running as a scheduled routine
 
