@@ -1,4 +1,6 @@
-[from-learnings] <one-line summary>
+Title: [from-learnings] <one-line summary>
+
+Body:
 
 ## What should change
 

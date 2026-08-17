@@ -2,7 +2,7 @@
 
 Exact steps once a cluster's home is already decided (see `SKILL.md`'s routing
 table for how to decide). All GitHub actions below use `github-ops` for the
-concrete command/tool. Issue/PR bodies use
+concrete command/tool. Issue/PR title and body follow
 [`assets/routed-item-template.md`](../assets/routed-item-template.md).
 
 ## `mcp-repo` (domain-specific → issue on that MCP repo)
@@ -17,7 +17,7 @@ concrete command/tool. Issue/PR bodies use
 
 ## `shared-mcp-skills` (generalizable → PR to Umbraco-MCP-Base)
 
-1. Use the base branch resolved in Config.
+1. Use the base branch resolved in `SKILL.md`'s Config.
 2. **Create a branch** (`chore/proto-learning-<slug>`) and **push** the **smallest**
    edit to the `umbraco-mcp-skills` skill that *should have* surfaced the lesson
    (often `add-tool` / `mcp-patterns` / an integration-test skill).
