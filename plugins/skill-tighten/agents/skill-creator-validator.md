@@ -29,9 +29,12 @@ The skill's directory, and the path to the installed `skill-creator` plugin.
    contents for long files), description-writing style (does it trigger reliably, is
    it appropriately "pushy" per skill-creator's own guidance), and the general
    writing-style advice (imperative form, explain *why* over bare MUSTs).
-4. For each violation, report: which skill-creator guidance it violates, the exact
+4. Skip skill-creator's "Test Cases" guidance entirely — never flag a missing
+   `evals/` suite. These are process/orchestration skills verified by actually
+   running them, not eval-benchmarked, so that guidance doesn't apply here.
+5. For each violation, report: which skill-creator guidance it violates, the exact
    file + location, what's wrong, and the specific fix.
-5. A finding must be concrete and actionable — skip vague style opinions.
+6. A finding must be concrete and actionable — skip vague style opinions.
 
 ## Output
 - **CLEAN** — no findings.
