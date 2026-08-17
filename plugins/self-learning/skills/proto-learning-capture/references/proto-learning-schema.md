@@ -1,13 +1,12 @@
 # Proto-learning schema
 
 A **proto-learning** is a raw, un-triaged observation captured while any of
-this repo's automated loops ran — a CI failure you had to diagnose, a mistake
-you repeated, review feedback that revealed a pattern, a blocker, or a gap in
-the skills / `CLAUDE.md`. This is shared infrastructure, not specific to
-`mcp-issue-loop` — every loop in this repo captures through the same hooks and
-the same canvas. It is **not** a fix; it's a note that *something is worth
-improving somewhere*. A later triage routine (Loop B) reads these, clusters
-them, and opens PRs to the right home.
+this repo's automated loops ran. This is shared infrastructure, not specific
+to `mcp-issue-loop` — every loop in this repo captures through the same hooks
+and the same canvas. It is **not** a fix; it's a note that *something is worth
+improving somewhere* (see "When to capture" below for the actual criteria). A
+later triage routine (Loop B) reads these, clusters them, and opens PRs to the
+right home.
 
 Proto-learnings are captured as a row on the shared **"MCP Loop Learnings" Slack
 canvas** (`F0BQ31E4R8F`, posted in the private `#mcp-ops-learning` channel) —
