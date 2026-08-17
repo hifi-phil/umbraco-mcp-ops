@@ -1,39 +1,36 @@
 ---
 name: proto-learning-capture
 description: >-
-  The capture half of the self-learning system — reference for what the
-  SubagentStop/SessionEnd hooks do and the proto-learning schema (row shape)
-  they write to the shared "MCP Loop Learnings" Slack canvas. Capture is
-  hook-driven and fully automatic, covering every loop in this repo (not
-  named or enumerated — the hooks match on shared conventions like
-  github-ops/`/goal`). Separate from `triage-learnings` (Loop B), which runs
-  on a schedule to route what's captured — capture only ever writes rows,
-  never routes or fixes anything. Trigger on "how does capture work", "what
-  gets captured", "proto-learning schema", or when investigating the
-  self-learning system's capture half specifically.
+  The capture half of the self-learning system — reference for what gets
+  captured and the proto-learning schema (row shape) written to the shared
+  "MCP Loop Learnings" Slack canvas. Capture itself is hook-driven and fully
+  automatic — this skill is the reference for how it works, not a way to
+  file a learning by hand. Separate from `triage-learnings` (Loop B), which
+  runs weekly to route what's captured. Trigger on "how does capture work",
+  "what gets captured", "proto-learning schema", "why wasn't a learning
+  captured", "the capture hook didn't fire", or any question about the
+  SubagentStop/SessionEnd capture hooks or the "MCP Loop Learnings" canvas
+  rows — including when the user is debugging a missing capture rather than
+  asking about the schema by name.
 ---
 
 # proto-learning-capture
 
-The **capture half** of the self-learning system. Not run on demand — it's
-hook-driven — but worth understanding on its own, separate from
-[`triage-learnings`](../triage-learnings/SKILL.md) (the **triage half**, run
-on a schedule). The actual mechanism (hooks, analyzer prompts) lives in
-[`../../hooks/`](../../hooks/); this skill is the reference for what it does
-and the row shape it writes.
+The **capture half** of the self-learning system — hook-driven, not run on
+demand. The mechanism (hooks, analyzer prompts) lives in
+[`../../hooks/`](../../hooks/); see [`triage-learnings`](../triage-learnings/SKILL.md)
+for the **triage half**, run weekly.
 
 ## What happens
 
 After any loop run in this repo — any of them; the hooks match on shared
 conventions (`github-ops`, `/goal`), not an enumerated list — an analyzer
-reads the finished transcript and decides whether something's worth
-recording: a CI failure diagnosed, a repeated mistake, a repo gotcha, a
-cross-repo pattern, a blocker. If so, it appends one row to the shared **"MCP
-Loop Learnings" Slack canvas** (`F0BQ31E4R8F`, in `#mcp-ops-learning`) — the
-row shape is the [proto-learning schema](references/proto-learning-schema.md).
+reads the finished transcript and, per the
+[proto-learning schema](references/proto-learning-schema.md)'s when-to-capture
+categories, decides whether something's worth recording. If so, it appends
+one row to the shared canvas per that same schema.
 
-## Where this ends
-
-Capture only ever writes rows; it never routes or fixes anything. Rows sit at
-`Status = New` until `triage-learnings` (Loop B) — a **separate skill**, run
-weekly — reads, dedupes, and routes them.
+Read [`references/proto-learning-schema.md`](references/proto-learning-schema.md)
+for the actual contract: when the analyzer should and shouldn't capture, the
+exact canvas row fields, and the `Guessed Home` heuristic. `capture-proto-learning.sh`
+reads this same file, so it's the single source of truth for both the hook and this skill.
