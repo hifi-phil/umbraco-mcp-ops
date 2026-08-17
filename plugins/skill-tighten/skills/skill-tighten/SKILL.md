@@ -94,9 +94,18 @@ against the skill directory and that `SKILL.md`, using the Verification model (s
 Config) — a different model than the one that ran the tightening rounds, so it isn't
 grading its own blind spots. It returns **CLEAN** or **FINDINGS**.
 
-If findings, apply them directly (mechanical, same as Step 2). This is a single
-audit-and-fix pass, not a loop to convergence — skill-creator's guide is a quality
-bar, not something that oscillates round to round the way duplication does.
+Split findings by scope before applying:
+- **Text-level fixes** — reword, move existing content between files, inline a
+  pointer's target, add a missing rationale line. Apply directly, same as Step 2.
+- **Scope-expanding findings** — anything that adds infrastructure the skill didn't
+  already have (an `evals/` suite, a new script, a new bundled file with no prior
+  equivalent). Don't apply these. List them in the Output as deferred and ask the
+  user before adding any — skill-tighten's job is trimming an existing skill to its
+  skinniest correct form, not growing it with new scope.
+
+This is a single audit-and-fix pass either way, not a loop to convergence —
+skill-creator's guide is a quality bar, not something that oscillates round to
+round the way duplication does.
 
 ## Step 5 — lossless review
 
@@ -126,7 +135,9 @@ Report, regardless of outcome:
 - rounds run, and what each round fixed (one line per finding)
 - starting vs. final line count of `SKILL.md` — the "skinnier" signal
 - **converged** or **not converged** — never blur the two
-- skill-creator validation (Step 4): what it found, if anything, and what was fixed
+- skill-creator validation (Step 4): what it found, what was fixed directly, and
+  what was deferred to the user as scope-expanding (with the finding, so they
+  can decide)
 - lossless review (Step 5): **lossless**, or what was found + restored, or
   **incomplete** if the second round still found something
 - whether Step 6's optional deeper verification ran, and what it found, if it did
