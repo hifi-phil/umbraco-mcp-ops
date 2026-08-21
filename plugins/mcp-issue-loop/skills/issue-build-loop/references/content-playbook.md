@@ -1,15 +1,15 @@
 # The lightweight build playbook
 
-Completing one `ready-for-ai` issue on a **non-MCP** repo. No Umbraco toolchain. This is
-the per-issue prompt substituted into each build subagent, in place of `mcp-issue-loop`'s
-`issue-lifecycle.md`.
+Completing one `ready-for-ai` issue on a **content repo** — no Umbraco toolchain. This is
+the per-issue prompt substituted into each build subagent, in place of the MCP shape's
+[`issue-lifecycle.md`](issue-lifecycle.md).
 
 1. **Worktree.** `EnterWorktree` works in any git repo (at minimum it does
    `git worktree add`). **Check `.claude/settings.json` for `WorktreeCreate` hooks**
    rather than assuming there are none — if the repo has them they *will* fire, and a
-   repo with worktree hooks is a strong sign it belongs in `mcp-issue-loop`, not here.
-   For a repo with no hooks (the ops repo, docs repos), a plain worktree is all you
-   need: no DB, no `.env`, no port, no `npm install`.
+   repo with worktree hooks is a strong sign it's actually MCP-shaped (use
+   `issue-lifecycle.md` instead). For a repo with no hooks (the ops repo, docs repos), a
+   plain worktree is all you need: no DB, no `.env`, no port, no `npm install`.
 2. **Implement.** Make the change directly — markdown, a skill (`SKILL.md` +
    references), a plugin manifest, a `scripts/` change, a workflow. Follow the repo's
    own conventions:
@@ -32,5 +32,5 @@ the per-issue prompt substituted into each build subagent, in place of `mcp-issu
    `release-and-branching` — never assume it; these repos don't share one model).
    Link the issue (`Closes #N`), ready for review, never draft. `umbraco-mcp-ops` runs
    the hook-test workflow when `hooks/**` changes.
-6. **Return** as in mcp-issue-loop (`pr-open`, or `blocked` with the reason); leave the
+6. **Return** as in the MCP playbook (`pr-open`, or `blocked` with the reason); leave the
    worktree for the orchestrator. Capture is automatic — do nothing.

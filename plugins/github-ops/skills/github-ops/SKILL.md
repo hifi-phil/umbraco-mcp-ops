@@ -3,8 +3,8 @@ name: github-ops
 description: >-
   Shared how-to for GitHub operations in both environments this system runs in —
   locally with the `gh` CLI + `git`, and on Claude web / in scheduled routines with
-  the GitHub MCP server (`mcp__github__*`, no `gh` there). Other skills — mcp-issue-loop,
-  content-issue-loop, triage-learnings, merge-flow, auto-release-loop — point here instead
+  the GitHub MCP server (`mcp__github__*`, no `gh` there). Other skills — issue-build-loop,
+  triage-learnings, merge-flow, auto-release-loop — point here instead
   of each re-explaining the dual path. Load this whenever a loop needs to touch
   GitHub (list/create issues, open/merge PRs, check CI, push files) and you need the
   concrete command/tool for the current environment.
@@ -71,8 +71,8 @@ instead).
 | **Merge a PR (+ delete branch)** | merge-flow |
 | Update a PR's body | dependabot-rollup |
 | **Close a PR without merging (+ comment, delete branch)** | dependabot-rollup |
-| Create a branch | triage (shared-skills), content-issue-loop |
-| Create / update / push file(s) | triage (shared-skills), content-issue-loop |
+| Create a branch | triage (shared-skills), issue-build-loop (content-repo shape) |
+| Create / update / push file(s) | triage (shared-skills), issue-build-loop (content-repo shape) |
 | Get file contents | any |
 | List branches (name + protection) | branch-housekeeping |
 | Get repo metadata (default branch, `delete_branch_on_merge`, archived) | branch-housekeeping, release-and-branching |

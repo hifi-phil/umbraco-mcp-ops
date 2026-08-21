@@ -15,7 +15,7 @@ description: >-
 # rework-loop
 
 The **review-response half of the issue loop, split out so it can be event-driven.**
-`mcp-issue-loop` (cloud mode) takes a `ready-for-ai` issue to a CI-green PR and stops;
+`issue-build-loop` (cloud mode) takes a `ready-for-ai` issue to a CI-green PR and stops;
 when you review that PR and label it **`auto-rework`**, **`rework-loop`** picks it up and
 addresses the feedback — closing the write → review → rework → merge chain with no
 long-lived "monitor my review" session.

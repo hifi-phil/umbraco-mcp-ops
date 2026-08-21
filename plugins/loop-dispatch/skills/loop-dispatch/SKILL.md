@@ -30,7 +30,7 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 
 | event | action | label / state | Run |
 |---|---|---|---|
-| `issues` | `labeled` | label = `ready-for-ai` | **`/mcp-issue-loop`** (cloud mode) |
+| `issues` | `labeled` | label = `ready-for-ai` | **`/issue-build-loop`** (cloud mode) |
 | `issues` | `labeled` | label = `auto-release` (issue title `release <version>`) | **`/auto-release-loop`** |
 | `issues` | `labeled` | label = `ai-discuss` | **`/issue-discuss-loop`** |
 | `issue_comment` | `created` | issue carries `ai-discuss` + is open, comment is unsigned and doesn't start `//`, author is a trusted `User`, not a PR | **`/issue-discuss-loop`** |
@@ -76,11 +76,11 @@ triggering label / is still open. If not, **quiet no-op**.
 Invoke the matched skill exactly as its own dedicated routine would, scoped to the
 specific issue/PR, and **follow that skill's instructions verbatim**:
 
-- `ready-for-ai` issue → **`/mcp-issue-loop`** in **cloud mode** for that issue (local
-  run → its local mode). **On a non-MCP repo** (the ops repo, docs/plugin repos) use
-  **`/content-issue-loop`** instead — same `route=mcp-issue-loop` signal, but that repo
-  has no MCP toolchain to build against. `Umbraco-MCP-Base` **is** an MCP repo (SDK
-  monorepo, full test suite) — it takes `/mcp-issue-loop` like the server repos.
+- `ready-for-ai` issue → **`/issue-build-loop`** in **cloud mode** for that issue (local
+  run → its local mode). It detects the repo's shape itself and picks the matching build
+  playbook — the MCP toolchain one for server repos and `Umbraco-MCP-Base` (SDK monorepo,
+  full test suite), the lightweight content playbook for repos with no toolchain (the ops
+  repo, docs/plugin repos). Same `route=issue-build-loop` signal either way.
 - `auto-merge` PR → **`/merge-flow`** (it sweeps all `auto-merge` PRs; the event is
   just the wake-up).
 - `auto-rework` PR label → **`/rework-loop`** for that PR.

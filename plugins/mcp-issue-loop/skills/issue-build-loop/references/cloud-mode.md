@@ -8,6 +8,16 @@ orchestrator on a cheap base model**: it triages the one issue and dispatches a 
 build subagent on the best-fit model — the same *Model selection* logic as local, just one
 subagent instead of up to three.
 
+**This doc covers MCP-repo cloud mode** — the SQL-Server-boot dance below is what cloud
+mode has to add over local specifically because the MCP playbook needs a real Umbraco to
+test against. **For a content-repo issue in cloud mode**, there's no toolchain to boot, so
+there's nothing extra to add over local mode: resolve the repo's shape as in `SKILL.md` →
+*Config*, triage + dispatch a single build subagent per step 1 below on
+[`content-playbook.md`](content-playbook.md) instead of `issue-lifecycle.md`, working
+directly in the session's checkout (content repos have no worktree hooks to lose either
+way), then drive CI green and run `mcp-review` per steps 3–5 below — those steps are
+shape-agnostic.
+
 **Know the environment first.** Before triaging, consult the **[`worker-env`](../../../../loop-dispatch/skills/worker-env/SKILL.md)** skill
 (`cat /root/env-manifest.md`) — it tells you what this cloud worker provides (.NET SDK,
 whether SQL Server is available, the ops `run-umbraco.sh`). Cloud sessions **do** get a

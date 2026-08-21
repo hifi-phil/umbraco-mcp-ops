@@ -2,7 +2,7 @@
 
 A **proto-learning** is a raw, un-triaged observation captured while any of
 this repo's automated loops ran. This is shared infrastructure, not specific
-to `mcp-issue-loop` — every loop in this repo captures through the same hooks
+to `issue-build-loop` — every loop in this repo captures through the same hooks
 and the same canvas. It is **not** a fix; it's a note that *something is worth
 improving somewhere* (see "When to capture" below for the actual criteria). A
 later triage routine (Loop B) reads these, clusters them, and opens PRs to the

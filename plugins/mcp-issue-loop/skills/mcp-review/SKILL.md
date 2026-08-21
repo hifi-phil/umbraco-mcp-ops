@@ -5,8 +5,8 @@ description: >-
   real reviewer agents: it spawns Anthropic's pr-review-toolkit code-review agents for code
   quality, and our lightweight security-reviewer agent for vulnerabilities, then merges and
   confidence-filters the findings and posts them on the PR. Run it from a TOP-LEVEL session
-  (orchestrator / rework session), never inside a build subagent. Used by mcp-issue-loop,
-  rework-loop, and content-issue-loop. Requires github-ops. Invoke as "review PR #N with
+  (orchestrator / rework session), never inside a build subagent. Used by issue-build-loop
+  (both repo shapes) and rework-loop. Requires github-ops. Invoke as "review PR #N with
   mcp-review".
 ---
 

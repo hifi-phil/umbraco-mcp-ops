@@ -149,7 +149,7 @@ review are all the orchestrator's job now; human feedback is `rework-loop`'s.
 
 ## Responding to human review
 
-There is **no review-response playbook here** — `mcp-issue-loop` builds to a CI-green,
+There is **no review-response playbook here** — `issue-build-loop` builds to a CI-green,
 `mcp-review`-passed PR and hands off. When the human requests changes, they add the
 `auto-rework` label and [`rework-loop`](../../rework-loop/SKILL.md) actions the feedback.
 Merging is `merge-flow`'s job.
