@@ -1,4 +1,6 @@
-# Issue lifecycle — build playbook
+# MCP-repo build playbook
+
+This is the MCP-repo variant; content repos use `content-playbook.md`.
 
 The **build playbook** below. The orchestrator (see `../SKILL.md`) substitutes the issue
 details and dispatches it as a subagent prompt (`agentType: general-purpose`, so the full
@@ -59,10 +61,13 @@ question — don't invent scope.
 
 ### 3. Implement — follow established patterns, skip nothing
 
-**If the work creates or changes MCP tools, use the Umbraco MCP skills — this is
-mandatory, not optional** (the user's standing instruction: always use the
-`umbraco-mcp-skills` for tools/tests/evals, follow the full workflow, skip
-nothing). Load `/mcp-patterns` first, then use the relevant skills/agents:
+**If the work creates or changes MCP tools, use the Umbraco MCP skills for every
+step below — tools, tests, and evals, skipping none.** They encode the conventions
+`mcp-review` and CI actually check for (one file per tool in the right verb folder,
+`withStandardDecorators`, builders/helpers before test files, the new tool added to
+every eval's `allTools` array); a hand-rolled tool passes local compile and then
+fails review, costing a full re-dispatch. Load `/mcp-patterns` first, then use the
+relevant skills/agents:
 
 - Tool creation/changes → `/add-tool` (or `/build-tools` for a whole collection),
   or the `mcp-tool-creator` agent if agent-spawning is available to you.
@@ -111,12 +116,10 @@ green. If state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename th
 
 ### 5. CI-driving and review are the orchestrator's job — you do neither
 
-**Do not run `/security-review` or `/code-review` yourself.** They can't run in a subagent
-(they're `disable-model-invocation: true` — the command reaches you as inert text and
-nothing happens), and a subagent grading its own code is weak anyway. You also do **not**
-drive CI — once you return, **the orchestrator** polls the PR's checks and drives it green,
-then runs the [`mcp-review`](../../mcp-review/SKILL.md) skill over it (the faithful 5-lens
-code review + security scan, spawned as independent review subagents), handing you back
+**Do not run `/security-review` or `/code-review` yourself** — see `SKILL.md`'s Rules for
+why they're inert in a subagent; a subagent grading its own code is weak anyway. You also
+do **not** drive CI — once you return, **the orchestrator** polls the PR's checks and drives it green,
+then runs the [`mcp-review`](../../mcp-review/SKILL.md) skill over it, handing you back
 either a failing check's log or any surviving review findings to fix in this worktree. Just
 build well and return; don't claim a review ran or that CI is green.
 
@@ -141,15 +144,11 @@ orchestrator: `{ issue, worktreeName, worktreePath, branch, prNumber, model, tie
 (`status`: `pr-open`, or `blocked` with the reason if you stopped early per the Definition
 of done or step 2's ambiguity check). Leave the worktree on disk (do **not** remove it) — the orchestrator
 reuses it to drive the PR's CI green (re-dispatching a fix into this same worktree on a
-failing check) and to fix any `mcp-review` findings. Do not poll CI, do not review your own
-code, and do not wait for human review — driving CI green, marking the issue's outcome, and
-review are all the orchestrator's job now; human feedback is `rework-loop`'s.
+failing check) and to fix any `mcp-review` findings, per step 5 above.
 
 ---
 
 ## Responding to human review
 
-There is **no review-response playbook here** — `issue-build-loop` builds to a CI-green,
-`mcp-review`-passed PR and hands off. When the human requests changes, they add the
-`auto-rework` label and [`rework-loop`](../../rework-loop/SKILL.md) actions the feedback.
-Merging is `merge-flow`'s job.
+No review-response playbook here — see `SKILL.md` Step 4 for the hand-off
+(rework-loop / merge-flow).
