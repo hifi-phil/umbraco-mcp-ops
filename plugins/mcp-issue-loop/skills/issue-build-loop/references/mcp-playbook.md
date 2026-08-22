@@ -108,11 +108,11 @@ never rely on pre-existing Umbraco content.
 
 **A `tests/evals/*.test.ts` suite failing with `Claude Code process exited with code 1`**
 is the Agent SDK subprocess evals spawn dying for lack of an `ANTHROPIC_API_KEY` in this
-environment — a known environmental failure, not a regression from your change (see #90).
-Don't re-diagnose it or treat it as a gate failure: note it explicitly in your return and
-the PR body (e.g. "N eval suites failed with the known `ANTHROPIC_API_KEY`-missing
-environmental signature — not a regression from this change; see issue #90") and let the
-rest of the gate stand on the other tests.
+environment — a known environmental failure, not a regression from your change (see
+`hifi-phil/umbraco-mcp-ops#90`). Don't re-diagnose it or treat it as a gate failure: note it
+explicitly in your return and the PR body (e.g. "N eval suites failed with the known
+`ANTHROPIC_API_KEY`-missing environmental signature — not a regression from this change;
+see `hifi-phil/umbraco-mcp-ops#90`") and let the rest of the gate stand on the other tests.
 
 If the gate needs a running Umbraco, start it in this worktree if it isn't already
 (`npm run start:umbraco` on a server repo; first run does the unattended install and can
