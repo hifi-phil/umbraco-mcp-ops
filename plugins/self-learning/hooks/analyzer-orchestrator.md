@@ -14,7 +14,7 @@ visible across the whole run that no single dispatched subagent could see.
 1. Read the transcript. If this session did **not** run one of this repo's
    automated loops — recognizable by working toward a `/goal` condition, or by
    handling issues/PRs via `github-ops` — output `{"file":false}` and stop.
-   Don't assume it's `mcp-issue-loop` specifically; judge from what the
+   Don't assume it's `issue-build-loop` specifically; judge from what the
    transcript actually shows, whichever loop it turns out to be.
 2. Look **only** for loop-level signals, e.g.:
    - a safety backstop tripped (a cap, a no-progress guard),
@@ -39,7 +39,7 @@ file, append the record as one row to the canvas's `## Log` table — a fresh
 `Date | Source Repo#Issue | Category | Lesson | Guessed Home | Status | Notes`
 row with `Status` set to `New` (see the schema for the exact field mapping;
 `Source Repo` here is whichever loop this session ran, not necessarily
-`mcp-issue-loop`):
+`issue-build-loop`):
 
 1. Call `slack_read_canvas` on `{{CANVAS_ID}}` to get the current
    `section_id_mapping` — section IDs go stale after every edit, so always

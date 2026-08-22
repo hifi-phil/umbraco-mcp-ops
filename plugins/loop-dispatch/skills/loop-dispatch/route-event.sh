@@ -16,7 +16,7 @@
 #      not part of the JSON body).
 #
 # Output: one line of `key=value` pairs on stdout, always exit 0:
-#   route=<mcp-issue-loop|auto-release-loop|merge-flow|rework-loop|issue-discuss-loop|none> repo=<r> number=<n>
+#   route=<issue-build-loop|auto-release-loop|merge-flow|rework-loop|issue-discuss-loop|none> repo=<r> number=<n>
 # route=none means "not ours — quiet no-op". `none` is a normal outcome, not an error.
 #
 # Unknown / missing / unmatched fields always resolve to route=none. It never guesses.
@@ -121,7 +121,7 @@ route="none"
 case "$event/$action" in
   issues/labeled)
     case "$label" in
-      ready-for-ai) route="mcp-issue-loop" ;;
+      ready-for-ai) route="issue-build-loop" ;;
       auto-release) route="auto-release-loop" ;;
       ai-discuss)   route="issue-discuss-loop" ;;
     esac ;;

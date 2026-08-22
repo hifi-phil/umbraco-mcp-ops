@@ -45,7 +45,7 @@ expect_route "pr_target dependencies → none"       none              -- --even
 expect_route "pr dependencies → none (the 4x bug)" none              -- --event pull_request --action labeled --label dependencies --number 269 --repo o/r
 expect_route "pr javascript → none"                none              -- --event pull_request --action labeled --label javascript --number 7 --repo o/r
 expect_route "pr opened → none"                    none              -- --event pull_request --action opened --number 42 --repo o/r
-expect_route "issue ready-for-ai → mcp-issue-loop" mcp-issue-loop    -- --event issues --action labeled --label ready-for-ai --number 5 --repo o/r
+expect_route "issue ready-for-ai → issue-build-loop" issue-build-loop -- --event issues --action labeled --label ready-for-ai --number 5 --repo o/r
 expect_route "issue auto-release → auto-release"   auto-release-loop -- --event issues --action labeled --label auto-release --number 9 --repo o/r
 expect_route "issue bug → none"                    none              -- --event issues --action labeled --label bug --number 3 --repo o/r
 expect_route "issue ai-discuss → discuss loop"     issue-discuss-loop -- --event issues --action labeled --label ai-discuss --number 50 --repo o/r
@@ -96,7 +96,7 @@ expect_json "raw json dependencies PR → none" \
   '{"action":"labeled","label":{"name":"dependencies"},"pull_request":{"number":269},"repository":{"full_name":"a/b"}}' \
   pull_request
 expect_json "raw json ready-for-ai issue" \
-  "route=mcp-issue-loop repo=a/b number=5" \
+  "route=issue-build-loop repo=a/b number=5" \
   '{"action":"labeled","label":{"name":"ready-for-ai"},"issue":{"number":5},"repository":{"full_name":"a/b"}}' \
   issues
 expect_json "raw json auto-rework PR label" \

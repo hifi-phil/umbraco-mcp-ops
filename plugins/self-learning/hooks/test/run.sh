@@ -49,7 +49,7 @@ run_case prefilter subagent "no loop signature — skipping" \
 run_case skip subagent "analyzer decided SKIP" SELF_LEARNING_ANALYZER_OUT='{"file":false}' \
   < <(event_for "$FIX/loop-build.jsonl")
 
-# 2b. A non-mcp-issue-loop transcript (merge-flow, via github-ops) still reaches
+# 2b. A non-issue-build-loop transcript (merge-flow, via github-ops) still reaches
 # the analyzer — the pre-filter matches on shared conventions, not loop names.
 run_case other_loop subagent "analyzer decided SKIP" SELF_LEARNING_ANALYZER_OUT='{"file":false}' \
   < <(event_for "$FIX/other-loop.jsonl")
