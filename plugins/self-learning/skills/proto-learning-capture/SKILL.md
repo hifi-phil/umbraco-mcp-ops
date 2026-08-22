@@ -38,9 +38,10 @@ env vars that bind a process to the invoking session's inbound message channel
 session ids). When it did, a live event meant for the loop — a CI webhook, or
 the loop's own self-scheduled `send_later` check-in — could be delivered into
 the analyzer's turn instead, once starving a loop's check-in and stalling a
-release. `capture-proto-learning.sh` now strips those vars and spawns the
-analyzer detached, in its own process session, so it is unaddressable and
-outlives the loop session's teardown.
+release. `capture-proto-learning.sh` now strips those vars, so the analyzer is
+unaddressable regardless of platform, and — where the platform supports it
+(`setsid`; not macOS) — spawns it detached in its own process session so it
+also outlives the loop session's teardown.
 
 Debugging note: the hook returns before the analyzer does, so a capture appears
 in `~/.cache/self-learning/capture.log` (or `$SELF_LEARNING_LOG`) some time

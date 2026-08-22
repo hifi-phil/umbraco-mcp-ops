@@ -88,7 +88,16 @@ release_marker() { [ -n "$MARKER" ] && rm -f "$MARKER" 2>/dev/null; return 0; }
 if [ -n "$SID" ]; then
   MARKER="$(dirname "$LOG")/analyzed-$SCOPE-$SID"
   if ! ( set -C; : >"$MARKER" ) 2>/dev/null; then
-    log "session $SID ($SCOPE) already analysed — skipping"; exit 0
+    # `set -C` also fails when the marker's directory is missing/unwritable, not
+    # just on a genuine dedupe hit — conflating the two would silently disable
+    # capture for every future session once that directory problem showed up.
+    # Only an existing marker means "already analysed"; anything else proceeds
+    # without dedup for this one run rather than skipping it forever.
+    if [ -e "$MARKER" ]; then
+      log "session $SID ($SCOPE) already analysed — skipping"; exit 0
+    fi
+    log "could not claim marker $MARKER — proceeding without once-per-session dedup"
+    MARKER=""
   fi
 fi
 
@@ -145,9 +154,15 @@ ISOLATE=(env
   -u CLAUDE_CODE_SESSION_ID
   -u CLAUDE_PID
 )
-# New process session too, where the tool exists (not on macOS): the hook fires
-# as the loop session is ending, so staying in its process group means the
-# analyzer is torn down with it. Detached, it outlives that teardown.
+# Bound the analyzer's runtime, where the tool exists: detached and disowned
+# (below), nothing on the loop's side supervises it any more, so a hang would
+# otherwise hold the marker claimed and the analyzer's auth alive indefinitely.
+if command -v timeout >/dev/null 2>&1; then ISOLATE=(timeout 600 "${ISOLATE[@]}"); fi
+# New process session too, where the tool exists (not on macOS — there the
+# analyzer stays in the hook's process group, so it loses the teardown
+# immunity below but is still env-isolated from the loop's live events): the
+# hook fires as the loop session is ending, so staying in its process group
+# means the analyzer is torn down with it. Detached, it outlives that teardown.
 if command -v setsid >/dev/null 2>&1; then ISOLATE=(setsid "${ISOLATE[@]}"); fi
 
 # Run detached and return immediately: nothing on the loop's side, not even
@@ -157,6 +172,14 @@ if command -v setsid >/dev/null 2>&1; then ISOLATE=(setsid "${ISOLATE[@]}"); fi
 # the environment has the Slack connector attached, which the analyzer prompt
 # is told to tolerate the absence of.
 (
+  # `env -u` only removes the var's NAME from the child's environment — it
+  # doesn't close the descriptor the var names, so if this fd was inherited
+  # without O_CLOEXEC the analyzer could still read/write the loop session's
+  # websocket auth channel despite never seeing the var. Close it directly.
+  case "${CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR:-}" in
+    ''|*[!0-9]*) : ;;
+    *) eval "exec ${CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR}<&-" 2>/dev/null || true ;;
+  esac
   OUT="$("${ISOLATE[@]}" claude -p "$PROMPT" --model sonnet \
     --allowedTools "Read,Grep,mcp__Slack__slack_read_canvas,mcp__Slack__slack_update_canvas" \
     2>>"$LOG")" || { log "analyzer invocation failed"; release_marker; exit 0; }

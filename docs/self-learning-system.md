@@ -69,8 +69,9 @@ weren't, a live event meant for the loop — a CI-failure webhook, or the loop's
 self-scheduled `send_later` check-in — could be delivered into the analyzer's turn
 and never reach the loop's driving logic; on `Umbraco-CMS-MCP-Dev#407` that starved
 a check-in and left a release to be finished by hand. The hook now strips those
-bindings and spawns the analyzer detached, in its own process session, so it can
-neither be addressed by the loop's events nor be torn down with the loop.
+bindings, so the analyzer can never be addressed by the loop's events, and — where
+the platform supports it (`setsid`; not macOS) — spawns it in its own process
+session so it also outlives the loop session's teardown.
 
 **Capture lands on a Slack canvas, not a GitHub issue.** Every capture appends a
 row to the **"MCP Loop Learnings" Slack canvas** (`F0BQ31E4R8F`, posted in the
