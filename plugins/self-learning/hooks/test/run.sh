@@ -91,6 +91,51 @@ else
   echo "FAIL [once_per_session]: second run did not skip"; echo "  --- log ---"; sed 's/^/  /' "$guard2_log" 2>/dev/null; fail=$((fail+1))
 fi
 
+# 9. Analyzer isolation: the nested `claude` must not inherit the vars that bind
+#    a process to the invoking session's inbound message channel, or a live
+#    event/check-in meant for the loop can land in the analyzer's turn instead.
+#    A stub `claude` on PATH dumps its own environment for the assertions; it
+#    also exercises the detached spawn path, which the canned-output seam skips.
+iso_dir="$WORK/isolation"; mkdir -p "$iso_dir/bin"
+iso_log="$iso_dir/capture.log"; iso_dump="$iso_dir/analyzer-env"
+cat >"$iso_dir/bin/claude" <<'STUB'
+#!/usr/bin/env bash
+env >"$STUB_ENV_DUMP"
+printf '%s\n' '{"file":true,"lesson":"isolation stub"}'
+STUB
+chmod +x "$iso_dir/bin/claude"
+env PATH="$iso_dir/bin:$PATH" STUB_ENV_DUMP="$iso_dump" SELF_LEARNING_LOG="$iso_log" \
+  CLAUDE_CODE_MESSAGING_SOCKET=/tmp/fake-cc.sock \
+  CLAUDE_CODE_MESSAGING_TOKEN=faketoken \
+  CLAUDE_SESSION_INGRESS_TOKEN_FILE=/tmp/fake-ingress \
+  CLAUDE_CODE_POST_FOR_SESSION_INGRESS_V2=true \
+  CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR=3 \
+  CLAUDE_CODE_REMOTE_SESSION_ID=cse_fake \
+  CLAUDE_CODE_SESSION_ID=fake-uuid \
+  CLAUDE_PID=4242 \
+  bash "$SCRIPT" orchestrator < <(event_for "$FIX/loop-build.jsonl" SessionEnd)
+
+# The analyzer is detached, so wait for it rather than assuming it has finished.
+for _ in $(seq 1 60); do [ -s "$iso_dump" ] && break; sleep 0.25; done
+
+iso_fail=""
+[ -s "$iso_dump" ] || iso_fail="stub analyzer never ran (no env dump)"
+if [ -z "$iso_fail" ]; then
+  for v in CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN \
+           CLAUDE_SESSION_INGRESS_TOKEN_FILE CLAUDE_CODE_POST_FOR_SESSION_INGRESS_V2 \
+           CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR CLAUDE_CODE_REMOTE_SESSION_ID \
+           CLAUDE_CODE_SESSION_ID CLAUDE_PID; do
+    grep -q "^$v=" "$iso_dump" && iso_fail="analyzer inherited $v"
+  done
+  # The re-entry guard must survive the scrub, or the analyzer's own hooks recurse.
+  grep -q '^SELF_LEARNING_CAPTURE=1$' "$iso_dump" || iso_fail="analyzer lost SELF_LEARNING_CAPTURE"
+fi
+if [ -z "$iso_fail" ]; then
+  echo "PASS [analyzer_isolation]"; pass=$((pass+1))
+else
+  echo "FAIL [analyzer_isolation]: $iso_fail"; fail=$((fail+1))
+fi
+
 echo "-----"
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]

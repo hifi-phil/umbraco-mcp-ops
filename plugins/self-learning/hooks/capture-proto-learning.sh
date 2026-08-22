@@ -13,8 +13,10 @@
 # path. Filing proto-learnings as issues on hifi-phil/umbraco-mcp-ops needed
 # that repo and the working repo to share a GitHub App installation, which
 # silently isn't true once a cloud routine works an `umbraco/*` repo (a
-# different org); the canvas has no such boundary. Runs off the critical path
-# (hook is async).
+# different org); the canvas has no such boundary. Runs off the critical path:
+# the hook is async, and the analyzer itself is spawned detached and stripped
+# of this session's inbound-message bindings — see "Isolate the analyzer" below
+# for why that second part matters.
 #
 # This is its own plugin (not bundled into mcp-issue-loop or any other loop)
 # because it's shared infrastructure: it fires on every SubagentStop/SessionEnd
@@ -75,50 +77,113 @@ fi
 # Resuming a stuck subagent fires another SubagentStop over the same (growing)
 # transcript, so without this we'd re-analyse the same session repeatedly — the
 # analyzer eventually bails on "already been through this". Analyse each session
-# once per scope; the marker is written after the analyzer runs (below).
+# once per scope. The marker is *claimed* here rather than written once the
+# analyzer returns: the analyzer now runs detached (below), so two hook fires
+# for one session would otherwise both get past a plain existence check and run
+# overlapping analyzers. `set -C` makes the claim atomic; it is released again
+# only on the one path where no analyzer actually ran.
 SID="$(printf '%s' "$EVENT" | jq -r '.session_id // empty' 2>/dev/null)"
 MARKER=""
+release_marker() { [ -n "$MARKER" ] && rm -f "$MARKER" 2>/dev/null; return 0; }
 if [ -n "$SID" ]; then
   MARKER="$(dirname "$LOG")/analyzed-$SCOPE-$SID"
-  if [ -f "$MARKER" ]; then log "session $SID ($SCOPE) already analysed — skipping"; exit 0; fi
+  if ! ( set -C; : >"$MARKER" ) 2>/dev/null; then
+    # `set -C` also fails when the marker's directory is missing/unwritable, not
+    # just on a genuine dedupe hit — conflating the two would silently disable
+    # capture for every future session once that directory problem showed up.
+    # Only an existing marker means "already analysed"; anything else proceeds
+    # without dedup for this one run rather than skipping it forever.
+    if [ -e "$MARKER" ]; then
+      log "session $SID ($SCOPE) already analysed — skipping"; exit 0
+    fi
+    log "could not claim marker $MARKER — proceeding without once-per-session dedup"
+    MARKER=""
+  fi
 fi
 
 PROMPT_FILE="$PLUGIN_ROOT/hooks/analyzer-$SCOPE.md"
-[ -f "$PROMPT_FILE" ] || { log "no prompt file $PROMPT_FILE — skipping"; exit 0; }
+[ -f "$PROMPT_FILE" ] || { log "no prompt file $PROMPT_FILE — skipping"; release_marker; exit 0; }
 
 # --- Analyze + capture (the analyzer appends to the canvas itself) --------
 PROMPT="$(sed -e "s#{{TRANSCRIPT}}#$TRANSCRIPT#g" \
               -e "s#{{SCHEMA}}#$SCHEMA#g" \
               -e "s#{{CANVAS_ID}}#$CANVAS_ID#g" "$PROMPT_FILE")"
 
+# The analyzer performs the canvas write itself (its own tool call) and reports
+# back a small JSON summary purely for this log — nothing here takes any write
+# action of its own.
+record() {
+  local out="$1" json
+  json="$(printf '%s' "$out" | sed -e 's/^```json//' -e 's/^```//' -e 's/```$//' | jq -c . 2>/dev/null)"
+  if [ -z "$json" ]; then log "analyzer output not JSON: $(printf '%s' "$out" | head -c 200)"; return 0; fi
+  if [ "$(printf '%s' "$json" | jq -r '.file // false')" = "true" ]; then
+    log "captured: $(printf '%s' "$json" | jq -r '.lesson // "(no summary)"')"
+  else
+    log "analyzer decided SKIP"
+  fi
+}
+
 log "analyzing $TRANSCRIPT"
 if [ -n "${SELF_LEARNING_ANALYZER_OUT:-}" ]; then
   # Test seam: inject a canned analyzer response instead of calling the model.
-  OUT="$SELF_LEARNING_ANALYZER_OUT"
-else
-  command -v claude >/dev/null 2>&1 || { log "missing claude — skipping capture"; exit 0; }
-  # Read,Grep stay read-only over the transcript/schema; the two Slack tools
-  # are the one write this analyzer has, scoped to a single canvas — present
-  # only if the environment has the Slack connector attached, which the
-  # analyzer prompt is told to tolerate the absence of.
-  OUT="$(claude -p "$PROMPT" --model sonnet \
+  record "$SELF_LEARNING_ANALYZER_OUT"
+  exit 0
+fi
+
+command -v claude >/dev/null 2>&1 || { log "missing claude — skipping capture"; release_marker; exit 0; }
+
+# --- Isolate the analyzer from the invoking session ------------------------
+# The analyzer is a nested `claude`, and a child inherits the vars that bind a
+# process to *this* session's inbound message channel: the runner's messaging
+# socket + token, the session ingress token file, and the session ids. With
+# those inherited the analyzer joins the very loop session it is analyzing, so
+# a live event meant for the loop — a CI webhook, or the loop's own
+# self-scheduled `send_later` check-in — can be delivered into the analyzer's
+# turn and never reach the loop's driving logic. That has starved a loop's
+# check-in and stalled a release mid-flight. Drop them so the analyzer can only
+# ever run as its own unaddressable session. CLAUDE_PID is in the list because
+# the socket path is derived from it. The OAuth token fd is deliberately NOT
+# dropped — that is what authenticates the analyzer, not what addresses it.
+ISOLATE=(env
+  -u CLAUDE_CODE_MESSAGING_SOCKET
+  -u CLAUDE_CODE_MESSAGING_TOKEN
+  -u CLAUDE_SESSION_INGRESS_TOKEN_FILE
+  -u CLAUDE_CODE_POST_FOR_SESSION_INGRESS_V2
+  -u CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR
+  -u CLAUDE_CODE_REMOTE_SESSION_ID
+  -u CLAUDE_CODE_SESSION_ID
+  -u CLAUDE_PID
+)
+# Bound the analyzer's runtime, where the tool exists: detached and disowned
+# (below), nothing on the loop's side supervises it any more, so a hang would
+# otherwise hold the marker claimed and the analyzer's auth alive indefinitely.
+if command -v timeout >/dev/null 2>&1; then ISOLATE=(timeout 600 "${ISOLATE[@]}"); fi
+# New process session too, where the tool exists (not on macOS — there the
+# analyzer stays in the hook's process group, so it loses the teardown
+# immunity below but is still env-isolated from the loop's live events): the
+# hook fires as the loop session is ending, so staying in its process group
+# means the analyzer is torn down with it. Detached, it outlives that teardown.
+if command -v setsid >/dev/null 2>&1; then ISOLATE=(setsid "${ISOLATE[@]}"); fi
+
+# Run detached and return immediately: nothing on the loop's side, not even
+# this already-async hook process, then has the analyzer in front of it.
+# Read,Grep stay read-only over the transcript/schema; the two Slack tools are
+# the one write this analyzer has, scoped to a single canvas — present only if
+# the environment has the Slack connector attached, which the analyzer prompt
+# is told to tolerate the absence of.
+(
+  # `env -u` only removes the var's NAME from the child's environment — it
+  # doesn't close the descriptor the var names, so if this fd was inherited
+  # without O_CLOEXEC the analyzer could still read/write the loop session's
+  # websocket auth channel despite never seeing the var. Close it directly.
+  case "${CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR:-}" in
+    ''|*[!0-9]*) : ;;
+    *) eval "exec ${CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR}<&-" 2>/dev/null || true ;;
+  esac
+  OUT="$("${ISOLATE[@]}" claude -p "$PROMPT" --model sonnet \
     --allowedTools "Read,Grep,mcp__Slack__slack_read_canvas,mcp__Slack__slack_update_canvas" \
-    2>>"$LOG")" || {
-    log "analyzer invocation failed"; exit 0; }
-fi
-
-# Mark this session/scope analysed so a later SubagentStop (e.g. a resumed
-# subagent) doesn't re-run the analyzer over the same growing transcript.
-[ -n "$MARKER" ] && { : >"$MARKER" 2>/dev/null || true; }
-
-# The analyzer performs the canvas write itself (its own tool call, above) and
-# reports back a small JSON summary purely for this log — nothing below takes
-# any write action of its own.
-JSON="$(printf '%s' "$OUT" | sed -e 's/^```json//' -e 's/^```//' -e 's/```$//' | jq -c . 2>/dev/null)"
-if [ -z "$JSON" ]; then log "analyzer output not JSON: $(printf '%s' "$OUT" | head -c 200)"; exit 0; fi
-
-if [ "$(printf '%s' "$JSON" | jq -r '.file // false')" = "true" ]; then
-  log "captured: $(printf '%s' "$JSON" | jq -r '.lesson // "(no summary)"')"
-else
-  log "analyzer decided SKIP"
-fi
+    2>>"$LOG")" || { log "analyzer invocation failed"; release_marker; exit 0; }
+  record "$OUT"
+) </dev/null >/dev/null 2>&1 &
+disown 2>/dev/null || true
+exit 0
