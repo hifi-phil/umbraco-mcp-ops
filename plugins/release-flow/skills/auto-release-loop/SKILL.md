@@ -68,20 +68,29 @@ agent** (defined in this plugin — read-only Opus; what it checks and how it ju
 in its own definition, which checks this skill's `references/release-review-checklist.md`).
 Gather the release PR's facts via `github-ops` and pass them to the agent (see
 `release-reviewer`'s own "What you're given" section for the exact fields) — including the
-PR's **current head commit SHA** (github-ops → *Get PR CI / check-run status* or the PR-get
-call returns it). It returns **VERDICT: PASS** or **VERDICT: BLOCK + findings**; the loop
-acts on the verdict (the agent is read-only and can't publish itself).
+PR's **current head commit SHA** — locally `gh pr view <n> --repo <repo> --json headRefOid`
+(github-ops → *Get*, adding the `headRefOid` field); on the MCP/web path
+`pull_request_read` (`method: "get"`) → `head.sha`. It returns **VERDICT: PASS** or
+**VERDICT: BLOCK + findings**; the loop acts on the verdict (the agent is read-only and
+can't publish itself).
 
 > **Re-gather the PR facts right before this step** — don't reuse a SHA collected earlier
 > in the run, since the branch may have moved (e.g. a mid-flight human push). You don't
-> need to fetch or check out anything on the agent's behalf: `release-reviewer` fetches and
-> SHA-verifies the head commit itself before reading any file, and BLOCKs rather than
-> guessing if it can't confirm it. Passing a stale SHA just makes it review the wrong
-> commit, so pass the freshest one you have.
+> need to fetch or check out anything on the agent's behalf: `release-reviewer` fetches the
+> head commit itself and confirms that SHA is **still the head branch's current tip**
+> before reading any file, and BLOCKs rather than guessing if it can't. Pass the head
+> branch name as its own dispatch field (the agent uses it only to look up the branch's
+> tip, never to build a fetch command). A stale SHA doesn't get silently reviewed — it
+> comes back as a BLOCK telling you to re-gather and re-run — so pass the freshest one you
+> have.
 
 > The routine's `allowed_tools` must include the Agent/Task tool so `release-reviewer`
 > can be spawned. If it can't be spawned in the environment, do the review inline on the
 > loop's model and **note in the outcome comment that it wasn't the Opus `release-reviewer`**.
+> An inline review is held to the same bar: it must satisfy the **preconditions** at the top
+> of `references/release-review-checklist.md` (fetch, confirm the given SHA is still the
+> branch tip, read every file pinned to that SHA) before judging any check, and **BLOCK**
+> if it can't.
 
 - Any **BLOCK** finding → **do not merge/tag/publish.** Leave the release PR open, then:
   1. **Create a new issue** in the repo titled `Release <version> blocked by pre-publish
