@@ -62,9 +62,8 @@ open `ready-for-ai` issue; none → quiet no-op):
 
      Fix locally until green **before** pushing. Because the local run is SQL Server
      (CI-parity), a green local gate means CI passes first time — much quicker than pushing
-     and looping on remote CI failures (the 8-attempt cap). Eval suites failing here with
-     the known `ANTHROPIC_API_KEY`-missing signature (`mcp-playbook.md` step 4) are
-     expected — any other eval failure is a real one.
+     and looping on remote CI failures (the 8-attempt cap). Don't run eval suites as part
+     of this gate (`mcp-playbook.md` step 4) — CI's own gated `evals` job covers those.
    - **The build subagent does NOT review its own code, and does NOT drive CI.** Don't
      run `/security-review`/`/code-review` here — see `SKILL.md`'s Rules for why. Once
      local tests are green, **commit, push,
