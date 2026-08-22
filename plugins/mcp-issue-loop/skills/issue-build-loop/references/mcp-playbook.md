@@ -106,6 +106,16 @@ never rely on pre-existing Umbraco content.
   running Umbraco nor the suite. Don't pay for an Umbraco boot to fix a typo — say in
   your return what you ran and why.
 
+**Don't run `tests/evals/*.test.ts` as part of this gate.** Eval suites need an
+`ANTHROPIC_API_KEY` for the Agent SDK subprocess they spawn, and this environment never
+has one — every eval file fails identically with `Claude Code process exited with code 1`
+(see `hifi-phil/umbraco-mcp-ops#90`), which tells you nothing about your change and just
+costs a re-diagnosis. If the repo's full-suite script (e.g. `test:all`) chains evals in,
+use its non-eval script instead (e.g. `npm test`, or add
+`-- --testPathIgnorePatterns=tests/evals`) — check `package.json` for what's actually
+there rather than assuming `test:all` is the right gate. Eval coverage is CI's own gated
+`evals` job on the branches it runs for, which does have the secret provisioned.
+
 If the gate needs a running Umbraco, start it in this worktree if it isn't already
 (`npm run start:umbraco` on a server repo; first run does the unattended install and can
 take minutes — wait for `.demo-site-port` and the base URL to respond).
