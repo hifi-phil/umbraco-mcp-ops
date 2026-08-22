@@ -63,33 +63,60 @@ on red**, never trust a bypassing auto-merge.
 
 ## Step 2.5 — pre-publish review (second gate)
 
-Once CI is green, and before anything irreversible, run the dedicated **`release-reviewer`
-agent** (defined in this plugin — read-only Opus; what it checks and how it judges live
-in its own definition, which checks this skill's `references/release-review-checklist.md`).
-Gather the release PR's facts via `github-ops` and pass them to the agent (see
-`release-reviewer`'s own "What you're given" section for the exact fields) — including the
-PR's **current head commit SHA** — locally `gh pr view <n> --repo <repo> --json headRefOid`
-(github-ops → *Get*, adding the `headRefOid` field); on the MCP/web path
-`pull_request_read` (`method: "get"`) → `head.sha`. It returns **VERDICT: PASS** or
-**VERDICT: BLOCK + findings**; the loop acts on the verdict (the agent is read-only and
-can't publish itself).
+Once CI is green, and before anything irreversible, the loop gathers the review material
+itself and then runs the dedicated **`release-reviewer` agent** (defined in this plugin —
+Opus; what it checks and how it judges live in its own definition, which checks this skill's
+`references/release-review-checklist.md`).
 
-> **Re-gather the PR facts right before this step** — don't reuse a SHA collected earlier
-> in the run, since the branch may have moved (e.g. a mid-flight human push). You don't
-> need to fetch or check out anything on the agent's behalf: `release-reviewer` fetches the
-> head commit itself and confirms that SHA is **still the head branch's current tip**
-> before reading any file, and BLOCKs rather than guessing if it can't. Pass the head
-> branch name as its own dispatch field (the agent uses it only to look up the branch's
-> tip, never to build a fetch command). A stale SHA doesn't get silently reviewed — it
-> comes back as a BLOCK telling you to re-gather and re-run — so pass the freshest one you
-> have.
+**`release-reviewer` fetches nothing.** It has no `Bash`, no git access, and no GitHub tool
+of its own — by design, since it ingests attacker-influenceable text (PR body, commit
+messages, changelog, issue title) and having no execution capability removes any path from
+"hostile text" to "runs a command". **This loop** does all the fetching and pinning, and
+hands the agent already-materialized content as plain text. Do this sequence
+**immediately before invoking the agent**, in order:
+
+1. **Re-fetch the PR's facts fresh.** Never reuse facts gathered earlier in the run — the
+   branch may have moved (e.g. a mid-flight human push). Re-get the PR to read its
+   **current head commit SHA**, base, mergeability, and diff (github-ops → *Get*): locally
+   `gh pr view <n> --repo <repo> --json headRefOid,baseRefName,headRefName,mergeable,files`;
+   on the MCP/web path `pull_request_read` (`method: "get"`) → `head.sha`. Re-read CI too
+   (github-ops → *Get PR CI / check-run status*). For a PR reviewed **retrospectively after
+   merge and branch deletion**, the PR object still carries its final `head.sha` from
+   GitHub's records — deleting the branch ref doesn't remove it — so use that; there's no
+   need for the branch to still exist.
+2. **Fetch the file contents the reviewer must judge, pinned to that verified head SHA** —
+   the version files bumped in Step 1 (per the repo's `CLAUDE.md` version-file list) and the
+   changelog. **Never read these from a local working tree**, which can be stale, on another
+   branch, or (on the MCP/web path) absent entirely.
+   - MCP/web: `get_file_contents` with `owner`, `repo`, `path`, and **`sha: <head-sha>`** —
+     that parameter takes precedence over `ref`, so it's the one to pin with.
+   - Locally: `gh api "repos/<owner>/<repo>/contents/<path>?ref=<head-sha>"` — the contents
+     API's `ref` accepts a commit SHA, so this reads the blob at that exact commit
+     regardless of what the clone has checked out. Add
+     `-H "Accept: application/vnd.github.raw"` for the raw text instead of base64.
+3. **Pass all of it to `release-reviewer` as its task input** — PR number, head branch, head
+   SHA, base, version, triggering issue title, diff, CI status, mergeability, **and the
+   pinned file contents from step 2**. (See `release-reviewer`'s own "What you're given"
+   section — it must match this list.) It returns **VERDICT: PASS** or **VERDICT: BLOCK +
+   findings**; the loop acts on the verdict (the agent can't publish anything itself).
+4. **If the branch moved, just re-do steps 1–2.** If step 1's fresh re-fetch returns a head
+   SHA different from one the loop was about to use, discard the older material and redo
+   steps 1–2 against the new SHA before invoking the reviewer. Cap this at **3 attempts** in
+   case of a flapping branch; if it still hasn't settled, treat it as a blocker — stop,
+   comment on the triggering issue, and leave the PR open. There is no post-hoc
+   staleness-detection path to build: the loop fetches fresh immediately before use, so the
+   reviewer never has to notice staleness after the fact.
+5. **If a pinned-content fetch fails for a file that should exist** (a genuine 404 or
+   unreachable at that SHA), **don't silently omit it** — pass the reviewer a note
+   `could not fetch <path> at <sha>: <error>` alongside everything else, and let it decide
+   whether that's BLOCK-worthy.
 
 > The routine's `allowed_tools` must include the Agent/Task tool so `release-reviewer`
 > can be spawned. If it can't be spawned in the environment, do the review inline on the
 > loop's model and **note in the outcome comment that it wasn't the Opus `release-reviewer`**.
-> An inline review is held to the same bar: it must satisfy the **preconditions** at the top
-> of `references/release-review-checklist.md` (fetch, confirm the given SHA is still the
-> branch tip, read every file pinned to that SHA) before judging any check, and **BLOCK**
+> An inline review is held to the same bar: it must still do the fetch-and-pin sequence above
+> (steps 1–2 — plain `github-ops` calls, no git plumbing) before judging any check, satisfying
+> the **preconditions** at the top of `references/release-review-checklist.md`, and **BLOCK**
 > if it can't.
 
 - Any **BLOCK** finding → **do not merge/tag/publish.** Leave the release PR open, then:
