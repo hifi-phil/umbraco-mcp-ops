@@ -62,7 +62,9 @@ open `ready-for-ai` issue; none → quiet no-op):
 
      Fix locally until green **before** pushing. Because the local run is SQL Server
      (CI-parity), a green local gate means CI passes first time — much quicker than pushing
-     and looping on remote CI failures (the 8-attempt cap).
+     and looping on remote CI failures (the 8-attempt cap). Any `tests/evals/*.test.ts`
+     failures here are expected in this environment — see the known
+     `ANTHROPIC_API_KEY`-missing signature in `mcp-playbook.md` step 4.
    - **The build subagent does NOT review its own code, and does NOT drive CI.** Don't
      run `/security-review`/`/code-review` here — see `SKILL.md`'s Rules for why. Once
      local tests are green, **commit, push,
@@ -72,7 +74,9 @@ open `ready-for-ai` issue; none → quiet no-op):
      job, not yours — you do not poll CI or wait for review.
 3. **Drive CI green — from the base session, not the subagent.** Same procedure as
    `SKILL.md` Step 3 (poll checks, 8-attempt cap, re-dispatch into the same checkout on a
-   failing check, no-progress guard). Since you tested on SQL Server (CI-parity), CI
+   failing check, no-progress guard — including `SKILL.md` Step 3's known
+   `ANTHROPIC_API_KEY`-missing eval signature, expected on every cloud run since this
+   environment never has the key). Since you tested on SQL Server (CI-parity), CI
    should pass first time — this is usually just a confirmation, not a fix loop; a
    surprise failure usually means the local run was on SQLite or the diff wasn't fully
    covered by `test:changed`.

@@ -123,6 +123,13 @@ re-test locally, re-push, and re-check — the same shape as the `mcp-review` fi
 below, just triggered by a failing check instead of a review finding. Never re-push an
 identical fix that already failed (**no-progress guard**).
 
+A failing check that's exactly the **known `ANTHROPIC_API_KEY`-missing environmental
+signature** — a `tests/evals/*.test.ts` suite dying with "Claude Code process exited with
+code 1" because the Agent SDK subprocess evals spawn has no key in this environment (see
+#90) — is not a regression from the change. Don't spend a CI-fix attempt or trip the
+no-progress guard re-diagnosing it; note it explicitly in the outcome comment/PR body and
+proceed rather than blocking the issue on it.
+
 Once CI is green, **run [`mcp-review`](../mcp-review/SKILL.md) over that PR**.
 **The build subagent does not review its own code** — running the
 review here, at the orchestrator level, is what makes it independent. If it raises
