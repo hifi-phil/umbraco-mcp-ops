@@ -61,6 +61,11 @@ approval step, but the Step 2.5 review is a second, automated gate. If CI can't 
 green, **stop**, comment the blocker on the issue, and leave the PR open. **Never publish
 on red**, never trust a bypassing auto-merge.
 
+**Record the head SHA that CI went green on** — checks belong to a specific commit, so note
+which one you confirmed. Step 2.5 step 4 compares the freshly re-fetched head SHA against
+this recorded SHA to detect a mid-flight push, and re-enters this step to re-green the new
+commit.
+
 ## Step 2.5 — pre-publish review (second gate)
 
 Once CI is green, and before anything irreversible, the loop gathers the review material
@@ -78,8 +83,12 @@ hands the agent already-materialized content as plain text. Do this sequence
 1. **Re-fetch the PR's facts fresh.** Never reuse facts gathered earlier in the run — the
    branch may have moved (e.g. a mid-flight human push). Re-get the PR to read its
    **current head commit SHA**, base, mergeability, and diff (github-ops → *Get*): locally
-   `gh pr view <n> --repo <repo> --json headRefOid,baseRefName,headRefName,mergeable,files`;
-   on the MCP/web path `pull_request_read` (`method: "get"`) → `head.sha`. Re-read CI too
+   `gh pr view <n> --repo <repo> --json headRefOid,baseRefName,headRefName,mergeable,files,title,body`;
+   on the MCP/web path `pull_request_read` with **`method: "get"`** → `head.sha`, base, and
+   mergeability, **plus `pull_request_read` with `method: "get_files"`** for the changed-file
+   list (or **`method: "get_diff"`** for the diff text itself) — `method: "get"` returns no
+   file list, and checklist row 4 ("PR scope is release-only", judged on changed files + size)
+   can't be evaluated without it, so the cloud/routine path must make both calls. Re-read CI too
    (github-ops → *Get PR CI / check-run status*). For a PR reviewed **retrospectively after
    merge and branch deletion**, the PR object still carries its final `head.sha` from
    GitHub's records — deleting the branch ref doesn't remove it — so use that; there's no
@@ -94,18 +103,34 @@ hands the agent already-materialized content as plain text. Do this sequence
      API's `ref` accepts a commit SHA, so this reads the blob at that exact commit
      regardless of what the clone has checked out. Add
      `-H "Accept: application/vnd.github.raw"` for the raw text instead of base64.
-3. **Pass all of it to `release-reviewer` as its task input** — PR number, head branch, head
-   SHA, base, version, triggering issue title, diff, CI status, mergeability, **and the
+
+   Also carry over **the repo's `CLAUDE.md` version-file list itself** — the literal list of
+   paths Step 1 already had to read in order to do the bump — as its own field, separate from
+   the file contents. Without it the reviewer only sees the files the loop *chose* to fetch,
+   so it cannot tell that an expected version file was **missed entirely** (checklist row 1,
+   and row 4's "files outside the expected set" in the missed-file direction). Pass the list
+   even when every file in it was bumped.
+3. **Pass all of it to `release-reviewer` as its task input** — PR number, **PR title**, **PR
+   body**, head branch, head SHA, base, version, triggering issue title, diff (changed files
+   + size), CI status, mergeability, **the repo's `CLAUDE.md` version-file list**, **and the
    pinned file contents from step 2**. (See `release-reviewer`'s own "What you're given"
    section — it must match this list.) It returns **VERDICT: PASS** or **VERDICT: BLOCK +
    findings**; the loop acts on the verdict (the agent can't publish anything itself).
-4. **If the branch moved, just re-do steps 1–2.** If step 1's fresh re-fetch returns a head
-   SHA different from one the loop was about to use, discard the older material and redo
-   steps 1–2 against the new SHA before invoking the reviewer. Cap this at **3 attempts** in
-   case of a flapping branch; if it still hasn't settled, treat it as a blocker — stop,
-   comment on the triggering issue, and leave the PR open. There is no post-hoc
-   staleness-detection path to build: the loop fetches fresh immediately before use, so the
-   reviewer never has to notice staleness after the fact.
+4. **If the branch moved, go back to Step 2, then re-do steps 1–2.** Compare the head SHA
+   from step 1's fresh re-fetch against **the SHA Step 2 last confirmed CI green on**. If
+   they differ, someone pushed mid-flight, so the recorded green CI belongs to the old
+   commit: **return to Step 2 and drive CI green on the new head SHA** (poll the new SHA's
+   checks to green exactly as Step 2's normal flow does, still bounded by Step 2's own
+   **8-attempt** cap; if it can't be greened, Step 2's stop-and-comment behaviour applies).
+   Only once the new SHA is green, discard the older material and redo steps 1–2 against it
+   before invoking the reviewer — never invoke the reviewer on a SHA whose CI is still
+   pending, which would make it BLOCK on the checklist's "CI genuinely green" row and fire
+   the blocked-issue protocol for what should be a transparent automatic recovery. Cap this
+   re-green-and-refetch cycle at **3 attempts** in case of a flapping branch; if it still
+   hasn't settled, treat it as a blocker — stop, comment on the triggering issue, and leave
+   the PR open. There is no post-hoc staleness-detection path to build: the loop fetches
+   fresh immediately before use, so the reviewer never has to notice staleness after the
+   fact.
 5. **If a pinned-content fetch fails for a file that should exist** (a genuine 404 or
    unreachable at that SHA), **don't silently omit it** — pass the reviewer a note
    `could not fetch <path> at <sha>: <error>` alongside everything else, and let it decide

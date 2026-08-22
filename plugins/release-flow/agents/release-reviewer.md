@@ -30,14 +30,18 @@ The caller (`auto-release-loop`) has **already fetched and verified the PR's cur
 before invoking you**, via `github-ops` against GitHub's API — not from any local checkout.
 Your task input contains:
 
-- **PR number**, **head branch**, **head commit SHA**, and **base branch**
+- **PR number**, **PR title**, **PR body**, **head branch**, **head commit SHA**, and **base
+  branch**
 - the target **version**
 - the **triggering issue**'s title
 - the **diff** (changed files + size)
 - **CI** status (per-check)
 - **mergeability**
+- **the repo's `CLAUDE.md` version-file list** — the literal list of paths that were supposed
+  to be bumped, so you can tell whether one was **missed entirely** rather than only judging
+  the files you were handed
 - **the actual content of the relevant files, pinned to that exact head SHA** — the version
-  files bumped in Step 1 (per the repo's `CLAUDE.md` version-file list) and the changelog,
+  files bumped in Step 1 (per that same `CLAUDE.md` version-file list) and the changelog,
   fetched fresh from the API at that SHA
 - possibly one or more notes of the form *"could not fetch `<path>` at `<sha>`: `<error>`"*,
   where a pinned fetch failed for a file that should exist
