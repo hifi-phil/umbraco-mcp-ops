@@ -1,5 +1,5 @@
 {
-  "description": "Async proto-learning capture, shared by every automated loop in this repo. SubagentStop analyzes each finished subagent's transcript; SessionEnd analyzes the top-level loop session once at the end for loop-level learnings. Both run off the critical path, matching on this ecosystem's shared conventions (github-ops, /goal) rather than naming individual loops, and append a row to the shared Slack canvas when something worth improving happened.",
+  "description": "Async proto-learning capture, shared by every automated loop in this repo. SubagentStop analyzes each finished subagent's transcript; SessionEnd analyzes the top-level loop session once at the end for loop-level learnings. Both run off the critical path — the hook is async and the analyzer is spawned detached, with the invoking session's inbound-message bindings stripped so it can never receive an event meant for the loop — matching on this ecosystem's shared conventions (github-ops, /goal) rather than naming individual loops, and append a row to the shared Slack canvas when something worth improving happened.",
   "hooks": {
     "SubagentStop": [
       {

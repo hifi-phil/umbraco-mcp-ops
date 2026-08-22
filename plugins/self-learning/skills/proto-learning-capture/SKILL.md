@@ -30,6 +30,22 @@ reads the finished transcript and, per the
 categories, decides whether something's worth recording. If so, it appends
 one row to the shared canvas per that same schema.
 
+## The analyzer runs isolated from the loop
+
+The analyzer is a nested `claude` invocation, so it would otherwise inherit the
+env vars that bind a process to the invoking session's inbound message channel
+(the runner's messaging socket + token, the session ingress token file, the
+session ids). When it did, a live event meant for the loop — a CI webhook, or
+the loop's own self-scheduled `send_later` check-in — could be delivered into
+the analyzer's turn instead, once starving a loop's check-in and stalling a
+release. `capture-proto-learning.sh` now strips those vars and spawns the
+analyzer detached, in its own process session, so it is unaddressable and
+outlives the loop session's teardown.
+
+Debugging note: the hook returns before the analyzer does, so a capture appears
+in `~/.cache/self-learning/capture.log` (or `$SELF_LEARNING_LOG`) some time
+after the session ends, not at the moment the hook fires.
+
 Read [`references/proto-learning-schema.md`](references/proto-learning-schema.md)
 for the actual contract: when the analyzer should and shouldn't capture, the
 exact canvas row fields, and the `Guessed Home` heuristic. `capture-proto-learning.sh`
