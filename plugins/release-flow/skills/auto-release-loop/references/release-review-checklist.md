@@ -26,6 +26,7 @@ below before merging/tagging/publishing.
 | 6 | **Correct base & source branch** | BLOCK | Targets `main`, from `release/<version>` cut off `dev` (gitflow). Not a stray branch, not the wrong base. |
 | 7 | **CI genuinely green** | BLOCK | Every required check passed — not pending, not a should-have-run check that was skipped. Re-confirm; never trust a bypassing auto-merge. |
 | 8 | **Changelog updated & matches** | WARN | The changelog / release notes were updated and reference this version. |
+| 9 | **Reviewer inspected the actual PR head commit** | BLOCK | The reviewer fetched the PR's head commit and confirmed the given head SHA resolves locally, then read every file as `git show <head-sha>:<path>` — not from whatever the invoking session had checked out. If the SHA can't be fetched or resolved (branch deleted, unreachable, network failure), BLOCK with that reason rather than reviewing substitute state. |
 
 ## Adding checks
 

@@ -67,9 +67,17 @@ Once CI is green, and before anything irreversible, run the dedicated **`release
 agent** (defined in this plugin — read-only Opus; what it checks and how it judges live
 in its own definition, which checks this skill's `references/release-review-checklist.md`).
 Gather the release PR's facts via `github-ops` and pass them to the agent (see
-`release-reviewer`'s own "What you're given" section for the exact fields). It returns
-**VERDICT: PASS** or **VERDICT: BLOCK + findings**; the loop acts on the verdict (the
-agent is read-only and can't publish itself).
+`release-reviewer`'s own "What you're given" section for the exact fields) — including the
+PR's **current head commit SHA** (github-ops → *Get PR CI / check-run status* or the PR-get
+call returns it). It returns **VERDICT: PASS** or **VERDICT: BLOCK + findings**; the loop
+acts on the verdict (the agent is read-only and can't publish itself).
+
+> **Re-gather the PR facts right before this step** — don't reuse a SHA collected earlier
+> in the run, since the branch may have moved (e.g. a mid-flight human push). You don't
+> need to fetch or check out anything on the agent's behalf: `release-reviewer` fetches and
+> SHA-verifies the head commit itself before reading any file, and BLOCKs rather than
+> guessing if it can't confirm it. Passing a stale SHA just makes it review the wrong
+> commit, so pass the freshest one you have.
 
 > The routine's `allowed_tools` must include the Agent/Task tool so `release-reviewer`
 > can be spawned. If it can't be spawned in the environment, do the review inline on the
