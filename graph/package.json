@@ -1,0 +1,13 @@
+{
+  "name": "agent-orchestration-graph",
+  "private": true,
+  "description": "Phase 1/2 prototype: the pure reduce()/translate() functions for the agent-orchestration state machine design. No infrastructure — see the design doc for how this eventually gets wired to a Durable Object.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

@@ -1,0 +1,83 @@
+# 8. Open questions
+
+[← Previous: Build phases](07-build-phases.md) | [Index](00-index.md)
+
+---
+
+## Carried over from the original draft
+
+- What's doing the GitHub → fire call today, and does the DO sit in front of
+  it or replace it?
+- Does anything currently record that a routine was fired for an issue, or is
+  it fire-and-forget? Determines how much of shadow mode (Phase 3) can be
+  reconstructed from history rather than waiting a week.
+- Which GitHub events reach the dispatch layer today? If CI check events
+  aren't arriving at all, that's a different fix than a missing guard — and
+  it's the same underlying question the reconciliation sweep (Phase 7) exists
+  to catch regardless of which cause it turns out to be.
+- Which nodes are real code changes and which are bookkeeping — triage,
+  labelling, release notes? The bookkeeping ones are probably cheaper as
+  plain Actions than as routines.
+- What's the right in-flight concurrency cap, and does the ready queue live
+  in the DO or in a separate coordinator? (Phase 9.)
+- Cloudflare or Azure? Decide on maintainership rather than capability — see
+  [06-platform-alternative.md](06-platform-alternative.md).
+
+## Resolved by this pass (design decided, not yet validated)
+
+- ~~What owns the question "was this transition rule correct?"~~ — Partially
+  answered: the D1 log plus `verifiedBy` tagging is the input. The loop that
+  actually revises the table from that data still doesn't exist — this is
+  now a Phase 10+ question, not an unowned one.
+- ~~How do raw webhooks become domain events?~~ — Answered by
+  [03-components.md §3.0](03-components.md#30-the-event-translator-new). Not
+  yet validated against real payloads.
+- ~~Does the DO's own label write cause a feedback loop?~~ — Answered: the
+  self-trigger guard in `translate()` drops events from our own bot identity.
+  Needs confirming that the GitHub App's `sender.login` is stable and
+  distinguishable from any human acting through the same App installation.
+
+## New from this pass
+
+- **Can a routine make an arbitrary outbound HTTP call mid-session?** The
+  progress heartbeat ([03-components.md §3.4](03-components.md#34-the-serialiser-and-watchdog--durable-object-per-issue))
+  assumes the routine can POST to a Worker endpoint while it works, not just
+  write to GitHub via git/gh. Needs checking against what tools routines
+  actually have in research preview.
+- **How is the heartbeat endpoint authenticated per attempt?** It needs a
+  short-lived, narrowly-scoped credential (write-a-step-name only, nothing
+  else) threaded into the routine's invocation — worth deciding whether
+  that's a signed URL, a per-attempt token, or something the routines API
+  already gives us.
+- **How much detail should a heartbeat step carry?** A step name is the
+  minimum; whether it's worth a short reason string (e.g. "3rd test rerun
+  failed") depends on how noisy that gets in practice.
+- **Who can see the dashboard, and does it need auth?** It surfaces internal
+  working state (which issue, which routine, which step) rather than
+  anything customer-facing, but "internal-only, unauthenticated Worker URL"
+  is still a choice someone should make on purpose rather than by default.
+- **Does "live" ever need to mean push, not poll-on-load?** Phase 8 assumes
+  refresh-on-load is enough at our volume. Worth revisiting only if someone
+  actually wants to watch a single issue in real time rather than check the
+  board occasionally.
+
+- **Does `review_approved` ever come from an agent, or only a human?** This
+  changes whether that transition is `deterministic` or `external-judgment`
+  in the table (see [02-design-principles.md](02-design-principles.md)). If
+  it's sometimes an agent, do we want a stronger signal for merge-worthiness
+  than a single agent's approval?
+- **What are the real per-state staleness thresholds for the reconciliation
+  sweep?** Phase 3's shadow-mode data should answer this, but until then the
+  numbers in [05-technical-elements.md](05-technical-elements.md) are
+  guesses.
+- **Is 3 the right rework-cycle cap?** Same answer — a placeholder pending
+  Phase 3/9 data, not a considered number yet.
+- **Where does the synthetic `manual_override` log entry get its `from`
+  state?** If a human relabels an issue that was previously `state:stuck`
+  straight to `state:rework`, the log needs to record that jump even though
+  no rule in the table permits it — worth deciding whether `verifiedBy` even
+  applies to a row the reducer didn't produce.
+
+---
+
+[← Index](00-index.md)
