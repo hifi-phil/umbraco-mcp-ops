@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { EVENTS } from "./constants/events";
-import { LABELS } from "./constants/labels";
-import { labelOps } from "./effects";
-import { reduce } from "./graph";
+import { EVENTS } from "../constants/events";
+import { LABELS } from "../constants/labels";
+import { reduce } from "../graph";
+import { labelOps } from "./to-github";
 
 describe("labelOps — the concrete GitHub calls a rule requires", () => {
   it("build_succeeded explicitly removes ai-ready as well as adding ai-generated", () => {

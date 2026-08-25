@@ -1,11 +1,12 @@
 // Turns a fired Rule's Effect into the concrete GitHub calls it requires.
-// The mirror image of translate.ts: translate.ts goes raw webhook -> abstract
-// domain Event; this goes abstract Rule -> raw GitHub label operations.
-// Genuinely a separate stage from graph.ts's reduce() — it takes a different
-// input (currentLabels, a live read) and produces a different output
-// (concrete ops), not just "the same table split across two files".
+// The mirror image of from-github.ts: that goes raw webhook -> abstract
+// domain Event (GitHub telling us something happened); this goes abstract
+// Rule -> raw GitHub label operations (us telling GitHub what to do about
+// it). Genuinely a separate stage from ../graph.ts's reduce() — it takes a
+// different input (currentLabels, a live read) and produces a different
+// output (concrete ops), not just "the same table split across two files".
 
-import type { Rule, State } from "./graph";
+import type { Rule, State } from "../graph";
 
 export type Effect =
   | { kind: "label"; value: State }
@@ -35,7 +36,7 @@ export type LabelOp =
  * re-added — it's already in `currentLabels` by the time this runs.
  *
  * No mapping table needed here: `rule.from`/`rule.to.value` already *are*
- * the real label strings (see constants/labels.ts).
+ * the real label strings (see ../constants/labels.ts).
  */
 export function labelOps(currentLabels: readonly string[], rule: Rule): LabelOp[] {
   if (rule.to.kind === "noop") return [];

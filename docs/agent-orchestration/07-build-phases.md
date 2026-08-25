@@ -25,7 +25,7 @@ node is actually the problem.
 - Mark each rule `verifiedBy: deterministic | external-judgment` per
   [02-design-principles.md](02-design-principles.md).
 
-**Exit:** `graph.ts` and `translate.ts` exist as reviewable files. No code
+**Exit:** `graph.ts` and `github/from-github.ts` exist as reviewable files. No code
 runs against production yet.
 
 **Status:** started — see [09-phase-1-real-graph.md](09-phase-1-real-graph.md)

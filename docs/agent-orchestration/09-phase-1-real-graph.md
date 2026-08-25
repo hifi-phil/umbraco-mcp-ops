@@ -175,7 +175,7 @@ one comment per fire, loop persists until a human clears the label.
 
 ## Phase 1 status: complete
 
-All five loops audited. `graph.ts`/`translate.ts` can now be written against
+All five loops audited. `graph.ts`/`github/from-github.ts` can now be written against
 real behaviour rather than a sketch — see the corrections above before
 starting Phase 2's fixture tests.
 

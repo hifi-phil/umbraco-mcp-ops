@@ -19,17 +19,17 @@
 // distinct vocabulary from State/Label, though: build_succeeded,
 // build_blocked and the merge_gate_* events are synthesized from several
 // real signals (CI status, mcp-review's verdict, github-ops' gate checks) —
-// there's no single webhook that means any of them. See translate.ts.
+// there's no single webhook that means any of them. See github/from-github.ts.
 //
 // This file is deliberately just the state machine — deciding which rule
 // fired. Turning that rule's effect into concrete GitHub calls is a
 // separate stage with a different input (the labels actually present right
-// now) and output; see effects.ts.
+// now) and output; see github/to-github.ts.
 
 import { EVENTS, type Event } from "./constants/events";
 import { LABELS, type Label } from "./constants/labels";
 import { ROUTINES, type Routine } from "./constants/routines";
-import { close, label, noop, unlabel, type Effect } from "./effects";
+import { close, label, noop, unlabel, type Effect } from "./github/to-github";
 
 export type State = "none" | Label; // "none" = no tracking label, not a real GitHub label
 

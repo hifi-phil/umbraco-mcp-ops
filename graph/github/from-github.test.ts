@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { EVENTS } from "./constants/events";
-import { LABELS } from "./constants/labels";
-import { BOT_LOGIN, COMMENT_SIGNATURE, translate, type WebhookPayload } from "./translate";
+import { EVENTS } from "../constants/events";
+import { LABELS } from "../constants/labels";
+import { BOT_LOGIN, COMMENT_SIGNATURE, translate, type WebhookPayload } from "./from-github";
 
 function payload(overrides: Partial<WebhookPayload>): WebhookPayload {
   return { action: "unknown", sender: { login: "a-human", type: "User" }, ...overrides };

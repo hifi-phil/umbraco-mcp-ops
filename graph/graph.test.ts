@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EVENTS } from "./constants/events";
 import { LABELS } from "./constants/labels";
 import { ROUTINES } from "./constants/routines";
-import { close, label, noop, unlabel } from "./effects";
+import { close, label, noop, unlabel } from "./github/to-github";
 import { reduce } from "./graph";
 
 describe("reduce — issue lifecycle", () => {

@@ -1,6 +1,6 @@
 // The absolute list of every label this system tracks. This is the one
 // place a label's spelling is written down — graph.ts's State, its rules
-// table, and translate.ts's webhook matching all import from here rather
+// table, and github/from-github.ts's webhook matching all import from here rather
 // than retyping the string, so a rename is a one-line change in this file,
 // not a grep-and-hope across three files. See 10-label-rename.md for the
 // full mapping from today's live label spelling to the proposed one used
