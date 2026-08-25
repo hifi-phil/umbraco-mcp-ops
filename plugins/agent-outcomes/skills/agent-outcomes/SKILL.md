@@ -25,8 +25,9 @@ next instead of a loop deciding for itself — but it can only do that once
 the fact it needs exists somewhere machine-readable. This skill is the one
 place that format is defined, so five loops don't each invent their own.
 
-**Nothing authoritative reads this artifact yet.** No Worker, no Durable
-Object, no production reducer is deployed. Writing it is still mostly
+**Nothing authoritative reads this artifact yet.** A Worker + Durable
+Object exist as code (`worker/` in this repo) but nothing is *deployed* —
+no production reducer is live anywhere. Writing it is still mostly
 preparation — it costs one comment, changes no behaviour, and is safe to
 add to any loop. The one thing that *is* real: this plugin bundles a
 `PostToolUse` hook (`hooks/report-completion.sh`) that fires automatically

@@ -38,8 +38,11 @@ cancelling its alarm promptly, the dashboard showing "done" sooner — never
 a state transition on its own). No `routines/to-routine.ts` exists: nothing
 sends data back to a routine today.
 
-No Worker, no Durable Object, no D1 — none of that exists yet, and nothing
-here talks to GitHub, or anything else, for real.
+A Worker, Durable Object, and D1 log now exist for real — see `../worker/`
+— importing this directory's functions directly. Nothing here in `graph/`
+itself talks to GitHub, or anything else; `worker/` is where that I/O
+lives, and even it isn't deployed anywhere (no live Cloudflare account
+access exists for this repo) — see `worker/README.md`.
 
 This is the first code in this repo that isn't shell or Markdown — a
 deliberate, scoped choice: a `package.json` here doesn't change how any

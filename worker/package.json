@@ -1,0 +1,17 @@
+{
+  "name": "agent-orchestration-worker",
+  "private": true,
+  "description": "The real receiver graph/ was always a prototype for — a Cloudflare Worker + Durable Object that imports graph/'s pure logic directly and adds the I/O (GitHub API calls, D1 log, the watchdog alarm). Not deployed anywhere; see wrangler.toml's header comment. coordinate.ts is the core dispatch logic as a dependency-injected pure function, tested with plain vitest — no Miniflare/vitest-pool-workers needed for that; issue-coordinator.ts is the thin, untested-here DO class that wires it to real storage/D1/fetch.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260825.1",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "wrangler": "^4.125.0"
+  }
+}

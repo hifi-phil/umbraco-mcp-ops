@@ -94,6 +94,13 @@
   change) is cleaner but higher-blast-radius; migrating loop-by-loop is
   safer but means `loop-dispatch`'s routing table has to carry both the old
   and new spelling for whichever loops haven't moved yet.
+- **`worker/`'s `coordinateWebhook()` has no shadow-mode toggle.** It was
+  built as Phase 4's real enforcement mechanism (unconditional label
+  writes + routine fire), not Phase 3's observe-only one — see
+  [07-build-phases.md](07-build-phases.md)'s Phase 3/4 status notes. A
+  small, contained addition (skip the write-side `Deps` calls while still
+  calling `logTransition`) closes this; not built yet because nothing had
+  asked for Phase 3 specifically when this was built.
 
 ---
 

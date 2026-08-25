@@ -1,0 +1,25 @@
+name = "agent-orchestration-worker"
+main = "src/index.ts"
+compatibility_date = "2026-08-25"
+compatibility_flags = ["nodejs_compat"]
+
+# Not deployed anywhere yet — this repo has no live Cloudflare account
+# access. See ../docs/agent-orchestration/07-build-phases.md. Running this
+# for real needs, in order: `wrangler login` (interactive, the user's own
+# account), `wrangler d1 create agent-orchestration-log` (then paste the
+# real database_id below), and secrets set via `wrangler secret put`
+# (GITHUB_APP_TOKEN, GITHUB_WEBHOOK_SECRET, CLAUDE_API_KEY) — never in this
+# file or committed anywhere.
+
+[[durable_objects.bindings]]
+name = "ISSUE_COORDINATOR"
+class_name = "IssueCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["IssueCoordinator"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "agent-orchestration-log"
+database_id = "REPLACE_ME_AFTER_WRANGLER_D1_CREATE"

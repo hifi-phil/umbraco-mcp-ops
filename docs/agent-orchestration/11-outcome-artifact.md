@@ -44,18 +44,26 @@ a reason to post.
 `issue-build-loop`'s real Step 3 still does the label swap itself (`remove
 ready-for-ai, add generated-by-ai/ai-blocked`) exactly as before. The
 artifact is new output alongside it, not instead of it. This matters
-because **nothing today actually reads this artifact and acts on it** — no
-Worker, no Durable Object, nothing enforcing anything. If the loop stopped
+because **nothing today actually reads this artifact and acts on it** — a
+Worker + Durable Object exists now (`worker/`) and can, but nothing is
+*deployed* — no live Cloudflare account access, no real webhook
+subscription, nothing enforcing anything for real. If the loop stopped
 doing its own label swap now, on the theory that "the reducer will handle
-it," real issues would get stuck forever: nothing exists yet to pick up
-the slack. Removing the loop's self-swap is only safe once something real
-is deployed that performs it instead — that's the actual Phase 4/5
+it," real issues would get stuck forever: nothing live exists yet to pick
+up the slack. Removing the loop's self-swap is only safe once something
+real is *deployed* that performs it instead — that's the actual Phase 4/5
 cutover, a separate, later step from this one.
 
 So right now: the artifact is inert. It gets written on every real PR this
 loop finishes, and nothing consumes it. That's deliberate — it means the
 format can be exercised against real GitHub payloads (once shadow mode or
 equivalent reads real traffic) before anything depends on it.
+
+**This is scaffolding, not the destination.** The plan is not to leave
+every loop dual-writing (self-swap + artifact) indefinitely — each
+self-swap gets deleted once its specific precondition clears, tracked
+row by row in [07-build-phases.md Phase 5](07-build-phases.md#phase-5--reducer-owns-labels).
+Nothing here is meant to still be additive a year from now.
 
 ## What changed in `graph/`
 
