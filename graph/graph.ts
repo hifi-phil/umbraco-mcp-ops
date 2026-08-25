@@ -118,12 +118,12 @@ export const rules: Rule[] = [
     on: EVENTS.LABELLED_AUTO_MERGING,
     to: label(LABELS.AUTO_MERGING),
     run: ROUTINES.MERGE_FLOW,
-    verifiedBy: "external-judgment", // the auto-merge label IS the human approval signal
+    verifiedBy: "external-judgment", // the auto-merging label IS the human approval signal
   },
   {
     from: LABELS.AUTO_MERGING,
     on: EVENTS.MERGE_GATE_FAILED_SOFT,
-    to: noop, // matches merge-flow's real Step 4: "by default leave the auto-merge label on" — no GitHub write, not a redundant remove+re-add; the reconciliation sweep re-fires it later
+    to: noop, // matches merge-flow's real Step 4: "by default leave the auto-merging label on" — no GitHub write, not a redundant remove+re-add; the reconciliation sweep re-fires it later
     verifiedBy: "deterministic",
   },
   {

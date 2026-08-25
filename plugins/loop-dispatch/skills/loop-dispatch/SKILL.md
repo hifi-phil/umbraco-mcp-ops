@@ -30,15 +30,15 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 
 | event | action | label / state | Run |
 |---|---|---|---|
-| `issues` | `labeled` | label = `ready-for-ai` | **`/issue-build-loop`** (cloud mode) |
-| `issues` | `labeled` | label = `auto-release` (issue title `release <version>`) | **`/auto-release-loop`** |
-| `issues` | `labeled` | label = `ai-discuss` | **`/issue-discuss-loop`** |
-| `issue_comment` | `created` | issue carries `ai-discuss` + is open, comment is unsigned and doesn't start `//`, author is a trusted `User`, not a PR | **`/issue-discuss-loop`** |
-| `pull_request` | `labeled` | label = `auto-merge` | **`/merge-flow`** |
-| `pull_request` | `labeled` | label = `auto-rework` | **`/rework-loop`** |
+| `issues` | `labeled` | label = `ai-ready` | **`/issue-build-loop`** (cloud mode) |
+| `issues` | `labeled` | label = `auto-releasing` (issue title `release <version>`) | **`/auto-release-loop`** |
+| `issues` | `labeled` | label = `ai-discussing` | **`/issue-discuss-loop`** |
+| `issue_comment` | `created` | issue carries `ai-discussing` + is open, comment is unsigned and doesn't start `//`, author is a trusted `User`, not a PR | **`/issue-discuss-loop`** |
+| `pull_request` | `labeled` | label = `auto-merging` | **`/merge-flow`** |
+| `pull_request` | `labeled` | label = `auto-reworking` | **`/rework-loop`** |
 
 The `issue_comment` row is the only one that isn't a label event: it carries the **next round of
-an `ai-discuss` conversation**. The comment payload has no `.label`, so the router reads the
+an `ai-discussing` conversation**. The comment payload has no `.label`, so the router reads the
 labels already **on the issue** (`.issue.labels[]`) instead, plus the gates in the table row
 above. See `references/webhook-context.md` for the exact fields and why each gate exists —
 all of them fail closed, a missing or unexpected field routes nowhere.
@@ -46,10 +46,10 @@ all of them fail closed, a missing or unexpected field routes nowhere.
 Rework is a **label**, not the review event — uniform with the rest, and it works with one
 account (you can't fire a `pull_request_review` workflow by reviewing your *own* PR, and
 the loop's identity is often the reviewer's). Flow: a reviewer leaves comments, then adds
-`auto-rework` to say "address these". Review events route nowhere.
+`auto-reworking` to say "address these". Review events route nowhere.
 
 Everything else — `pull_request.opened`, a PR labelled `dependencies`/`javascript`, an
-issue labelled anything else, a comment on an issue without `ai-discuss`, any review event —
+issue labelled anything else, a comment on an issue without `ai-discussing`, any review event —
 matches **no row**, so the edge never fires the routine. This is what kills the wasteful fires: a Dependabot PR labelled
 `dependencies` woke merge-flow **4× overnight** under per-event routines; here the edge
 stops immediately, waking no routine.
@@ -76,18 +76,18 @@ triggering label / is still open. If not, **quiet no-op**.
 Invoke the matched skill exactly as its own dedicated routine would, scoped to the
 specific issue/PR, and **follow that skill's instructions verbatim**:
 
-- `ready-for-ai` issue → **`/issue-build-loop`** in **cloud mode** for that issue (local
+- `ai-ready` issue → **`/issue-build-loop`** in **cloud mode** for that issue (local
   run → its local mode). It detects the repo's shape itself and picks the matching build
   playbook — the MCP toolchain one for server repos and `Umbraco-MCP-Base` (SDK monorepo,
   full test suite), the lightweight content playbook for repos with no toolchain (the ops
   repo, docs/plugin repos). Same `route=issue-build-loop` signal either way.
-- `auto-merge` PR → **`/merge-flow`** (it sweeps all `auto-merge` PRs; the event is
+- `auto-merging` PR → **`/merge-flow`** (it sweeps all `auto-merging` PRs; the event is
   just the wake-up).
-- `auto-rework` PR label → **`/rework-loop`** for that PR.
-- `auto-release` issue → **`/auto-release-loop`**, version taken from the issue title.
-- `ai-discuss` issue, or a comment on one → **`/issue-discuss-loop`** for that issue. It
+- `auto-reworking` PR label → **`/rework-loop`** for that PR.
+- `auto-releasing` issue → **`/auto-release-loop`**, version taken from the issue title.
+- `ai-discussing` issue, or a comment on one → **`/issue-discuss-loop`** for that issue. It
   discusses only: no code, no PR, and it never clears its own label (the human owns
-  `ai-discuss`), so **don't expect the label to be gone afterwards** and don't remove it here.
+  `ai-discussing`), so **don't expect the label to be gone afterwards** and don't remove it here.
 
 **One event → one loop.** Do not chain (don't build *then* merge *then* release in a
 single fire) — each of those has its own event that will dispatch its own run. Hand
@@ -100,8 +100,8 @@ loop skill directly.)
 
 ## Rules
 
-- **Respect each loop's gate** — `ready-for-ai` for building, `auto-merge` as the
-  merge approval, `auto-release` to ship. loop-dispatch does not relax any of them.
+- **Respect each loop's gate** — `ai-ready` for building, `auto-merging` as the
+  merge approval, `auto-releasing` to ship. loop-dispatch does not relax any of them.
 - **Quiet by default.** Say nothing unless a delegated loop does — don't add a
   dispatch-level notification on top of the loop's own.
 - **Never use `fable`.** The dispatcher runs on a cheap base model (inherit the

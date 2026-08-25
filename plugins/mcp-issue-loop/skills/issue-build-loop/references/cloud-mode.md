@@ -26,7 +26,7 @@ provider CI uses, greens the suite locally, and skips the slow push → CI-fail 
 re-push loop. (SQLite is a degraded fallback only; see step 2.)
 
 For the one triggering issue (identify it from the event; if unclear, take the **oldest**
-open `ready-for-ai` issue; none → quiet no-op):
+open `ai-ready` issue; none → quiet no-op):
 
 1. **Triage + dispatch.** Read the issue, pick its tier from
    [Model selection](../SKILL.md#model-selection), and spawn **one** build subagent on
@@ -84,7 +84,7 @@ open `ready-for-ai` issue; none → quiet no-op):
    inherit that tier. The local re-test gate to re-run before re-pushing a fix is the same
    SQL Server gate from step 2.
 5. **Mark the issue complete, then stop at the CI-green PR.** Same outcome-label swap and
-   hand-off as `SKILL.md` Step 3/Step 4. Removing `ready-for-ai` is what stops this
+   hand-off as `SKILL.md` Step 3/Step 4. Removing `ai-ready` is what stops this
    routine re-firing on the same issue.
 
 **Not used in cloud mode:** the cap-3 queue, worktrees, and the review-response phase. The

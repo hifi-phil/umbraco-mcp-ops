@@ -1,24 +1,24 @@
 ---
 name: issue-build-loop
 description: >-
-  Work the open GitHub issues labelled `ready-for-ai` in any repo, driving each to a
+  Work the open GitHub issues labelled `ai-ready` in any repo, driving each to a
   CI-green, mcp-reviewed PR — then hand off (human change-requests → rework-loop, merge
   → merge-flow). This loop never responds to human reviews and never merges.
   Repo-agnostic — works whether or not the repo has an Umbraco build/test toolchain
   (Umbraco MCP repos, or content-only repos like this ops repo, docs repos, plugin
   repos); github-ops required (+ agent-outcomes, for the outcome artifact in Step 3).
-  Use this whenever someone wants open `ready-for-ai`
+  Use this whenever someone wants open `ai-ready`
   issues built, worked, actioned, or turned into PRs — including when they only name
   the label, "the AI backlog", or specific issue numbers, and even if they never say
   "loop". Examples: "work the ready issues", "run the issue loop", "work the ready ops
   issues", "run the content loop", "action the loop-improvement issues", or a routine
-  on Issue: Labeled `ready-for-ai` (cloud). Not for writing or refining an issue —
+  on Issue: Labeled `ai-ready` (cloud). Not for writing or refining an issue —
   that's issue-discuss-loop.
 ---
 
 # issue-build-loop
 
-A durable loop that turns the `ready-for-ai` GitHub backlog into CI-green, reviewed,
+A durable loop that turns the `ai-ready` GitHub backlog into CI-green, reviewed,
 handed-off PRs — on **any** repo, whether or not it has an Umbraco build/test toolchain.
 Only the per-issue build playbook differs between the two shapes; everything else
 (gathering the backlog, dispatch, CI-driving, review, hand-off, stop conditions) is
@@ -34,7 +34,7 @@ identical, so it's covered once, below.
   - **Local (orchestrated)** — a long-lived loop over the whole backlog. You are the
     **orchestrator**: one worktree + build subagent per issue (hook-backed for MCP
     repos), capture hooks running. Everything from *Config* through *Rules* below.
-  - **Cloud (one-shot per issue)** — a routine fires once per `ready-for-ai` issue
+  - **Cloud (one-shot per issue)** — a routine fires once per `ai-ready` issue
     (cross-issue parallelism comes from separate sessions); no worktree. See
     [Cloud mode](#cloud-mode).
 
@@ -46,7 +46,7 @@ issue is handed off or blocked.
 | Thing | How to resolve | Default |
 |-------|----------------|---------|
 | Repo | identify the current repo (github-ops → *Detect base branch / repo*) | current repo |
-| AI label | fixed | `ready-for-ai` |
+| AI label | fixed | `ai-ready` |
 | Base branch | detect via the `release-and-branching` skill (gitflow → `dev`) | `dev` |
 | Concurrency cap | fixed | **3** |
 
@@ -63,7 +63,7 @@ If a repo matches none of the three (not even a content-shaped git repo), stop a
 so.
 
 **Ops-repo scope guardrail:** on `umbraco-mcp-ops` specifically, triage files
-`loop-improvement` issues **without** the `ready-for-ai` label on purpose — a human
+`loop-improvement` issues **without** the `ai-ready` label on purpose — a human
 decides whether to promote one. Don't self-label those in Step 1.
 
 **GitHub operations** (list issues, open/merge PRs, check CI, read failing logs,
@@ -72,10 +72,10 @@ command.
 
 ## Step 1 — gather the backlog
 
-**List** the open issues labelled `ready-for-ai` on the repo (github-ops → *List
+**List** the open issues labelled `ai-ready` on the repo (github-ops → *List
 issues by label / state*), reading each one's number/title/body.
 
-- No matching issues → report "nothing labelled `ready-for-ai` is open" and stop.
+- No matching issues → report "nothing labelled `ai-ready` is open" and stop.
   (If the label doesn't exist yet on the repo, say so — someone has to create and
   apply it before this loop has anything to do.)
 - Otherwise build a queue of `{number, title, body}`. Announce the queue to the
@@ -88,7 +88,7 @@ Make it **satisfiable** — every issue reaching a *terminal* state, not every i
 merged (a blocked issue or an un-reviewed PR must not keep the loop alive forever):
 
 ```
-/goal every open ready-for-ai issue in <repo> is terminal — a CI-green PR that mcp-review passed and handed off (rework-loop owns human change-requests, merge-flow owns merging), or blocked-with-a-comment — and no actionable work is left in the queue
+/goal every open ai-ready issue in <repo> is terminal — a CI-green PR that mcp-review passed and handed off (rework-loop owns human change-requests, merge-flow owns merging), or blocked-with-a-comment — and no actionable work is left in the queue
 ```
 
 Clear it with `/goal clear` when the goal is met or you abort. See
@@ -132,7 +132,7 @@ tests before pushing** — all testing is local (the worktree's Umbraco + the di
 suite on MCP repos; whatever check the content playbook ran on content repos), and the
 review→fix cycle must re-test locally and only then re-green CI, never leaning on CI to
 catch a fix's regressions. Only once `mcp-review` is clean/addressed do the
-**outcome-label swap**: remove `ready-for-ai`, add `generated-by-ai`, and comment the PR
+**outcome-label swap**: remove `ai-ready`, add `ai-generated`, and comment the PR
 link on the triggering issue (github-ops → *Add / remove a label* and *Comment on an
 issue*) — the swap is what marks the issue done, so it must wait until review is actually
 finished, not just CI. **Append the `build_succeeded` outcome artifact to that same
@@ -142,7 +142,7 @@ signal, so never skip it because the marker was written).
 
 If a build subagent reports it could not finish (e.g. the issue is genuinely ambiguous), or
 the CI-green cap or no-progress guard trips while driving CI **or** while fixing an
-`mcp-review` finding, record the issue as **blocked**: remove `ready-for-ai`, add
+`mcp-review` finding, record the issue as **blocked**: remove `ai-ready`, add
 `ai-blocked`, and comment the specific reason (the last failing CI log, the ambiguity, what
 was tried) — that outcome swap is yours too now; don't let one bad issue stall the queue.
 **Append the `build_blocked` outcome artifact to that comment** — same
@@ -158,10 +158,10 @@ Once an issue has a CI-green PR that `mcp-review` passed, it's **done in this lo
 **Human reviews are actioned by [`rework-loop`](../rework-loop/SKILL.md), not this one.** Do
 not watch for the human's review, respond to change-requests, or merge:
 
-- **Human change-requests** → the reviewer leaves comments and adds the `auto-rework` label,
+- **Human change-requests** → the reviewer leaves comments and adds the `auto-reworking` label,
   which fires `rework-loop`. This loop has no review-response phase and dispatches no
   response subagents.
-- **Merging** → `merge-flow`'s job, via the `auto-merge` label once the PR is approved.
+- **Merging** → `merge-flow`'s job, via the `auto-merging` label once the PR is approved.
 
 So after Step 3, hand the worktree back if the repo wants it cleaned up (or leave it for
 `rework-loop`), report the tally (handed-off PRs, blocked issues), and `/goal clear`. The PR
@@ -230,7 +230,7 @@ in.
 
 ## Rules
 
-- **Never touch an issue without the `ready-for-ai` label.** The label is the
+- **Never touch an issue without the `ai-ready` label.** The label is the
   only gate. If a human removes it, or the issue is closed, mid-flight, stop work on
   that issue immediately. The one exception is the **outcome swap** (see Step 3) — that's
   the loop finishing the issue, not a human pulling the gate.

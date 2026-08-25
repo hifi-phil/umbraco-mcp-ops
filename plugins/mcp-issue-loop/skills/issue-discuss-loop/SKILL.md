@@ -2,23 +2,23 @@
 name: issue-discuss-loop
 description: >-
   Label-triggered loop that thinks an issue through *before* anyone builds it. Label an issue
-  `ai-discuss` and it reads the whole thread, then does one of three things: writes the issue
+  `ai-discussing` and it reads the whole thread, then does one of three things: writes the issue
   properly when it's a stub, asks questions when it can't yet, or pulls an already-written
   issue apart antagonistically. Each fire posts one comment and stops; your reply fires the
   next round, so it's a real back-and-forth. The aim is consensus on the simplest, most
   surgical change that solves the problem — problem first, then testable requirements, then a
   plan that follows the code already there. Writes issues only: never code, never a PR, never
-  `ready-for-ai`. Repo-agnostic; github-ops required. Trigger: an issue labelled `ai-discuss`,
+  `ai-ready`. Repo-agnostic; github-ops required. Trigger: an issue labelled `ai-discussing`,
   a new comment on one, or "discuss issue #N".
 ---
 
 # issue-discuss-loop
 
-The **step before `ready-for-ai`.** Every other loop assumes the issue is already good. Often it
+The **step before `ai-ready`.** Every other loop assumes the issue is already good. Often it
 isn't — it's a title and one line, or it's long but vague, or the direction changed halfway down
 the comments. This loop fixes that by *talking*, then writes down what was agreed.
 
-It **writes issues, not code.** No branches, no PRs, no `ready-for-ai`.
+It **writes issues, not code.** No branches, no PRs, no `ai-ready`.
 
 **Two references, read at the point you need them:**
 
@@ -29,7 +29,7 @@ It **writes issues, not code.** No branches, no PRs, no `ready-for-ai`.
 
 ## Trigger & scope
 
-- **The user removes `ai-discuss`, not you.** Unlike every other loop, the label here means
+- **The user removes `ai-discussing`, not you.** Unlike every other loop, the label here means
   *discussion is open*, not *work pending*, so it stays on until they're satisfied. The round cap
   is the only exception.
 - Act on the **labelled issue only** — never wander to other issues or PRs.
@@ -115,7 +115,7 @@ the next round.
 #{N} discuss — issue rewritten, check the two assumptions I flagged
 ```
 
-Leave `ai-discuss` on the issue. The user removes it when satisfied, then adds `ready-for-ai` if
+Leave `ai-discussing` on the issue. The user removes it when satisfied, then adds `ai-ready` if
 they want it built.
 
 ## Guardrails

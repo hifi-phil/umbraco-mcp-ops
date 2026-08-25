@@ -129,7 +129,7 @@ usually the most actionable line in the whole digest.
 | PR: bot-authored **and** security (label or advisory in body) | **Security bot PR** — listed individually, at the top |
 | PR: bot-authored, routine version bump | **Bot** — counted only; add *touches an alerted package* if the optional alerts pass ran and matched |
 | PR: bot-authored, security signal unreadable | **Bot, `security unknown`** — counted, and the count is said out loud |
-| Item labelled `ready-for-ai`, `ai-discuss`, `auto-merge`, `generated-by-ai`, `ai-blocked` | tag the line with that label, so loop-owned work reads apart from human work |
+| Item labelled `ai-ready`, `ai-discussing`, `auto-merging`, `ai-generated`, `ai-blocked` | tag the line with that label, so loop-owned work reads apart from human work |
 | Item with no activity for **more than 30 days** | additionally flagged **stale** |
 
 Read approval and merge state from the PR payload — never infer either from anything else.
@@ -178,8 +178,8 @@ _Per-repo detail in thread_ :thread:
 :package: *Dependabot: 6* — 2 security-declared (<link|#363>, <link|#178>), 4 version bumps
 :memo: *Issues: 5*
 • <link|#172> Add outputSchema so consumers get types — 100d *stale* — `enhancement`
-• <link|#329> Prune .claude/.rulesync tooling — 11d — `ready-for-ai`
-• <link|#333> Upgrade v17/dev to 17.6-rc — 9d — `generated-by-ai`
+• <link|#329> Prune .claude/.rulesync tooling — 11d — `ai-ready`
+• <link|#333> Upgrade v17/dev to 17.6-rc — 9d — `ai-generated`
 ```
 
 - **One line per human PR**, prefixed with its bucket emoji and ordered urgent → quiet:

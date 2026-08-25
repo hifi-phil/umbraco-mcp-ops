@@ -5,7 +5,7 @@ This is the MCP-repo variant; content repos use `content-playbook.md`.
 The **build playbook** below. The orchestrator (see `../SKILL.md`) substitutes the issue
 details and dispatches it as a subagent prompt (`agentType: general-purpose`, so the full
 tool + Skill set is available). It runs once per issue, in parallel (cap 3), and takes an
-issue from `ready-for-ai` to a pushed branch with an open PR. The orchestrator then drives
+issue from `ai-ready` to a pushed branch with an open PR. The orchestrator then drives
 that PR's CI green (re-dispatching a subagent into the same worktree on a failing check),
 marks the issue's outcome, and reviews it with `mcp-review` before handing off — human
 change-requests are `rework-loop`'s, not a playbook here (see *Responding to human review*

@@ -6,8 +6,11 @@
 //   the Worker just added actually shows up on the next GET, unlike a
 //   canned-response stub.
 // - Claude Code's routines API (POST /routines/:id) — a stub that just
-//   logs the fired context and returns 200. Not a real mock of routine
-//   behaviour, just enough for the Worker's fireRoutine() call to succeed.
+//   logs the fired context and returns 200. This only covers the KICKOFF
+//   fire (the routine starting); it does not simulate the routine's own
+//   multi-step work. See agent-runner.mjs + the "Testing outcome fidelity
+//   with a real agent" section in README.md for the part that actually
+//   runs a real Claude Agent SDK session against Step 3's instructions.
 //
 // The important part for whole-stack testing: every GitHub REST call that
 // changes state (label add/remove, a new comment, issue open/closed) also
@@ -24,25 +27,24 @@
 // restart, or via POST /mock/reset.
 
 import http from "node:http";
-import { randomUUID } from "node:crypto";
+import {
+  getIssue,
+  resetState,
+  getAllState,
+  senderFor,
+  fireWebhook,
+  addLabelInternal,
+  removeLabelInternal,
+  postCommentInternal,
+  createIssueInternal,
+  setIssueStateInternal,
+  firePrSynchronize,
+  firePrMerged,
+} from "./mock-state.mjs";
+import { runLoopOutcome } from "./agent-runner.mjs";
 
 const PORT = process.env.MOCK_GITHUB_PORT ? Number(process.env.MOCK_GITHUB_PORT) : 8943;
-const WORKER_WEBHOOK_URL = process.env.WORKER_WEBHOOK_URL ?? "";
-const BOT_TOKEN = process.env.BOT_TOKEN ?? "";
-const BOT_LOGIN = process.env.BOT_LOGIN ?? "umbraco-mcp-ops[bot]";
 
-/** @type {Map<string, { labels: Set<string>, state: "open" | "closed", comments: { id: number, body: string }[] }>} */
-const issues = new Map();
-let nextCommentId = 1;
-
-function issueKey(owner, repo, number) {
-  return `${owner}/${repo}#${number}`;
-}
-function getIssue(owner, repo, number) {
-  const key = issueKey(owner, repo, number);
-  if (!issues.has(key)) issues.set(key, { labels: new Set(), state: "open", comments: [] });
-  return issues.get(key);
-}
 function sendJson(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
@@ -61,46 +63,17 @@ function readJsonBody(req) {
   });
 }
 
-function senderFor(req) {
-  const auth = req.headers["authorization"] ?? "";
-  if (BOT_TOKEN && auth === `Bearer ${BOT_TOKEN}`) {
-    return { login: BOT_LOGIN, type: "Bot" };
-  }
-  return { login: req.headers["x-mock-sender-login"]?.toString() ?? "external-tester", type: "User" };
-}
-
-/** Fire-and-forget, like real GitHub's own async webhook delivery — never
- * lets a webhook-delivery failure affect the REST call's own response. */
-function fireWebhook(eventType, action, body, sender) {
-  if (!WORKER_WEBHOOK_URL) return;
-  const payload = { action, sender, ...body };
-  fetch(WORKER_WEBHOOK_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-GitHub-Event": eventType,
-      "X-GitHub-Delivery": randomUUID(),
-    },
-    body: JSON.stringify(payload),
-  })
-    .then((res) => console.log(`webhook ${eventType}.${action} -> ${res.status}`))
-    .catch((err) => console.error(`webhook ${eventType}.${action} failed:`, err.message));
-}
-
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
 
   if (req.method === "POST" && parts[0] === "mock" && parts[1] === "reset") {
-    issues.clear();
-    nextCommentId = 1;
+    resetState();
     return sendJson(res, 200, { ok: true });
   }
 
   if (req.method === "GET" && parts[0] === "mock" && parts[1] === "state") {
-    const out = {};
-    for (const [key, v] of issues) out[key] = { labels: [...v.labels], state: v.state, comments: v.comments };
-    return sendJson(res, 200, out);
+    return sendJson(res, 200, getAllState());
   }
 
   // A convenience endpoint to kick off the loop as if a human did it on
@@ -111,15 +84,74 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && parts[0] === "mock" && parts[1] === "simulate-label") {
     const body = await readJsonBody(req);
     const { owner, repo, issueNumber, label, senderLogin } = body;
+    const sender = { login: senderLogin ?? "external-tester", type: "User" };
     const issue = getIssue(owner, repo, issueNumber);
     issue.labels.add(label);
-    const sender = { login: senderLogin ?? "external-tester", type: "User" };
-    fireWebhook("issues", "labeled", {
-      label: { name: label },
-      repository: { name: repo, owner: { login: owner } },
-      issue: { number: issueNumber },
-    }, sender);
+    fireWebhook(
+      "issues",
+      "labeled",
+      { label: { name: label }, repository: { name: repo, owner: { login: owner } }, issue: { number: issueNumber } },
+      sender,
+    );
     return sendJson(res, 200, { ok: true, labels: [...issue.labels] });
+  }
+
+  // Same as /mock/simulate-label, but fires pull_request.labeled instead
+  // of issues.labeled — real GitHub picks the event type by whether the
+  // labeled number is an issue or a PR, even though both go through the
+  // same REST path; this mock's single issues Map doesn't track that
+  // distinction, so callers pick the right endpoint for what they're
+  // testing (auto-reworking/auto-merging are matched under
+  // pull_request.labeled in translate(), not issues.labeled).
+  if (req.method === "POST" && parts[0] === "mock" && parts[1] === "simulate-pr-label") {
+    const body = await readJsonBody(req);
+    const { owner, repo, prNumber, label, senderLogin } = body;
+    const sender = { login: senderLogin ?? "external-tester", type: "User" };
+    const issue = getIssue(owner, repo, prNumber);
+    issue.labels.add(label);
+    fireWebhook(
+      "pull_request",
+      "labeled",
+      { label: { name: label }, repository: { name: repo, owner: { login: owner } }, pull_request: { number: prNumber } },
+      sender,
+    );
+    return sendJson(res, 200, { ok: true, labels: [...issue.labels] });
+  }
+
+  // Runs a REAL Claude Agent SDK session against the verbatim text of one
+  // loop's outcome-reporting step + the agent-outcomes skill, given a
+  // fixed scenario, and reports back every tool call it made. Makes a
+  // real, billed Anthropic API call — see README.md before scripting this
+  // into a loop. Body: {routine, owner, repo, issueNumber, scenario} —
+  // see agent-runner.mjs's ROUTINE_CONFIG for supported routine/scenario
+  // combinations (issue-build-loop's build_succeeded/build_blocked,
+  // auto-release-loop's release_blocked/release_published).
+  if (req.method === "POST" && parts[0] === "mock" && parts[1] === "run-agent-outcome-test") {
+    const body = await readJsonBody(req);
+    try {
+      const outcome = await runLoopOutcome(body);
+      return sendJson(res, 200, outcome);
+    } catch (err) {
+      return sendJson(res, 500, { ok: false, error: String(err && err.message ? err.message : err) });
+    }
+  }
+
+  // Native, directly-observable PR signals — no agent, no self-report,
+  // just the raw webhook GitHub would fire. See mock-state.mjs's
+  // firePrSynchronize/firePrMerged doc comment for why these two loop
+  // signals (rework-loop's push, merge-flow's merge) are correctly NOT
+  // agent-mocked, unlike the outcome-artifact ones above.
+  if (req.method === "POST" && parts[0] === "mock" && parts[1] === "simulate-pr-push") {
+    const body = await readJsonBody(req);
+    const { owner, repo, prNumber, senderLogin } = body;
+    firePrSynchronize(owner, repo, prNumber, { login: senderLogin ?? "external-tester", type: "User" });
+    return sendJson(res, 200, { ok: true });
+  }
+  if (req.method === "POST" && parts[0] === "mock" && parts[1] === "simulate-pr-merge") {
+    const body = await readJsonBody(req);
+    const { owner, repo, prNumber, senderLogin } = body;
+    firePrMerged(owner, repo, prNumber, { login: senderLogin ?? "external-tester", type: "User" });
+    return sendJson(res, 200, { ok: true });
   }
 
   // Minimal Claude Code routines API stub — enough for fireRoutine() to
@@ -130,6 +162,16 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true });
   }
 
+  if (parts[0] === "repos" && parts[3] === "issues" && parts.length === 4) {
+    const [, owner, repo] = parts;
+    const sender = senderFor(req);
+    if (req.method === "POST") {
+      const body = await readJsonBody(req);
+      const created = createIssueInternal(owner, repo, body.title ?? "", body.body ?? "", sender);
+      return sendJson(res, 201, created);
+    }
+  }
+
   if (parts[0] === "repos" && parts[3] === "issues") {
     const [, owner, repo, , numberStr, sub, labelName] = parts;
     const number = Number(numberStr);
@@ -138,40 +180,22 @@ const server = http.createServer(async (req, res) => {
 
     if (!sub && req.method === "PATCH") {
       const body = await readJsonBody(req);
-      if (body.state === "open" || body.state === "closed") issue.state = body.state;
-      fireWebhook("issues", issue.state === "closed" ? "closed" : "reopened", {
-        repository: { name: repo, owner: { login: owner } },
-        issue: { number },
-      }, sender);
-      return sendJson(res, 200, { number, state: issue.state });
+      if (body.state === "open" || body.state === "closed") setIssueStateInternal(owner, repo, number, body.state, sender);
+      return sendJson(res, 200, { number, state: getIssue(owner, repo, number).state });
     }
 
     if (sub === "labels" && !labelName) {
       if (req.method === "GET") return sendJson(res, 200, [...issue.labels].map((name) => ({ name })));
       if (req.method === "POST") {
         const body = await readJsonBody(req);
-        for (const l of body.labels ?? []) {
-          issue.labels.add(l);
-          fireWebhook("issues", "labeled", {
-            label: { name: l },
-            repository: { name: repo, owner: { login: owner } },
-            issue: { number },
-          }, sender);
-        }
+        for (const l of body.labels ?? []) addLabelInternal(owner, repo, number, l, sender);
         return sendJson(res, 200, [...issue.labels].map((name) => ({ name })));
       }
     }
 
     if (sub === "labels" && labelName) {
       if (req.method === "DELETE") {
-        const existed = issue.labels.delete(labelName);
-        if (existed) {
-          fireWebhook("issues", "unlabeled", {
-            label: { name: labelName },
-            repository: { name: repo, owner: { login: owner } },
-            issue: { number },
-          }, sender);
-        }
+        const { existed } = removeLabelInternal(owner, repo, number, labelName, sender);
         return sendJson(res, existed ? 200 : 404, existed ? {} : { message: "Label does not exist" });
       }
     }
@@ -179,13 +203,7 @@ const server = http.createServer(async (req, res) => {
     if (sub === "comments") {
       if (req.method === "POST") {
         const body = await readJsonBody(req);
-        const comment = { id: nextCommentId++, body: body.body ?? "" };
-        issue.comments.push(comment);
-        fireWebhook("issue_comment", "created", {
-          comment: { body: comment.body },
-          repository: { name: repo, owner: { login: owner } },
-          issue: { number },
-        }, sender);
+        const comment = postCommentInternal(owner, repo, number, body.body ?? "", sender);
         return sendJson(res, 201, comment);
       }
       if (req.method === "GET") return sendJson(res, 200, issue.comments);
@@ -197,9 +215,13 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`mock GitHub + routines API listening on http://127.0.0.1:${PORT}`);
-  console.log(`  Webhook forwarding: ${WORKER_WEBHOOK_URL || "(disabled — set WORKER_WEBHOOK_URL)"}`);
-  console.log(`  Bot identity:       ${BOT_TOKEN ? BOT_LOGIN : "(disabled — set BOT_TOKEN)"}`);
-  console.log(`GET  /mock/state           — inspect all in-memory issue state`);
-  console.log(`POST /mock/reset           — clear it`);
-  console.log(`POST /mock/simulate-label  — {owner,repo,issueNumber,label,senderLogin} as a human action`);
+  console.log(`  Webhook forwarding: ${process.env.WORKER_WEBHOOK_URL || "(disabled — set WORKER_WEBHOOK_URL)"}`);
+  console.log(`  Bot identity:       ${process.env.BOT_TOKEN ? "enabled" : "(disabled — set BOT_TOKEN)"}`);
+  console.log(`GET  /mock/state                  — inspect all in-memory issue state`);
+  console.log(`POST /mock/reset                  — clear it`);
+  console.log(`POST /mock/simulate-label         — {owner,repo,issueNumber,label,senderLogin} as a human action`);
+  console.log(`POST /mock/simulate-pr-label      — same, but fires pull_request.labeled (for auto-reworking/auto-merging)`);
+  console.log(`POST /mock/simulate-pr-push       — {owner,repo,prNumber,senderLogin} — native pull_request.synchronize, no agent`);
+  console.log(`POST /mock/simulate-pr-merge      — {owner,repo,prNumber,senderLogin} — native pull_request.closed(merged), no agent`);
+  console.log(`POST /mock/run-agent-outcome-test — {routine,owner,repo,issueNumber,scenario} — runs a REAL agent (costs $, see README)`);
 });
