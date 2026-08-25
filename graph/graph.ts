@@ -4,41 +4,34 @@
 // this table is built from. Not the abstract sketch from the original draft.
 //
 // State is deliberately the literal GitHub label string (via LABELS in
-// labels.ts), not a separate renamed internal concept — one vocabulary
-// throughout, not a translation at every layer. A separate "building" name
-// for the "ai-ready" label bought nothing but a mapping table to keep in
-// sync, and keeping two names for one thing is exactly what let "remove
-// ai-ready" go missing silently. See labels.ts for the naming rationale and
-// 10-label-rename.md for what it means for the real, currently-live labels
-// — nothing here renames them yet; this describes the proposed target, not
-// today's exact strings.
+// constants/labels.ts), not a separate renamed internal concept — one
+// vocabulary throughout, not a translation at every layer. A separate
+// "building" name for the "ai-ready" label bought nothing but a mapping
+// table to keep in sync, and keeping two names for one thing is exactly
+// what let "remove ai-ready" go missing silently. See constants/labels.ts
+// for the naming rationale and 10-label-rename.md for what it means for the
+// real, currently-live labels — nothing here renames them yet; this
+// describes the proposed target, not today's exact strings.
 //
-// Event (events.ts) and Routine (routines.ts) are the same idea applied to
-// the rest of this table's vocabulary — every fixed string spelled once,
-// not retyped per file. Event still earns its own distinct vocabulary from
-// State/Label, though: build_succeeded, build_blocked and the merge_gate_*
-// events are synthesized from several real signals (CI status, mcp-review's
-// verdict, github-ops' gate checks) — there's no single webhook that means
-// any of them. See translate.ts.
+// Event (constants/events.ts) and Routine (constants/routines.ts) are the
+// same idea applied to the rest of this table's vocabulary — every fixed
+// string spelled once, not retyped per file. Event still earns its own
+// distinct vocabulary from State/Label, though: build_succeeded,
+// build_blocked and the merge_gate_* events are synthesized from several
+// real signals (CI status, mcp-review's verdict, github-ops' gate checks) —
+// there's no single webhook that means any of them. See translate.ts.
+//
+// This file is deliberately just the state machine — deciding which rule
+// fired. Turning that rule's effect into concrete GitHub calls is a
+// separate stage with a different input (the labels actually present right
+// now) and output; see effects.ts.
 
 import { EVENTS, type Event } from "./constants/events";
 import { LABELS, type Label } from "./constants/labels";
 import { ROUTINES, type Routine } from "./constants/routines";
+import { close, label, noop, unlabel, type Effect } from "./effects";
 
 export type State = "none" | Label; // "none" = no tracking label, not a real GitHub label
-
-export type Effect =
-  | { kind: "label"; value: State }
-  | { kind: "unlabel" }
-  | { kind: "close" } // native GitHub close, not a label — see auto-release-loop precedent
-  | { kind: "noop" }; // no GitHub write at all — e.g. a soft merge-gate failure leaves the label exactly as-is
-
-export function label(value: State): Effect {
-  return { kind: "label", value };
-}
-export const unlabel: Effect = { kind: "unlabel" };
-export const close: Effect = { kind: "close" };
-export const noop: Effect = { kind: "noop" };
 
 export type Rule = {
   from: State;
@@ -141,38 +134,4 @@ export const rules: Rule[] = [
 
 export function reduce(current: State, event: Event): Rule | null {
   return rules.find((r) => r.from === current && r.on === event) ?? null;
-}
-
-export type LabelOp =
-  | { op: "add"; label: string }
-  | { op: "remove"; label: string }
-  | { op: "close" };
-
-/**
- * The concrete GitHub calls a fired rule requires, given the labels actually
- * present right now — re-read fresh from the API per §3.4, never cached.
- * Diffing against the real current labels (not just assuming `rule.from`'s
- * label is still there) means a label a human already removed by hand isn't
- * redundantly removed again, and a label the *triggering* webhook itself
- * just added (e.g. a human labelling `ai-ready`) is never redundantly
- * re-added — it's already in `currentLabels` by the time this runs.
- *
- * No mapping table needed here any more: `rule.from`/`rule.to.value` already
- * *are* the real label strings.
- */
-export function labelOps(currentLabels: readonly string[], rule: Rule): LabelOp[] {
-  if (rule.to.kind === "noop") return [];
-  if (rule.to.kind === "close") return [{ op: "close" }];
-
-  const fromLabel = rule.from === "none" ? null : rule.from;
-  const toLabel = rule.to.kind === "label" ? rule.to.value : null;
-  const ops: LabelOp[] = [];
-
-  if (fromLabel && fromLabel !== toLabel && currentLabels.includes(fromLabel)) {
-    ops.push({ op: "remove", label: fromLabel });
-  }
-  if (toLabel && toLabel !== fromLabel && !currentLabels.includes(toLabel)) {
-    ops.push({ op: "add", label: toLabel });
-  }
-  return ops;
 }

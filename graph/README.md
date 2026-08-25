@@ -1,10 +1,23 @@
 # graph/ — Phase 1/2 prototype
 
 Pure logic only, per the build order in the design doc
-(`agent-orchestration-plan/07-build-phases.md`): the transition table
-(`graph.ts`) and the webhook-to-domain-event translator (`translate.ts`),
-each with fixture tests. No Worker, no Durable Object, no D1 — none of that
-exists yet, and nothing here talks to GitHub for real.
+(`agent-orchestration-plan/07-build-phases.md`), split into three pipeline
+stages, each with its own fixture tests:
+
+```
+translate.ts  →  graph.ts  →  effects.ts
+(webhook→event)  (event→rule)  (rule→GitHub calls)
+```
+
+- `translate.ts` — raw GitHub webhook payload → abstract domain `Event`.
+- `graph.ts` — the transition table and `reduce()`: which rule fires, given
+  the current state and an event. The state machine itself, nothing else.
+- `effects.ts` — a fired rule's effect → the concrete GitHub label
+  add/remove/close calls it requires, given the labels actually present
+  right now. The mirror image of `translate.ts`: abstract back to raw.
+
+No Worker, no Durable Object, no D1 — none of that exists yet, and nothing
+here talks to GitHub for real.
 
 This is the first code in this repo that isn't shell or Markdown — a
 deliberate, scoped choice: a `package.json` here doesn't change how any
@@ -45,9 +58,9 @@ to pull in the reducer:
   anyway so *every* fixed string is named once, not just the ones the type
   checker happened to leave exposed.
 
-`graph.ts` and `translate.ts` import all three directly from `constants/`;
-nothing re-exports them as a convenience shim, so there's exactly one
-import path per symbol.
+`graph.ts`, `effects.ts` and `translate.ts` import from `constants/`
+directly, whichever they need; nothing re-exports them as a convenience
+shim, so there's exactly one import path per symbol.
 
 ## What's real vs. still a placeholder
 
