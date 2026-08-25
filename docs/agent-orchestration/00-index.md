@@ -31,6 +31,7 @@ unresolved. If you only read one file, read 07.
 | [07-build-phases.md](07-build-phases.md) | Build order | Restated as 10 numbered phases with entry/exit criteria; new Phase 8 for the dashboard, heartbeat write-side folded into Phase 6 |
 | [08-open-questions.md](08-open-questions.md) | Open questions | Some resolved by 03/05; new ones added |
 | [09-phase-1-real-graph.md](09-phase-1-real-graph.md) | *(new)* Phase 1 in progress | The real transition table, audited against `loop-dispatch` and the loop skills already in this repo — not a sketch |
+| [10-label-rename.md](10-label-rename.md) | *(new)* Label rename | Proposed renames (`ready-for-ai`→`ai-ready`, `generated-by-ai`→`ai-generated`, and the command→state gerund fix for `auto-release`/`ai-discuss`/`auto-rework`/`auto-merge`) surfaced by collapsing `State` to the literal label string — not yet executed on any live label |
 
 ## The one-paragraph version
 

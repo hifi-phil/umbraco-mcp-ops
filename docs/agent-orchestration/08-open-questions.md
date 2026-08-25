@@ -77,6 +77,12 @@
   straight to `state:rework`, the log needs to record that jump even though
   no rule in the table permits it — worth deciding whether `verifiedBy` even
   applies to a row the reducer didn't produce.
+- **Atomic or incremental label rename?** See
+  [10-label-rename.md](10-label-rename.md) — a single coordinated cutover
+  (label + all 18 referencing files + every routine's trigger config in one
+  change) is cleaner but higher-blast-radius; migrating loop-by-loop is
+  safer but means `loop-dispatch`'s routing table has to carry both the old
+  and new spelling for whichever loops haven't moved yet.
 
 ---
 

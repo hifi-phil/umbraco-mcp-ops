@@ -6,22 +6,22 @@ function payload(overrides: Partial<WebhookPayload>): WebhookPayload {
 }
 
 describe("translate — issue labels", () => {
-  it("issues.labeled ready-for-ai -> labelled_ready_for_ai", () => {
-    expect(
-      translate(payload({ action: "issues.labeled", label: { name: "ready-for-ai" } })),
-    ).toBe("labelled_ready_for_ai");
+  it("issues.labeled ai-ready -> labelled_ai_ready", () => {
+    expect(translate(payload({ action: "issues.labeled", label: { name: "ai-ready" } }))).toBe(
+      "labelled_ai_ready",
+    );
   });
 
-  it("issues.labeled auto-release -> labelled_auto_release", () => {
+  it("issues.labeled auto-releasing -> labelled_auto_releasing", () => {
     expect(
-      translate(payload({ action: "issues.labeled", label: { name: "auto-release" } })),
-    ).toBe("labelled_auto_release");
+      translate(payload({ action: "issues.labeled", label: { name: "auto-releasing" } })),
+    ).toBe("labelled_auto_releasing");
   });
 
-  it("issues.labeled ai-discuss -> labelled_ai_discuss", () => {
+  it("issues.labeled ai-discussing -> labelled_ai_discussing", () => {
     expect(
-      translate(payload({ action: "issues.labeled", label: { name: "ai-discuss" } })),
-    ).toBe("labelled_ai_discuss");
+      translate(payload({ action: "issues.labeled", label: { name: "ai-discussing" } })),
+    ).toBe("labelled_ai_discussing");
   });
 
   it("issues.labeled with an unrelated label -> null", () => {
@@ -37,7 +37,7 @@ describe("translate — self-trigger guard", () => {
       translate(
         payload({
           action: "issues.labeled",
-          label: { name: "ready-for-ai" },
+          label: { name: "ai-ready" },
           sender: { login: BOT_LOGIN, type: "Bot" },
         }),
       ),
@@ -55,7 +55,7 @@ describe("translate — self-trigger guard", () => {
     ).toBeNull();
   });
 
-  it("a plain comment with no marker still yields no event — 'discussing' has no reducer rules", () => {
+  it("a plain comment with no marker still yields no event — 'ai-discussing' has no reducer rules", () => {
     expect(
       translate(payload({ action: "issue_comment.created", comment: { body: "just a reply" } })),
     ).toBeNull();
@@ -63,16 +63,16 @@ describe("translate — self-trigger guard", () => {
 });
 
 describe("translate — PR labels", () => {
-  it("pull_request.labeled auto-rework -> labelled_auto_rework", () => {
+  it("pull_request.labeled auto-reworking -> labelled_auto_reworking", () => {
     expect(
-      translate(payload({ action: "pull_request.labeled", label: { name: "auto-rework" } })),
-    ).toBe("labelled_auto_rework");
+      translate(payload({ action: "pull_request.labeled", label: { name: "auto-reworking" } })),
+    ).toBe("labelled_auto_reworking");
   });
 
-  it("pull_request.labeled auto-merge -> labelled_auto_merge", () => {
+  it("pull_request.labeled auto-merging -> labelled_auto_merging", () => {
     expect(
-      translate(payload({ action: "pull_request.labeled", label: { name: "auto-merge" } })),
-    ).toBe("labelled_auto_merge");
+      translate(payload({ action: "pull_request.labeled", label: { name: "auto-merging" } })),
+    ).toBe("labelled_auto_merging");
   });
 });
 

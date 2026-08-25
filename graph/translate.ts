@@ -4,6 +4,14 @@
 // or event from loop-dispatch's actual routing table (route-event.sh) and
 // the loop skills it fires, not invented.
 //
+// The label-name string literals below (ai-ready, auto-releasing,
+// ai-discussing, auto-reworking, auto-merging) are the PROPOSED renamed
+// labels from graph.ts, not today's exact live spelling (ready-for-ai,
+// auto-release, ai-discuss, auto-rework, auto-merge) — see
+// 10-label-rename.md. Real webhooks won't carry these strings until that
+// migration actually renames the labels; this is written against the
+// target, on the same "no infrastructure yet" basis as the rest of Phase 2.
+//
 // Deliberately absent: build_succeeded, build_blocked, release_blocked,
 // release_published, rework_pushed, merge_gate_failed_*. Today those facts
 // only exist as an agent's self-report (the exact anti-pattern Phase 5 in
@@ -53,12 +61,12 @@ export function translate(payload: WebhookPayload): Event | null {
   switch (payload.action) {
     case "issues.labeled":
       switch (payload.label?.name) {
-        case "ready-for-ai":
-          return "labelled_ready_for_ai";
-        case "auto-release":
-          return "labelled_auto_release";
-        case "ai-discuss":
-          return "labelled_ai_discuss";
+        case "ai-ready":
+          return "labelled_ai_ready";
+        case "auto-releasing":
+          return "labelled_auto_releasing";
+        case "ai-discussing":
+          return "labelled_ai_discussing";
         default:
           return null;
       }
@@ -69,7 +77,7 @@ export function translate(payload: WebhookPayload): Event | null {
       // so identity filtering (above) can't catch its own comments; the
       // signed marker is the only thing that does.
       if (hasOwnSignatureMarker(payload.comment?.body)) return null;
-      // No rule in graph.ts has an outbound transition from "discussing" —
+      // No rule in graph.ts has an outbound transition from "ai-discussing" —
       // it's a human-owned level-state by design (see graph.ts) — so a plain
       // comment never needs to become a domain event here. loop-dispatch's
       // existing router still fires issue-discuss-loop directly; this
@@ -78,10 +86,10 @@ export function translate(payload: WebhookPayload): Event | null {
 
     case "pull_request.labeled":
       switch (payload.label?.name) {
-        case "auto-rework":
-          return "labelled_auto_rework";
-        case "auto-merge":
-          return "labelled_auto_merge";
+        case "auto-reworking":
+          return "labelled_auto_reworking";
+        case "auto-merging":
+          return "labelled_auto_merging";
         default:
           return null;
       }
