@@ -15,23 +15,14 @@ cases for `build_succeeded` and `build_blocked`; four events still don't
 ## The artifact
 
 A marker plus a fenced JSON block, appended to the same comment
-`issue-build-loop` already posts on the triggering issue:
-
-````
-<!-- agent-outcome:issue-build-loop -->
-```json
-{"outcome":"build_succeeded","pr":123}
-```
-````
-
-or
-
-````
-<!-- agent-outcome:issue-build-loop -->
-```json
-{"outcome":"build_blocked","reason":"CI-green cap tripped after 8 attempts"}
-```
-````
+`issue-build-loop` already posts on the triggering issue. The exact format
+and the growing catalog of outcome shapes now live in their own shared
+skill — [`plugins/agent-outcomes`](https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/agent-outcomes)
+— rather than here or inlined into `issue-build-loop`'s own `SKILL.md`,
+for the same reason `github-ops` is its own skill: five loops will end up
+needing this, and a format duplicated into five places is a format that
+silently drifts. This doc stays the design rationale; that skill is the
+spec other loops (and this one) actually follow.
 
 The marker is per-routine (`agent-outcome:<routine>`) so a later loop's
 artifact can never be mistaken for this one. The format reuses
@@ -87,6 +78,13 @@ real PRs, starting now. It changes no *behaviour*: the label swap, the
 comment's existing content, and everything else about what the loop does
 is unchanged; this only adds a machine-readable trailer to a comment that
 already existed.
+
+New plugin: `plugins/agent-outcomes`, matching `github-ops`'s shape —
+one shared skill, other plugins point at it rather than each re-explaining
+the format. `issue-build-loop` references it by name for both outcomes
+instead of inlining the marker/JSON; the next loop to get this treatment
+(`rework-loop`, `merge-flow`, or `auto-release-loop`) adds a catalog row
+there and its own `translate()` case, not a second copy of the format.
 
 ## Open questions this raises
 
