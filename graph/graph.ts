@@ -3,11 +3,20 @@
 // it fires — see the design doc's 09-phase-1-real-graph.md for the audit
 // this table is built from. Not the abstract sketch from the original draft.
 //
-// State is deliberately the literal GitHub label string, not a renamed
-// internal concept — one vocabulary throughout, not a translation at every
-// layer. A separate "building" name for the "ai-ready" label bought nothing
-// but a mapping table to keep in sync, and keeping two names for one thing
-// is exactly what let "remove ai-ready" go missing silently.
+// LABELS below is the one place a label's spelling is written down. State,
+// the rules table, and translate.ts's webhook matching all refer to these
+// constants rather than retyping the string — a rename is a one-line change
+// here, not a grep-and-hope across files. That matters because the string
+// literals in a switch-case aren't checked against any type: before this,
+// graph.ts's State union and translate.ts's case values were two
+// independently-typed copies of the same spelling, and nothing would have
+// caught them drifting apart.
+//
+// State is deliberately the literal GitHub label string, not a separate
+// renamed internal concept — one vocabulary throughout, not a translation
+// at every layer. A separate "building" name for the "ai-ready" label
+// bought nothing but a mapping table to keep in sync, and keeping two names
+// for one thing is exactly what let "remove ai-ready" go missing silently.
 //
 // That collapse exposed two real inconsistencies in today's live labels:
 //
@@ -38,15 +47,25 @@
 // real signals (CI status, mcp-review's verdict, github-ops' gate checks) —
 // there's no single webhook that means any of them. See translate.ts.
 
-export type State =
-  | "none" // no tracking label — an issue in the backlog, or an untouched PR
-  | "ai-ready"
-  | "ai-generated"
-  | "ai-blocked"
-  | "auto-releasing"
-  | "ai-discussing"
-  | "auto-reworking"
-  | "auto-merging";
+/** The absolute list of every label this system tracks. */
+export const LABELS = {
+  AI_READY: "ai-ready",
+  AI_GENERATED: "ai-generated",
+  AI_BLOCKED: "ai-blocked",
+  AUTO_RELEASING: "auto-releasing",
+  AI_DISCUSSING: "ai-discussing",
+  AUTO_REWORKING: "auto-reworking",
+  AUTO_MERGING: "auto-merging",
+} as const;
+
+export type Label = (typeof LABELS)[keyof typeof LABELS];
+
+/** Same seven values as LABELS, as an array — for anything that needs to
+ * iterate all of them (a dashboard, a check against a live repo's actual
+ * label set, a "does this string name a tracked label" guard). */
+export const ALL_LABELS: readonly Label[] = Object.values(LABELS);
+
+export type State = "none" | Label; // "none" = no tracking label, not a real GitHub label
 
 export type Event =
   // issue lifecycle
@@ -91,37 +110,37 @@ export const rules: Rule[] = [
   {
     from: "none",
     on: "labelled_ai_ready",
-    to: label("ai-ready"),
+    to: label(LABELS.AI_READY),
     run: "issue-build-loop",
     verifiedBy: "external-judgment", // a human decided this issue is ready
   },
   {
-    from: "ai-ready",
+    from: LABELS.AI_READY,
     on: "build_succeeded",
-    to: label("ai-generated"),
+    to: label(LABELS.AI_GENERATED),
     verifiedBy: "external-judgment", // composite fact includes mcp-review's judgment, not just CI
   },
   {
-    from: "ai-ready",
+    from: LABELS.AI_READY,
     on: "build_blocked",
-    to: label("ai-blocked"),
+    to: label(LABELS.AI_BLOCKED),
     verifiedBy: "external-judgment", // the agent decided the issue was ambiguous / capped out
   },
   {
     from: "none",
     on: "labelled_auto_releasing",
-    to: label("auto-releasing"),
+    to: label(LABELS.AUTO_RELEASING),
     run: "auto-release-loop",
     verifiedBy: "external-judgment", // a human decided to release
   },
   {
-    from: "auto-releasing",
+    from: LABELS.AUTO_RELEASING,
     on: "release_blocked",
     to: unlabel,
     verifiedBy: "external-judgment", // release-reviewer's BLOCK verdict — an independent agent's judgment
   },
   {
-    from: "auto-releasing",
+    from: LABELS.AUTO_RELEASING,
     on: "release_published",
     to: close,
     verifiedBy: "deterministic", // merge + tag + GitHub Release are all directly observable
@@ -129,23 +148,23 @@ export const rules: Rule[] = [
   {
     from: "none",
     on: "labelled_ai_discussing",
-    to: label("ai-discussing"),
+    to: label(LABELS.AI_DISCUSSING),
     run: "issue-discuss-loop",
     verifiedBy: "external-judgment", // a human decided this needs discussion
   },
-  // deliberately no outbound rules from "ai-discussing" — see README:
+  // deliberately no outbound rules from LABELS.AI_DISCUSSING — see README:
   // this state is human-owned by design and doesn't need to enter the reducer at all.
 
   // --- PR lifecycle ---
   {
     from: "none",
     on: "labelled_auto_reworking",
-    to: label("auto-reworking"),
+    to: label(LABELS.AUTO_REWORKING),
     run: "rework-loop",
     verifiedBy: "external-judgment", // a reviewer decided rework was needed
   },
   {
-    from: "auto-reworking",
+    from: LABELS.AUTO_REWORKING,
     on: "rework_pushed",
     to: unlabel,
     verifiedBy: "deterministic", // a git push is directly observable
@@ -153,24 +172,24 @@ export const rules: Rule[] = [
   {
     from: "none",
     on: "labelled_auto_merging",
-    to: label("auto-merging"),
+    to: label(LABELS.AUTO_MERGING),
     run: "merge-flow",
     verifiedBy: "external-judgment", // the auto-merge label IS the human approval signal
   },
   {
-    from: "auto-merging",
+    from: LABELS.AUTO_MERGING,
     on: "merge_gate_failed_soft",
     to: noop, // matches merge-flow's real Step 4: "by default leave the auto-merge label on" — no GitHub write, not a redundant remove+re-add; the reconciliation sweep re-fires it later
     verifiedBy: "deterministic",
   },
   {
-    from: "auto-merging",
+    from: LABELS.AUTO_MERGING,
     on: "merge_gate_failed_hard",
     to: unlabel, // needs a human; matches merge-flow's real Step 4
     verifiedBy: "deterministic",
   },
   {
-    from: "auto-merging",
+    from: LABELS.AUTO_MERGING,
     on: "merged",
     to: close, // idempotent: merge-flow's own merge call already closes the PR natively; this just confirms it
     verifiedBy: "deterministic",

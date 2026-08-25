@@ -21,6 +21,16 @@ npm install
 npm test
 ```
 
+## The absolute list of labels
+
+`graph.ts` exports `LABELS` — the one place every label's spelling is
+written down, plus `ALL_LABELS` as a plain array. `State` and `translate.ts`'s
+webhook matching both refer to these constants rather than retyping the
+string, so renaming a label is a one-line change in `LABELS`, not a
+grep-and-hope across files. See `agent-orchestration-plan/10-label-rename.md`
+for the full mapping from today's live label spelling to the proposed one
+used here, and what it would cost to actually execute that rename.
+
 ## What's real vs. still a placeholder
 
 - `graph.ts`'s table is derived from the actual behaviour of

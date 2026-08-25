@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LABELS } from "./graph";
 import { BOT_LOGIN, COMMENT_SIGNATURE, translate, type WebhookPayload } from "./translate";
 
 function payload(overrides: Partial<WebhookPayload>): WebhookPayload {
@@ -7,20 +8,20 @@ function payload(overrides: Partial<WebhookPayload>): WebhookPayload {
 
 describe("translate — issue labels", () => {
   it("issues.labeled ai-ready -> labelled_ai_ready", () => {
-    expect(translate(payload({ action: "issues.labeled", label: { name: "ai-ready" } }))).toBe(
-      "labelled_ai_ready",
-    );
+    expect(
+      translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_READY } })),
+    ).toBe("labelled_ai_ready");
   });
 
   it("issues.labeled auto-releasing -> labelled_auto_releasing", () => {
     expect(
-      translate(payload({ action: "issues.labeled", label: { name: "auto-releasing" } })),
+      translate(payload({ action: "issues.labeled", label: { name: LABELS.AUTO_RELEASING } })),
     ).toBe("labelled_auto_releasing");
   });
 
   it("issues.labeled ai-discussing -> labelled_ai_discussing", () => {
     expect(
-      translate(payload({ action: "issues.labeled", label: { name: "ai-discussing" } })),
+      translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_DISCUSSING } })),
     ).toBe("labelled_ai_discussing");
   });
 
@@ -37,7 +38,7 @@ describe("translate — self-trigger guard", () => {
       translate(
         payload({
           action: "issues.labeled",
-          label: { name: "ai-ready" },
+          label: { name: LABELS.AI_READY },
           sender: { login: BOT_LOGIN, type: "Bot" },
         }),
       ),
@@ -65,13 +66,17 @@ describe("translate — self-trigger guard", () => {
 describe("translate — PR labels", () => {
   it("pull_request.labeled auto-reworking -> labelled_auto_reworking", () => {
     expect(
-      translate(payload({ action: "pull_request.labeled", label: { name: "auto-reworking" } })),
+      translate(
+        payload({ action: "pull_request.labeled", label: { name: LABELS.AUTO_REWORKING } }),
+      ),
     ).toBe("labelled_auto_reworking");
   });
 
   it("pull_request.labeled auto-merging -> labelled_auto_merging", () => {
     expect(
-      translate(payload({ action: "pull_request.labeled", label: { name: "auto-merging" } })),
+      translate(
+        payload({ action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING } }),
+      ),
     ).toBe("labelled_auto_merging");
   });
 });

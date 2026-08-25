@@ -4,13 +4,14 @@
 // or event from loop-dispatch's actual routing table (route-event.sh) and
 // the loop skills it fires, not invented.
 //
-// The label-name string literals below (ai-ready, auto-releasing,
-// ai-discussing, auto-reworking, auto-merging) are the PROPOSED renamed
-// labels from graph.ts, not today's exact live spelling (ready-for-ai,
-// auto-release, ai-discuss, auto-rework, auto-merge) — see
-// 10-label-rename.md. Real webhooks won't carry these strings until that
-// migration actually renames the labels; this is written against the
-// target, on the same "no infrastructure yet" basis as the rest of Phase 2.
+// The label names matched below come from graph.ts's LABELS constant, not
+// retyped strings — so a rename there (see 10-label-rename.md) propagates
+// here automatically instead of silently drifting out of sync. They're the
+// PROPOSED renamed labels, not today's exact live spelling (ready-for-ai,
+// auto-release, ai-discuss, auto-rework, auto-merge). Real webhooks won't
+// carry these strings until that migration actually renames the labels;
+// this is written against the target, on the same "no infrastructure yet"
+// basis as the rest of Phase 2.
 //
 // Deliberately absent: build_succeeded, build_blocked, release_blocked,
 // release_published, rework_pushed, merge_gate_failed_*. Today those facts
@@ -20,7 +21,7 @@
 // what Phase 5 actually is: define the outcome artifact each loop writes,
 // then add the case here that reads it.
 
-import type { Event } from "./graph";
+import { LABELS, type Event } from "./graph";
 
 export const BOT_LOGIN = "umbraco-mcp-ops[bot]"; // placeholder — set to the real GitHub App login
 export const COMMENT_SIGNATURE = "<!-- issue-discuss-loop -->"; // real marker, from issue-discuss-loop's SKILL.md
@@ -61,11 +62,11 @@ export function translate(payload: WebhookPayload): Event | null {
   switch (payload.action) {
     case "issues.labeled":
       switch (payload.label?.name) {
-        case "ai-ready":
+        case LABELS.AI_READY:
           return "labelled_ai_ready";
-        case "auto-releasing":
+        case LABELS.AUTO_RELEASING:
           return "labelled_auto_releasing";
-        case "ai-discussing":
+        case LABELS.AI_DISCUSSING:
           return "labelled_ai_discussing";
         default:
           return null;
@@ -86,9 +87,9 @@ export function translate(payload: WebhookPayload): Event | null {
 
     case "pull_request.labeled":
       switch (payload.label?.name) {
-        case "auto-reworking":
+        case LABELS.AUTO_REWORKING:
           return "labelled_auto_reworking";
-        case "auto-merging":
+        case LABELS.AUTO_MERGING:
           return "labelled_auto_merging";
         default:
           return null;
