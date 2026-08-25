@@ -1,0 +1,15 @@
+# Copy to .dev.vars (gitignored) for local dev. wrangler dev loads this
+# automatically. These values point everything at the local mock —
+# see mock-github/server.mjs and README.md's "Testing the whole stack
+# locally" section.
+
+GITHUB_APP_TOKEN=mock-bot-token
+GITHUB_API_BASE_URL=http://127.0.0.1:8943
+CLAUDE_API_KEY=fake-local-key
+CLAUDE_API_BASE_URL=http://127.0.0.1:8943
+ROUTINE_IDS_JSON={"issue-build-loop":"rt_fake"}
+
+# To point at the real APIs instead (e.g. once real credentials exist),
+# remove the two *_API_BASE_URL lines and set real values for the rest —
+# GITHUB_APP_TOKEN will then genuinely write labels/comments on whatever
+# repo it can reach, so do that deliberately, not by habit.

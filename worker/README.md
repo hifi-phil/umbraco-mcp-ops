@@ -31,34 +31,78 @@ signature verification), `github-client.ts` and `routines-client.ts`
 (against mocked `fetch`, including the `GITHUB_API_BASE_URL`/
 `CLAUDE_API_BASE_URL` override seam used below). Clean `tsc --noEmit`.
 
-**A real local smoke test**, via `wrangler dev --local` (Miniflare — no
-Cloudflare account needed) plus a throwaway local HTTP stub standing in
-for both the GitHub and Claude APIs (pointed at via the base-URL env
-overrides, so nothing in this smoke test ever made a real external call):
+## Testing the whole stack locally
 
-1. `npx wrangler d1 migrations apply agent-orchestration-log --local`
-2. `npx wrangler dev --local` (with `.dev.vars` pointing both API base
-   URLs at the local stub)
-3. `curl -X POST http://localhost:.../ -H "X-GitHub-Event: issues" -H "X-GitHub-Delivery: ..." -d '{"action":"labeled","label":{"name":"ai-ready"},"repository":{...},"issue":{"number":412}}'`
+`mock-github/server.mjs` is a small, stateful stand-in for both the
+GitHub REST API and the Claude routines API — not a canned-response stub.
+It tracks real per-issue label/comment/open-closed state in memory, and
+critically, **it fires a real webhook back to the Worker on every state
+change it makes**, exactly like real GitHub does — including for changes
+the Worker's *own* calls cause. That's what makes it possible to test the
+self-trigger guard for real, not just against a fixed sender in a unit
+test.
 
-Result: the Worker routed to the correct DO instance, called `translate()`
-→ `reduce()` (real `graph/` code, not mocked), got the `labelled_ai_ready`
-rule, called the GitHub label-add endpoint, fired the routine (POST to
-`/routines/rt_fake` with the expected `additional_context`), and wrote a
-real row to the local D1 `transitions` table. A second delivery with the
-same `X-GitHub-Delivery` correctly deduped instead of re-processing.
+```bash
+cd worker
+npm install
+npx wrangler d1 migrations apply agent-orchestration-log --local
+cp .dev.vars.example .dev.vars                      # points both APIs at the mock
 
-The label-add call actually fired an "add" op rather than a no-op — that's
-the stub server's own limitation (it's stateless, always returns `[]` for
-`GET .../labels`), not a bug: `coordinate.test.ts`'s fake deps *do* model
-a label already being present and correctly produce zero ops for that
-case, matching `graph/github/to-github.ts`'s own tests.
+# terminal 1
+WORKER_WEBHOOK_URL=http://127.0.0.1:8787/ BOT_TOKEN=mock-bot-token npm run mock-github
+
+# terminal 2
+npx wrangler dev --local
+```
+
+Then drive it as if a human labelled an issue on github.com:
+
+```bash
+curl -X POST http://127.0.0.1:8943/mock/simulate-label \
+  -H "Content-Type: application/json" \
+  -d '{"owner":"hifi-phil","repo":"umbraco-mcp-ops","issueNumber":500,"label":"ai-ready","senderLogin":"phil"}'
+```
+
+**What actually happened, verified, in one run of this:**
+
+1. The label-add fired a real webhook; the Worker read `translate()` →
+   `reduce()` → found no label ops needed (the label was already there,
+   correctly excluded via `LABEL_JUST_ADDED_BY`) → fired the routine (the
+   mock's routines stub logged the exact `additional_context`) → wrote
+   one real D1 row.
+2. Posting `issue-build-loop`'s `build_succeeded` outcome comment — **as
+   the bot** (`Authorization: Bearer mock-bot-token`, matching how the
+   real loop would authenticate) — via
+   `POST /repos/.../issues/500/comments` triggered the real
+   remove-`ai-ready`/add-`ai-generated` label ops, each of which the mock
+   echoed back as its own webhook (`issues.unlabeled`, `issues.labeled`),
+   attributed to the bot identity.
+3. **Both of those self-fired webhooks were correctly dropped** —
+   `issues.unlabeled` has no case in `translate()` at all;
+   `issues.labeled` hit the identity-based self-trigger guard
+   (`isOwnBot`) before even reaching the label-name switch. Confirmed by
+   the D1 log ending up with exactly **2** rows (the two real
+   transitions), not 4 — the self-fired webhooks never reached
+   `logTransition`, let alone caused a third transition.
+4. Final mock state: `labels: ["ai-generated"]`, `ai-ready` genuinely
+   gone, the outcome comment recorded — `GET /mock/state` to inspect.
+
+`POST /mock/reset` clears all mock state between runs (D1 needs its own
+`DELETE FROM transitions;` via `wrangler d1 execute --local` if you want a
+clean log too).
 
 ## What's NOT verified
 
 - **Nothing here has talked to the real GitHub API or the real Claude
   routines API.** `github-client.ts`/`routines-client.ts` are written
-  against their documented shapes, not exercised against them.
+  against their documented shapes; `mock-github/server.mjs` is a
+  hand-written stand-in for those shapes, not the real thing, and it's
+  never been diffed against real GitHub/Claude API responses for drift.
+- **The mock doesn't sign its webhooks.** `GITHUB_WEBHOOK_SECRET` and
+  `webhook-parse.ts`'s `verifySignature()` are exercised by unit tests
+  with a hand-computed HMAC, but the whole-stack test above never sets
+  `GITHUB_WEBHOOK_SECRET`, so the signature-check branch in `index.ts`
+  never actually ran during it.
 - **The watchdog alarm's *firing* (`alarm()`) is untested beyond code
   review** — the smoke test exercised the code path that *sets* it
   (`setPendingFire` → `ctx.storage.setAlarm`), which `coordinate.test.ts`

@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "dev": "wrangler dev",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "mock-github": "node mock-github/server.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260825.1",
