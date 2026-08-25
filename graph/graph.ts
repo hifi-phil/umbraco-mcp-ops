@@ -21,9 +21,9 @@
 // verdict, github-ops' gate checks) — there's no single webhook that means
 // any of them. See translate.ts.
 
-import { EVENTS, type Event } from "./events";
-import { LABELS, type Label } from "./labels";
-import { ROUTINES, type Routine } from "./routines";
+import { EVENTS, type Event } from "./constants/events";
+import { LABELS, type Label } from "./constants/labels";
+import { ROUTINES, type Routine } from "./constants/routines";
 
 export type State = "none" | Label; // "none" = no tracking label, not a real GitHub label
 

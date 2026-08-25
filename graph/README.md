@@ -24,29 +24,30 @@ npm test
 ## No magic strings
 
 Every fixed-vocabulary string in this system has exactly one named home,
-each in its own file so anything that only needs the list doesn't have to
-pull in the reducer:
+grouped in `constants/` so anything that only needs the list doesn't have
+to pull in the reducer:
 
-- `labels.ts` — `LABELS` / `ALL_LABELS`, the seven tracked GitHub labels.
-  Closes a real gap: before this, `graph.ts`'s `State` union and
+- `constants/labels.ts` — `LABELS` / `ALL_LABELS`, the seven tracked GitHub
+  labels. Closes a real gap: before this, `graph.ts`'s `State` union and
   `translate.ts`'s webhook-matching `switch` were two independently-typed
   copies of the same spelling, and a `case` value isn't checked against
   any type — nothing would have caught them drifting apart on a rename.
   See `agent-orchestration-plan/10-label-rename.md` for the full mapping
   from today's live label spelling to the proposed one used here.
-- `routines.ts` — `ROUTINES` / `ALL_ROUTINES`, the five real loop skills
-  (`plugins/*/skills/*/SKILL.md`) the reducer can fire. Same category of
-  gap as labels: `Rule.run` was a bare `string`, so a typo'd routine name
+- `constants/routines.ts` — `ROUTINES` / `ALL_ROUTINES`, the five real loop
+  skills (`plugins/*/skills/*/SKILL.md`) the reducer can fire. Same category
+  of gap as labels: `Rule.run` was a bare `string`, so a typo'd routine name
   would compile cleanly.
-- `events.ts` — `EVENTS` / `ALL_EVENTS`, the thirteen domain events.
-  Doesn't close a safety gap the way the other two do — `translate()`
-  already declares its return type as `Event`, so a typo'd event is
-  already a compile error at the return statement. It exists anyway so
-  *every* fixed string is named once, not just the ones the type checker
-  happened to leave exposed.
+- `constants/events.ts` — `EVENTS` / `ALL_EVENTS`, the thirteen domain
+  events. Doesn't close a safety gap the way the other two do —
+  `translate()` already declares its return type as `Event`, so a typo'd
+  event is already a compile error at the return statement. It exists
+  anyway so *every* fixed string is named once, not just the ones the type
+  checker happened to leave exposed.
 
-`graph.ts` imports all three directly; nothing re-exports them as a
-convenience shim, so there's exactly one import path per symbol.
+`graph.ts` and `translate.ts` import all three directly from `constants/`;
+nothing re-exports them as a convenience shim, so there's exactly one
+import path per symbol.
 
 ## What's real vs. still a placeholder
 

@@ -21,8 +21,8 @@
 // what Phase 5 actually is: define the outcome artifact each loop writes,
 // then add the case here that reads it.
 
-import { EVENTS, type Event } from "./events";
-import { LABELS } from "./labels";
+import { EVENTS, type Event } from "./constants/events";
+import { LABELS } from "./constants/labels";
 
 export const BOT_LOGIN = "umbraco-mcp-ops[bot]"; // placeholder — set to the real GitHub App login
 export const COMMENT_SIGNATURE = "<!-- issue-discuss-loop -->"; // real marker, from issue-discuss-loop's SKILL.md

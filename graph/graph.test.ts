@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { EVENTS } from "./events";
+import { EVENTS } from "./constants/events";
+import { LABELS } from "./constants/labels";
+import { ROUTINES } from "./constants/routines";
 import { close, label, labelOps, noop, reduce, unlabel } from "./graph";
-import { LABELS } from "./labels";
-import { ROUTINES } from "./routines";
 
 describe("reduce — issue lifecycle", () => {
   it("none + labelled_ai_ready -> ai-ready, fires issue-build-loop", () => {

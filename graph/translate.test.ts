@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { EVENTS } from "./events";
-import { LABELS } from "./labels";
+import { EVENTS } from "./constants/events";
+import { LABELS } from "./constants/labels";
 import { BOT_LOGIN, COMMENT_SIGNATURE, translate, type WebhookPayload } from "./translate";
 
 function payload(overrides: Partial<WebhookPayload>): WebhookPayload {

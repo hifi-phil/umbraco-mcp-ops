@@ -14,7 +14,7 @@ any of them real. **Nothing on GitHub is renamed yet.** `graph/` is written
 against the proposed names as its target; the live labels in every repo
 are still spelled the old way.
 
-`graph/labels.ts` exports a `LABELS` constant as the single source of
+`graph/constants/labels.ts` exports a `LABELS` constant as the single source of
 truth for these seven strings — `graph.ts`'s `State` and `translate.ts`
 both import from it rather than retyping the spelling. The table below is
 the same mapping in prose; if the two ever disagree, `LABELS` in code is
