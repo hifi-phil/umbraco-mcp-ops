@@ -13,31 +13,19 @@
 // — nothing here renames them yet; this describes the proposed target, not
 // today's exact strings.
 //
-// Event still earns its own separate vocabulary: build_succeeded,
-// build_blocked and the merge_gate_* events are synthesized from several
-// real signals (CI status, mcp-review's verdict, github-ops' gate checks) —
-// there's no single webhook that means any of them. See translate.ts.
+// Event (events.ts) and Routine (routines.ts) are the same idea applied to
+// the rest of this table's vocabulary — every fixed string spelled once,
+// not retyped per file. Event still earns its own distinct vocabulary from
+// State/Label, though: build_succeeded, build_blocked and the merge_gate_*
+// events are synthesized from several real signals (CI status, mcp-review's
+// verdict, github-ops' gate checks) — there's no single webhook that means
+// any of them. See translate.ts.
 
+import { EVENTS, type Event } from "./events";
 import { LABELS, type Label } from "./labels";
+import { ROUTINES, type Routine } from "./routines";
 
 export type State = "none" | Label; // "none" = no tracking label, not a real GitHub label
-
-export type Event =
-  // issue lifecycle
-  | "labelled_ai_ready"
-  | "build_succeeded"
-  | "build_blocked"
-  | "labelled_auto_releasing"
-  | "release_blocked"
-  | "release_published"
-  | "labelled_ai_discussing"
-  // PR lifecycle
-  | "labelled_auto_reworking"
-  | "rework_pushed"
-  | "labelled_auto_merging"
-  | "merge_gate_failed_soft"
-  | "merge_gate_failed_hard"
-  | "merged";
 
 export type Effect =
   | { kind: "label"; value: State }
@@ -56,7 +44,7 @@ export type Rule = {
   from: State;
   on: Event;
   to: Effect;
-  run?: string; // which loop/routine to fire, if any
+  run?: Routine; // which loop/routine to fire, if any
   verifiedBy: "deterministic" | "external-judgment"; // see 02-design-principles.md
 };
 
@@ -64,47 +52,47 @@ export const rules: Rule[] = [
   // --- issue lifecycle ---
   {
     from: "none",
-    on: "labelled_ai_ready",
+    on: EVENTS.LABELLED_AI_READY,
     to: label(LABELS.AI_READY),
-    run: "issue-build-loop",
+    run: ROUTINES.ISSUE_BUILD_LOOP,
     verifiedBy: "external-judgment", // a human decided this issue is ready
   },
   {
     from: LABELS.AI_READY,
-    on: "build_succeeded",
+    on: EVENTS.BUILD_SUCCEEDED,
     to: label(LABELS.AI_GENERATED),
     verifiedBy: "external-judgment", // composite fact includes mcp-review's judgment, not just CI
   },
   {
     from: LABELS.AI_READY,
-    on: "build_blocked",
+    on: EVENTS.BUILD_BLOCKED,
     to: label(LABELS.AI_BLOCKED),
     verifiedBy: "external-judgment", // the agent decided the issue was ambiguous / capped out
   },
   {
     from: "none",
-    on: "labelled_auto_releasing",
+    on: EVENTS.LABELLED_AUTO_RELEASING,
     to: label(LABELS.AUTO_RELEASING),
-    run: "auto-release-loop",
+    run: ROUTINES.AUTO_RELEASE_LOOP,
     verifiedBy: "external-judgment", // a human decided to release
   },
   {
     from: LABELS.AUTO_RELEASING,
-    on: "release_blocked",
+    on: EVENTS.RELEASE_BLOCKED,
     to: unlabel,
     verifiedBy: "external-judgment", // release-reviewer's BLOCK verdict — an independent agent's judgment
   },
   {
     from: LABELS.AUTO_RELEASING,
-    on: "release_published",
+    on: EVENTS.RELEASE_PUBLISHED,
     to: close,
     verifiedBy: "deterministic", // merge + tag + GitHub Release are all directly observable
   },
   {
     from: "none",
-    on: "labelled_ai_discussing",
+    on: EVENTS.LABELLED_AI_DISCUSSING,
     to: label(LABELS.AI_DISCUSSING),
-    run: "issue-discuss-loop",
+    run: ROUTINES.ISSUE_DISCUSS_LOOP,
     verifiedBy: "external-judgment", // a human decided this needs discussion
   },
   // deliberately no outbound rules from LABELS.AI_DISCUSSING — see README:
@@ -113,39 +101,39 @@ export const rules: Rule[] = [
   // --- PR lifecycle ---
   {
     from: "none",
-    on: "labelled_auto_reworking",
+    on: EVENTS.LABELLED_AUTO_REWORKING,
     to: label(LABELS.AUTO_REWORKING),
-    run: "rework-loop",
+    run: ROUTINES.REWORK_LOOP,
     verifiedBy: "external-judgment", // a reviewer decided rework was needed
   },
   {
     from: LABELS.AUTO_REWORKING,
-    on: "rework_pushed",
+    on: EVENTS.REWORK_PUSHED,
     to: unlabel,
     verifiedBy: "deterministic", // a git push is directly observable
   },
   {
     from: "none",
-    on: "labelled_auto_merging",
+    on: EVENTS.LABELLED_AUTO_MERGING,
     to: label(LABELS.AUTO_MERGING),
-    run: "merge-flow",
+    run: ROUTINES.MERGE_FLOW,
     verifiedBy: "external-judgment", // the auto-merge label IS the human approval signal
   },
   {
     from: LABELS.AUTO_MERGING,
-    on: "merge_gate_failed_soft",
+    on: EVENTS.MERGE_GATE_FAILED_SOFT,
     to: noop, // matches merge-flow's real Step 4: "by default leave the auto-merge label on" — no GitHub write, not a redundant remove+re-add; the reconciliation sweep re-fires it later
     verifiedBy: "deterministic",
   },
   {
     from: LABELS.AUTO_MERGING,
-    on: "merge_gate_failed_hard",
+    on: EVENTS.MERGE_GATE_FAILED_HARD,
     to: unlabel, // needs a human; matches merge-flow's real Step 4
     verifiedBy: "deterministic",
   },
   {
     from: LABELS.AUTO_MERGING,
-    on: "merged",
+    on: EVENTS.MERGED,
     to: close, // idempotent: merge-flow's own merge call already closes the PR natively; this just confirms it
     verifiedBy: "deterministic",
   },

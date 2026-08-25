@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EVENTS } from "./events";
 import { LABELS } from "./labels";
 import { BOT_LOGIN, COMMENT_SIGNATURE, translate, type WebhookPayload } from "./translate";
 
@@ -10,19 +11,19 @@ describe("translate — issue labels", () => {
   it("issues.labeled ai-ready -> labelled_ai_ready", () => {
     expect(
       translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_READY } })),
-    ).toBe("labelled_ai_ready");
+    ).toBe(EVENTS.LABELLED_AI_READY);
   });
 
   it("issues.labeled auto-releasing -> labelled_auto_releasing", () => {
     expect(
       translate(payload({ action: "issues.labeled", label: { name: LABELS.AUTO_RELEASING } })),
-    ).toBe("labelled_auto_releasing");
+    ).toBe(EVENTS.LABELLED_AUTO_RELEASING);
   });
 
   it("issues.labeled ai-discussing -> labelled_ai_discussing", () => {
     expect(
       translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_DISCUSSING } })),
-    ).toBe("labelled_ai_discussing");
+    ).toBe(EVENTS.LABELLED_AI_DISCUSSING);
   });
 
   it("issues.labeled with an unrelated label -> null", () => {
@@ -69,7 +70,7 @@ describe("translate — PR labels", () => {
       translate(
         payload({ action: "pull_request.labeled", label: { name: LABELS.AUTO_REWORKING } }),
       ),
-    ).toBe("labelled_auto_reworking");
+    ).toBe(EVENTS.LABELLED_AUTO_REWORKING);
   });
 
   it("pull_request.labeled auto-merging -> labelled_auto_merging", () => {
@@ -77,7 +78,7 @@ describe("translate — PR labels", () => {
       translate(
         payload({ action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING } }),
       ),
-    ).toBe("labelled_auto_merging");
+    ).toBe(EVENTS.LABELLED_AUTO_MERGING);
   });
 });
 
@@ -85,7 +86,7 @@ describe("translate — merge", () => {
   it("pull_request.closed with merged:true -> merged", () => {
     expect(
       translate(payload({ action: "pull_request.closed", pull_request: { merged: true } })),
-    ).toBe("merged");
+    ).toBe(EVENTS.MERGED);
   });
 
   it("pull_request.closed with merged:false (just closed) -> null", () => {

@@ -21,7 +21,7 @@
 // what Phase 5 actually is: define the outcome artifact each loop writes,
 // then add the case here that reads it.
 
-import type { Event } from "./graph";
+import { EVENTS, type Event } from "./events";
 import { LABELS } from "./labels";
 
 export const BOT_LOGIN = "umbraco-mcp-ops[bot]"; // placeholder — set to the real GitHub App login
@@ -64,11 +64,11 @@ export function translate(payload: WebhookPayload): Event | null {
     case "issues.labeled":
       switch (payload.label?.name) {
         case LABELS.AI_READY:
-          return "labelled_ai_ready";
+          return EVENTS.LABELLED_AI_READY;
         case LABELS.AUTO_RELEASING:
-          return "labelled_auto_releasing";
+          return EVENTS.LABELLED_AUTO_RELEASING;
         case LABELS.AI_DISCUSSING:
-          return "labelled_ai_discussing";
+          return EVENTS.LABELLED_AI_DISCUSSING;
         default:
           return null;
       }
@@ -89,9 +89,9 @@ export function translate(payload: WebhookPayload): Event | null {
     case "pull_request.labeled":
       switch (payload.label?.name) {
         case LABELS.AUTO_REWORKING:
-          return "labelled_auto_reworking";
+          return EVENTS.LABELLED_AUTO_REWORKING;
         case LABELS.AUTO_MERGING:
-          return "labelled_auto_merging";
+          return EVENTS.LABELLED_AUTO_MERGING;
         default:
           return null;
       }
@@ -106,7 +106,7 @@ export function translate(payload: WebhookPayload): Event | null {
       return null;
 
     case "pull_request.closed":
-      if (payload.pull_request?.merged) return "merged";
+      if (payload.pull_request?.merged) return EVENTS.MERGED;
       return null;
 
     default:
