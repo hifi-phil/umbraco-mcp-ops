@@ -3,67 +3,22 @@
 // it fires — see the design doc's 09-phase-1-real-graph.md for the audit
 // this table is built from. Not the abstract sketch from the original draft.
 //
-// LABELS below is the one place a label's spelling is written down. State,
-// the rules table, and translate.ts's webhook matching all refer to these
-// constants rather than retyping the string — a rename is a one-line change
-// here, not a grep-and-hope across files. That matters because the string
-// literals in a switch-case aren't checked against any type: before this,
-// graph.ts's State union and translate.ts's case values were two
-// independently-typed copies of the same spelling, and nothing would have
-// caught them drifting apart.
-//
-// State is deliberately the literal GitHub label string, not a separate
-// renamed internal concept — one vocabulary throughout, not a translation
-// at every layer. A separate "building" name for the "ai-ready" label
-// bought nothing but a mapping table to keep in sync, and keeping two names
-// for one thing is exactly what let "remove ai-ready" go missing silently.
-//
-// That collapse exposed two real inconsistencies in today's live labels:
-//
-// 1. Three read as a *state* (ready-for-ai, generated-by-ai, ai-blocked —
-//    adjectival, describing a condition) while four read as a *command*
-//    (auto-release, ai-discuss, auto-rework, auto-merge — imperative,
-//    "please do this"). A State value has to describe an ongoing condition,
-//    not an instruction, so this table uses the gerund form for those four —
-//    auto-releasing, ai-discussing, auto-reworking, auto-merging.
-//
-// 2. Within the "this issue's relationship to AI work" family, two put `ai`
-//    as a suffix (ready-for-ai, generated-by-ai) and two put it as a prefix
-//    (ai-blocked, ai-discussing). Renamed the suffix pair to prefix form —
-//    ai-ready, ai-generated — for one consistent shape.
-//
-// Deliberately NOT folded into the "ai-*" family: auto-releasing,
-// auto-reworking, auto-merging. Those aren't a statement about AI authorship
-// of the issue — they're a request for a specific automated git action
-// (release/rework/merge). That's a real semantic line, not a spelling
-// accident, so "auto-*" stays its own namespace.
-//
-// See 10-label-rename.md for what any of this means for the real,
-// currently-live labels — nothing here renames them yet; this file
-// describes the proposed target, not today's exact strings.
+// State is deliberately the literal GitHub label string (via LABELS in
+// labels.ts), not a separate renamed internal concept — one vocabulary
+// throughout, not a translation at every layer. A separate "building" name
+// for the "ai-ready" label bought nothing but a mapping table to keep in
+// sync, and keeping two names for one thing is exactly what let "remove
+// ai-ready" go missing silently. See labels.ts for the naming rationale and
+// 10-label-rename.md for what it means for the real, currently-live labels
+// — nothing here renames them yet; this describes the proposed target, not
+// today's exact strings.
 //
 // Event still earns its own separate vocabulary: build_succeeded,
 // build_blocked and the merge_gate_* events are synthesized from several
 // real signals (CI status, mcp-review's verdict, github-ops' gate checks) —
 // there's no single webhook that means any of them. See translate.ts.
 
-/** The absolute list of every label this system tracks. */
-export const LABELS = {
-  AI_READY: "ai-ready",
-  AI_GENERATED: "ai-generated",
-  AI_BLOCKED: "ai-blocked",
-  AUTO_RELEASING: "auto-releasing",
-  AI_DISCUSSING: "ai-discussing",
-  AUTO_REWORKING: "auto-reworking",
-  AUTO_MERGING: "auto-merging",
-} as const;
-
-export type Label = (typeof LABELS)[keyof typeof LABELS];
-
-/** Same seven values as LABELS, as an array — for anything that needs to
- * iterate all of them (a dashboard, a check against a live repo's actual
- * label set, a "does this string name a tracked label" guard). */
-export const ALL_LABELS: readonly Label[] = Object.values(LABELS);
+import { LABELS, type Label } from "./labels";
 
 export type State = "none" | Label; // "none" = no tracking label, not a real GitHub label
 

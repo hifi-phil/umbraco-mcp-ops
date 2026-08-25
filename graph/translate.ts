@@ -4,7 +4,7 @@
 // or event from loop-dispatch's actual routing table (route-event.sh) and
 // the loop skills it fires, not invented.
 //
-// The label names matched below come from graph.ts's LABELS constant, not
+// The label names matched below come from labels.ts's LABELS constant, not
 // retyped strings — so a rename there (see 10-label-rename.md) propagates
 // here automatically instead of silently drifting out of sync. They're the
 // PROPOSED renamed labels, not today's exact live spelling (ready-for-ai,
@@ -21,7 +21,8 @@
 // what Phase 5 actually is: define the outcome artifact each loop writes,
 // then add the case here that reads it.
 
-import { LABELS, type Event } from "./graph";
+import type { Event } from "./graph";
+import { LABELS } from "./labels";
 
 export const BOT_LOGIN = "umbraco-mcp-ops[bot]"; // placeholder — set to the real GitHub App login
 export const COMMENT_SIGNATURE = "<!-- issue-discuss-loop -->"; // real marker, from issue-discuss-loop's SKILL.md

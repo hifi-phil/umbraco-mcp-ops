@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LABELS } from "./graph";
+import { LABELS } from "./labels";
 import { BOT_LOGIN, COMMENT_SIGNATURE, translate, type WebhookPayload } from "./translate";
 
 function payload(overrides: Partial<WebhookPayload>): WebhookPayload {

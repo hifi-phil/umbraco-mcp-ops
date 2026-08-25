@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ALL_LABELS, LABELS, close, label, labelOps, noop, reduce, unlabel } from "./graph";
-
-describe("LABELS — the absolute list", () => {
-  it("has exactly the seven tracked labels, none blank or duplicated", () => {
-    expect(ALL_LABELS).toHaveLength(7);
-    expect(new Set(ALL_LABELS).size).toBe(7);
-    expect(ALL_LABELS.every((l) => l.length > 0)).toBe(true);
-  });
-});
+import { close, label, labelOps, noop, reduce, unlabel } from "./graph";
+import { LABELS } from "./labels";
 
 describe("reduce — issue lifecycle", () => {
   it("none + labelled_ai_ready -> ai-ready, fires issue-build-loop", () => {
