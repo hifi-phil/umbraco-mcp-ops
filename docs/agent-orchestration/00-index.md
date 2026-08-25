@@ -32,6 +32,7 @@ unresolved. If you only read one file, read 07.
 | [08-open-questions.md](08-open-questions.md) | Open questions | Some resolved by 03/05; new ones added |
 | [09-phase-1-real-graph.md](09-phase-1-real-graph.md) | *(new)* Phase 1 in progress | The real transition table, audited against `loop-dispatch` and the loop skills already in this repo — not a sketch |
 | [10-label-rename.md](10-label-rename.md) | *(new)* Label rename | Proposed renames (`ready-for-ai`→`ai-ready`, `generated-by-ai`→`ai-generated`, and the command→state gerund fix for `auto-release`/`ai-discuss`/`auto-rework`/`auto-merge`) surfaced by collapsing `State` to the literal label string — not yet executed on any live label |
+| [11-outcome-artifact.md](11-outcome-artifact.md) | *(new)* First real outcome artifact | `issue-build-loop` now writes a structured `build_succeeded`/`build_blocked` comment (additive, alongside its existing label swap) — `translate()` reads it for real; found and fixed a self-trigger-guard scoping bug along the way |
 
 ## The one-paragraph version
 

@@ -175,6 +175,18 @@ checked and skipped in `translate()` alongside the identity check. Any
 future domain-event source that can be written as a human account needs the
 same content-marker treatment, not just a sender check.
 
+**The identity check itself has to be scoped, not blanket.** Wiring the
+first real outcome artifact (`issue-build-loop`'s `build_succeeded` —
+see [11-outcome-artifact.md](11-outcome-artifact.md)) surfaced the other
+side of this: `issue-build-loop` posts its outcome comment under the same
+bot identity a future reducer would use to write labels. A blanket "drop
+anything from our own bot identity" check — applied to every payload
+rather than scoped to label webhooks specifically — would silently
+swallow that comment, because it's the loop's own new fact, not an echo
+of anything the reducer wrote. The identity check belongs on the specific
+webhook shape a self-authored write actually produces (a label add/remove
+from the DO), not on every payload that happens to share a bot account.
+
 **Human escape hatch — and its audit gap.** A human can drag an issue back to
 `state:rework` and the machine picks it up. That's a feature, not a case to
 defend against. But done directly on GitHub, it bypasses `reduce()` and the
