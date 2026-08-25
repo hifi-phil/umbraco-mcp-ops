@@ -79,7 +79,15 @@ export const rules: Rule[] = [
     from: LABELS.AUTO_RELEASING,
     on: EVENTS.RELEASE_PUBLISHED,
     to: close,
-    verifiedBy: "deterministic", // merge + tag + GitHub Release are all directly observable
+    // The underlying facts (merged, tagged, GitHub Release created, dev
+    // synced) ARE deterministic — but as implemented, translate() sources
+    // this from auto-release-loop's self-reported outcome comment (see
+    // 11-outcome-artifact.md), not by independently correlating those
+    // native signals. Tagged external-judgment to be honest about what's
+    // actually verified today, not what could be. A future implementation
+    // that watches for the real merge+tag+release chain directly would
+    // earn "deterministic" back.
+    verifiedBy: "external-judgment",
   },
   {
     from: "none",

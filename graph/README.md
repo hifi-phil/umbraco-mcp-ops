@@ -88,26 +88,29 @@ there's exactly one import path per symbol.
 ## One outcome shape, two transports
 
 `outcomes.ts` holds the outcome catalog's shape validation
-(`parseBuildOutcomeShape`) — the same content as
-`plugins/agent-outcomes`'s SKILL.md catalog, kept in code. Both
-`github/from-github.ts` (extracting JSON out of a comment body) and
-`routines/from-routine.ts` (validating a typed field on a direct signal)
-call the same function, so the two transports can't drift into two
-different ideas of "a valid `build_succeeded`."
+(`parseOutcomeShape`) — the same content as `plugins/agent-outcomes`'s
+SKILL.md catalog, kept in code. Both `github/from-github.ts` (extracting
+JSON out of a comment body) and `routines/from-routine.ts` (validating a
+typed field on a direct signal) call the same function, so the two
+transports can't drift into two different ideas of "a valid outcome."
 
 ## What's real vs. still a placeholder
 
 - `graph.ts`'s table is derived from the actual behaviour of
   `loop-dispatch` and the five loop skills it fires — see
   `agent-orchestration-plan/09-phase-1-real-graph.md` for the audit.
-- `github/from-github.ts` has real cases for `build_succeeded` and
-  `build_blocked` now (via `issue-build-loop`'s outcome comment — see
-  `agent-orchestration-plan/11-outcome-artifact.md`), plus every case that
+- `github/from-github.ts` has real cases for `build_succeeded`,
+  `build_blocked`, `release_blocked`, and `release_published` now (via
+  `issue-build-loop`'s and `auto-release-loop`'s outcome comments — see
+  `agent-orchestration-plan/11-outcome-artifact.md`), plus `rework_pushed`
+  (via a native `pull_request.synchronize` webhook — no artifact needed,
+  a git push is already independently observable), plus every case that
   maps cleanly to an existing webhook (label events, a PR closing as
-  merged). It deliberately still has **no** case for `release_blocked`,
-  `release_published`, `rework_pushed`, or `merge_gate_failed_*` — those
-  facts only exist today as an agent's self-report. Same shape of work as
-  `build_succeeded`/`build_blocked`, just not done yet.
+  merged). It deliberately still has **no** case for
+  `merge_gate_failed_soft`/`merge_gate_failed_hard` — their deterministic
+  source is a live gate re-check, not something a comment can carry. Same
+  category as the CI-aggregation stub below: needs real infrastructure,
+  not an artifact.
 - `routines/from-routine.ts` is pure logic with nothing calling it *for
   real* — but the mechanism that would call it now exists and is tested:
   `plugins/agent-outcomes/hooks/report-completion.sh`, a `PostToolUse`

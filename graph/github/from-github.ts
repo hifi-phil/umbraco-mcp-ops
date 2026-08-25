@@ -13,41 +13,44 @@
 // migration actually renames the labels; this is written against the
 // target, on the same "no infrastructure yet" basis as the rest of Phase 2.
 //
-// build_succeeded/build_blocked are sourced from issue-build-loop's
-// structured outcome comment (see 11-outcome-artifact.md) — the first two
-// of six events that used to be "deliberately absent" here because the
-// fact only existed as an agent's self-report. Still absent for the same
-// reason: release_blocked, release_published, rework_pushed,
-// merge_gate_failed_*. Wiring each of those in is the same shape of work —
-// define the artifact that loop writes, add the case here that reads it.
+// build_succeeded/build_blocked/release_blocked/release_published are
+// sourced from a loop's structured outcome comment (see
+// 11-outcome-artifact.md) — four of six events that used to be
+// "deliberately absent" here because the fact only existed as an agent's
+// self-report. rework_pushed is NOT in that family, on purpose: a git push
+// is a native, independently-observable GitHub event
+// (pull_request.synchronize) — sourcing it from a self-reported comment
+// would be a downgrade from what's already true today, not an upgrade.
+// merge_gate_failed_* are still absent for a different reason: their
+// deterministic source is a live re-check of CI/approval/conflict state
+// (the same checks merge-flow itself runs), not something a comment can
+// carry — that's the same category as the CI-aggregation stub below, not
+// an outcome artifact.
 
 import { EVENTS, type Event } from "../constants/events";
 import { LABELS } from "../constants/labels";
-import { ROUTINES } from "../constants/routines";
-import { parseBuildOutcomeShape } from "../outcomes";
+import { parseOutcomeShape } from "../outcomes";
 
 export const BOT_LOGIN = "umbraco-mcp-ops[bot]"; // placeholder — set to the real GitHub App login
 export const COMMENT_SIGNATURE = "<!-- issue-discuss-loop -->"; // real marker, from issue-discuss-loop's SKILL.md
 
-// The structured outcome artifact issue-build-loop writes instead of only
-// self-reporting via its own label swap — see 11-outcome-artifact.md for
-// the full spec and why the loop still does the label swap too (additive,
-// not a replacement, until something real reads this and owns the swap
-// instead). Marker is per-routine so a future loop's artifact can't be
-// mistaken for this one.
-export const OUTCOME_MARKER = `<!-- agent-outcome:${ROUTINES.ISSUE_BUILD_LOOP} -->`;
+// Matches any loop's outcome marker (plugins/agent-outcomes's format),
+// regardless of which routine wrote it — the outcome name inside the JSON
+// is what decides the Event, not the marker's routine name, so this
+// doesn't need to special-case each loop.
+const OUTCOME_MARKER_PATTERN = /<!-- agent-outcome:[a-zA-Z0-9_-]+ -->/;
 
 // Transport-specific: extracting JSON out of a comment body. The shape
-// itself (what counts as a valid build_succeeded/build_blocked) is shared
-// with the direct-signal transport in routines/from-routine.ts — see
-// ../outcomes.ts — so the two can't validate against two different ideas
-// of "valid" as the catalog grows.
-function parseBuildOutcome(body: string | undefined) {
-  if (!body || !body.includes(OUTCOME_MARKER)) return null;
+// itself (what counts as a valid outcome) is shared with the direct-signal
+// transport in routines/from-routine.ts — see ../outcomes.ts — so the two
+// can't validate against two different ideas of "valid" as the catalog
+// grows.
+function parseOutcomeArtifact(body: string | undefined) {
+  if (!body || !OUTCOME_MARKER_PATTERN.test(body)) return null;
   const match = body.match(/```json\s*([\s\S]*?)\s*```/);
   if (!match) return null;
   try {
-    return parseBuildOutcomeShape(JSON.parse(match[1]!));
+    return parseOutcomeShape(JSON.parse(match[1]!));
   } catch {
     return null;
   }
@@ -89,9 +92,9 @@ export function translate(payload: WebhookPayload): Event | null {
       // Scoped to label webhooks specifically: a self-authored label write
       // is the actual risk here. Applying this identity check to every
       // payload (as an earlier version of this function did) would also
-      // swallow issue-build-loop's own outcome comments below, since loops
-      // post under the same bot identity — that's not a self-trigger to
-      // guard against, it's the fact we want to read.
+      // swallow a loop's own outcome comments below, since loops post
+      // under the same bot identity — that's not a self-trigger to guard
+      // against, it's the fact we want to read.
       if (isOwnBot(payload.sender)) return null;
       switch (payload.label?.name) {
         case LABELS.AI_READY:
@@ -111,15 +114,22 @@ export function translate(payload: WebhookPayload): Event | null {
       // signed marker is the only thing that does.
       if (hasOwnSignatureMarker(payload.comment?.body)) return null;
 
-      // issue-build-loop's structured outcome artifact — see 11-outcome-
-      // artifact.md. Deliberately not identity-guarded: this comment is
-      // posted under the same bot identity a future reducer would use, but
-      // it's the loop's own new fact, not an echo of anything we wrote.
-      const outcome = parseBuildOutcome(payload.comment?.body);
+      // A loop's structured outcome artifact — see 11-outcome-artifact.md.
+      // Deliberately not identity-guarded: this comment is posted under
+      // the same bot identity a future reducer would use, but it's the
+      // loop's own new fact, not an echo of anything we wrote.
+      const outcome = parseOutcomeArtifact(payload.comment?.body);
       if (outcome) {
-        return outcome.outcome === "build_succeeded"
-          ? EVENTS.BUILD_SUCCEEDED
-          : EVENTS.BUILD_BLOCKED;
+        switch (outcome.outcome) {
+          case "build_succeeded":
+            return EVENTS.BUILD_SUCCEEDED;
+          case "build_blocked":
+            return EVENTS.BUILD_BLOCKED;
+          case "release_blocked":
+            return EVENTS.RELEASE_BLOCKED;
+          case "release_published":
+            return EVENTS.RELEASE_PUBLISHED;
+        }
       }
 
       // No rule in ../graph.ts has an outbound transition from
@@ -141,6 +151,17 @@ export function translate(payload: WebhookPayload): Event | null {
         default:
           return null;
       }
+
+    // rework-loop pushing a fix is a native, independently-observable
+    // event — GitHub fires this the moment a PR's head branch gets a new
+    // commit, regardless of who or what pushed it. No self-report needed,
+    // no outcome artifact, no loop change: rework-loop already pushes in
+    // its own Step 4; this just reads the webhook that action already
+    // produces. reduce() only acts on it when the PR is currently in
+    // auto-reworking state, so this can map unconditionally — same
+    // pattern as the label cases above.
+    case "pull_request.synchronize":
+      return EVENTS.REWORK_PUSHED;
 
     case "check_suite.completed":
       if (!allRequiredChecksComplete(payload)) return null;

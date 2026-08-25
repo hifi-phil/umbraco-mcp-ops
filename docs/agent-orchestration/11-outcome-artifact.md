@@ -1,21 +1,29 @@
-# 11. The first outcome artifact — issue-build-loop's build_succeeded/build_blocked
+# 11. The outcome artifacts — build_succeeded/build_blocked, release_blocked/release_published
 
 [← Index](00-index.md)
 
 ---
 
 Phase 5's whole premise is "an agent writes a fact, it never writes the next
-state" — but that only means something once at least one loop actually
-writes a fact the reducer can read. This is that first one, wired end to
-end into `graph/`. `translate()` in `github/from-github.ts` now has real
-cases for `build_succeeded` and `build_blocked`; four events still don't
-(`release_blocked`, `release_published`, `rework_pushed`,
-`merge_gate_failed_*`) — same shape of work, not done yet.
+state" — but that only means something once a loop actually writes a fact
+the reducer can read. `translate()` in `github/from-github.ts` now has real
+cases for four events, across two loops: `issue-build-loop`'s
+`build_succeeded`/`build_blocked` (the first ones wired), and
+`auto-release-loop`'s `release_blocked`/`release_published`.
+
+Two more events in the reducer's vocabulary turned out **not** to need
+this treatment at all — `rework_pushed` (`rework-loop`) is sourced from a
+native `pull_request.synchronize` webhook instead (a git push is already
+independently observable; see below), and `merge_gate_failed_soft`/
+`merge_gate_failed_hard` (`merge-flow`) need a live gate re-check, which
+is infrastructure work, not an artifact. That's every event in the table
+now accounted for, one way or another — none are still "not done yet" for
+lack of a plan.
 
 ## The artifact
 
-A marker plus a fenced JSON block, appended to the same comment
-`issue-build-loop` already posts on the triggering issue. The exact format
+A marker plus a fenced JSON block, appended to a comment the reporting
+loop already posts. The exact format
 and the growing catalog of outcome shapes now live in their own shared
 skill — [`plugins/agent-outcomes`](https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/agent-outcomes)
 — rather than here or inlined into `issue-build-loop`'s own `SKILL.md`,
@@ -51,40 +59,67 @@ equivalent reads real traffic) before anything depends on it.
 
 ## What changed in `graph/`
 
-- `github/from-github.ts`: added `parseBuildOutcome()` and the
-  `OUTCOME_MARKER` constant; wired `EVENTS.BUILD_SUCCEEDED` /
-  `EVENTS.BUILD_BLOCKED` from a real `issue_comment.created` payload
-  instead of leaving them permanently unreachable.
-- **Found and fixed a real bug while wiring this in**: the self-trigger
-  guard's identity check (`isOwnBot`) was applied to *every* payload
-  before the outer `switch`, not just to label webhooks. Since
-  `issue-build-loop` posts its comments under the same bot identity a
-  future reducer would use, that blanket check would have silently
-  swallowed this exact artifact — the loop's own new fact, not an echo of
-  anything the reducer wrote. Moved the identity check into the
-  `issues.labeled`/`pull_request.labeled` cases specifically, where a
-  self-authored label write is the actual risk. `issue_comment.created` is
-  guarded only by content markers now (the signature marker for
-  `issue-discuss-loop`, this outcome marker for `issue-build-loop`) — the
-  same pattern §3.3 already established, just correctly scoped.
+- `github/from-github.ts`: `parseOutcomeArtifact()` now matches *any*
+  loop's marker (`OUTCOME_MARKER_PATTERN`, a pattern rather than a single
+  routine-specific constant) and dispatches on the outcome name inside the
+  JSON, not the routine — so adding `auto-release-loop`'s two outcomes
+  needed no new marker-matching logic, only two new `switch` arms.
+- `outcomes.ts`: the shape type was `BuildOutcome` (two shapes); it's
+  `Outcome` now (four), still one shared definition between
+  `github/from-github.ts` and `routines/from-routine.ts`.
+- **Found and fixed a real bug while wiring the first of these in**: the
+  self-trigger guard's identity check (`isOwnBot`) was applied to *every*
+  payload before the outer `switch`, not just to label webhooks. Since a
+  loop posts its comments under the same bot identity a future reducer
+  would use, that blanket check would have silently swallowed the exact
+  artifact it was meant to protect against echoing. Moved the identity
+  check into the `issues.labeled`/`pull_request.labeled` cases
+  specifically, where a self-authored label write is the actual risk.
+  `issue_comment.created` is guarded only by content markers now (the
+  signature marker for `issue-discuss-loop`, the outcome marker for any
+  loop reporting one) — the same pattern §3.3 already established, just
+  correctly scoped.
+- **`rework_pushed` gets its own `translate()` case, sourced from
+  `pull_request.synchronize`** — no outcome artifact at all. A git push
+  is already a native, independently-observable webhook; `rework-loop`
+  needed zero changes, since it already pushes in its own Step 4. `reduce()`
+  gates on the PR's current label the same way it gates every label-event
+  case, so this maps unconditionally regardless of which PR pushed.
+- **`merge_gate_failed_soft`/`merge_gate_failed_hard` are still absent,
+  correctly** — their deterministic source is a live re-check of
+  CI/approval/conflict state (the same checks `merge-flow` itself runs
+  before commenting a blocker), not something a comment can carry. Same
+  category as the CI-aggregation stub already in the file: needs a real
+  `github-ops` call from whatever ends up driving the reducer, which
+  doesn't exist yet. Building a fake artifact for these would report a
+  fact no more verifiable than the thing it's replacing.
+- `graph.ts`'s `release_published` rule was tagged `verifiedBy:
+  "deterministic"` in the original Phase 1 audit — the underlying facts
+  (merged, tagged, release created, dev synced) genuinely are, but as
+  *implemented* here it's sourced from a self-reported comment, same as
+  `build_succeeded`. Retagged `external-judgment` to match what's actually
+  verified rather than what could be, with a comment noting a future
+  implementation that watches the real merge+tag+release chain directly
+  would earn "deterministic" back.
 
-## What changed in the live skill
+## What changed in the live skills
 
-`plugins/mcp-issue-loop/skills/issue-build-loop/SKILL.md` Step 3 now
-appends the marker + JSON to the same comment it already posts for the
-success and blocked paths. This is a real, live change to production
-automation — every future `issue-build-loop` run writes this artifact on
-real PRs, starting now. It changes no *behaviour*: the label swap, the
-comment's existing content, and everything else about what the loop does
-is unchanged; this only adds a machine-readable trailer to a comment that
-already existed.
+`plugins/mcp-issue-loop/skills/issue-build-loop/SKILL.md` Step 3 and
+`plugins/release-flow/skills/auto-release-loop/SKILL.md` Steps 2.5 and 4
+each now append the marker + JSON to a comment they already post. Real,
+live changes to production automation — every future run of either loop
+writes these artifacts on real issues, starting now. Neither changes
+*behaviour*: the label swap, the close-out, the comment's existing
+content are all unchanged; this only adds a machine-readable trailer to a
+comment that already existed. `rework-loop` and `merge-flow` needed **no**
+skill changes — see above.
 
-New plugin: `plugins/agent-outcomes`, matching `github-ops`'s shape —
-one shared skill, other plugins point at it rather than each re-explaining
-the format. `issue-build-loop` references it by name for both outcomes
-instead of inlining the marker/JSON; the next loop to get this treatment
-(`rework-loop`, `merge-flow`, or `auto-release-loop`) adds a catalog row
-there and its own `translate()` case, not a second copy of the format.
+New plugin: `plugins/agent-outcomes`, matching `github-ops`'s shape — one
+shared skill, other plugins point at it rather than each re-explaining the
+format. Both loops reference it by name instead of inlining the
+marker/JSON; the catalog now has four rows, added without touching either
+loop's own format definition (there isn't one) or `report-completion.sh`
+(it matches on the marker itself, not on any particular routine or shape).
 
 ## The fast path: a hook, not a replacement for GitHub
 

@@ -10,7 +10,8 @@ description: >-
   notification at start and on completion, and — for stable and release-candidate
   versions — posts a Slack notification to `release-notifications` once published. The
   deliberate act of labelling the issue is the human decision. For gitflow repos.
-  Requires the github-ops skill. Trigger from a routine on Issue: Labeled =
+  Requires the github-ops skill (+ agent-outcomes, for the outcome artifact on the
+  BLOCK and publish comments). Trigger from a routine on Issue: Labeled =
   auto-release, or run manually as "auto-release-loop <version>".
 ---
 
@@ -152,7 +153,10 @@ hands the agent already-materialized content as plain text. Do this sequence
      block and linking the new issue.
   3. **Comment on the triggering issue** pointing to the blocked issue + PR, and **remove
      its `auto-release` label** so the loop doesn't re-fire until a human fixes the cause
-     and re-labels.
+     and re-labels. **Append the `release_blocked` outcome artifact to that same comment**
+     — see the [`agent-outcomes`](../../../agent-outcomes/skills/agent-outcomes/SKILL.md)
+     skill for the exact marker + shape (additive only; the label removal above is still
+     the real signal).
 - **WARN** findings → proceed, but include them in the completion comment.
 - Continue to publish **only** when the checklist passes with no BLOCK.
 
@@ -199,9 +203,12 @@ hands the agent already-materialized content as plain text. Do this sequence
    (`sync-main-to-dev.yml` if installed, else do the back-merge and use `sync-dev`).
    **The `/goal` is not met until `dev` is synced.**
 2. **Comment the outcome on the triggering issue** (Release link, tag, "dev synced") and
-   **close it**. Also send a **Claude push notification** (the `PushNotification` tool):
-   `Released v<version> — published + dev synced.` Fall back to the issue comment alone
-   if push isn't available.
+   **close it**. **Append the `release_published` outcome artifact to that same comment**
+   — see the [`agent-outcomes`](../../../agent-outcomes/skills/agent-outcomes/SKILL.md)
+   skill for the exact marker + shape (additive only; closing the issue above is still
+   the real signal). Also send a **Claude push notification** (the `PushNotification`
+   tool): `Released v<version> — published + dev synced.` Fall back to the issue comment
+   alone if push isn't available.
 
 ## Guardrails
 

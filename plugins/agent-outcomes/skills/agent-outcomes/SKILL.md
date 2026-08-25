@@ -6,7 +6,8 @@ description: >-
   outcome shapes, so umbraco-mcp-ops's agent-orchestration reducer prototype
   can eventually read what happened instead of relying on a self-swapped
   label as the only signal. Load this whenever a loop skill needs to report
-  build_succeeded, build_blocked, or any other cataloged outcome, or when
+  build_succeeded, build_blocked, release_blocked, release_published, or any
+  other cataloged outcome, or when
   adding a new outcome type to the catalog. Always additive — this skill
   never tells a loop to skip or replace its existing load-bearing action
   (a label swap, a merge, a push). Bundles a PostToolUse hook that forwards
@@ -70,12 +71,20 @@ adds a trailer, it doesn't change what "done" means.
 |---|---|---|---|
 | `issue-build-loop` | `build_succeeded` | `{"outcome":"build_succeeded","pr":<PR number>}` | Step 3, once `mcp-review` is clean and the outcome-label swap runs |
 | `issue-build-loop` | `build_blocked` | `{"outcome":"build_blocked","reason":"<one line>"}` | Step 3, when the issue is recorded as blocked |
+| `auto-release-loop` | `release_blocked` | `{"outcome":"release_blocked","reason":"<one line>"}` | Step 2.5, on a BLOCK verdict from `release-reviewer` |
+| `auto-release-loop` | `release_published` | `{"outcome":"release_published","version":"<version>"}` | Step 4, after publish + dev sync, on the close-out comment |
 
-That's the full catalog today. `release_blocked`, `release_published`
-(`auto-release-loop`), `rework_pushed` (`rework-loop`), and
-`merge_gate_failed_soft`/`merge_gate_failed_hard` (`merge-flow`) are named
-in the reducer's event vocabulary already but have no row here yet — each
-is the same shape of work as `issue-build-loop`'s, not done.
+That's the full catalog. Two events in the reducer's vocabulary are
+**deliberately not here**, on purpose rather than by omission:
+`rework_pushed` (`rework-loop`) is sourced from a native
+`pull_request.synchronize` webhook — a git push is already an
+independently-observable GitHub event, so a self-reported comment would
+be a downgrade, not an upgrade. `merge_gate_failed_soft`/
+`merge_gate_failed_hard` (`merge-flow`) need a live re-check of
+CI/approval/conflict state, which a comment can't carry — that's
+infrastructure work, not an outcome artifact. See
+`docs/agent-orchestration/11-outcome-artifact.md` for the reasoning
+behind each.
 
 ## Adding a new outcome
 

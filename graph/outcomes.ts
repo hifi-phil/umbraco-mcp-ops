@@ -6,12 +6,20 @@
 // extraction (regex out of a comment body vs. a typed field on a direct
 // payload) stays in each transport's own file; only the shape itself lives
 // here.
+//
+// Not every event in constants/events.ts belongs here. Only ones actually
+// sourced from a self-reported artifact do — rework_pushed and
+// merge_gate_failed_* are deliberately absent because they're sourced
+// differently (a native push webhook; a live gate re-check), not because
+// they're unfinished. See 11-outcome-artifact.md.
 
-export type BuildOutcome =
+export type Outcome =
   | { outcome: "build_succeeded"; pr: number }
-  | { outcome: "build_blocked"; reason: string };
+  | { outcome: "build_blocked"; reason: string }
+  | { outcome: "release_blocked"; reason: string }
+  | { outcome: "release_published"; version: string };
 
-export function parseBuildOutcomeShape(value: unknown): BuildOutcome | null {
+export function parseOutcomeShape(value: unknown): Outcome | null {
   if (typeof value !== "object" || value === null) return null;
   const v = value as Record<string, unknown>;
 
@@ -20,6 +28,12 @@ export function parseBuildOutcomeShape(value: unknown): BuildOutcome | null {
   }
   if (v.outcome === "build_blocked" && typeof v.reason === "string") {
     return { outcome: "build_blocked", reason: v.reason };
+  }
+  if (v.outcome === "release_blocked" && typeof v.reason === "string") {
+    return { outcome: "release_blocked", reason: v.reason };
+  }
+  if (v.outcome === "release_published" && typeof v.version === "string") {
+    return { outcome: "release_published", version: v.version };
   }
   return null;
 }

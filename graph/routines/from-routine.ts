@@ -23,13 +23,15 @@
 // 05-technical-elements.md's "no way to nudge a running session"
 // constraint) — so there's nothing to write there yet.
 //
-// Whether a routine can actually make this call at all — an arbitrary
-// outbound HTTP request mid-session — is still an open question (see
-// 08-open-questions.md). This file is the same "no infrastructure yet,
-// pure logic" prototype as everything else in graph/: nothing here talks
-// to a real DO, and nothing calls this from a real routine yet.
+// The mechanism for a routine to make this call is resolved: a PostToolUse
+// hook (plugins/agent-outcomes/hooks/report-completion.sh), not the model
+// calling out mid-turn — see 08-open-questions.md. Verified locally;
+// unconfirmed against a real cloud routine. This file is still the same
+// "no infrastructure yet, pure logic" prototype as everything else in
+// graph/: nothing here talks to a real DO, and the hook has nothing real
+// to POST to yet.
 
-import { parseBuildOutcomeShape, type BuildOutcome } from "../outcomes";
+import { parseOutcomeShape, type Outcome } from "../outcomes";
 import type { Routine } from "../constants/routines";
 
 export type RoutineSignal =
@@ -38,7 +40,7 @@ export type RoutineSignal =
 
 export type RoutineUpdate =
   | { kind: "process"; routine: Routine; issue: number; step: string }
-  | { kind: "completion"; routine: Routine; issue: number; outcome: BuildOutcome };
+  | { kind: "completion"; routine: Routine; issue: number; outcome: Outcome };
 
 export function parseRoutineSignal(signal: RoutineSignal): RoutineUpdate | null {
   if (signal.kind === "process") {
@@ -46,7 +48,7 @@ export function parseRoutineSignal(signal: RoutineSignal): RoutineUpdate | null 
     return { kind: "process", routine: signal.routine, issue: signal.issue, step: signal.step };
   }
 
-  const outcome = parseBuildOutcomeShape(signal.outcome);
+  const outcome = parseOutcomeShape(signal.outcome);
   if (!outcome) return null;
   return { kind: "completion", routine: signal.routine, issue: signal.issue, outcome };
 }
