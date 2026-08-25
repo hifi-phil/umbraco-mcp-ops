@@ -35,16 +35,64 @@ export type Event =
 
 export type Effect =
   | { kind: "label"; value: State }
-  | { kind: "unlabel"; value: State }
-  | { kind: "close" }; // native GitHub close, not a label — see auto-release-loop precedent
+  | { kind: "unlabel" }
+  | { kind: "close" } // native GitHub close, not a label — see auto-release-loop precedent
+  | { kind: "noop" }; // no GitHub write at all — e.g. a soft merge-gate failure leaves the label exactly as-is
 
 export function label(value: State): Effect {
   return { kind: "label", value };
 }
-export function unlabel(value: State): Effect {
-  return { kind: "unlabel", value };
-}
+export const unlabel: Effect = { kind: "unlabel" };
 export const close: Effect = { kind: "close" };
+export const noop: Effect = { kind: "noop" };
+
+// The literal GitHub label that represents each State while it's current.
+// null means "no tracking label" — backlog and pr-none are the absence of
+// one, not a label literally named "backlog"/"pr-none". This mapping is what
+// was missing before: without it, an "unlabel" effect has no way to know
+// *which* real label to remove.
+export const githubLabel: Record<State, string | null> = {
+  backlog: null,
+  building: "ready-for-ai",
+  "generated-by-ai": "generated-by-ai",
+  "ai-blocked": "ai-blocked",
+  releasing: "auto-release",
+  discussing: "ai-discuss",
+  "pr-none": null,
+  reworking: "auto-rework",
+  "merge-pending": "auto-merge",
+};
+
+export type LabelOp =
+  | { op: "add"; label: string }
+  | { op: "remove"; label: string }
+  | { op: "close" };
+
+/**
+ * The concrete GitHub calls a fired rule requires, given the labels actually
+ * present right now — re-read fresh from the API per §3.4, never cached.
+ * Diffing against the real current labels (not just assuming `rule.from`'s
+ * label is still there) means a label a human already removed by hand isn't
+ * redundantly removed again, and a label the *triggering* webhook itself
+ * just added (e.g. a human labelling `ready-for-ai`) is never redundantly
+ * re-added — it's already in `currentLabels` by the time this runs.
+ */
+export function labelOps(currentLabels: readonly string[], rule: Rule): LabelOp[] {
+  if (rule.to.kind === "noop") return [];
+  if (rule.to.kind === "close") return [{ op: "close" }];
+
+  const fromLabel = githubLabel[rule.from];
+  const toLabel = rule.to.kind === "label" ? githubLabel[rule.to.value] : null;
+  const ops: LabelOp[] = [];
+
+  if (fromLabel && fromLabel !== toLabel && currentLabels.includes(fromLabel)) {
+    ops.push({ op: "remove", label: fromLabel });
+  }
+  if (toLabel && toLabel !== fromLabel && !currentLabels.includes(toLabel)) {
+    ops.push({ op: "add", label: toLabel });
+  }
+  return ops;
+}
 
 export type Rule = {
   from: State;
@@ -85,7 +133,7 @@ export const rules: Rule[] = [
   {
     from: "releasing",
     on: "release_blocked",
-    to: unlabel("releasing"),
+    to: unlabel,
     verifiedBy: "external-judgment", // release-reviewer's BLOCK verdict — an independent agent's judgment
   },
   {
@@ -115,7 +163,7 @@ export const rules: Rule[] = [
   {
     from: "reworking",
     on: "rework_pushed",
-    to: unlabel("reworking"),
+    to: unlabel,
     verifiedBy: "deterministic", // a git push is directly observable
   },
   {
@@ -128,19 +176,19 @@ export const rules: Rule[] = [
   {
     from: "merge-pending",
     on: "merge_gate_failed_soft",
-    to: label("merge-pending"), // stays — the reconciliation sweep re-fires it later
+    to: noop, // matches merge-flow's real Step 4: "by default leave the auto-merge label on" — no GitHub write, not a redundant remove+re-add; the reconciliation sweep re-fires it later
     verifiedBy: "deterministic",
   },
   {
     from: "merge-pending",
     on: "merge_gate_failed_hard",
-    to: unlabel("merge-pending"), // needs a human; matches merge-flow's real Step 4
+    to: unlabel, // needs a human; matches merge-flow's real Step 4
     verifiedBy: "deterministic",
   },
   {
     from: "merge-pending",
     on: "merged",
-    to: close,
+    to: close, // idempotent: merge-flow's own merge call already closes the PR natively; this just confirms it
     verifiedBy: "deterministic",
   },
 ];
