@@ -24,6 +24,7 @@
 import { EVENTS, type Event } from "../constants/events";
 import { LABELS } from "../constants/labels";
 import { ROUTINES } from "../constants/routines";
+import { parseBuildOutcomeShape } from "../outcomes";
 
 export const BOT_LOGIN = "umbraco-mcp-ops[bot]"; // placeholder — set to the real GitHub App login
 export const COMMENT_SIGNATURE = "<!-- issue-discuss-loop -->"; // real marker, from issue-discuss-loop's SKILL.md
@@ -36,23 +37,17 @@ export const COMMENT_SIGNATURE = "<!-- issue-discuss-loop -->"; // real marker, 
 // mistaken for this one.
 export const OUTCOME_MARKER = `<!-- agent-outcome:${ROUTINES.ISSUE_BUILD_LOOP} -->`;
 
-type BuildOutcome =
-  | { outcome: "build_succeeded"; pr: number }
-  | { outcome: "build_blocked"; reason: string };
-
-function parseBuildOutcome(body: string | undefined): BuildOutcome | null {
+// Transport-specific: extracting JSON out of a comment body. The shape
+// itself (what counts as a valid build_succeeded/build_blocked) is shared
+// with the direct-signal transport in routines/from-routine.ts — see
+// ../outcomes.ts — so the two can't validate against two different ideas
+// of "valid" as the catalog grows.
+function parseBuildOutcome(body: string | undefined) {
   if (!body || !body.includes(OUTCOME_MARKER)) return null;
   const match = body.match(/```json\s*([\s\S]*?)\s*```/);
   if (!match) return null;
   try {
-    const parsed = JSON.parse(match[1]!);
-    if (parsed?.outcome === "build_succeeded" && typeof parsed.pr === "number") {
-      return { outcome: "build_succeeded", pr: parsed.pr };
-    }
-    if (parsed?.outcome === "build_blocked" && typeof parsed.reason === "string") {
-      return { outcome: "build_blocked", reason: parsed.reason };
-    }
-    return null;
+    return parseBuildOutcomeShape(JSON.parse(match[1]!));
   } catch {
     return null;
   }

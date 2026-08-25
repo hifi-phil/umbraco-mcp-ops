@@ -86,15 +86,55 @@ instead of inlining the marker/JSON; the next loop to get this treatment
 (`rework-loop`, `merge-flow`, or `auto-release-loop`) adds a catalog row
 there and its own `translate()` case, not a second copy of the format.
 
+## The next step: a deterministic script, and a fast-path ping — not a replacement for GitHub
+
+The comment's JSON is currently hand-typed by the model into a fence,
+which is exactly the kind of thing that can go quietly wrong — a mangled
+fence, a typo'd field, and `translate()` just returns `null` with nothing
+to show for it. The fix under discussion: `agent-outcomes` should invoke a
+**deterministic script** — constructed from typed arguments, not
+free-form model text — to write the artifact, closing that risk by
+construction rather than by hoping the model gets the format right every
+time.
+
+That script could *also* ping a DO directly with the same fact, as a
+fast path — and it was worth being precise about what that does and
+doesn't change. §4 of the design is explicit that **the routine does not
+call us back with its outcome**, specifically because a direct call can
+be lost if the session dies mid-call, while a GitHub write either exists
+or doesn't and survives independently of the session. A direct
+"completion" ping doesn't get to skip that just because it's more
+convenient — so the resolution is:
+
+- **The GitHub comment stays the authoritative write**, deterministically
+  constructed instead of hand-typed, but otherwise unchanged in role.
+  `github/from-github.ts` reading it is still the only path that drives a
+  state transition.
+- **A direct ping to the DO is allowed, but only as a non-authoritative
+  fast path** — the same category as the heartbeat (§3.4/§3.6): losing it
+  costs detail (the watchdog waits out its full alarm instead of
+  cancelling early; the dashboard shows "in progress" a little longer),
+  never correctness.
+- `graph/routines/from-routine.ts` is the prototype for the receiving
+  side of that fast path — it parses a "process" (heartbeat) or
+  "completion" (fast-path outcome echo) signal, sharing the same outcome
+  shape validation (`graph/outcomes.ts`) that `github/from-github.ts`
+  uses for the comment-based path, so the two transports can't validate
+  against two different ideas of what counts as a valid outcome.
+
 ## Open questions this raises
 
-- The JSON is currently unvalidated beyond `parseBuildOutcome()`'s shape
-  check — if `issue-build-loop`'s prompt ever produces slightly malformed
-  JSON (e.g. from a model mangling the fence), `translate()` silently
-  returns `null` rather than surfacing the mismatch anywhere. Worth a
-  point of visibility once something is actually consuming this (a
-  reconciliation-sweep-style check: "this issue has an outcome comment
-  that didn't parse").
+- **The deterministic script doesn't exist yet.** `agent-outcomes` still
+  tells the loop to hand-type the marker + JSON, because there's nothing
+  real for a script to send the fast-path ping *to* — no DO, no Worker.
+  Building the script without an endpoint would be premature; the
+  artifact format is stable enough now that building both together is
+  the reasonable next step.
+- **Whether a routine can make an arbitrary outbound HTTP call mid-session
+  at all is still unresolved** — see
+  [08-open-questions.md](08-open-questions.md). This blocks the
+  fast-path ping specifically; it doesn't block the GitHub comment, which
+  already works today via `gh`/the GitHub MCP server.
 - `pr` in the `build_succeeded` payload isn't used by anything downstream
   yet (no rule consumes it) — kept because the design docs' original
   sketch implied the outcome fact should carry a branch/PR reference; if

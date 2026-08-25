@@ -43,7 +43,9 @@
   progress heartbeat ([03-components.md §3.4](03-components.md#34-the-serialiser-and-watchdog--durable-object-per-issue))
   assumes the routine can POST to a Worker endpoint while it works, not just
   write to GitHub via git/gh. Needs checking against what tools routines
-  actually have in research preview.
+  actually have in research preview. Also blocks
+  [11-outcome-artifact.md](11-outcome-artifact.md)'s planned fast-path
+  completion ping — same mechanism, same open question.
 - **How is the heartbeat endpoint authenticated per attempt?** It needs a
   short-lived, narrowly-scoped credential (write-a-step-name only, nothing
   else) threaded into the routine's invocation — worth deciding whether
