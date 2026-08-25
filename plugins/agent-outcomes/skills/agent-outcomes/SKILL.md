@@ -9,7 +9,9 @@ description: >-
   build_succeeded, build_blocked, or any other cataloged outcome, or when
   adding a new outcome type to the catalog. Always additive — this skill
   never tells a loop to skip or replace its existing load-bearing action
-  (a label swap, a merge, a push) — nothing reads the artifact yet.
+  (a label swap, a merge, a push). Bundles a PostToolUse hook that forwards
+  the artifact on a fast, non-authoritative path automatically — nothing
+  extra for the loop to do.
 ---
 
 # agent-outcomes
@@ -22,9 +24,18 @@ next instead of a loop deciding for itself — but it can only do that once
 the fact it needs exists somewhere machine-readable. This skill is the one
 place that format is defined, so five loops don't each invent their own.
 
-**Nothing today reads this artifact.** No Worker, no Durable Object, no
-production reducer is deployed. Writing it is pure preparation — it costs
-one comment, changes no behaviour, and is safe to add to any loop.
+**Nothing authoritative reads this artifact yet.** No Worker, no Durable
+Object, no production reducer is deployed. Writing it is still mostly
+preparation — it costs one comment, changes no behaviour, and is safe to
+add to any loop. The one thing that *is* real: this plugin bundles a
+`PostToolUse` hook (`hooks/report-completion.sh`) that fires automatically
+whenever a loop posts the artifact — no extra step for the loop, nothing
+to call, nothing to remember. It forwards the raw JSON to
+`AGENT_OUTCOMES_ENDPOINT` if that's set (logs only otherwise — there's no
+real endpoint to point it at yet), and it's deliberately not authoritative:
+losing this call costs a slower watchdog cancel or a staler dashboard,
+never a wrong state transition. The comment write above is still the only
+thing that counts as the actual fact.
 
 ## The rule
 
@@ -78,4 +89,6 @@ is the same shape of work as `issue-build-loop`'s, not done.
    (umbraco-mcp-ops) that parses it, plus fixture tests.
 
 Steps 1–3 land together — a catalog row with no parser, or a parser with
-no catalog row, is a silent way for the two to drift.
+no catalog row, is a silent way for the two to drift. No fourth step for
+the hook: `report-completion.sh` matches on the marker itself, not on any
+particular routine or shape, so a new outcome type needs no hook change.

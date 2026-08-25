@@ -108,10 +108,13 @@ different ideas of "a valid `build_succeeded`."
   `release_published`, `rework_pushed`, or `merge_gate_failed_*` — those
   facts only exist today as an agent's self-report. Same shape of work as
   `build_succeeded`/`build_blocked`, just not done yet.
-- `routines/from-routine.ts` is pure logic with nothing calling it — no
-  routine can send it a signal yet. Whether a routine can even make an
-  arbitrary outbound call mid-session is still an open question (see
-  `agent-orchestration-plan/08-open-questions.md`).
+- `routines/from-routine.ts` is pure logic with nothing calling it *for
+  real* — but the mechanism that would call it now exists and is tested:
+  `plugins/agent-outcomes/hooks/report-completion.sh`, a `PostToolUse`
+  hook that fires automatically and forwards a detected outcome artifact
+  to `AGENT_OUTCOMES_ENDPOINT`. Nothing is listening at that endpoint —
+  there's no DO/Worker — so the hook logs only. See
+  `agent-orchestration-plan/11-outcome-artifact.md`.
 - The CI-aggregation helpers in `github/from-github.ts` are stubs — real
   aggregation needs the full check-run list for a SHA (a `github-ops`
   call), not just the one `check_suite` payload that triggered the webhook.

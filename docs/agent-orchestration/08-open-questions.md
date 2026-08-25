@@ -39,13 +39,22 @@
 
 ## New from this pass
 
-- **Can a routine make an arbitrary outbound HTTP call mid-session?** The
-  progress heartbeat ([03-components.md §3.4](03-components.md#34-the-serialiser-and-watchdog--durable-object-per-issue))
-  assumes the routine can POST to a Worker endpoint while it works, not just
-  write to GitHub via git/gh. Needs checking against what tools routines
-  actually have in research preview. Also blocks
-  [11-outcome-artifact.md](11-outcome-artifact.md)'s planned fast-path
-  completion ping — same mechanism, same open question.
+- ~~**Can a routine make an arbitrary outbound HTTP call mid-session?**~~ —
+  Resolved for the *mechanism*: not the model calling out mid-turn, but a
+  `PostToolUse` hook — a deterministic script the harness fires after every
+  tool call, outside the model's own action space entirely. Confirmed
+  working locally in
+  [`plugins/agent-outcomes/hooks/report-completion.sh`](https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/agent-outcomes/hooks)
+  (real `curl` POST, tested against a local stub server). Same mechanism
+  the progress heartbeat
+  ([03-components.md §3.4](03-components.md#34-the-serialiser-and-watchdog--durable-object-per-issue))
+  needs, and what
+  [11-outcome-artifact.md](11-outcome-artifact.md)'s fast-path completion
+  ping now uses. **Still open:** whether hooks fire the same way in a
+  *cloud* routine as they do locally — `self-learning`'s existing
+  SubagentStop/SessionEnd hooks are the closest precedent that they do, but
+  that's not the same event type, and this hasn't been confirmed against a
+  real cloud routine run.
 - **How is the heartbeat endpoint authenticated per attempt?** It needs a
   short-lived, narrowly-scoped credential (write-a-step-name only, nothing
   else) threaded into the routine's invocation — worth deciding whether

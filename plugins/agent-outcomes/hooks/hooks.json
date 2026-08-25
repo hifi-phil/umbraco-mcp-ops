@@ -1,0 +1,16 @@
+{
+  "description": "Fast-path completion signal, shared by every loop that writes an agent-outcomes artifact. PostToolUse fires after every tool call in the loop's session; the hook cheaply checks whether that call just posted a comment carrying an <!-- agent-outcome:<routine> --> marker, and if so forwards the raw JSON on a best-effort, non-authoritative path (AGENT_OUTCOMES_ENDPOINT, once one exists — logs only until then). Never the authoritative signal: the GitHub write the loop already made is. See docs/agent-orchestration/11-outcome-artifact.md in umbraco-mcp-ops.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/report-completion.sh\"",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
