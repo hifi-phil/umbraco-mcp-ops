@@ -11,13 +11,15 @@ name: worker agent evals
 # this workflow's own check — doesn't gate anything, since the release
 # already happened by the time this runs.
 #
-# Needs the ANTHROPIC_API_KEY repo secret. Not set yet as of this
-# workflow's addition — see CLAUDE.md's Releases section; provisioning it
-# is a separate, explicit step before this can run for real.
+# Needs the ANTHROPIC_API_KEY repo secret — provisioned. workflow_dispatch
+# is here for the same reason mcp-issue-loop-analyzer-eval.yml has one:
+# a manual way to verify this actually runs correctly in CI (Node version,
+# npm ci/lockfile, secret injection) without waiting for a real release.
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   agent-evals:
