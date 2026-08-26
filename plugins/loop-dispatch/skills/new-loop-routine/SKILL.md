@@ -39,8 +39,8 @@ Never use `fable`. Never put secrets in the prompt or config.
 ## Procedure
 
 **Preconditions (once per repo):**
-1. **Labels exist**: `ready-for-ai`, `generated-by-ai`, `ai-blocked`, `auto-merge`,
-   `ai-discuss` (see `self-learning-system.md`'s "Setup § 2. Labels"); `auto-release` and
+1. **Labels exist**: `ai-ready`, `ai-generated`, `ai-blocked`, `auto-merging`,
+   `ai-discussing` (see `self-learning-system.md`'s "Setup § 2. Labels"); `auto-releasing` and
    `release-blocked` are `auto-release-loop`'s own (see that skill's `SKILL.md`).
 2. **Skills reach the env** — `loop-dispatch` (and the loops) are in the
    `cloud-skill-sync` `SKILLS` list and the env has been rebuilt (bump `VERSION`, re-paste).
@@ -58,7 +58,7 @@ Never use `fable`. Never put secrets in the prompt or config.
    **verbatim** to the repo as `.github/workflows/loop-dispatch.yml` (open a PR).
    *One exception:* on `umbraco-mcp-ops` itself that filename is taken by the **reusable**
    workflow, so its caller lives at `.github/workflows/loop-dispatch-caller.yml`. Same body.
-5. **Smoke-test** — label a throwaway issue `ready-for-ai` (Action fires → routine builds
+5. **Smoke-test** — label a throwaway issue `ai-ready` (Action fires → routine builds
    a PR), and label a PR `dependencies` (Action computes `route=none` → routine never fires).
 
 **When the caller template itself changes** (a new event added to

@@ -1,0 +1,49 @@
+name: worker agent evals
+
+# Tier 2 from the black-box-harness discussion: real Agent SDK calls
+# against every cataloged outcome-reporting step — a real vitest project
+# (see worker/vitest.workspace.ts's "evals" project and
+# worker/test/evals/outcome-reporting.eval.test.mjs), non-deterministic
+# and ~$2.50-3/run — deliberately NOT run on every PR (that's
+# worker-tests.yml's "unit" project, free and deterministic, same
+# framework). Fires only when a GitHub Release actually publishes, same
+# cadence as the MCP product repos' eval suites. Reports pass/fail via
+# this workflow's own check — doesn't gate anything, since the release
+# already happened by the time this runs.
+#
+# Needs the ANTHROPIC_API_KEY repo secret — provisioned. workflow_dispatch
+# is here for the same reason mcp-issue-loop-analyzer-eval.yml has one:
+# a manual way to verify this actually runs correctly in CI (Node version,
+# npm ci/lockfile, secret injection) without waiting for a real release.
+#
+# Confirmed working via a temporary pull_request trigger on PR #98 (all 4
+# scenarios passed for real in GitHub's CI, ~$0.28 total) — removed again
+# once confirmed. Do not re-add pull_request here as a standing trigger;
+# the whole point of gating Tier 2 to release is to not run it, and its
+# real cost, on every PR push. workflow_dispatch remains the way to
+# re-verify manually (once this is on the default branch).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  agent-evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        working-directory: worker
+        run: npm ci
+
+      - name: Run outcome-reporting evals
+        working-directory: worker
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: npm run test:evals

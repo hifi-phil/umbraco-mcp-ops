@@ -2,7 +2,7 @@
 name: merge-flow
 description: >-
   Guardrail loop for merging pull requests safely. Finds open PRs labelled
-  `auto-merge` and merges each only once every safety gate holds; on any unmet gate it
+  `auto-merging` and merges each only once every safety gate holds; on any unmet gate it
   comments the blocker and moves on rather than merging. Replaces error-prone manual
   merges. Repo-agnostic; runs locally or as a scheduled cloud routine; requires the
   `github-ops` skill. Trigger on "merge the ready PRs", "run merge-flow", "auto-merge
@@ -13,10 +13,10 @@ description: >-
 
 A guardrail loop that removes the manual PR merge — the step where mistakes happen
 (merging red CI, merging before approval, merging into the wrong base, forgetting
-to delete the branch). You label a PR `auto-merge`; this loop merges it **only when
+to delete the branch). You label a PR `auto-merging`; this loop merges it **only when
 every gate holds**, and never otherwise.
 
-`/goal` makes "done" unambiguous: the loop keeps working until every `auto-merge`
+`/goal` makes "done" unambiguous: the loop keeps working until every `auto-merging`
 PR is either **merged** (branch deleted where the environment can — see Step 3) or
 **flagged with the reason it couldn't be**. No half-done merges.
 
@@ -32,14 +32,14 @@ Scheduled-routine wiring is set up separately (see
 
 | Thing | Value |
 |-------|-------|
-| Trigger label | **`auto-merge`** |
+| Trigger label | **`auto-merging`** |
 | Target repos | any repo you point it at (the Umbraco MCP repos, `umbraco-mcp-ops`, `Umbraco-MCP-Base`, …) |
 | Merge strategy | per repo convention — **detect via `release-and-branching`** (gitflow usually squash-into-`dev`; main-only per that repo) |
 | PRs per run cap | **10** |
 
 ## Step 1 — find candidates
 
-**List open PRs** filtered by the `auto-merge` label (github-ops → *List PRs by
+**List open PRs** filtered by the `auto-merging` label (github-ops → *List PRs by
 label / state*). No candidates → report "nothing to merge" and stop. More candidates
 than the **PRs per run cap** (see Config) → process only that many this run; the rest
 wait for the next run.
@@ -48,8 +48,8 @@ wait for the next run.
 
 For each candidate, all must hold — if any fails, **do not merge** (go to Step 4):
 
-1. **Human approval = the `auto-merge` label.** The merge stays human-gated: a
-   maintainer must deliberately apply the `auto-merge` label after reviewing the PR,
+1. **Human approval = the `auto-merging` label.** The merge stays human-gated: a
+   maintainer must deliberately apply the `auto-merging` label after reviewing the PR,
    and that label is the human approval signal this loop requires — control who can
    apply it. (A GitHub review
    "approve" is not used as the signal, because a maintainer cannot approve a PR they
@@ -88,17 +88,17 @@ flags any repo where the setting is off.
 
 Comment the **specific** blocker on the PR ("CI check `x` failing", "awaiting
 approval", "conflicts with base — rebase needed"), and log it as deferred. By default
-**leave the `auto-merge` label on** so the next run re-checks once the blocker clears.
+**leave the `auto-merging` label on** so the next run re-checks once the blocker clears.
 Remove the label only for a hard, human-needed block (unresolvable conflicts, changes
 requested) so the loop stops re-poking it — say which in the comment.
 
 ## Running as a routine
 
 **Primary: event-triggered.** Set up a routine with trigger **PR: Labeled**, filtered to
-**Labels is one of `auto-merge`**, so labelling a PR fires this **immediately** — it
-gate-checks the current `auto-merge` PR(s) and merges the eligible ones. This is the
+**Labels is one of `auto-merging`**, so labelling a PR fires this **immediately** — it
+gate-checks the current `auto-merging` PR(s) and merges the eligible ones. This is the
 cheapest shape (it only fires when you label — no idle runs) and the most responsive.
-The skill queries for all `auto-merge` PRs, so a single-PR event just runs one pass of
+The skill queries for all `auto-merging` PRs, so a single-PR event just runs one pass of
 the same loop; nothing changes for one-at-a-time.
 
 **Optional backstop:** a low-frequency poll (e.g. once or twice a weekday) catches a PR

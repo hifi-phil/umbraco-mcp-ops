@@ -51,15 +51,23 @@ export const rules: Rule[] = [
     verifiedBy: "external-judgment", // a human decided this issue is ready
   },
   {
-    from: LABELS.AI_READY,
+    // Keyed on the POST-swap state, not AI_READY: issue-build-loop's own
+    // Step 3 always swaps the label before posting this outcome comment,
+    // so by the time this event reaches the reducer, AI_READY is already
+    // gone — a rule keyed on AI_READY can never fire. `to: noop` because
+    // there's nothing left to write; this rule exists to confirm the swap
+    // already happened, same idempotent-confirm shape as MERGED below.
+    from: LABELS.AI_GENERATED,
     on: EVENTS.BUILD_SUCCEEDED,
-    to: label(LABELS.AI_GENERATED),
+    to: noop,
     verifiedBy: "external-judgment", // composite fact includes mcp-review's judgment, not just CI
   },
   {
-    from: LABELS.AI_READY,
+    // Same reasoning as BUILD_SUCCEEDED above — issue-build-loop swaps to
+    // AI_BLOCKED before commenting, so key on the post-swap state.
+    from: LABELS.AI_BLOCKED,
     on: EVENTS.BUILD_BLOCKED,
-    to: label(LABELS.AI_BLOCKED),
+    to: noop,
     verifiedBy: "external-judgment", // the agent decided the issue was ambiguous / capped out
   },
   {
@@ -70,16 +78,35 @@ export const rules: Rule[] = [
     verifiedBy: "external-judgment", // a human decided to release
   },
   {
-    from: LABELS.AUTO_RELEASING,
+    // Keyed on the POST-swap state, not AUTO_RELEASING: auto-release-loop's
+    // Step 2.5 removes AUTO_RELEASING before posting this outcome comment
+    // (creating a separate new issue for the block, which isn't a tracked
+    // label on the triggering issue) — so by the time this event reaches
+    // the reducer, state has already moved to "none". Same reasoning as
+    // BUILD_SUCCEEDED/BUILD_BLOCKED above.
+    from: "none",
     on: EVENTS.RELEASE_BLOCKED,
-    to: unlabel,
+    to: noop,
     verifiedBy: "external-judgment", // release-reviewer's BLOCK verdict — an independent agent's judgment
   },
   {
+    // Unlike the three rules above, auto-release-loop's Step 4 does NOT
+    // remove AUTO_RELEASING before commenting + closing — it just closes.
+    // So this is the one outcome-artifact rule that was already correctly
+    // keyed on the pre-comment state; kept as-is, and it's the reference
+    // shape the other three now match.
     from: LABELS.AUTO_RELEASING,
     on: EVENTS.RELEASE_PUBLISHED,
     to: close,
-    verifiedBy: "deterministic", // merge + tag + GitHub Release are all directly observable
+    // The underlying facts (merged, tagged, GitHub Release created, dev
+    // synced) ARE deterministic — but as implemented, translate() sources
+    // this from auto-release-loop's self-reported outcome comment (see
+    // 11-outcome-artifact.md), not by independently correlating those
+    // native signals. Tagged external-judgment to be honest about what's
+    // actually verified today, not what could be. A future implementation
+    // that watches for the real merge+tag+release chain directly would
+    // earn "deterministic" back.
+    verifiedBy: "external-judgment",
   },
   {
     from: "none",
@@ -110,19 +137,24 @@ export const rules: Rule[] = [
     on: EVENTS.LABELLED_AUTO_MERGING,
     to: label(LABELS.AUTO_MERGING),
     run: ROUTINES.MERGE_FLOW,
-    verifiedBy: "external-judgment", // the auto-merge label IS the human approval signal
+    verifiedBy: "external-judgment", // the auto-merging label IS the human approval signal
   },
   {
     from: LABELS.AUTO_MERGING,
     on: EVENTS.MERGE_GATE_FAILED_SOFT,
-    to: noop, // matches merge-flow's real Step 4: "by default leave the auto-merge label on" — no GitHub write, not a redundant remove+re-add; the reconciliation sweep re-fires it later
+    to: noop, // matches merge-flow's real Step 4: "by default leave the auto-merging label on" — no GitHub write, not a redundant remove+re-add; the reconciliation sweep re-fires it later
+    // Genuinely earned, not aspirational: worker/src/coordinate.ts's
+    // handleCheckSuiteCompleted independently fetches the full check-run
+    // list, review state, and mergeability (github/merge-gate.ts's
+    // deriveMergeGateOutcome) rather than trusting a self-report — see
+    // worker/README.md.
     verifiedBy: "deterministic",
   },
   {
     from: LABELS.AUTO_MERGING,
     on: EVENTS.MERGE_GATE_FAILED_HARD,
     to: unlabel, // needs a human; matches merge-flow's real Step 4
-    verifiedBy: "deterministic",
+    verifiedBy: "deterministic", // same real aggregation as MERGE_GATE_FAILED_SOFT above
   },
   {
     from: LABELS.AUTO_MERGING,

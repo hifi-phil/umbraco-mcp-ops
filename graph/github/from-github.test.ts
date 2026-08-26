@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { ROUTINES } from "../constants/routines";
 import { EVENTS } from "../constants/events";
 import { LABELS } from "../constants/labels";
 import { BOT_LOGIN, COMMENT_SIGNATURE, translate, type WebhookPayload } from "./from-github";
 
 function payload(overrides: Partial<WebhookPayload>): WebhookPayload {
   return { action: "unknown", sender: { login: "a-human", type: "User" }, ...overrides };
+}
+
+function outcomeComment(routine: string, json: unknown): string {
+  return `Update.\n\n<!-- agent-outcome:${routine} -->\n\`\`\`json\n${JSON.stringify(json)}\n\`\`\``;
 }
 
 describe("translate — issue labels", () => {
@@ -64,6 +69,126 @@ describe("translate — self-trigger guard", () => {
   });
 });
 
+describe("translate — outcome artifacts (any loop, any marker)", () => {
+  it("issue-build-loop's build_succeeded artifact -> build_succeeded", () => {
+    expect(
+      translate(
+        payload({
+          action: "issue_comment.created",
+          comment: {
+            body: outcomeComment(ROUTINES.ISSUE_BUILD_LOOP, {
+              outcome: "build_succeeded",
+              pr: 123,
+            }),
+          },
+        }),
+      ),
+    ).toBe(EVENTS.BUILD_SUCCEEDED);
+  });
+
+  it("issue-build-loop's build_blocked artifact -> build_blocked", () => {
+    expect(
+      translate(
+        payload({
+          action: "issue_comment.created",
+          comment: {
+            body: outcomeComment(ROUTINES.ISSUE_BUILD_LOOP, {
+              outcome: "build_blocked",
+              reason: "CI-green cap tripped",
+            }),
+          },
+        }),
+      ),
+    ).toBe(EVENTS.BUILD_BLOCKED);
+  });
+
+  it("auto-release-loop's release_blocked artifact -> release_blocked", () => {
+    expect(
+      translate(
+        payload({
+          action: "issue_comment.created",
+          comment: {
+            body: outcomeComment(ROUTINES.AUTO_RELEASE_LOOP, {
+              outcome: "release_blocked",
+              reason: "BLOCK: missing changelog entry",
+            }),
+          },
+        }),
+      ),
+    ).toBe(EVENTS.RELEASE_BLOCKED);
+  });
+
+  it("auto-release-loop's release_published artifact -> release_published", () => {
+    expect(
+      translate(
+        payload({
+          action: "issue_comment.created",
+          comment: {
+            body: outcomeComment(ROUTINES.AUTO_RELEASE_LOOP, {
+              outcome: "release_published",
+              version: "18.0.0-beta3",
+            }),
+          },
+        }),
+      ),
+    ).toBe(EVENTS.RELEASE_PUBLISHED);
+  });
+
+  it("is read even when posted under our own bot identity — this is not a self-trigger", () => {
+    expect(
+      translate(
+        payload({
+          action: "issue_comment.created",
+          sender: { login: BOT_LOGIN, type: "Bot" },
+          comment: {
+            body: outcomeComment(ROUTINES.ISSUE_BUILD_LOOP, {
+              outcome: "build_succeeded",
+              pr: 123,
+            }),
+          },
+        }),
+      ),
+    ).toBe(EVENTS.BUILD_SUCCEEDED);
+  });
+
+  it("marker present but malformed JSON -> null, not a throw", () => {
+    expect(
+      translate(
+        payload({
+          action: "issue_comment.created",
+          comment: {
+            body: `<!-- agent-outcome:${ROUTINES.ISSUE_BUILD_LOOP} -->\n\`\`\`json\nnot json\n\`\`\``,
+          },
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("marker present but an unrecognised outcome shape -> null", () => {
+    expect(
+      translate(
+        payload({
+          action: "issue_comment.created",
+          comment: {
+            body: outcomeComment(ROUTINES.ISSUE_BUILD_LOOP, { outcome: "something_else" }),
+          },
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("valid JSON but no marker at all -> null — this is just a normal comment", () => {
+    expect(
+      translate(
+        payload({
+          action: "issue_comment.created",
+          comment: { body: '```json\n{"outcome":"build_succeeded","pr":123}\n```' },
+        }),
+      ),
+    ).toBeNull();
+  });
+});
+
 describe("translate — PR labels", () => {
   it("pull_request.labeled auto-reworking -> labelled_auto_reworking", () => {
     expect(
@@ -79,6 +204,22 @@ describe("translate — PR labels", () => {
         payload({ action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING } }),
       ),
     ).toBe(EVENTS.LABELLED_AUTO_MERGING);
+  });
+});
+
+describe("translate — rework push (native signal, not an outcome artifact)", () => {
+  it("pull_request.synchronize -> rework_pushed unconditionally", () => {
+    expect(translate(payload({ action: "pull_request.synchronize" }))).toBe(
+      EVENTS.REWORK_PUSHED,
+    );
+  });
+
+  it("is not identity-guarded — a push webhook can't be a self-authored write", () => {
+    expect(
+      translate(
+        payload({ action: "pull_request.synchronize", sender: { login: BOT_LOGIN, type: "Bot" } }),
+      ),
+    ).toBe(EVENTS.REWORK_PUSHED);
   });
 });
 

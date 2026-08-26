@@ -60,6 +60,23 @@ is the list of rules missing from the table — feed it back into Phase 1
 before moving on. This also produces the first real data for the
 per-state staleness thresholds the reconciliation sweep needs in Phase 7.
 
+**Status:** `worker/` exists now — a Cloudflare Worker + Durable Object
+that actually calls `translate()`/`reduce()` against real `graph/` code,
+with a real D1 transition log. Unit tested (40 tests) and smoke-tested
+locally end to end via `wrangler dev --local` against a stub API server
+(see `worker/README.md`) — never deployed, no Cloudflare account access
+exists for this repo.
+
+**It's not actually a Phase 3 vehicle as built — it's Phase 4's.**
+`coordinateWebhook()` performs real label writes and fires the routine
+unconditionally whenever a rule matches; there's no dry-run/observe-only
+mode. Deploying it as-is today, alongside loops that still self-swap,
+would mean two systems writing labels at once — the opposite of safe
+shadow mode. Before this can run Phase 3 for real, it needs a shadow-mode
+toggle: log the decision (already happens, via `logTransition`) but skip
+`addLabel`/`removeLabel`/`closeIssue`/`fireRoutine` while it's on. Not
+built yet — a small, contained change once wanted, not a redesign.
+
 ## Phase 4 — Enforce
 
 **Entry:** Phase 3 numbers reviewed, gaps folded back into the table.
@@ -70,14 +87,42 @@ cleanest, not with everything at once.
 **Exit:** At least one transition is enforced in production with no
 regressions observed for a full cycle of that transition.
 
+**Status:** the actual enforcement mechanism is what `worker/` already
+is — `coordinateWebhook()` unconditionally applies `labelOps()` and fires
+the routine when a rule matches, real writes, no toggle. What's missing
+isn't the mechanism, it's everything around safely turning it on: real
+deployment, a shadow-mode pass first (see Phase 3's status above) to
+confirm the table's accurate against real traffic before this starts
+writing labels for real, and picking which transition graduates first.
+
 ## Phase 5 — Reducer owns labels
 
 **Entry:** Phase 4 stable on the transitions covered so far.
 
-**Do:** Remove label-setting from agent prompts entirely. Agents write
-outcome facts (comment, check-run output); only the DO writes `state:*`.
+**Do:** Remove label-setting from agent prompts entirely — but per
+transition, not all at once, and only once its own precondition holds.
+"Additive, not a replacement" (11-outcome-artifact.md) was always meant to
+be temporary scaffolding, not the destination — deleting a self-swap
+before its replacement is live would strand every issue mid-flight with
+nothing to pick up the slack, which is worse than the symptom this phase
+exists to fix. Every self-swap in the system today, and exactly what has
+to be true before it's deleted:
 
-**Exit:** The missing-label symptom is gone by construction, not mitigated.
+| Loop / step | Self-swap today | Deletable once |
+|---|---|---|
+| `issue-build-loop` Step 3 (success) | remove `ai-ready`, add `ai-generated` | the DO applies `to-github.ts`'s `labelOps()` output for `build_succeeded` itself, shadow-mode-verified against real traffic |
+| `issue-build-loop` Step 3 (blocked) | remove `ai-ready`, add `ai-blocked` | same, for `build_blocked` |
+| `auto-release-loop` Step 2.5 | remove `auto-releasing` on BLOCK | same, for `release_blocked` |
+| `auto-release-loop` Step 4 | close the issue on publish | same, for `release_published` |
+| `rework-loop` Step 5 | remove `auto-reworking` | same, for `rework_pushed` — already sourced from a native signal, so this one only needs the DO live, not a new artifact |
+| `merge-flow` Step 4 (hard block) | remove `auto-merging` | same, for `merge_gate_failed_hard` — the live gate re-check this event needs now exists for real (`worker/src/coordinate.ts`'s `handleCheckSuiteCompleted` + `graph/github/merge-gate.ts`, see 11-outcome-artifact.md and `worker/README.md`), so this row now only needs the DO live and shadow-verified, same bar as every other row — no longer blocked on infrastructure that doesn't exist |
+
+**Exit:** Every row above deleted, one at a time as its precondition
+clears — not "removed everywhere" as a single cutover, and never left
+half-done indefinitely: each row that's shadow-verified gets its self-swap
+deleted in the same change that turns on enforcement for it, not
+sometime after. The missing-label symptom is gone by construction, not
+mitigated, once the table is empty.
 
 ## Phase 6 — Watchdog timer
 

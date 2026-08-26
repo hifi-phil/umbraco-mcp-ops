@@ -5,20 +5,14 @@ import { reduce } from "../graph";
 import { labelOps } from "./to-github";
 
 describe("labelOps — the concrete GitHub calls a rule requires", () => {
-  it("build_succeeded explicitly removes ai-ready as well as adding ai-generated", () => {
-    const rule = reduce(LABELS.AI_READY, EVENTS.BUILD_SUCCEEDED)!;
-    expect(labelOps([LABELS.AI_READY], rule)).toEqual([
-      { op: "remove", label: LABELS.AI_READY },
-      { op: "add", label: LABELS.AI_GENERATED },
-    ]);
+  it("build_succeeded is a noop — issue-build-loop's own Step 3 already did the ai-ready -> ai-generated swap before this event reaches the reducer", () => {
+    const rule = reduce(LABELS.AI_GENERATED, EVENTS.BUILD_SUCCEEDED)!;
+    expect(labelOps([LABELS.AI_GENERATED], rule)).toEqual([]);
   });
 
-  it("build_blocked removes ai-ready and adds ai-blocked", () => {
-    const rule = reduce(LABELS.AI_READY, EVENTS.BUILD_BLOCKED)!;
-    expect(labelOps([LABELS.AI_READY], rule)).toEqual([
-      { op: "remove", label: LABELS.AI_READY },
-      { op: "add", label: LABELS.AI_BLOCKED },
-    ]);
+  it("build_blocked is a noop — same reasoning, keyed on the post-swap ai-blocked state", () => {
+    const rule = reduce(LABELS.AI_BLOCKED, EVENTS.BUILD_BLOCKED)!;
+    expect(labelOps([LABELS.AI_BLOCKED], rule)).toEqual([]);
   });
 
   it("labelled_ai_ready needs no write — the triggering webhook already added the label", () => {
@@ -26,11 +20,9 @@ describe("labelOps — the concrete GitHub calls a rule requires", () => {
     expect(labelOps([LABELS.AI_READY], rule)).toEqual([]);
   });
 
-  it("release_blocked removes auto-releasing with nothing added", () => {
-    const rule = reduce(LABELS.AUTO_RELEASING, EVENTS.RELEASE_BLOCKED)!;
-    expect(labelOps([LABELS.AUTO_RELEASING], rule)).toEqual([
-      { op: "remove", label: LABELS.AUTO_RELEASING },
-    ]);
+  it("release_blocked is a noop — auto-release-loop's own Step 2.5 already removed auto-releasing before this event reaches the reducer", () => {
+    const rule = reduce("none", EVENTS.RELEASE_BLOCKED)!;
+    expect(labelOps([], rule)).toEqual([]);
   });
 
   it("rework_pushed removes auto-reworking with nothing added", () => {

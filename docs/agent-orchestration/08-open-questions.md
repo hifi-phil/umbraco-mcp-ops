@@ -39,11 +39,22 @@
 
 ## New from this pass
 
-- **Can a routine make an arbitrary outbound HTTP call mid-session?** The
-  progress heartbeat ([03-components.md §3.4](03-components.md#34-the-serialiser-and-watchdog--durable-object-per-issue))
-  assumes the routine can POST to a Worker endpoint while it works, not just
-  write to GitHub via git/gh. Needs checking against what tools routines
-  actually have in research preview.
+- ~~**Can a routine make an arbitrary outbound HTTP call mid-session?**~~ —
+  Resolved for the *mechanism*: not the model calling out mid-turn, but a
+  `PostToolUse` hook — a deterministic script the harness fires after every
+  tool call, outside the model's own action space entirely. Confirmed
+  working locally in
+  [`plugins/agent-outcomes/hooks/report-completion.sh`](https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/agent-outcomes/hooks)
+  (real `curl` POST, tested against a local stub server). Same mechanism
+  the progress heartbeat
+  ([03-components.md §3.4](03-components.md#34-the-serialiser-and-watchdog--durable-object-per-issue))
+  needs, and what
+  [11-outcome-artifact.md](11-outcome-artifact.md)'s fast-path completion
+  ping now uses. **Still open:** whether hooks fire the same way in a
+  *cloud* routine as they do locally — `self-learning`'s existing
+  SubagentStop/SessionEnd hooks are the closest precedent that they do, but
+  that's not the same event type, and this hasn't been confirmed against a
+  real cloud routine run.
 - **How is the heartbeat endpoint authenticated per attempt?** It needs a
   short-lived, narrowly-scoped credential (write-a-step-name only, nothing
   else) threaded into the routine's invocation — worth deciding whether
@@ -77,12 +88,28 @@
   straight to `state:rework`, the log needs to record that jump even though
   no rule in the table permits it — worth deciding whether `verifiedBy` even
   applies to a row the reducer didn't produce.
-- **Atomic or incremental label rename?** See
-  [10-label-rename.md](10-label-rename.md) — a single coordinated cutover
-  (label + all 18 referencing files + every routine's trigger config in one
-  change) is cleaner but higher-blast-radius; migrating loop-by-loop is
-  safer but means `loop-dispatch`'s routing table has to carry both the old
-  and new spelling for whichever loops haven't moved yet.
+- **Atomic or incremental label rename — now urgent, not hypothetical.**
+  See [10-label-rename.md](10-label-rename.md) — the 14 referencing skill
+  files are already migrated to the new spelling (surfaced and fixed via
+  `worker/`'s real-agent test), but no live repo's actual label and no
+  routine's trigger config are. Until the remaining two land, coordinated,
+  per repo, a real loop run on a real repo will fail to clear its own
+  trigger label. Atomic-per-repo is cleaner but higher-blast-radius;
+  incremental means accepting broken label swaps on every not-yet-migrated
+  repo, not just an inconsistent routing table.
+- ~~The outcome artifact's reducer rule fires inconsistently~~ — **resolved**:
+  `build_succeeded`/`build_blocked`/`release_blocked` are now keyed on their
+  post-swap state (`AI_GENERATED`/`AI_BLOCKED`/`"none"`), matching
+  `release_published`'s shape, each firing an idempotent `noop` confirm.
+  See `graph/graph.ts`'s comments on each rule and `worker/README.md`'s
+  "black-box shape" section for how the inconsistency was found.
+- **`worker/`'s `coordinateWebhook()` has no shadow-mode toggle.** It was
+  built as Phase 4's real enforcement mechanism (unconditional label
+  writes + routine fire), not Phase 3's observe-only one — see
+  [07-build-phases.md](07-build-phases.md)'s Phase 3/4 status notes. A
+  small, contained addition (skip the write-side `Deps` calls while still
+  calling `logTransition`) closes this; not built yet because nothing had
+  asked for Phase 3 specifically when this was built.
 
 ---
 

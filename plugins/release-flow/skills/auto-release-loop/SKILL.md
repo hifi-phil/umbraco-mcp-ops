@@ -3,28 +3,29 @@ name: auto-release-loop
 description: >-
   Event-triggered release with NO mid-flow human approval, guarded by two automated
   gates: green CI, then an Opus pre-publish review against a growing checklist. When an issue titled
-  `release <version>` is labelled `auto-release`, this cuts the release branch, bumps
+  `release <version>` is labelled `auto-releasing`, this cuts the release branch, bumps
   version files + changelog, opens the PR to main, drives CI green, runs the review (a
   BLOCK finding stops it), then publishes (merge, tag, GitHub Release) and syncs main
   back to dev, commenting + closing the triggering issue. Sends a Claude push
   notification at start and on completion, and — for stable and release-candidate
   versions — posts a Slack notification to `release-notifications` once published. The
   deliberate act of labelling the issue is the human decision. For gitflow repos.
-  Requires the github-ops skill. Trigger from a routine on Issue: Labeled =
-  auto-release, or run manually as "auto-release-loop <version>".
+  Requires the github-ops skill (+ agent-outcomes, for the outcome artifact on the
+  BLOCK and publish comments). Trigger from a routine on Issue: Labeled =
+  auto-releasing, or run manually as "auto-release-loop <version>".
 ---
 
 # auto-release-loop
 
 The release loop: **issue-triggered and CI-gated, with no mid-flow human approval.** Two
 deliberate signals are the go-ahead: (1) a maintainer opened an issue naming the version
-and applied the **`auto-release`** label, and (2) **CI on the release PR is green**.
+and applied the **`auto-releasing`** label, and (2) **CI on the release PR is green**.
 That's it — no approval pause — by design, for fast beta/pre-release cycles.
 
 > **Publishing is irreversible.** Once CI is green this ships with no further human
 > look, and a published package version can't be cleanly un-published (you'd ship a
 > follow-up). Use this only where **CI-green is a sufficient gate** — the deliberate
-> `auto-release` label is the one human decision.
+> `auto-releasing` label is the one human decision.
 
 ## Trigger & input
 
@@ -151,8 +152,11 @@ hands the agent already-materialized content as plain text. Do this sequence
   2. **Send a Claude push notification** (the `PushNotification` tool) summarising the
      block and linking the new issue.
   3. **Comment on the triggering issue** pointing to the blocked issue + PR, and **remove
-     its `auto-release` label** so the loop doesn't re-fire until a human fixes the cause
-     and re-labels.
+     its `auto-releasing` label** so the loop doesn't re-fire until a human fixes the cause
+     and re-labels. **Append the `release_blocked` outcome artifact to that same comment**
+     — see the [`agent-outcomes`](../../../agent-outcomes/skills/agent-outcomes/SKILL.md)
+     skill for the exact marker + shape (additive only; the label removal above is still
+     the real signal).
 - **WARN** findings → proceed, but include them in the completion comment.
 - Continue to publish **only** when the checklist passes with no BLOCK.
 
@@ -199,9 +203,12 @@ hands the agent already-materialized content as plain text. Do this sequence
    (`sync-main-to-dev.yml` if installed, else do the back-merge and use `sync-dev`).
    **The `/goal` is not met until `dev` is synced.**
 2. **Comment the outcome on the triggering issue** (Release link, tag, "dev synced") and
-   **close it**. Also send a **Claude push notification** (the `PushNotification` tool):
-   `Released v<version> — published + dev synced.` Fall back to the issue comment alone
-   if push isn't available.
+   **close it**. **Append the `release_published` outcome artifact to that same comment**
+   — see the [`agent-outcomes`](../../../agent-outcomes/skills/agent-outcomes/SKILL.md)
+   skill for the exact marker + shape (additive only; closing the issue above is still
+   the real signal). Also send a **Claude push notification** (the `PushNotification`
+   tool): `Released v<version> — published + dev synced.` Fall back to the issue comment
+   alone if push isn't available.
 
 ## Guardrails
 
@@ -212,8 +219,8 @@ hands the agent already-materialized content as plain text. Do this sequence
 ## Running as a routine
 
 Set up a routine with trigger **Issue: Labeled**, filtered to **Labels is one of
-`auto-release`**, on an environment that has this skill (+ `github-ops`,
+`auto-releasing`**, on an environment that has this skill (+ `github-ops`,
 `release-and-branching`, `sync-dev`) — firing is instant, so labelling a
 `release <version>` issue kicks it off immediately. The version comes from the issue, so
-nothing else needs configuring per run. *(The `auto-release` label must exist on the
+nothing else needs configuring per run. *(The `auto-releasing` label must exist on the
 target repo.)*
