@@ -9,6 +9,12 @@ CLAUDE_API_KEY=fake-local-key
 CLAUDE_API_BASE_URL=http://127.0.0.1:8943
 ROUTINE_IDS_JSON={"issue-build-loop":"rt_fake","auto-release-loop":"rt_fake_release","issue-discuss-loop":"rt_fake_discuss","rework-loop":"rt_fake_rework","merge-flow":"rt_fake_merge"}
 
+# Optional — guards POST /routine-signal (the direct routine-to-DO
+# heartbeat channel; see src/coordinate.ts's coordinateRoutineSignal).
+# Left unset here: matches GITHUB_WEBHOOK_SECRET's permissive-when-unset
+# local-dev default. Set a real value before ever deploying for real.
+# ROUTINE_SIGNAL_SECRET=some-local-test-secret
+
 # To point at the real APIs instead (e.g. once real credentials exist),
 # remove the two *_API_BASE_URL lines and set real values for the rest —
 # GITHUB_APP_TOKEN will then genuinely write labels/comments on whatever

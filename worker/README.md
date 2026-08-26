@@ -25,11 +25,29 @@ src/
 
 ## What's actually verified, and how
 
-**40 unit tests** (`npm test`) cover `coordinate.ts` (the decision logic,
+**59 unit tests** (`npm test`) cover `coordinate.ts` (the decision logic,
 against fake in-memory deps), `webhook-parse.ts` (payload mapping +
 signature verification), `github-client.ts` and `routines-client.ts`
 (against mocked `fetch`, including the `GITHUB_API_BASE_URL`/
-`CLAUDE_API_BASE_URL` override seam used below). Clean `tsc --noEmit`.
+`CLAUDE_API_BASE_URL` override seam used below) — **plus `index.ts` and
+`issue-coordinator.ts` themselves** (`test/index.test.ts`,
+`test/issue-coordinator.test.ts`), covering: webhook signature
+verification end-to-end (missing/wrong/correct signature, and the
+no-secret-configured skip path), routing to the correct DO keyed by
+`owner/repo#issueNumber` (including that two different issues or two
+different repos never produce the same key), delivery-id dedup, the
+watchdog alarm actually *firing* (not just being scheduled — the pending-
+fire case posts the real comment and clears state; the no-pending case is
+a harmless no-op), and that two `IssueCoordinator` instances (standing in
+for two different issues' real DOs) never share dedup/pending-fire state.
+All of this via the same fake-deps pattern `coordinate.test.ts` already
+used — no `@cloudflare/vitest-pool-workers` (that package needs vitest
+^4, and this repo pins vitest ^2; pulling it in would mean an unprompted
+major-version bump of an existing dependency, not just adding a new one —
+skipped for that reason). True DO storage isolation once two ids differ
+is a Cloudflare platform guarantee that a fake-object test can't further
+prove; what these tests actually catch is a bug in the *key construction*
+itself. Clean `tsc --noEmit`.
 
 ## Testing the whole stack locally
 
@@ -181,17 +199,31 @@ GitHub in reality, not one uniform mechanism for all five:
 | `auto-release-loop` | self-reported outcome comment | real agent vs. verbatim Step 2.5/Step 4 (`run-agent-outcome-test`) |
 | `rework-loop` | a git push (native webhook) | direct synthetic webhook, no agent (`/mock/simulate-pr-push`) |
 | `merge-flow` | a PR merge (native webhook) | direct synthetic webhook, no agent (`/mock/simulate-pr-merge`) |
+| `merge-flow` (gate-failed) | `check_suite.completed`, independently re-verified | direct synthetic webhook + `/mock/set-pr-facts`, no agent (`/mock/simulate-check-suite`) |
 | `issue-discuss-loop` | none — no outbound `graph/` transition | out of scope; nothing to black-box |
 
 Using an LLM call for the native-signal loops would be strictly worse, not
 just wasted cost — a real git push or a real merge isn't something an
 agent "decides" to report in words; it's a raw GitHub event, so firing
 that event directly is the *more* faithful stand-in, not a shortcut.
-`merge-flow`'s gate-failed cases (`MERGE_GATE_FAILED_SOFT`/`HARD`) are
-excluded even from the native-signal mechanism — `translate()` never
-produces those events at all yet (`check_suite.completed` always returns
-`null`, deliberately, per its own comment), so there's nothing running to
-black-box; that's a `graph/` design gap, not a harness gap.
+
+**`merge-flow`'s gate-failed cases are the one loop signal that's neither
+a native single-fact webhook nor a self-report — it's the Worker
+independently re-deriving a judgment from several live facts**, matching
+option (b) from the discussion that led here: rather than trust a
+self-reported artifact, `worker/src/coordinate.ts`'s
+`handleCheckSuiteCompleted` re-fetches the full check-run list for the
+head SHA, the latest review state, and mergeability — real GitHub-shaped
+calls (`getPull`/`getCheckRuns`/`getLatestReviewState` in
+`github-client.ts`) — and `graph/github/merge-gate.ts`'s pure
+`deriveMergeGateOutcome()` decides soft/hard/still-pending/pass from those
+facts alone, never from anything `merge-flow` itself reported. That's what
+lets `MERGE_GATE_FAILED_SOFT`/`HARD` keep their `verifiedBy: "deterministic"`
+tag in `graph/graph.ts` for real, instead of it being aspirational.
+`/mock/set-pr-facts` + `/mock/simulate-check-suite` let this be exercised
+against the real Worker+D1 the same way as everything else — run live
+during this pass for all four cases (still-pending, all-green/no-op,
+soft-fail, hard-fail); see the D1 rows this produced in the section below.
 
 ## All three pieces together: real agent + mock GitHub + real local Worker
 
@@ -206,45 +238,46 @@ loops:
 
 ```
 issue-build-loop   id=9  from=none          event=labelled_ai_ready  -> label(ai-ready), run issue-build-loop
-issue-build-loop   id=10 from=ai-generated   event=build_succeeded    -> dropped: "no matching rule for this (state, event) pair"
+issue-build-loop   id=10 from=ai-generated   event=build_succeeded    -> APPLIED: noop (post-swap confirm)
 auto-release-loop  id=13 from=auto-releasing event=release_published  -> APPLIED: close
 rework-loop        id=15 from=none           event=labelled_auto_reworking -> label(auto-reworking), run rework-loop
 rework-loop        id=16 from=auto-reworking event=rework_pushed      -> APPLIED: unlabel
 merge-flow         id=17 from=none           event=labelled_auto_merging  -> label(auto-merging), run merge-flow
 merge-flow         id=18 from=auto-merging   event=merged             -> APPLIED: close
+merge-flow (gate)  id=19 from=none           event=labelled_auto_merging  -> label(auto-merging), run merge-flow
+merge-flow (gate)  id=20 from=auto-merging   event=merge_gate_failed_soft -> APPLIED: noop (a real failed check-run, independently re-fetched)
+merge-flow (gate)  id=22 from=auto-merging   event=merge_gate_failed_hard -> APPLIED: unlabel (real mergeable:false, independently re-fetched)
 ```
 
-Every kickoff labeling and every native signal (`rework_pushed`, `merged`)
-was correctly **applied** for real — the reducer matched a rule and, for
-the two native ones, made a real, additional GitHub write of its own
-(`unlabel`, `close`) on top of what the loop already did, exactly as
-`graph.ts` intends. In every run, the label webhooks the agent's own
-`remove_label`/`add_label` calls fired were correctly dropped by the
-self-trigger guard — confirmed with a real agent doing the firing, not
-just curl.
+Every kickoff labeling and every native signal (`rework_pushed`, `merged`,
+`merge_gate_failed_soft`/`hard`) was correctly **applied** for real — the
+reducer matched a rule and, for every one of these, made a real,
+additional GitHub write of its own (`unlabel`, `close`, or nothing for a
+`noop` confirm) on top of what the loop already did, exactly as `graph.ts`
+intends. The two `merge_gate_failed_*` rows are the most significant of
+these: unlike the native single-fact signals, the Worker itself made three
+independent GitHub-shaped reads (`getPull`/`getCheckRuns`/
+`getLatestReviewState`) and *derived* the failure — nothing self-reported
+it. A same-shaped run with an in-progress check suite and with an
+all-green one both correctly produced **zero** additional rows (still
+pending / gate genuinely passes — not this reducer's job to say so). In
+every run, the label webhooks the agent's own `remove_label`/`add_label`
+calls fired were correctly dropped by the self-trigger guard — confirmed
+with a real agent doing the firing, not just curl.
 
-**The `build_succeeded` row is a genuine finding, not a bug in this
-harness — and it's inconsistent with `release_published`, which is the
-interesting part.** `issue-build-loop` and `auto-release-loop`'s
-BLOCK/succeeded outcomes all do the label swap **before** posting the
-comment (matching each skill's own documented order), so by the time the
-Worker reads labels for the comment event, state has already moved past
-what the rule is keyed on (`AI_READY`/`AUTO_RELEASING`) — dropped as "no
-matching rule", every time, for all three of `build_succeeded`,
-`build_blocked`, and `release_blocked`. **`release_published` is
-different**, and not by accident of this test: Step 4 never removes
-`auto-releasing` before closing the issue — the skill just comments and
-closes — so the label is *still there* when the Worker reads it, `deriveState`
-correctly resolves to `auto-releasing`, and the rule genuinely fires
-(`id=13` above). **The outcome artifact, as currently designed, can only
-ever apply its own reducer rule for outcomes whose loop doesn't clear the
-triggering label first** — for the other three, the artifact is redundant
-with the label swap, not a second independent path. That's worth a real
-design decision (either the reducer doesn't need rules for the
-label-swap-first events at all — the artifact is only ever a log line for
-those — or their rule table needs a transition keyed on the *post-swap*
-state, matching what `release_published` already gets for free), not
-something to leave as an unnoticed, inconsistent gap.
+**`id=10`'s row above reflects a fix, not the original finding.** The
+first time this ran, `build_succeeded` arrived from state `ai-generated`
+but the rule was keyed on `ai-ready` — issue-build-loop's own Step 3
+always swaps the label *before* posting the comment, so a rule keyed on
+the pre-swap state can never fire, and this dropped as "no matching
+rule" every time, for all three of `build_succeeded`, `build_blocked`,
+and `release_blocked` (the fourth, `release_published`, never had this
+problem — `auto-release-loop`'s Step 4 doesn't remove its label before
+closing, so it was already keyed correctly by accident). Fixed by
+rekeying all three to their post-swap state
+(`AI_GENERATED`/`AI_BLOCKED`/`"none"`), each now firing an idempotent
+`noop` confirm — same shape `MERGED`'s `to: close` already used. See
+`graph/graph.ts`'s comments on each rule.
 
 ## The label rename is now a coordination hazard, not just future work
 
@@ -266,6 +299,39 @@ config land in the same coordinated change. See
 [10-label-rename.md](../docs/agent-orchestration/10-label-rename.md) for
 what "coordinated" requires.
 
+## The direct routine→DO heartbeat channel
+
+`graph/routines/from-routine.ts`'s `parseRoutineSignal()` — a "process"
+heartbeat or "completion" fast-path echo a routine can send straight to
+its DO, bypassing GitHub entirely — now has a real receiving endpoint:
+**`POST /routine-signal`** on this Worker. Deliberately narrow, matching
+what that file's own design already specified: neither kind ever calls
+`reduce()` or writes a label/close. `"process"` re-schedules the watchdog
+alarm (`coordinate.ts`'s `coordinateRoutineSignal` → `setPendingFire`
+again with the same info); `"completion"` cancels it early
+(`clearPendingFire`) — the real state transition still only ever comes
+from `github/from-github.ts` reading the actual GitHub comment, later.
+Losing a call here costs a slightly-late watchdog comment or a
+duplicate-but-harmless cancel a moment later, never a wrong state.
+
+Auth: `ROUTINE_SIGNAL_SECRET`, checked as `Authorization: Bearer <secret>`
+— unset skips the check entirely, same permissive-for-local-dev shape as
+`GITHUB_WEBHOOK_SECRET`. Routing: `{owner, repo, signal}` in the body,
+keyed to the same DO as the webhook path (`owner/repo#signal.issue`). A
+signal for a routine that isn't the one currently pending on that issue
+(`pending.run !== signal.routine`) is rejected as `mismatched_routine`
+rather than silently accepted — a light guard against a stale/misrouted
+signal touching the wrong run's watchdog.
+
+Unit tested end to end — `coordinate.test.ts` (the parse/mismatch/extend/
+cancel logic against fake deps), `issue-coordinator.test.ts` (the DO's
+`/routine-signal` branch, real `ctx.storage.setAlarm`/`deleteAlarm` calls),
+`index.test.ts` (auth, routing, validation). **Not verified**: nothing has
+actually pointed `AGENT_OUTCOMES_ENDPOINT` (the `agent-outcomes` plugin's
+`PostToolUse` hook — see `docs/agent-orchestration/11-outcome-artifact.md`)
+at this endpoint, so the *real* sending side has never been exercised
+against it, only this receiving side in isolation.
+
 ## What's NOT verified
 
 - **Nothing here has talked to the real GitHub API or the real Claude
@@ -273,11 +339,13 @@ what "coordinated" requires.
   against their documented shapes; `mock-github/server.mjs` is a
   hand-written stand-in for those shapes, not the real thing, and it's
   never been diffed against real GitHub/Claude API responses for drift.
-- **The mock doesn't sign its webhooks.** `GITHUB_WEBHOOK_SECRET` and
-  `webhook-parse.ts`'s `verifySignature()` are exercised by unit tests
-  with a hand-computed HMAC, but the whole-stack test above never sets
-  `GITHUB_WEBHOOK_SECRET`, so the signature-check branch in `index.ts`
-  never actually ran during it.
+- **The mock doesn't sign its webhooks** — the whole-stack test above
+  never sets `GITHUB_WEBHOOK_SECRET`, so `index.ts`'s signature-check
+  branch never ran *during that specific test*. It's no longer untested
+  overall, though: `test/index.test.ts` exercises the full branch
+  (missing signature, wrong signature, correct signature, no secret
+  configured) against a real computed HMAC, not just `verifySignature()`
+  in isolation.
 - **`/routines/:id` (the kickoff fire) is still a no-op log-and-200 stub**
   — deliberately: at kickoff there's nothing for a real agent to decide
   yet (the loop hasn't done any work), so there's nothing meaningful to
@@ -290,22 +358,23 @@ what "coordinated" requires.
   `release-reviewer` agent, the actual merge/tag/publish/dev-sync) is
   not** — each real-agent test starts from "the work up to here already
   happened" as a given, not from a real build or a real release.
-  `rework-loop` and `merge-flow` are covered differently and more
-  narrowly — only their one native signal (a push, a merge) through the
-  reducer, not any of their own gate logic (CI-green, approval,
-  mergeability checks) or actions (the fix-and-push itself, the actual
-  merge call). `issue-discuss-loop` has no test at all — no outbound
+  `rework-loop` is covered narrowly — only its one native signal (a push)
+  through the reducer, not the fix-and-push work itself. `merge-flow` is
+  covered more fully than the others: both its native merge signal *and*
+  its gate-failed cases now go through a real, independently-verified
+  aggregation (see the black-box shape section above) — but the actual
+  merge call, and the human-approval/base-branch checks that don't hinge
+  on `check_suite.completed`, are still `merge-flow`'s own, untested-here
+  territory. `issue-discuss-loop` has no test at all — no outbound
   `graph/` transition exists for it to exercise.
-- **The watchdog alarm's *firing* (`alarm()`) is untested beyond code
-  review** — the smoke test exercised the code path that *sets* it
-  (`setPendingFire` → `ctx.storage.setAlarm`), which `coordinate.test.ts`
-  covers deterministically, but observing a real 30-minute alarm fire
-  needs either waiting it out or Miniflare's time-travel testing APIs,
-  neither done here.
-- **`issue-coordinator.ts` and `index.ts` themselves have no automated
-  tests** — only the smoke test above, once, by hand. Getting
-  `@cloudflare/vitest-pool-workers` running would close this; not done in
-  this pass (see the file-level comments in both for the reasoning).
+- **The watchdog alarm's *firing* is verified via a direct unit call
+  (`test/issue-coordinator.test.ts`), not a real elapsed 30 minutes.**
+  `alarm()` is called directly against a fake `ctx.storage` pre-populated
+  with a pending fire, and asserted to post the real comment and clear
+  state (plus a no-op case with nothing pending) — genuine coverage of
+  the firing logic itself, but still not the same as observing
+  Miniflare's own alarm-scheduling clock actually elapse and invoke it;
+  that would need Miniflare's time-travel testing APIs, not done here.
 - **Real deployment** — `wrangler login`, a real D1 database, real
   secrets, a real GitHub webhook subscription pointed at this Worker.
   None of that has happened, and doing it is a deliberate, separate step
@@ -319,6 +388,13 @@ what "coordinated" requires.
   hardcodes `null`) — the dedupe check uses DO storage, not the log, so
   this doesn't affect correctness, just makes the log slightly less
   useful for debugging a specific delivery.
-- `check_suite.completed`/`merge_gate_failed_*` have no real path through
-  `coordinateWebhook` yet, consistent with `graph/`'s own documented gap —
-  see `docs/agent-orchestration/11-outcome-artifact.md`.
+- `getLatestReviewState` is a deliberate simplification, not full parity
+  with github-ops's real review-state operation — it takes the single most
+  recent review's state across all reviewers, not each reviewer's own
+  latest state collapsed individually. Flagged in `merge-gate.ts`'s doc
+  comment, not silently assumed identical.
+- The "right base" gate (Step 2's fourth check — a PR into `main` on a
+  gitflow repo is `auto-release-loop`'s territory, not `merge-flow`'s) is
+  deliberately excluded from `deriveMergeGateOutcome` — a static PR
+  property `check_suite.completed` completing doesn't change or motivate
+  re-checking, so it's out of scope for this specific event-triggered path.

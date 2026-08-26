@@ -24,8 +24,49 @@ export function getIssue(owner, repo, number) {
   return issues.get(key);
 }
 
+/** @type {Map<string, { headSha: string, mergeable: boolean | null, checkRuns: {status: string, conclusion: string | null}[], reviews: {state: string}[] }>} */
+const prFacts = new Map();
+
+/** Backs the three real GET endpoints github-client.ts's getMergeGateFacts
+ * composition calls (getPull, getCheckRuns, getLatestReviewState) — see
+ * graph/github/merge-gate.ts. Defaults to "everything green" so a caller
+ * only has to set what it's specifically testing. */
+export function setPrFacts(owner, repo, prNumber, facts) {
+  const key = issueKey(owner, repo, prNumber);
+  const existing = prFacts.get(key) ?? {
+    headSha: "mock-sha",
+    mergeable: true,
+    checkRuns: [{ status: "completed", conclusion: "success" }],
+    reviews: [],
+  };
+  prFacts.set(key, { ...existing, ...facts });
+}
+export function getPrFacts(owner, repo, prNumber) {
+  return (
+    prFacts.get(issueKey(owner, repo, prNumber)) ?? {
+      headSha: "mock-sha",
+      mergeable: true,
+      checkRuns: [{ status: "completed", conclusion: "success" }],
+      reviews: [],
+    }
+  );
+}
+
+/** GitHub's real check-runs endpoint is keyed by SHA, not PR number — this
+ * mock only tracks facts per-PR, so it scans for whichever PR (within this
+ * owner/repo) currently claims that headSha. Fine for a mock exercising
+ * one PR at a time; not a general SHA index. */
+export function getPrFactsBySha(owner, repo, sha) {
+  const prefix = `${owner}/${repo}#`;
+  for (const [key, facts] of prFacts) {
+    if (key.startsWith(prefix) && facts.headSha === sha) return facts;
+  }
+  return { checkRuns: [] };
+}
+
 export function resetState() {
   issues.clear();
+  prFacts.clear();
   nextCommentId = 1;
   nextIssueNumber = 9000;
 }
@@ -161,6 +202,25 @@ export function firePrMerged(owner, repo, prNumber, sender) {
     {
       repository: { name: repo, owner: { login: owner } },
       pull_request: { number: prNumber, merged: true },
+    },
+    sender,
+  );
+}
+
+/** Native signal for the real merge-gate aggregation (see
+ * graph/github/merge-gate.ts) — fires the raw check_suite.completed
+ * webhook; the Worker then independently re-fetches pull/check-runs/
+ * reviews via setPrFacts/getPrFacts above, exactly like the real GitHub
+ * API calls it's written against. `status` lets a caller fire the
+ * mid-flight "in_progress" case too, which the Worker should ignore. */
+export function fireCheckSuiteCompleted(owner, repo, prNumber, status, sender) {
+  fireWebhook(
+    "check_suite",
+    "completed",
+    {
+      repository: { name: repo, owner: { login: owner } },
+      pull_request: { number: prNumber },
+      check_suite: { status, conclusion: null },
     },
     sender,
   );

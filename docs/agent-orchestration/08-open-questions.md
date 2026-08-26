@@ -97,22 +97,12 @@
   trigger label. Atomic-per-repo is cleaner but higher-blast-radius;
   incremental means accepting broken label swaps on every not-yet-migrated
   repo, not just an inconsistent routing table.
-- **The outcome artifact's reducer rule fires inconsistently, depending on
-  whether the loop clears its own label before commenting.** The
-  real-agent whole-stack test (`worker/README.md`) ran all four
-  `agent-outcomes` catalog rows against the real Worker: `build_succeeded`,
-  `build_blocked`, and `release_blocked` all arrive *after* their loop has
-  already swapped/removed the triggering label (each skill's own
-  documented order), so by the time the Worker reads labels for the
-  comment event, state has moved past what each rule is keyed on
-  (`AI_READY`/`AUTO_RELEASING`) — dropped as "no matching rule", every
-  time. `release_published` is the one exception: `auto-release-loop`'s
-  Step 4 never removes `auto-releasing` before closing, so the label is
-  still there when the Worker reads it, and the rule genuinely fires
-  (`to: close`). Either the three label-swap-first rules don't need to
-  exist at all (their artifact is only ever a log line, by design), or
-  their rule table needs a transition keyed on the *post-swap* state —
-  matching what `release_published` already gets for free. Undecided.
+- ~~The outcome artifact's reducer rule fires inconsistently~~ — **resolved**:
+  `build_succeeded`/`build_blocked`/`release_blocked` are now keyed on their
+  post-swap state (`AI_GENERATED`/`AI_BLOCKED`/`"none"`), matching
+  `release_published`'s shape, each firing an idempotent `noop` confirm.
+  See `graph/graph.ts`'s comments on each rule and `worker/README.md`'s
+  "black-box shape" section for how the inconsistency was found.
 - **`worker/`'s `coordinateWebhook()` has no shadow-mode toggle.** It was
   built as Phase 4's real enforcement mechanism (unconditional label
   writes + routine fire), not Phase 3's observe-only one — see

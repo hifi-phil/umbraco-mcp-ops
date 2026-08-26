@@ -3,21 +3,35 @@
 // for that entity and owning its watchdog alarm. Thin on purpose — all the
 // actual decision logic lives in coordinate.ts (dependency-injected, unit
 // tested); this class only wires that logic to real ctx.storage, D1, and
-// the GitHub/routines API clients.
+// the GitHub/routines API clients. Two request shapes reach fetch(): the
+// default path is a GitHub webhook (coordinateWebhook, authoritative);
+// POST .../routine-signal is the direct routine-to-DO heartbeat channel
+// (coordinateRoutineSignal, never authoritative — see
+// graph/routines/from-routine.ts and coordinate.ts's doc comment on it).
 //
-// NOT covered by this pass's tests: this file itself. coordinate.ts's
-// logic is verified with plain vitest against fake deps; this class's
-// wiring (does ctx.storage really behave the way the Deps callbacks
-// assume, does the alarm really fire, does D1's prepare/bind/run work as
-// written) is only exercised by `wrangler dev --local` — real Miniflare,
-// no Cloudflare account needed, but not an automated test suite. See
-// README.md for what that smoke test did and didn't cover.
+// This class's own wiring is covered by test/issue-coordinator.test.ts —
+// a fake ctx.storage/D1 plus a stubbed global fetch, same fake-deps shape
+// as coordinate.test.ts, deliberately not @cloudflare/vitest-pool-workers
+// (see README.md for why). Covers: dedup, a real rule applying + logging
+// to D1 + scheduling the alarm, the alarm actually *firing* (not just
+// being set), and that two instances (standing in for two issues' real
+// DOs) never share state. NOT covered: `wrangler dev --local`'s real
+// Miniflare storage/D1 behaving exactly like these fakes assume, and a
+// real elapsed-time alarm fire (vs. calling alarm() directly) — see
+// README.md.
 
-import { coordinateWebhook, type CoordinateInput, type PendingFire } from "./coordinate";
+import {
+  coordinateWebhook,
+  coordinateRoutineSignal,
+  type CoordinateInput,
+  type PendingFire,
+  type RoutineSignalInput,
+} from "./coordinate";
 import * as githubClient from "./github-client";
 import { fireRoutine } from "./routines-client";
 import type { GitHubEnv } from "./github-client";
 import type { RoutinesEnv } from "./routines-client";
+import type { MergeGateFacts } from "../../graph/github/merge-gate";
 
 export type IssueCoordinatorEnv = GitHubEnv &
   RoutinesEnv & {
@@ -36,6 +50,18 @@ export class IssueCoordinator {
 
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+
+    if (new URL(request.url).pathname === "/routine-signal") {
+      let input: RoutineSignalInput;
+      try {
+        input = await request.json();
+      } catch {
+        return new Response("invalid JSON body", { status: 400 });
+      }
+      const result = await coordinateRoutineSignal(this.deps(), input);
+      return Response.json(result);
+    }
+
     let input: CoordinateInput;
     try {
       input = await request.json();
@@ -91,6 +117,21 @@ export class IssueCoordinator {
       clearPendingFire: async () => {
         await this.ctx.storage.delete(PENDING_FIRE_KEY);
         await this.ctx.storage.deleteAlarm();
+      },
+      getPendingFire: async () => (await this.ctx.storage.get<PendingFire>(PENDING_FIRE_KEY)) ?? null,
+      getMergeGateFacts: async (owner: string, repo: string, prNumber: number): Promise<MergeGateFacts> => {
+        // checkRuns depends on the PR's head SHA, so getPull has to
+        // resolve first; getLatestReviewState doesn't, so it runs alongside it.
+        const [pull, latestReviewState] = await Promise.all([
+          githubClient.getPull(this.env, owner, repo, prNumber),
+          githubClient.getLatestReviewState(this.env, owner, repo, prNumber),
+        ]);
+        const checkRuns = await githubClient.getCheckRuns(this.env, owner, repo, pull.headSha);
+        return {
+          checkRuns: checkRuns as MergeGateFacts["checkRuns"],
+          latestReviewState,
+          mergeable: pull.mergeable,
+        };
       },
     };
   }

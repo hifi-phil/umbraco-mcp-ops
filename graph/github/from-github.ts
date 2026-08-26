@@ -74,17 +74,6 @@ function hasOwnSignatureMarker(body: string | undefined): boolean {
   return !!body && body.includes(COMMENT_SIGNATURE);
 }
 
-// STUB — real aggregation needs the full check-run list for the SHA (github-ops
-// → "Get PR CI / check-run status"), not just the one check_suite payload that
-// triggered this webhook. This is the honest placeholder Phase 2 leaves for
-// whoever wires this against a real GitHub client.
-function allRequiredChecksComplete(_payload: WebhookPayload): boolean {
-  return _payload.check_suite?.status === "completed";
-}
-function allRequiredChecksPassed(payload: WebhookPayload): boolean {
-  return payload.check_suite?.conclusion === "success";
-}
-
 export function translate(payload: WebhookPayload): Event | null {
   switch (payload.action) {
     case "issues.labeled":
@@ -163,14 +152,14 @@ export function translate(payload: WebhookPayload): Event | null {
     case "pull_request.synchronize":
       return EVENTS.REWORK_PUSHED;
 
-    case "check_suite.completed":
-      if (!allRequiredChecksComplete(payload)) return null;
-      // NOTE: this table has no rule consuming a bare checks_passed/failed
-      // event today — issue-build-loop drives CI green itself, inline, as
-      // part of "build_succeeded"/"build_blocked" (see ../graph.ts). Kept
-      // here as the aggregation point once/if CI-driving moves out of the
-      // loop and into something the reducer watches directly.
-      return null;
+    // check_suite.completed is deliberately absent here, not a gap: deciding
+    // MERGE_GATE_FAILED_SOFT/HARD needs facts this pure function structurally
+    // can't have (the full check-run list for the SHA, review state,
+    // mergeability — not just this one payload) — that's I/O. Falls to
+    // `default` below; worker/src/coordinate.ts's coordinateWebhook
+    // intercepts this action BEFORE translate() is ever called for it, and
+    // does the real, independently-fetched aggregation itself — see
+    // graph/github/merge-gate.ts.
 
     case "pull_request.closed":
       if (payload.pull_request?.merged) return EVENTS.MERGED;

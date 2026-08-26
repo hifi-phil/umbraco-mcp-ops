@@ -10,7 +10,9 @@ import { ALL_LABELS, LABELS, type Label } from "../../graph/constants/labels";
 import { reduce, type Rule, type State } from "../../graph/graph";
 import { translate, type WebhookPayload } from "../../graph/github/from-github";
 import { labelOps } from "../../graph/github/to-github";
+import { deriveMergeGateOutcome, type MergeGateFacts } from "../../graph/github/merge-gate";
 import { EVENTS, type Event } from "../../graph/constants/events";
+import { parseRoutineSignal, type RoutineSignal } from "../../graph/routines/from-routine";
 
 // A GitHub label-add webhook is only delivered *after* the label already
 // exists on the issue/PR — so a fresh getLabels() read for a "labelled_X"
@@ -53,6 +55,11 @@ export type Deps = {
   markSeenDelivery(deliveryId: string): Promise<void>;
   setPendingFire(info: PendingFire): Promise<void>;
   clearPendingFire(): Promise<void>;
+  getPendingFire(): Promise<PendingFire | null>;
+  // The real, independently-fetched facts behind MERGE_GATE_FAILED_SOFT/
+  // HARD — see graph/github/merge-gate.ts's header for why this needs to
+  // be a Dep (I/O) rather than living in translate() (pure).
+  getMergeGateFacts(owner: string, repo: string, prNumber: number): Promise<MergeGateFacts>;
 };
 
 export type CoordinateInput = {
@@ -76,6 +83,12 @@ export type CoordinateResult =
  * time via deps.getLabels — see graph/github/to-github.ts's labelOps()
  * doc comment for why that matters). This function IS the reducer's real
  * decision path; everything graph/ built is exercised here for real.
+ *
+ * check_suite.completed is special-cased before translate() ever runs:
+ * deciding MERGE_GATE_FAILED_SOFT/HARD needs facts translate() can't see
+ * (the full check-run list, review state, mergeability — not just the one
+ * check_suite payload) — that's I/O, so it can't live in the deliberately
+ * pure translate(). See graph/github/merge-gate.ts.
  */
 export async function coordinateWebhook(
   deps: Deps,
@@ -86,6 +99,10 @@ export async function coordinateWebhook(
     await deps.markSeenDelivery(input.deliveryId);
   }
 
+  if (input.payload.action === "check_suite.completed") {
+    return handleCheckSuiteCompleted(deps, input);
+  }
+
   const event = translate(input.payload);
   if (!event) return { outcome: "no_event" };
 
@@ -94,6 +111,39 @@ export async function coordinateWebhook(
   // itself just added), even though deriveState() below needs it filtered.
   const currentLabels = await deps.getLabels(input.owner, input.repo, input.issueNumber);
 
+  return applyEvent(deps, input, event, currentLabels);
+}
+
+/**
+ * check_suite.completed's own real aggregation path: only matters for a
+ * PR currently in `auto-merging` (mirrors merge-flow's own gate — nothing
+ * else watches CI this way), and only once the suite has actually
+ * finished (a mid-flight `status: "in_progress"` webhook has nothing to
+ * decide yet).
+ */
+async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Promise<CoordinateResult> {
+  if (input.payload.check_suite?.status !== "completed") return { outcome: "no_event" };
+
+  const currentLabels = await deps.getLabels(input.owner, input.repo, input.issueNumber);
+  if (!currentLabels.includes(LABELS.AUTO_MERGING)) return { outcome: "no_event" };
+
+  const facts = await deps.getMergeGateFacts(input.owner, input.repo, input.issueNumber);
+  const gateOutcome = deriveMergeGateOutcome(facts);
+  if (gateOutcome === "still_pending" || gateOutcome === null) return { outcome: "no_event" };
+
+  const event = gateOutcome === "soft" ? EVENTS.MERGE_GATE_FAILED_SOFT : EVENTS.MERGE_GATE_FAILED_HARD;
+  return applyEvent(deps, input, event, currentLabels);
+}
+
+/** The shared reduce() -> labelOps() -> fire/log tail, once an Event has
+ * been decided (however it was decided) and the current labels are
+ * already in hand. */
+async function applyEvent(
+  deps: Deps,
+  input: CoordinateInput,
+  event: Event,
+  currentLabels: string[],
+): Promise<CoordinateResult> {
   const justAdded = LABEL_JUST_ADDED_BY[event];
   const labelsBeforeThisEvent = justAdded
     ? currentLabels.filter((l) => l !== justAdded)
@@ -164,6 +214,49 @@ export async function coordinateWebhook(
   });
 
   return { outcome: "applied", from: current, event, rule };
+}
+
+export type RoutineSignalInput = { owner: string; repo: string; signal: RoutineSignal };
+
+export type RoutineSignalResult =
+  | { outcome: "invalid_signal" }
+  | { outcome: "no_pending_fire" } // nothing running for this issue right now — a stray/late signal, harmless
+  | { outcome: "mismatched_routine"; expected: string; got: string } // a different routine currently owns this issue
+  | { outcome: "heartbeat_extended" }
+  | { outcome: "completion_acknowledged" };
+
+/**
+ * The direct routine-to-DO channel — see graph/routines/from-routine.ts's
+ * header for why this exists and what it deliberately doesn't do. Neither
+ * kind ever calls reduce() or writes a label/close — this is purely a
+ * watchdog-timing optimization (extend the alarm on "process", cancel it
+ * early on "completion") layered on top of the one authoritative path,
+ * coordinateWebhook(). Losing a call here costs a slightly-later alarm
+ * or a duplicate cancel a moment later when the real GitHub webhook
+ * arrives — never a wrong state.
+ */
+export async function coordinateRoutineSignal(
+  deps: Deps,
+  input: RoutineSignalInput,
+): Promise<RoutineSignalResult> {
+  const update = parseRoutineSignal(input.signal);
+  if (!update) return { outcome: "invalid_signal" };
+
+  const pending = await deps.getPendingFire();
+  if (!pending) return { outcome: "no_pending_fire" };
+  if (pending.run !== update.routine) {
+    return { outcome: "mismatched_routine", expected: pending.run, got: update.routine };
+  }
+
+  if (update.kind === "process") {
+    // Re-set with the same info: the value doesn't change, but the DO's
+    // setPendingFire always re-schedules the alarm — that's the extension.
+    await deps.setPendingFire(pending);
+    return { outcome: "heartbeat_extended" };
+  }
+
+  await deps.clearPendingFire();
+  return { outcome: "completion_acknowledged" };
 }
 
 /**

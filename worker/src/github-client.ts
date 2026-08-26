@@ -87,3 +87,45 @@ export async function commentOnIssue(
 ): Promise<void> {
   await gh(env, "POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, { body });
 }
+
+// --- The three real facts merge-gate.ts's deriveMergeGateOutcome() needs
+// (see that file's header for why this is I/O and can't live in
+// translate()) ---
+
+export async function getPull(
+  env: GitHubEnv,
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<{ headSha: string; mergeable: boolean | null }> {
+  const res = await gh(env, "GET", `/repos/${owner}/${repo}/pulls/${prNumber}`);
+  const pr = (await res.json()) as { head: { sha: string }; mergeable: boolean | null };
+  return { headSha: pr.head.sha, mergeable: pr.mergeable };
+}
+
+export async function getCheckRuns(
+  env: GitHubEnv,
+  owner: string,
+  repo: string,
+  ref: string,
+): Promise<Array<{ status: string; conclusion: string | null }>> {
+  const res = await gh(env, "GET", `/repos/${owner}/${repo}/commits/${ref}/check-runs`);
+  const body = (await res.json()) as { check_runs: Array<{ status: string; conclusion: string | null }> };
+  return body.check_runs;
+}
+
+/** Simplified vs. github-ops's real review-state operation — see
+ * merge-gate.ts's LatestReviewState doc comment for what's approximated. */
+export async function getLatestReviewState(
+  env: GitHubEnv,
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<"approved" | "changes_requested" | "commented" | "none"> {
+  const res = await gh(env, "GET", `/repos/${owner}/${repo}/pulls/${prNumber}/reviews`);
+  const reviews = (await res.json()) as Array<{ state: string }>;
+  if (reviews.length === 0) return "none";
+  const state = reviews[reviews.length - 1]!.state.toLowerCase();
+  if (state === "approved" || state === "changes_requested" || state === "commented") return state;
+  return "none"; // e.g. "pending" or "dismissed" — not a live blocking or approving state
+}

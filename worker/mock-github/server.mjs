@@ -40,6 +40,10 @@ import {
   setIssueStateInternal,
   firePrSynchronize,
   firePrMerged,
+  fireCheckSuiteCompleted,
+  setPrFacts,
+  getPrFacts,
+  getPrFactsBySha,
 } from "./mock-state.mjs";
 import { runLoopOutcome } from "./agent-runner.mjs";
 
@@ -154,6 +158,29 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true });
   }
 
+  // Fires the native check_suite.completed webhook that drives the real
+  // merge-gate aggregation (graph/github/merge-gate.ts) — set the facts
+  // it'll independently re-fetch via /mock/set-pr-facts first.
+  if (req.method === "POST" && parts[0] === "mock" && parts[1] === "simulate-check-suite") {
+    const body = await readJsonBody(req);
+    const { owner, repo, prNumber, status = "completed", senderLogin } = body;
+    fireCheckSuiteCompleted(owner, repo, prNumber, status, {
+      login: senderLogin ?? "external-tester",
+      type: "User",
+    });
+    return sendJson(res, 200, { ok: true });
+  }
+
+  // Sets the facts getMergeGateFacts's real composition (getPull +
+  // getCheckRuns + getLatestReviewState) will independently re-fetch —
+  // defaults to "everything green" for whatever isn't specified.
+  if (req.method === "POST" && parts[0] === "mock" && parts[1] === "set-pr-facts") {
+    const body = await readJsonBody(req);
+    const { owner, repo, prNumber, ...facts } = body;
+    setPrFacts(owner, repo, prNumber, facts);
+    return sendJson(res, 200, { ok: true, facts: getPrFacts(owner, repo, prNumber) });
+  }
+
   // Minimal Claude Code routines API stub — enough for fireRoutine() to
   // succeed; not a real simulation of what the routine would then do.
   if (req.method === "POST" && parts[0] === "routines" && parts[1]) {
@@ -210,6 +237,24 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // The three real facts getMergeGateFacts's composition fetches — see
+  // graph/github/merge-gate.ts and /mock/set-pr-facts above.
+  if (parts[0] === "repos" && parts[3] === "pulls" && parts.length === 5 && req.method === "GET") {
+    const [, owner, repo, , numberStr] = parts;
+    const facts = getPrFacts(owner, repo, Number(numberStr));
+    return sendJson(res, 200, { head: { sha: facts.headSha }, mergeable: facts.mergeable });
+  }
+  if (parts[0] === "repos" && parts[3] === "pulls" && parts[5] === "reviews" && req.method === "GET") {
+    const [, owner, repo, , numberStr] = parts;
+    const facts = getPrFacts(owner, repo, Number(numberStr));
+    return sendJson(res, 200, facts.reviews);
+  }
+  if (parts[0] === "repos" && parts[3] === "commits" && parts[5] === "check-runs" && req.method === "GET") {
+    const [, owner, repo, , sha] = parts;
+    const facts = getPrFactsBySha(owner, repo, sha);
+    return sendJson(res, 200, { check_runs: facts.checkRuns });
+  }
+
   sendJson(res, 404, { message: "no mock route for this request", method: req.method, path: url.pathname });
 });
 
@@ -223,5 +268,7 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`POST /mock/simulate-pr-label      — same, but fires pull_request.labeled (for auto-reworking/auto-merging)`);
   console.log(`POST /mock/simulate-pr-push       — {owner,repo,prNumber,senderLogin} — native pull_request.synchronize, no agent`);
   console.log(`POST /mock/simulate-pr-merge      — {owner,repo,prNumber,senderLogin} — native pull_request.closed(merged), no agent`);
+  console.log(`POST /mock/set-pr-facts           — {owner,repo,prNumber,headSha?,mergeable?,checkRuns?,reviews?} for the merge-gate aggregation`);
+  console.log(`POST /mock/simulate-check-suite   — {owner,repo,prNumber,status} — native check_suite.completed, no agent`);
   console.log(`POST /mock/run-agent-outcome-test — {routine,owner,repo,issueNumber,scenario} — runs a REAL agent (costs $, see README)`);
 });

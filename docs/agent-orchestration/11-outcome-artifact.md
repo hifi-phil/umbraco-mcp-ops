@@ -15,10 +15,14 @@ Two more events in the reducer's vocabulary turned out **not** to need
 this treatment at all — `rework_pushed` (`rework-loop`) is sourced from a
 native `pull_request.synchronize` webhook instead (a git push is already
 independently observable; see below), and `merge_gate_failed_soft`/
-`merge_gate_failed_hard` (`merge-flow`) need a live gate re-check, which
-is infrastructure work, not an artifact. That's every event in the table
-now accounted for, one way or another — none are still "not done yet" for
-lack of a plan.
+`merge_gate_failed_hard` (`merge-flow`) need a live gate re-check rather
+than an artifact — that infrastructure is now built:
+`worker/src/coordinate.ts`'s `handleCheckSuiteCompleted` independently
+re-fetches the check-run list, review state, and mergeability rather than
+trusting anything `merge-flow` self-reports, and
+`graph/github/merge-gate.ts`'s pure `deriveMergeGateOutcome()` decides
+from those facts alone — see `worker/README.md`. That's every event in
+the table now accounted for, one way or another.
 
 ## The artifact
 
@@ -42,7 +46,7 @@ a reason to post.
 ## Additive, not a replacement — on purpose, for now
 
 `issue-build-loop`'s real Step 3 still does the label swap itself (`remove
-ready-for-ai, add generated-by-ai/ai-blocked`) exactly as before. The
+ai-ready, add ai-generated/ai-blocked`) exactly as before. The
 artifact is new output alongside it, not instead of it. This matters
 because **nothing today actually reads this artifact and acts on it** — a
 Worker + Durable Object exists now (`worker/`) and can, but nothing is
@@ -93,14 +97,15 @@ Nothing here is meant to still be additive a year from now.
   needed zero changes, since it already pushes in its own Step 4. `reduce()`
   gates on the PR's current label the same way it gates every label-event
   case, so this maps unconditionally regardless of which PR pushed.
-- **`merge_gate_failed_soft`/`merge_gate_failed_hard` are still absent,
-  correctly** — their deterministic source is a live re-check of
-  CI/approval/conflict state (the same checks `merge-flow` itself runs
-  before commenting a blocker), not something a comment can carry. Same
-  category as the CI-aggregation stub already in the file: needs a real
-  `github-ops` call from whatever ends up driving the reducer, which
-  doesn't exist yet. Building a fake artifact for these would report a
-  fact no more verifiable than the thing it's replacing.
+- **`merge_gate_failed_soft`/`merge_gate_failed_hard` correctly have no
+  artifact — their deterministic source is a live re-check** of CI/
+  review/mergeability state (the same checks `merge-flow` itself runs
+  before commenting a blocker), not something a comment could ever carry
+  as reliably. That re-check is now real, not a stub: `worker/src/
+  coordinate.ts`'s `handleCheckSuiteCompleted` + `graph/github/
+  merge-gate.ts` — see `worker/README.md`. Building a fake artifact for
+  these would have reported a fact no more verifiable than the thing it
+  was replacing, which is exactly why this path instead of that one.
 - `graph.ts`'s `release_published` rule was tagged `verifiedBy:
   "deterministic"` in the original Phase 1 audit — the underlying facts
   (merged, tagged, release created, dev synced) genuinely are, but as
@@ -158,15 +163,24 @@ yet. Tested against fixture `PostToolUse` events for both the local
 (Bash + `gh`) and cloud (GitHub MCP tool) paths, plus a real POST against
 a local stub server — see `plugins/agent-outcomes/hooks/test/run.sh`.
 
-`graph/routines/from-routine.ts` is the prototype for what would eventually
-receive that POST — it parses a "process" (heartbeat) or "completion"
-(fast-path outcome echo) signal, sharing the same outcome shape validation
-(`graph/outcomes.ts`) that `github/from-github.ts` uses for the
-comment-based path, so the two transports can't validate against two
-different ideas of what counts as a valid outcome. Nothing is actually
-listening at `AGENT_OUTCOMES_ENDPOINT` yet — that's the DO/Worker that
-doesn't exist. The hook's job today is proving the mechanism works, not
-delivering anything real.
+`graph/routines/from-routine.ts` parses a "process" (heartbeat) or
+"completion" (fast-path outcome echo) signal, sharing the same outcome
+shape validation (`graph/outcomes.ts`) that `github/from-github.ts` uses
+for the comment-based path, so the two transports can't validate against
+two different ideas of what counts as a valid outcome. **This now has a
+real receiving endpoint**: `worker/src/index.ts`'s `POST /routine-signal`
+(bearer-secret guarded via `ROUTINE_SIGNAL_SECRET`, permissive when unset
+— matching `GITHUB_WEBHOOK_SECRET`'s local-dev shape) routes to the
+matching DO, which runs `coordinate.ts`'s `coordinateRoutineSignal` —
+"process" re-schedules the watchdog alarm, "completion" cancels it early;
+neither ever calls `reduce()` or writes a label/close, exactly as this
+section specifies. Covered by unit tests across all three layers
+(`coordinate.test.ts`, `issue-coordinator.test.ts`, `index.test.ts`) —
+see `worker/README.md`. **Still not real:** `AGENT_OUTCOMES_ENDPOINT`
+has never actually been pointed at this Worker's URL, and the hook's
+POST has never been sent to or verified against it — that's a manual
+config step (plus a real deployment) that hasn't happened, and this
+whole channel remains unconfirmed against a real cloud routine.
 
 **What this doesn't fix:** the comment's JSON is still hand-typed by the
 model into a fence, which is exactly the kind of thing that can go quietly
