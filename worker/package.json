@@ -5,11 +5,11 @@
   "description": "The real receiver graph/ was always a prototype for — a Cloudflare Worker + Durable Object that imports graph/'s pure logic directly and adds the I/O (GitHub API calls, D1 log, the watchdog alarm). Not deployed anywhere; see wrangler.toml's header comment. coordinate.ts is the core dispatch logic as a dependency-injected pure function; index.ts and issue-coordinator.ts are the thin Worker/DO wiring around it — all three tested with plain vitest against fakes (no Miniflare/@cloudflare/vitest-pool-workers needed, deliberately — see README.md).",
   "type": "module",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --project unit",
+    "test:evals": "vitest run --project evals",
     "dev": "wrangler dev",
     "typecheck": "tsc --noEmit",
-    "mock-github": "node mock-github/server.mjs",
-    "eval:release": "node mock-github/run-release-evals.mjs"
+    "mock-github": "node mock-github/server.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260825.1",

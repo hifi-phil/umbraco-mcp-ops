@@ -5,7 +5,8 @@ Object that imports `graph/`'s pure logic directly and adds the I/O a real
 system needs — GitHub API calls, a D1 log, the watchdog alarm. Not
 deployed anywhere. This repo has no live Cloudflare account access; see
 `wrangler.toml`'s header comment for exactly what running this for real
-still needs (`wrangler login`, `wrangler d1 create`, three secrets).
+still needs (`wrangler login`, `wrangler d1 create`, three required secrets
+plus one optional one — see `wrangler.toml`'s header for the exact list).
 
 ## Structure — same "thin shell around tested pure logic" shape as `graph/`
 
@@ -25,7 +26,8 @@ src/
 
 ## What's actually verified, and how
 
-**59 unit tests** (`npm test`) cover `coordinate.ts` (the decision logic,
+**91 unit tests** (`npm test` — the `"unit"` vitest workspace project;
+see `vitest.workspace.ts`) cover `coordinate.ts` (the decision logic,
 against fake in-memory deps), `webhook-parse.ts` (payload mapping +
 signature verification), `github-client.ts` and `routines-client.ts`
 (against mocked `fetch`, including the `GITHUB_API_BASE_URL`/
@@ -173,9 +175,34 @@ fixes this — confirmed by re-running with and without it. Anyone reusing
 this pattern elsewhere should set it explicitly; don't assume a scripted
 `query()` call is sandboxed from the invoking repo by default.
 
-This makes a real API call — don't script it into a loop or CI without
-thinking about cost; it's for verifying skill-text fidelity by hand or
-in a deliberate, occasional check.
+This makes a real API call — don't run it on every PR or without thinking
+about cost. It **is** scripted into CI, deliberately scoped: see the next
+section for how and when.
+
+## The same four scenarios, as real vitest tests, release-gated
+
+The curl-driven walkthrough above is for verifying skill-text fidelity by
+hand. The same underlying call (`runLoopOutcome`) is also a real,
+standardised vitest suite — `test/evals/outcome-reporting.eval.test.mjs`,
+one `it()` per scenario, `describe`/`it`/`expect` like every other test in
+this repo, not a hand-rolled script. It lives in its own **vitest
+workspace project** (`vitest.workspace.ts`, project `"evals"`), separate
+from the normal `"unit"` project everything else runs in:
+
+```bash
+npm test        # "unit" project only — fast, free, deterministic, CI-blocking on every PR
+npm run test:evals  # "evals" project — real Agent SDK calls, ~$2.50-3/run, ~70s
+```
+
+`npm test` never touches the evals project — it's a distinct workspace
+project, not a file-name convention `npm test` happens to skip. CI wires
+the two at different cadences: `worker-tests.yml` runs `npm test` on
+every PR/push touching `worker/**` or `graph/**`; `worker-agent-evals.yml`
+runs `npm run test:evals` only when a GitHub Release publishes (see
+`CLAUDE.md`'s Releases section) — same one-framework, two-speeds split the
+MCP product repos use for their own eval suites, not a bespoke system.
+Needs `ANTHROPIC_API_KEY` provisioned as a secret before it can run for
+real in CI — not done as of this writing.
 
 **Second gotcha, real but mundane:** `.dev.vars.example`'s
 `ROUTINE_IDS_JSON` originally only had an entry for `issue-build-loop`.
