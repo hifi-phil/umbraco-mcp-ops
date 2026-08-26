@@ -1,11 +1,21 @@
 name: worker tests
 
-# worker/'s 166 unit tests (coordinate.ts, issue-coordinator.ts, index.ts,
-# github-client.ts, webhook-parse.ts, routines-client.ts, plus graph/'s
-# own suite) had zero CI enforcement before this — nothing stopped a PR
-# from breaking them. Deterministic and free (no LLM calls; that's the
-# separate worker-agent-evals.yml, gated on a release instead). See
-# worker/README.md and CLAUDE.md.
+# worker/'s 91 unit tests + graph/'s own 75 (coordinate.ts,
+# issue-coordinator.ts, index.ts, github-client.ts, webhook-parse.ts,
+# routines-client.ts, graph.ts, from-github.ts/to-github.ts, merge-gate.ts,
+# from-routine.ts, outcomes.ts) had zero CI enforcement before this —
+# nothing stopped a PR from breaking them. Deterministic and free (no LLM
+# calls; that's the separate worker-agent-evals.yml, gated on a release
+# instead). See worker/README.md and CLAUDE.md.
+#
+# graph/ is installed and tested here too, not just worker/ — two real
+# reasons, not just thoroughness: (1) it's its own package with its own
+# test suite that otherwise runs nowhere in CI, and (2) worker/'s own
+# `tsc --noEmit` typechecks graph/**/*.ts as part of the SAME tsconfig
+# (worker/src imports graph/ directly), which sweeps in graph/*.test.ts's
+# `import "vitest"` too — that only resolves if graph/'s own node_modules
+# exists. Skipping graph/'s install here isn't just missing its tests,
+# it silently breaks worker's own typecheck step.
 
 on:
   pull_request:
@@ -29,14 +39,22 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install
+      - name: Install graph/
+        working-directory: graph
+        run: npm ci
+
+      - name: Test graph/
+        working-directory: graph
+        run: npm test
+
+      - name: Install worker/
         working-directory: worker
         run: npm ci
 
-      - name: Test
+      - name: Test worker/
         working-directory: worker
         run: npm test
 
-      - name: Typecheck
+      - name: Typecheck worker/ (covers graph/**/*.ts too, same tsconfig)
         working-directory: worker
         run: npm run typecheck
