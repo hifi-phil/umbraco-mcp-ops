@@ -15,11 +15,23 @@ name: worker agent evals
 # is here for the same reason mcp-issue-loop-analyzer-eval.yml has one:
 # a manual way to verify this actually runs correctly in CI (Node version,
 # npm ci/lockfile, secret injection) without waiting for a real release.
+#
+# TEMPORARY: pull_request is added below ONLY to verify this runs for
+# real on PR #98 (pull_request-triggered workflows use the workflow file
+# from the PR's own head branch, unlike workflow_dispatch/release, which
+# need it on the default branch — that's why workflow_dispatch alone
+# couldn't be dispatched from this branch). Remove this trigger once
+# confirmed — this makes real, billed Anthropic API calls, and the whole
+# point of gating Tier 2 to release is to NOT run it on every PR push.
 
 on:
   release:
     types: [published]
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'worker/**'
+      - '.github/workflows/worker-agent-evals.yml'
 
 jobs:
   agent-evals:
