@@ -1,0 +1,38 @@
+name: worker agent evals
+
+# Tier 2 from the black-box-harness discussion: real Agent SDK calls
+# against every cataloged outcome-reporting step (see
+# worker/mock-github/run-release-evals.mjs), non-deterministic and
+# ~$2.50-3/run — deliberately NOT run on every PR (that's
+# worker-tests.yml, free and deterministic). Fires only when a GitHub
+# Release actually publishes, same cadence as the MCP product repos'
+# eval suites. Reports pass/fail via this workflow's own check — doesn't
+# gate anything, since the release already happened by the time this runs.
+#
+# Needs the ANTHROPIC_API_KEY repo secret. Not set yet as of this
+# workflow's addition — see CLAUDE.md's Releases section; provisioning it
+# is a separate, explicit step before this can run for real.
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  agent-evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        working-directory: worker
+        run: npm ci
+
+      - name: Run outcome-reporting evals
+        working-directory: worker
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: npm run eval:release

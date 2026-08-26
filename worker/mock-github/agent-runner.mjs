@@ -294,6 +294,12 @@ export async function runLoopOutcome({ routine, owner, repo, issueNumber, scenar
     toolCalls,
     resultSubtype: finalResult?.subtype ?? null,
     resultText: finalResult?.result ?? null,
+    // The SDK's own cost accounting (an estimate, not a billing statement —
+    // see SDKResultSuccess's doc comment) — surfaced so a caller (a CI
+    // eval-suite runner, a cost-report script) doesn't have to re-derive it.
+    costUsd: finalResult?.total_cost_usd ?? null,
+    durationMs: finalResult?.duration_ms ?? null,
+    usage: finalResult?.usage ?? null,
     finalIssueState: { labels: [...issue.labels], state: issue.state, comments: issue.comments },
     checks: config.checks(toolCalls, { ...issue, number: issueNumber }),
   };

@@ -1,0 +1,42 @@
+name: worker tests
+
+# worker/'s 166 unit tests (coordinate.ts, issue-coordinator.ts, index.ts,
+# github-client.ts, webhook-parse.ts, routines-client.ts, plus graph/'s
+# own suite) had zero CI enforcement before this — nothing stopped a PR
+# from breaking them. Deterministic and free (no LLM calls; that's the
+# separate worker-agent-evals.yml, gated on a release instead). See
+# worker/README.md and CLAUDE.md.
+
+on:
+  pull_request:
+    paths:
+      - 'worker/**'
+      - 'graph/**'
+      - '.github/workflows/worker-tests.yml'
+  push:
+    branches: [main, dev]
+    paths:
+      - 'worker/**'
+      - 'graph/**'
+
+jobs:
+  worker-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        working-directory: worker
+        run: npm ci
+
+      - name: Test
+        working-directory: worker
+        run: npm test
+
+      - name: Typecheck
+        working-directory: worker
+        run: npm run typecheck
