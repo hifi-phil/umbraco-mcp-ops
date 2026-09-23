@@ -244,5 +244,6 @@ the prompt — Step 1 takes named repos first.
 
 The skill must be present in the cloud environment — keep `open-work-report` (and
 `github-ops`) in the `SKILLS` list of
-[`cloud-skill-sync`](../../../../scripts/cloud-skill-sync/cloud-skill-sync.sh), and bump that
-script's `VERSION` after changing this skill so the env cache rebuilds.
+[`cloud-skill-sync`](../../../../scripts/cloud-skill-sync/cloud-skill-sync.sh), and after changing this
+skill bump the `rebuild:` number in the env's pasted
+[`env-setup-stub.sh`](../../../../scripts/cloud-skill-sync/env-setup-stub.sh) so the env cache rebuilds.
