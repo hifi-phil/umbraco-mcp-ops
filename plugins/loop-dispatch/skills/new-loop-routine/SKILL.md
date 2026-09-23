@@ -23,7 +23,7 @@ non-matching events (a Dependabot `dependencies` label) cost nothing.
 
 | Field | Value |
 |---|---|
-| `environment_id` | your ops cloud env — the one running the `cloud-skill-sync` setup script (from `/schedule`; account-specific, not written here). |
+| `environment_id` | your ops cloud env — the one whose Setup script is the `env-setup-stub.sh` stub (from `/schedule`; account-specific, not written here). |
 | `model` | `claude-sonnet-5` — the dispatcher base; the loops pick their own subagent tier. |
 | `allowed_tools` | `["Bash","Read","Write","Edit","Glob","Grep","Skill","Task"]`. |
 | `sources` | the target repo, e.g. `https://github.com/umbraco/<repo>`. |
@@ -43,7 +43,7 @@ Never use `fable`. Never put secrets in the prompt or config.
    `ai-discuss` (see `self-learning-system.md`'s "Setup § 2. Labels"); `auto-release` and
    `release-blocked` are `auto-release-loop`'s own (see that skill's `SKILL.md`).
 2. **Skills reach the env** — `loop-dispatch` (and the loops) are in the
-   `cloud-skill-sync` `SKILLS` list and the env has been rebuilt (bump `VERSION`, re-paste).
+   `cloud-skill-sync` `SKILLS` list and the env has been rebuilt (bump `rebuild:` in the pasted stub, re-save).
 3. **Org Actions policy** allows calling a reusable workflow from `hifi-phil/umbraco-mcp-ops`
    (if the org restricts actions to "selected", allowlist it).
 

@@ -140,10 +140,11 @@ the plugin is on disk). Cloud sessions/routines don't read your machine's plugin
 ### 1b. Cloud / web delivery — the `cloud-skill-sync` setup script
 
 Cloud routines load skills from the session's skills dir. Deliver them there with the
-[`cloud-skill-sync`](../scripts/cloud-skill-sync/) **environment setup script**: paste
-[`scripts/cloud-skill-sync/cloud-skill-sync.sh`](../scripts/cloud-skill-sync/cloud-skill-sync.sh)
-into the cloud environment's **Setup script** field. On build it clones this (public)
-repo and copies the listed skills into `$HOME/.claude/skills` **and every plugin agent
+[`cloud-skill-sync`](../scripts/cloud-skill-sync/) **environment setup scripts**: paste
+only the stub [`scripts/cloud-skill-sync/env-setup-stub.sh`](../scripts/cloud-skill-sync/env-setup-stub.sh)
+into the cloud environment's **Setup script** field (Full network access; `PROVIDER` =
+`sqlserver` or `sqlite`). On build the stub clones this (public) repo and runs
+`env-setup.sh`, which calls `cloud-skill-sync.sh` to copy the listed skills into `$HOME/.claude/skills` **and every plugin agent
 (e.g. `release-reviewer`) into `$HOME/.claude/agents`**, so any routine in that
 environment can invoke the skills and spawn the agents.
 
@@ -153,8 +154,8 @@ environment can invoke the skills and spawn the agents.
 - Include at least **`github-ops`** (every loop references it by name) plus whichever
   loops you want in cloud — e.g. **`loop-dispatch`** (the front-door router),
   **`triage-learnings`**, **`merge-flow`**, **`rework-loop`**, **`issue-build-loop`**,
-  **`issue-discuss-loop`**, **`open-work-report`**, **`branch-housekeeping`** (edit the
-  script's `SKILLS` list; `loop-dispatch` is already listed).
+  **`issue-discuss-loop`**, **`open-work-report`**, **`branch-housekeeping`** (edit
+  `cloud-skill-sync.sh`'s `SKILLS` list; `loop-dispatch` is already listed).
   (**`dependabot-rollup` is local-only** — the Claude GitHub App can't read Dependabot
   alerts, so it can't run as a cloud routine. **`branch-housekeeping`'s report runs in cloud,
   but its `/clean-branches` command does not** — `commands/` aren't copied to the env, which is
@@ -165,7 +166,7 @@ environment can invoke the skills and spawn the agents.
   script always looks for the `self-learning` plugin in the cloned repo and wires its
   hooks into `settings.json` regardless of which loop skills this particular environment
   lists, since capture should apply to whatever loop actually runs there.
-- **Refresh after a skill change:** bump `VERSION` in the script and re-save (the env
+- **Refresh after a skill change:** bump the `rebuild:` number in the pasted stub and re-save (the env
   snapshot is cached ~7 days; changing the source repo alone doesn't bust it). The repo
   stays the source of truth.
 
@@ -298,8 +299,8 @@ not on a cron. Every web routine does its GitHub work via the GitHub MCP server 
 `github-ops`) — there are no exceptions left.
 
 Wiring a cloud routine is two steps: (1) ensure the environment's **setup script**
-delivers the skills it needs — the [`cloud-skill-sync`](../scripts/cloud-skill-sync/)
-script, with at least `github-ops` plus the loop's own skill in its `SKILLS` list (§1b);
+delivers the skills it needs — the [`env-setup-stub.sh`](../scripts/cloud-skill-sync/env-setup-stub.sh)
+stub, with `cloud-skill-sync.sh` at least `github-ops` plus the loop's own skill in its `SKILLS` list (§1b);
 (2) **create the routine** pointing at the target repo with a prompt that invokes the
 skill, e.g. `Run /merge-flow` for the merge loop. Cloud runs off the
 skills delivered by the setup script, not `/plugin install`. (`dependabot-rollup` is the

@@ -12,6 +12,9 @@
 #   sqlserver  CI-parity env: also installs Docker + caches the mssql:2022 image (~2.3 GB)
 #              so sessions can run Umbraco on SQL Server exactly as GH Actions does.
 #
+# ENVIRONMENT: give it a descriptive name (e.g. "loads mcp-ops-skills", not "Default") and
+# **Full** network access — the build pulls the .NET SDK and the mssql image.
+#
 # FORCE A REBUILD: bump the `rebuild:` number and re-save. The env snapshot is cached and
 # only busts when THIS field's text changes — a stub that always pulls `main` won't rebuild
 # itself when the repo script changes. Bump the number to re-pull.
@@ -19,7 +22,7 @@
 # NOTE: owner is `hifi-phil` until the repo moves to the `umbraco` org (ops #40); after the
 #       move, change the clone URL to umbraco/umbraco-mcp-ops.
 set -e
-PROVIDER=sqlite          # <-- set to `sqlserver` for the CI-parity environment
+PROVIDER=sqlserver       # <-- or `sqlite` for the lean environment
 # rebuild: 1
 rm -rf /tmp/ops-boot
 git clone --depth 1 https://github.com/hifi-phil/umbraco-mcp-ops /tmp/ops-boot

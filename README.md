@@ -63,7 +63,7 @@ this public repo anonymously.
 
 | Script | What it does |
 |--------|--------------|
-| [`cloud-skill-sync`](scripts/cloud-skill-sync/) | Cloud-environment **setup script**: clones this (public) repo and copies the ops skills into the session skills dir, so cloud routines can invoke them. See [Running skills in cloud routines](#running-skills-in-cloud-routines). |
+| [`cloud-skill-sync`](scripts/cloud-skill-sync/) | Cloud-environment **setup scripts**: paste `env-setup-stub.sh` into the env's Setup field; it clones this (public) repo and runs `env-setup.sh`, which copies the ops skills into the session skills dir (via `cloud-skill-sync.sh`) so cloud routines can invoke them. See [Running skills in cloud routines](#running-skills-in-cloud-routines). |
 
 ## Plugins (Claude Code marketplace)
 
@@ -108,14 +108,20 @@ skills there without committing them into every target repo or uploading them by
 use the [`cloud-skill-sync`](scripts/cloud-skill-sync/) **environment setup script**:
 
 1. Open the cloud environment your routine uses (Claude Code on the web → environment
-   settings) and paste [`scripts/cloud-skill-sync/cloud-skill-sync.sh`](scripts/cloud-skill-sync/cloud-skill-sync.sh)
-   into its **Setup script** field.
-2. On the next build it clones this (public) repo and copies the listed skills into
-   `$HOME/.claude/skills`; routines in that environment can then invoke them.
+   settings), give it **Full** network access, and paste **only** the stub
+   [`scripts/cloud-skill-sync/env-setup-stub.sh`](scripts/cloud-skill-sync/env-setup-stub.sh)
+   into its **Setup script** field (set `PROVIDER` to `sqlserver` or `sqlite`). Don't paste
+   `cloud-skill-sync.sh` itself.
+2. On the next build the stub clones this (public) repo and runs
+   [`env-setup.sh`](scripts/cloud-skill-sync/env-setup.sh), which runs `cloud-skill-sync.sh`
+   to copy the listed skills into `$HOME/.claude/skills`, then installs the .NET SDK (and,
+   for `sqlserver`, Docker + the mssql image). Routines in that environment can then
+   invoke the skills.
 
 No per-repo marketplace marker, no token, no manual upload — the public clone is
 anonymous, so the runner's egress proxy stays free for the routine's own GitHub work.
 `github-ops` is the shared dependency every loop references by name, so keep it in the
-script's `SKILLS` list. After changing a skill, bump `VERSION` in the script to force a
-re-clone (the env snapshot is otherwise cached ~7 days). See
+`SKILLS` list in `cloud-skill-sync.sh`. After changing a skill, bump the `rebuild:` number
+in the env's pasted stub and re-save to force a re-clone (the env snapshot is otherwise
+cached ~7 days, and merging to this repo doesn't bust it). See
 [`docs/self-learning-system.md`](docs/self-learning-system.md) for the full setup.

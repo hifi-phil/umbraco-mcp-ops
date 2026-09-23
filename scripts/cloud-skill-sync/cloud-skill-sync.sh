@@ -1,9 +1,10 @@
 #!/bin/bash
 # cloud-skill-sync — deliver the Umbraco MCP ops skills AND agents to a Claude Code cloud env.
 #
-# Paste this into a cloud environment's **Setup script** field (Claude Code on the web →
-# environment settings). It runs once when the environment builds, BEFORE the session
-# starts, clones the PUBLIC umbraco-mcp-ops repo, and copies:
+# Do NOT paste this into the Setup script field — paste env-setup-stub.sh instead. The stub
+# clones this repo and runs env-setup.sh, which calls this script (step 1) with OPS_SRC set
+# to that checkout. It runs once when the environment builds, BEFORE the session starts,
+# and copies:
 #   - the listed skills             → the session skills dir  ($HOME/.claude/skills)
 #   - every plugin agent definition → the session agents dir  ($HOME/.claude/agents)
 #   - Anthropic's pr-review-toolkit code-review agents (used by mcp-review), fetched at a
@@ -21,15 +22,15 @@
 #
 # github-ops is the shared dependency every loop references by name, so keep it listed.
 #
-# Refreshing: the environment snapshot is cached (~7 days); making the source repo change
-# does NOT bust the cache — only editing this script (or the env's allowed hosts) does.
-# Bump VERSION below and re-save to force a re-clone after a skill/agent changes.
+# Refreshing: the environment snapshot is cached (~7 days) and only busts when the Setup
+# script field's text (or the env's allowed hosts) changes — merging a skill/agent change
+# here does NOT. Bump the `rebuild:` number in the env's pasted stub and re-save.
 #
 # Debugging: the run log is written to $HOME/skill-sync.log (readable from inside the
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="25"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="25"                                  # log marker only — the cache-bust is `rebuild:` in the stub
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
