@@ -43,10 +43,11 @@ Auth is the MCP server's connected GitHub App — no token to paste. Mirror of
 
 > **Dependabot security PRs are raised against the repo's default branch**, always — `target-branch` in `dependabot.yml` redirects only the scheduled *version* updates. In a `dev` + `main` repo the two kinds therefore sit on different branches, so read each PR's base rather than assuming an integration branch like `dev`.
 
-## Branches & files (for a content PR — no clone)
+## Branches & files (only when there's no clone)
 
-On the web there's **no working tree** — create the branch and push file contents
-straight through the API:
+**Check for a working tree first** (`git rev-parse --show-toplevel`). Web sessions and
+routines usually have one, and then local edits plus native tooling win. See "File edits"
+in `SKILL.md`. Use these tools only when there's no clone, or for small files:
 
 | Operation | Tool |
 |-----------|------|
@@ -81,5 +82,7 @@ Defer to `release-and-branching` for gitflow vs main-only. To inspect: `list_bra
   merged branches at merge time; or leave the branch for the weekly local
   `branch-housekeeping` run, whose `reap.sh` deletes it with `gh`. Either way, a cloud
   routine leaving a merged branch behind is expected, not a bug.
-- **No `git`/`gh` fallback:** don't shell out to `gh` or `git push` here — they're not
-  installed / not authenticated. Everything is `mcp__github__*`.
+- **No `gh`:** `gh` isn't installed here, so GitHub *API* operations (issues, PRs,
+  merges, CI) all go through `mcp__github__*`. **`git` is separate:** if a clone exists,
+  local git works for edits and commits. Try `git push`, and fall back to `push_files`
+  only if the push is refused.
