@@ -1,0 +1,6 @@
+# State holds every secret in plain text. Never commit it.
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+crash.log

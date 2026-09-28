@@ -104,6 +104,29 @@
       ]
     },
     {
+      "name": "agent-outcomes",
+      "source": "./plugins/agent-outcomes",
+      "description": "Shared skill for writing the structured outcome artifact a loop appends to a comment it already posts, so the agent-orchestration reducer prototype (graph/github/from-github.ts) can eventually read what happened without relying on a self-swapped label as the only signal. One marker format, one growing catalog of outcome shapes; loop plugins point here instead of each inventing their own. Always additive — never a replacement for the loop's existing load-bearing action until something real is deployed to own that instead. Bundles a PostToolUse hook that fires automatically when a loop posts the artifact and forwards it on a fast, non-authoritative path — the GitHub write stays the only authoritative signal.",
+      "version": "1.1.0",
+      "category": "workflow",
+      "author": {
+        "name": "Phil W",
+        "email": "pjw@umbraco.com",
+        "url": "https://github.com/hifi-phil"
+      },
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/agent-outcomes",
+      "keywords": [
+        "agent-orchestration",
+        "outcome",
+        "reducer",
+        "state-machine",
+        "reference",
+        "hooks",
+        "post-tool-use",
+        "workflow"
+      ]
+    },
+    {
       "name": "github-ops",
       "source": "./plugins/github-ops",
       "description": "Shared reference for GitHub operations in both environments — gh CLI + git locally, the GitHub MCP server (mcp__github__*) on Claude web / in routines. One operation catalog, two reference files; the loop plugins point here instead of each re-explaining the dual path.",

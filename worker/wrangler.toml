@@ -1,0 +1,30 @@
+name = "agent-orchestration-worker"
+main = "src/index.ts"
+compatibility_date = "2026-08-25"
+compatibility_flags = ["nodejs_compat"]
+
+# Local dev (`wrangler dev`) and bundling (`npm run build`) only. Real
+# deploys go through terraform/ (OpenTofu), which creates the D1 database,
+# Worker, secrets and GitHub webhook, and removes them all on
+# `tofu destroy`. See README.md's "Deploying". The database_id below stays
+# a placeholder: tofu binds the real one itself, and a personal account's
+# id doesn't belong in this public repo.
+
+[vars]
+# Phase 3 shadow mode: decide + log to D1, write nothing to GitHub, fire
+# nothing. Only the exact string "enforce" turns writes on — see
+# src/coordinate.ts's resolveMode.
+MODE = "shadow"
+
+[[durable_objects.bindings]]
+name = "ISSUE_COORDINATOR"
+class_name = "IssueCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["IssueCoordinator"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "agent-orchestration-log"
+database_id = "REPLACE_ME_AFTER_WRANGLER_D1_CREATE"

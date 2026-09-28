@@ -1,0 +1,50 @@
+# Tags + publishes a GitHub Release when worker/'s version changes on
+# main. Copied from
+# plugins/release-flow/skills/release-and-branching/assets/release-tag.yml
+# with one adjustment: reads worker/package.json (the one versioned
+# artifact in this repo — see CLAUDE.md), not a root package.json.
+#
+# Idempotent: computes v<version> from the manifest and skips if that tag
+# already exists, so it only actually tags + releases when the version is
+# bumped (i.e. once per real release, via auto-release-loop's Step 1 bump
+# or a manual one).
+
+name: release-tag
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write # push tags + create releases
+
+jobs:
+  tag-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so we can see whether the tag already exists
+
+      - name: Read version
+        id: v
+        run: echo "version=$(node -p "require('./worker/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether tag already exists
+        id: check
+        run: |
+          if git rev-parse "v${{ steps.v.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create tag + GitHub Release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="v${{ steps.v.outputs.version }}"
+          git tag "$VERSION"
+          git push origin "$VERSION"
+          gh release create "$VERSION" --title "$VERSION" --generate-notes
