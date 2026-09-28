@@ -8,6 +8,8 @@ import {
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
   deriveState,
+  resolveMode,
+  shadowDeps,
   type CoordinateInput,
   type Deps,
   type PendingFire,
@@ -82,6 +84,34 @@ describe("deriveState", () => {
 
   it("more than one tracked label -> ambiguous", () => {
     expect(deriveState([LABELS.AI_READY, LABELS.AI_DISCUSSING])).toBe("ambiguous");
+  });
+});
+
+describe("resolveMode — fails safe to shadow", () => {
+  it('only the exact string "enforce" enforces', () => {
+    expect(resolveMode("enforce")).toBe("enforce");
+    for (const raw of [undefined, "", "shadow", "enforced", "ENFORCE", " enforce"]) {
+      expect(resolveMode(raw), `MODE=${JSON.stringify(raw)}`).toBe("shadow");
+    }
+  });
+});
+
+describe("shadowDeps", () => {
+  it("runs the same decision path but reaches none of the write deps", async () => {
+    const deps = fakeDeps();
+    const result = await coordinateWebhook(
+      shadowDeps(deps),
+      input({
+        payload: { action: "issues.labeled", label: { name: LABELS.AI_READY }, sender: { login: "phil", type: "User" } },
+      }),
+    );
+
+    expect(result.outcome).toBe("applied");
+    for (const write of ["addLabel", "removeLabel", "closeIssue", "commentOnIssue", "fireRoutine"] as const) {
+      expect(deps[write], write).not.toHaveBeenCalled();
+    }
+    expect(deps.logTransition).toHaveBeenCalledTimes(1);
+    expect(deps.setPendingFire).toHaveBeenCalledTimes(1);
   });
 });
 

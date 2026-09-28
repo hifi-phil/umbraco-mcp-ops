@@ -25,7 +25,10 @@ import {
   coordinateWebhook,
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
+  resolveMode,
+  shadowDeps,
   type CoordinateInput,
+  type Deps,
   type PendingFire,
   type RoutineSignalInput,
 } from "./coordinate";
@@ -38,6 +41,9 @@ import type { MergeGateFacts } from "../../graph/github/merge-gate";
 export type IssueCoordinatorEnv = GitHubEnv &
   RoutinesEnv & {
     DB: D1Database;
+    // "enforce" to write labels / fire routines for real; anything else
+    // (including unset) is shadow — see coordinate.ts's resolveMode.
+    MODE?: string;
   };
 
 const PENDING_FIRE_KEY = "pendingFire";
@@ -83,7 +89,16 @@ export class IssueCoordinator {
     await coordinateWatchdogExpired(this.deps());
   }
 
-  private deps() {
+  private get mode() {
+    return resolveMode(this.env.MODE);
+  }
+
+  private deps(): Deps {
+    const real = this.realDeps();
+    return this.mode === "enforce" ? real : shadowDeps(real);
+  }
+
+  private realDeps(): Deps {
     return {
       getLabels: (owner: string, repo: string, issueNumber: number) =>
         githubClient.getLabels(this.env, owner, repo, issueNumber),
@@ -144,8 +159,8 @@ export class IssueCoordinator {
   }): Promise<void> {
     await this.env.DB.prepare(
       `INSERT INTO transitions
-         (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         null, // delivery_id isn't threaded through to the log row today — see README's known gaps
@@ -157,6 +172,7 @@ export class IssueCoordinator {
         row.toEffect,
         row.run,
         row.droppedReason,
+        this.mode,
       )
       .run();
   }

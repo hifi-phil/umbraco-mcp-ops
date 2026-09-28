@@ -13,6 +13,12 @@ compatibility_flags = ["nodejs_compat"]
 # direct routine-to-DO heartbeat channel; see src/coordinate.ts's
 # coordinateRoutineSignal) — never in this file or committed anywhere.
 
+[vars]
+# Phase 3 shadow mode: decide + log to D1, write nothing to GitHub, fire
+# nothing. Only the exact string "enforce" turns writes on — see
+# src/coordinate.ts's resolveMode.
+MODE = "shadow"
+
 [[durable_objects.bindings]]
 name = "ISSUE_COORDINATOR"
 class_name = "IssueCoordinator"

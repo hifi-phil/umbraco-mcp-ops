@@ -72,6 +72,34 @@ export type Deps = {
   getMergeGateFacts(owner: string, repo: string, prNumber: number): Promise<MergeGateFacts>;
 };
 
+/**
+ * Phase 3 (07-build-phases.md): "shadow" runs the exact same decision path
+ * but turns every GitHub/routines write into a no-op, so the only lasting
+ * effect is the D1 row saying what the reducer *would* have done. Reads
+ * (labels, merge-gate facts) and DO-internal storage (dedupe, pendingFire)
+ * stay real, so the watchdog still measures whether the routine the
+ * existing dispatch fired actually reports back. Anything other than
+ * exactly "enforce" means shadow: a missing or typo'd MODE must never
+ * start writing labels next to loops that still swap their own.
+ */
+export type Mode = "shadow" | "enforce";
+
+export function resolveMode(raw: string | undefined): Mode {
+  return raw === "enforce" ? "enforce" : "shadow";
+}
+
+export function shadowDeps(deps: Deps): Deps {
+  const skip = async () => {};
+  return {
+    ...deps,
+    addLabel: skip,
+    removeLabel: skip,
+    closeIssue: skip,
+    commentOnIssue: skip,
+    fireRoutine: skip,
+  };
+}
+
 /** How long a watched routine gets to report an outcome (or a heartbeat,
  * which re-arms it) before the watchdog moves the issue to ai-stuck. */
 export const WATCHDOG_MINUTES = 30;

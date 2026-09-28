@@ -115,7 +115,13 @@
   `release_published`'s shape, each firing an idempotent `noop` confirm.
   See `graph/graph.ts`'s comments on each rule and `worker/README.md`'s
   "black-box shape" section for how the inconsistency was found.
-- **`worker/`'s `coordinateWebhook()` has no shadow-mode toggle.** It was
+- ~~**`worker/`'s `coordinateWebhook()` has no shadow-mode toggle.**~~ —
+  **resolved** (28-09-2026): `MODE` var, shadow by default, see
+  [07-build-phases.md](07-build-phases.md)'s Phase 3 status. **New,
+  smaller follow-up:** `MODE` is all-or-nothing, but Phase 4 wants to
+  enforce one transition at a time. Decide whether that's a per-event
+  allowlist or something else once the shadow run-throughs show which
+  transition is cleanest. Original note: it was
   built as Phase 4's real enforcement mechanism (unconditional label
   writes + routine fire), not Phase 3's observe-only one — see
   [07-build-phases.md](07-build-phases.md)'s Phase 3/4 status notes. A

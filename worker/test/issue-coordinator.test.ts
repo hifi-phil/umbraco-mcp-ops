@@ -63,6 +63,9 @@ function fakeEnv(overrides: Partial<IssueCoordinatorEnv> = {}): IssueCoordinator
       "merge-flow": "rt_merge",
     }),
     DB: fakeDb().db,
+    // Explicit, because unset means shadow — these tests are about the
+    // enforced write path; shadow mode has its own describe block below.
+    MODE: "enforce",
     ...overrides,
   };
 }
@@ -169,6 +172,7 @@ describe("IssueCoordinator.fetch()", () => {
       JSON.stringify({ kind: "label", value: "ai-ready" }),
       "issue-build-loop",
       null,
+      "enforce",
     ]);
     // rule.run is set -> setPendingFire -> a real watchdog alarm scheduled
     expect(setAlarm).toHaveBeenCalledTimes(1);
@@ -244,6 +248,55 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
     await coordinator.alarm();
 
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("IssueCoordinator — shadow mode (Phase 3)", () => {
+  const writes = (apiFetch: ReturnType<typeof fakeApiFetch>) =>
+    apiFetch.mock.calls.filter(([, init]) => ((init as RequestInit)?.method ?? "GET") !== "GET");
+
+  it.each([undefined, "shadow", "enforced", "ENFORCE"])(
+    "MODE=%s is shadow: decides and logs, but writes nothing to GitHub and fires nothing",
+    async (mode) => {
+      const apiFetch = fakeApiFetch();
+      vi.stubGlobal("fetch", apiFetch);
+      const { ctx, setAlarm } = fakeCtx();
+      const { db, inserted } = fakeDb();
+      const coordinator = new IssueCoordinator(ctx, fakeEnv({ DB: db, MODE: mode }));
+
+      const result = (await (await coordinator.fetch(fetchRequest(labeledInput()))).json()) as { outcome: string };
+
+      expect(result.outcome).toBe("applied");
+      expect(writes(apiFetch)).toEqual([]);
+      expect(inserted).toHaveLength(1);
+      expect(inserted[0]).toEqual(
+        expect.arrayContaining(["none", "labelled_ai_ready", "issue-build-loop", "shadow"]),
+      );
+      // The watchdog still arms: it's measuring whether the routine the
+      // existing dispatch fired reports back, which is shadow data too.
+      expect(setAlarm).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("watchdog expiry in shadow: no comment, no label swap, still logs watchdog_expired and clears pendingFire", async () => {
+    const apiFetch = fakeApiFetch({ labels: ["ai-ready"] });
+    vi.stubGlobal("fetch", apiFetch);
+    const { ctx, storage } = fakeCtx();
+    const { db, inserted } = fakeDb();
+    await storage.put("pendingFire", {
+      owner: "hifi-phil",
+      repo: "umbraco-mcp-ops",
+      issueNumber: 412,
+      run: "issue-build-loop",
+    });
+    const coordinator = new IssueCoordinator(ctx, fakeEnv({ DB: db, MODE: "shadow" }));
+
+    await coordinator.alarm();
+
+    expect(writes(apiFetch)).toEqual([]);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toEqual(expect.arrayContaining(["ai-ready", "watchdog_expired", "shadow"]));
+    expect(await storage.get("pendingFire")).toBeUndefined();
   });
 });
 
