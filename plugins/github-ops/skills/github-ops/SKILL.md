@@ -88,5 +88,17 @@ These are policy, not mechanism — they apply whichever reference you use:
 - **Never force-push; never edit a protected branch directly.**
 - Branch model / base branch is **detected via `release-and-branching`**, not assumed.
 
-**MCP/web only:** no local clone — create the branch and push file contents through the
-MCP server; you don't have a working tree (locally you do — see `gh-cli.md`).
+## File edits: check for a working tree first
+
+"No `gh`" does **not** mean "no clone". Claude web sessions and routines usually start
+inside a checked-out clone with node/npm installed. Before editing repo files, run
+`git rev-parse --show-toplevel` (or `git status`) to check.
+
+- **Working tree exists (on either path):** edit locally and use the native tooling
+  (`npm version`, `npm install --package-lock-only`, formatters, tests). Commit and
+  `git push` from there. If the push is refused (no auth), push the edited files with
+  the MCP `push_files` tool instead.
+- **No working tree:** use the MCP content API (`get_file_contents` /
+  `create_or_update_file` / `push_files`). This only works for small files. A token-limit
+  error on `get_file_contents` (lockfiles, generated code) means stop and re-check the
+  environment. Don't hand-edit the error's saved output.
