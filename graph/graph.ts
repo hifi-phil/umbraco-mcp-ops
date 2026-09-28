@@ -162,7 +162,97 @@ export const rules: Rule[] = [
     to: close, // idempotent: merge-flow's own merge call already closes the PR natively; this just confirms it
     verifiedBy: "deterministic",
   },
+
+  // --- the watchdog: a fired routine that never reported back ---
+  // 03-components.md §3.4: "Alarm fires instead, the agent died — move to
+  // state:stuck." Keyed on every state a watched routine can leave the issue
+  // in: the in-flight label itself, plus the post-swap ai-generated /
+  // ai-blocked for a build that swapped its label but never posted its
+  // outcome comment. The table doubles as the watch list — coordinate.ts
+  // only arms the watchdog for a fired routine whose target state has a
+  // watchdog_expired rule here, so ai-discussing (issue-discuss-loop posts
+  // no outcome artifact, ever) is deliberately absent rather than raising a
+  // false alarm on every discussion.
+  ...(
+    [
+      LABELS.AI_READY,
+      LABELS.AI_GENERATED,
+      LABELS.AI_BLOCKED,
+      LABELS.AUTO_RELEASING,
+      LABELS.AUTO_REWORKING,
+      LABELS.AUTO_MERGING,
+    ] as const
+  ).map(
+    (from): Rule => ({
+      from,
+      on: EVENTS.WATCHDOG_EXPIRED,
+      to: label(LABELS.AI_STUCK),
+      // The DO observed this itself: no outcome for the attempt it fired,
+      // within the window. Not a guess about *why* — only that it didn't
+      // arrive, which is all this transition claims.
+      verifiedBy: "deterministic",
+    }),
+  ),
+
+  // --- leaving ai-stuck ---
+  // Two ways out. (1) A late outcome: the routine was slow, not dead, and
+  // its authoritative outcome still wins — same verifiedBy as the normal
+  // rule for that outcome. The routine's own label swap will usually have
+  // landed first, leaving e.g. ai-stuck + ai-generated together;
+  // coordinate.ts's deriveState() reads that specific pair as ai-stuck, and
+  // labelOps() then just removes ai-stuck. (2) A human retry: re-adding the
+  // trigger label on a stuck issue re-fires its loop, exactly as from "none".
+  {
+    from: LABELS.AI_STUCK,
+    on: EVENTS.BUILD_SUCCEEDED,
+    to: label(LABELS.AI_GENERATED),
+    verifiedBy: "external-judgment",
+  },
+  {
+    from: LABELS.AI_STUCK,
+    on: EVENTS.BUILD_BLOCKED,
+    to: label(LABELS.AI_BLOCKED),
+    verifiedBy: "external-judgment",
+  },
+  { from: LABELS.AI_STUCK, on: EVENTS.RELEASE_BLOCKED, to: unlabel, verifiedBy: "external-judgment" },
+  { from: LABELS.AI_STUCK, on: EVENTS.RELEASE_PUBLISHED, to: close, verifiedBy: "external-judgment" },
+  { from: LABELS.AI_STUCK, on: EVENTS.REWORK_PUSHED, to: unlabel, verifiedBy: "deterministic" },
+  { from: LABELS.AI_STUCK, on: EVENTS.MERGED, to: close, verifiedBy: "deterministic" },
+  {
+    from: LABELS.AI_STUCK,
+    on: EVENTS.LABELLED_AI_READY,
+    to: label(LABELS.AI_READY),
+    run: ROUTINES.ISSUE_BUILD_LOOP,
+    verifiedBy: "external-judgment", // a human decided to retry
+  },
+  {
+    from: LABELS.AI_STUCK,
+    on: EVENTS.LABELLED_AUTO_RELEASING,
+    to: label(LABELS.AUTO_RELEASING),
+    run: ROUTINES.AUTO_RELEASE_LOOP,
+    verifiedBy: "external-judgment",
+  },
+  {
+    from: LABELS.AI_STUCK,
+    on: EVENTS.LABELLED_AUTO_REWORKING,
+    to: label(LABELS.AUTO_REWORKING),
+    run: ROUTINES.REWORK_LOOP,
+    verifiedBy: "external-judgment",
+  },
+  {
+    from: LABELS.AI_STUCK,
+    on: EVENTS.LABELLED_AUTO_MERGING,
+    to: label(LABELS.AUTO_MERGING),
+    run: ROUTINES.MERGE_FLOW,
+    verifiedBy: "external-judgment",
+  },
 ];
+
+/** Whether a routine fired into `state` should be watched: true exactly
+ * when the table says what a watchdog expiry from that state means. */
+export function isWatched(state: State): boolean {
+  return reduce(state, EVENTS.WATCHDOG_EXPIRED) !== null;
+}
 
 export function reduce(current: State, event: Event): Rule | null {
   return rules.find((r) => r.from === current && r.on === event) ?? null;

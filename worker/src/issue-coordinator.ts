@@ -21,8 +21,10 @@
 // README.md.
 
 import {
+  WATCHDOG_MINUTES,
   coordinateWebhook,
   coordinateRoutineSignal,
+  coordinateWatchdogExpired,
   type CoordinateInput,
   type PendingFire,
   type RoutineSignalInput,
@@ -38,7 +40,6 @@ export type IssueCoordinatorEnv = GitHubEnv &
     DB: D1Database;
   };
 
-const WATCHDOG_MINUTES = 30;
 const PENDING_FIRE_KEY = "pendingFire";
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
 
@@ -73,20 +74,13 @@ export class IssueCoordinator {
     return Response.json(result);
   }
 
-  /** The watchdog: fires WATCHDOG_MINUTES after a routine was fired, unless
-   * a later event for the same issue cancelled it first (coordinate.ts's
-   * clearPendingFire, called whenever a rule fires with no `run`). */
+  /** The watchdog: fires WATCHDOG_MINUTES after a watched routine was fired
+   * (or after its last heartbeat), unless a later event for the same issue
+   * cancelled it first. The expiry itself is a real event through the
+   * reducer — see coordinate.ts's coordinateWatchdogExpired, which also
+   * owns the retry-safe ordering (no pendingFire -> a harmless race). */
   async alarm(): Promise<void> {
-    const pending = await this.ctx.storage.get<PendingFire>(PENDING_FIRE_KEY);
-    if (!pending) return; // resolved already; the alarm firing anyway is a harmless race, not a bug
-    await this.ctx.storage.delete(PENDING_FIRE_KEY);
-    await githubClient.commentOnIssue(
-      this.env,
-      pending.owner,
-      pending.repo,
-      pending.issueNumber,
-      `⚠️ The \`${pending.run}\` routine hasn't reported back within ${WATCHDOG_MINUTES} minutes — it may have died mid-run. This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
-    );
+    await coordinateWatchdogExpired(this.deps());
   }
 
   private deps() {
@@ -99,6 +93,8 @@ export class IssueCoordinator {
         githubClient.removeLabel(this.env, owner, repo, issueNumber, label),
       closeIssue: (owner: string, repo: string, issueNumber: number) =>
         githubClient.closeIssue(this.env, owner, repo, issueNumber),
+      commentOnIssue: (owner: string, repo: string, issueNumber: number, body: string) =>
+        githubClient.commentOnIssue(this.env, owner, repo, issueNumber, body),
       fireRoutine: (routine: string, context: string) => fireRoutine(this.env, routine, context),
       logTransition: async (row: Parameters<typeof this.insertTransition>[0]) => {
         await this.insertTransition(row);

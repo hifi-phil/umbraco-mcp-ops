@@ -1,6 +1,6 @@
 name: worker tests
 
-# worker/'s 91 unit tests + graph/'s own 75 (coordinate.ts,
+# worker/'s 103 unit tests + graph/'s own 80 (coordinate.ts,
 # issue-coordinator.ts, index.ts, github-client.ts, webhook-parse.ts,
 # routines-client.ts, graph.ts, from-github.ts/to-github.ts, merge-gate.ts,
 # from-routine.ts, outcomes.ts) had zero CI enforcement before this —

@@ -217,6 +217,12 @@ arrives, cancel it. Alarm fires instead, the agent died — move to
 `state:stuck`. This is what turns an invisible failure into an automatic one,
 and it's the piece that's entirely absent today.
 
+*Implemented in `worker/`* as the `ai-stuck` label and a `watchdog_expired`
+event, run through `reduce()` like any other event. It isn't only a
+comment, so the label stays true after a routine dies. Late outcomes and
+human retries both have rules out of `ai-stuck`. See `graph/graph.ts`'s
+watchdog section and `worker/README.md`'s "The watchdog is a real event".
+
 **Knowing why it died.** The watchdog tells you a routine died, not why.
 With a normal live agent session you'd read the transcript; a routine
 doesn't give the orchestrator that. The gap closes with a progress heartbeat

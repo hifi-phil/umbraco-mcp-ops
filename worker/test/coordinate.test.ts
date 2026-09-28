@@ -6,6 +6,7 @@ import {
   LABEL_JUST_ADDED_BY,
   coordinateWebhook,
   coordinateRoutineSignal,
+  coordinateWatchdogExpired,
   deriveState,
   type CoordinateInput,
   type Deps,
@@ -31,6 +32,7 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     addLabel: vi.fn(async () => {}),
     removeLabel: vi.fn(async () => {}),
     closeIssue: vi.fn(async () => {}),
+    commentOnIssue: vi.fn(async () => {}),
     fireRoutine: vi.fn(async () => {}),
     logTransition: vi.fn(async () => {}),
     hasSeenDelivery: vi.fn(async (id: string) => seen.has(id)),
@@ -240,6 +242,144 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
     expect(deps.removeLabel).not.toHaveBeenCalled();
   });
 
+  it("labelled_ai_discussing: fires issue-discuss-loop but does NOT arm the watchdog (it never reports an outcome)", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
+    const result = await coordinateWebhook(
+      deps,
+      input({ payload: { action: "issues.labeled", label: { name: LABELS.AI_DISCUSSING } } }),
+    );
+    expect(result.outcome).toBe("applied");
+    expect(deps.fireRoutine).toHaveBeenCalledWith(ROUTINES.ISSUE_DISCUSS_LOOP, expect.any(String));
+    expect(deps.setPendingFire).not.toHaveBeenCalled();
+    expect(deps.clearPendingFire).toHaveBeenCalledOnce();
+  });
+});
+
+describe("coordinateWebhook — leaving ai-stuck", () => {
+  const outcomeComment = (outcome: Record<string, unknown>) =>
+    [`<!-- agent-outcome:${ROUTINES.ISSUE_BUILD_LOOP} -->`, "```json", JSON.stringify(outcome), "```"].join("\n");
+
+  it("a late build_succeeded after the routine's own swap landed (ai-stuck + ai-generated): read as ai-stuck, only ai-stuck removed", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK, LABELS.AI_GENERATED]) });
+    const result = await coordinateWebhook(
+      deps,
+      input({ payload: { action: "issue_comment.created", comment: { body: outcomeComment({ outcome: "build_succeeded", pr: 123 }) } } }),
+    );
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_STUCK, event: EVENTS.BUILD_SUCCEEDED });
+    expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
+    expect(deps.addLabel).not.toHaveBeenCalled(); // ai-generated already there
+  });
+
+  it("a late build_blocked with no swap visible yet (only ai-stuck): swaps ai-stuck -> ai-blocked itself", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK]) });
+    await coordinateWebhook(
+      deps,
+      input({ payload: { action: "issue_comment.created", comment: { body: outcomeComment({ outcome: "build_blocked", reason: "ambiguous spec" }) } } }),
+    );
+    expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_BLOCKED);
+  });
+
+  it("a human retry — re-adding ai-ready on a stuck issue: removes ai-stuck, re-fires issue-build-loop, re-arms the watchdog", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK, LABELS.AI_READY]) });
+    const result = await coordinateWebhook(
+      deps,
+      input({ payload: { action: "issues.labeled", label: { name: LABELS.AI_READY } } }),
+    );
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_STUCK });
+    expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
+    expect(deps.addLabel).not.toHaveBeenCalled();
+    expect(deps.fireRoutine).toHaveBeenCalledWith(ROUTINES.ISSUE_BUILD_LOOP, expect.any(String));
+    expect(deps.setPendingFire).toHaveBeenCalledOnce();
+  });
+
+  it("ai-stuck plus two other tracked labels is still genuinely ambiguous", () => {
+    expect(deriveState([LABELS.AI_STUCK, LABELS.AI_GENERATED, LABELS.AUTO_MERGING])).toBe("ambiguous");
+  });
+});
+
+describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
+  const pending: PendingFire = {
+    owner: "hifi-phil",
+    repo: "umbraco-mcp-ops",
+    issueNumber: 412,
+    run: ROUTINES.ISSUE_BUILD_LOOP,
+  };
+
+  it("nothing pending -> no_pending_fire, no GitHub calls (a harmless race, or a retry after a full success)", async () => {
+    const deps = fakeDeps();
+    expect(await coordinateWatchdogExpired(deps)).toEqual({ outcome: "no_pending_fire" });
+    expect(deps.getLabels).not.toHaveBeenCalled();
+    expect(deps.commentOnIssue).not.toHaveBeenCalled();
+  });
+
+  it("in-flight ai-ready -> comments, swaps ai-ready -> ai-stuck, logs a watchdog_expired row, then clears pendingFire", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await deps.setPendingFire(pending);
+
+    const result = await coordinateWatchdogExpired(deps);
+
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_READY, event: EVENTS.WATCHDOG_EXPIRED });
+    expect(deps.commentOnIssue).toHaveBeenCalledWith(
+      "hifi-phil",
+      "umbraco-mcp-ops",
+      412,
+      expect.stringMatching(/issue-build-loop.*30 minutes.*No progress step.*Moving this to `ai-stuck`/),
+    );
+    expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_READY);
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
+    expect(deps.logTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ fromState: LABELS.AI_READY, event: EVENTS.WATCHDOG_EXPIRED, droppedReason: null }),
+    );
+    expect(await deps.getPendingFire()).toBeNull();
+  });
+
+  it("quotes the last heartbeat step in the comment", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await deps.setPendingFire({ ...pending, lastStep: "running tests", lastStepAt: "2026-09-28T10:00:00.000Z" });
+    await coordinateWatchdogExpired(deps);
+    expect(deps.commentOnIssue).toHaveBeenCalledWith(
+      "hifi-phil",
+      "umbraco-mcp-ops",
+      412,
+      expect.stringContaining("Last reported step: `running tests` (2026-09-28T10:00:00.000Z)"),
+    );
+  });
+
+  it("a build that swapped to ai-generated but never posted its outcome -> also ai-stuck", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
+    await deps.setPendingFire(pending);
+    const result = await coordinateWatchdogExpired(deps);
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_GENERATED });
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
+  });
+
+  it("no rule from the current state (e.g. a human already cleared the labels) -> still alerts, logged as dropped, pendingFire cleared", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => []) });
+    await deps.setPendingFire(pending);
+    const result = await coordinateWatchdogExpired(deps);
+    expect(result).toEqual({ outcome: "dropped_no_rule", from: "none", event: EVENTS.WATCHDOG_EXPIRED });
+    expect(deps.commentOnIssue).toHaveBeenCalledWith(
+      "hifi-phil",
+      "umbraco-mcp-ops",
+      412,
+      expect.stringContaining("needs a human look"),
+    );
+    expect(deps.addLabel).not.toHaveBeenCalled();
+    expect(await deps.getPendingFire()).toBeNull();
+  });
+
+  it("the comment call failing leaves pendingFire in place, so the DO's alarm retry still has something to act on", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      commentOnIssue: vi.fn(async () => {
+        throw new Error("GitHub 502");
+      }),
+    });
+    await deps.setPendingFire(pending);
+    await expect(coordinateWatchdogExpired(deps)).rejects.toThrow("GitHub 502");
+    expect(await deps.getPendingFire()).toEqual(pending);
+  });
 });
 
 describe("coordinateWebhook — check_suite.completed, the real merge-gate aggregation", () => {
@@ -358,7 +498,7 @@ describe("coordinateRoutineSignal — the direct routine-to-DO heartbeat channel
     });
   });
 
-  it("process, matching routine -> heartbeat_extended, re-sets pendingFire (which re-schedules the alarm)", async () => {
+  it("process, matching routine -> heartbeat_extended, records the step on pendingFire (which also re-schedules the alarm)", async () => {
     const deps = fakeDeps();
     const pending = {
       owner: "hifi-phil",
@@ -375,7 +515,11 @@ describe("coordinateRoutineSignal — the direct routine-to-DO heartbeat channel
     );
 
     expect(result).toEqual({ outcome: "heartbeat_extended" });
-    expect(deps.setPendingFire).toHaveBeenCalledWith(pending);
+    expect(deps.setPendingFire).toHaveBeenCalledWith({
+      ...pending,
+      lastStep: "driving CI green",
+      lastStepAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    });
     expect(deps.clearPendingFire).not.toHaveBeenCalled();
   });
 

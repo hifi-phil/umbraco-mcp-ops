@@ -68,6 +68,13 @@ intentional namespace.
 | `ai-discuss` | `ai-discussing` | `issue-discuss-loop`, `loop-dispatch` |
 | `auto-rework` | `auto-reworking` | `rework-loop`, `loop-dispatch` |
 | `auto-merge` | `auto-merging` | `merge-flow`, `loop-dispatch` |
+| *(none — new)* | `ai-stuck` | the Worker's watchdog only (written, never a trigger) — see [03-components.md §3.4](03-components.md#34-the-serialiser-and-watchdog--durable-object-per-issue) |
+
+`ai-stuck` needs no rename. It has to be **created** on any repo the Worker
+watches before the Worker goes live, or the watchdog's first label write
+will fail. That's the same step as the other net-new labels
+(`auto-releasing`, `release-blocked`). No skill names it, so it doesn't add
+to the coordination hazard below.
 
 ## What executing this for real actually costs
 

@@ -3,7 +3,7 @@ import { EVENTS } from "./constants/events";
 import { LABELS } from "./constants/labels";
 import { ROUTINES } from "./constants/routines";
 import { close, label, noop, unlabel } from "./github/to-github";
-import { reduce } from "./graph";
+import { isWatched, reduce, rules } from "./graph";
 
 describe("reduce — issue lifecycle", () => {
   it("none + labelled_ai_ready -> ai-ready, fires issue-build-loop", () => {
@@ -66,5 +66,58 @@ describe("reduce — illegal moves are dropped, not errors", () => {
     expect(reduce(LABELS.AI_GENERATED, EVENTS.LABELLED_AI_READY)).toBeNull();
     expect(reduce("none", EVENTS.MERGED)).toBeNull();
     expect(reduce("none", EVENTS.MERGE_GATE_FAILED_HARD)).toBeNull();
+  });
+});
+
+describe("reduce — the watchdog and ai-stuck", () => {
+  it("every state a watched routine runs in, + watchdog_expired -> ai-stuck, deterministic, fires nothing", () => {
+    for (const from of [
+      LABELS.AI_READY,
+      LABELS.AI_GENERATED,
+      LABELS.AI_BLOCKED,
+      LABELS.AUTO_RELEASING,
+      LABELS.AUTO_REWORKING,
+      LABELS.AUTO_MERGING,
+    ]) {
+      const rule = reduce(from, EVENTS.WATCHDOG_EXPIRED);
+      expect(rule?.to, from).toEqual(label(LABELS.AI_STUCK));
+      expect(rule?.run, from).toBeUndefined();
+      expect(rule?.verifiedBy, from).toBe("deterministic");
+    }
+  });
+
+  it("isWatched: ai-discussing (never reports an outcome), none, and ai-stuck itself are not watched", () => {
+    expect(isWatched(LABELS.AI_READY)).toBe(true);
+    expect(isWatched(LABELS.AI_DISCUSSING)).toBe(false);
+    expect(isWatched("none")).toBe(false);
+    expect(isWatched(LABELS.AI_STUCK)).toBe(false);
+  });
+
+  it("a late outcome still wins from ai-stuck", () => {
+    expect(reduce(LABELS.AI_STUCK, EVENTS.BUILD_SUCCEEDED)?.to).toEqual(label(LABELS.AI_GENERATED));
+    expect(reduce(LABELS.AI_STUCK, EVENTS.BUILD_BLOCKED)?.to).toEqual(label(LABELS.AI_BLOCKED));
+    expect(reduce(LABELS.AI_STUCK, EVENTS.RELEASE_BLOCKED)?.to).toEqual(unlabel);
+    expect(reduce(LABELS.AI_STUCK, EVENTS.RELEASE_PUBLISHED)?.to).toEqual(close);
+    expect(reduce(LABELS.AI_STUCK, EVENTS.REWORK_PUSHED)?.to).toEqual(unlabel);
+    expect(reduce(LABELS.AI_STUCK, EVENTS.MERGED)?.to).toEqual(close);
+  });
+
+  it("re-adding a trigger label on a stuck issue retries that loop", () => {
+    const cases = [
+      [EVENTS.LABELLED_AI_READY, LABELS.AI_READY, ROUTINES.ISSUE_BUILD_LOOP],
+      [EVENTS.LABELLED_AUTO_RELEASING, LABELS.AUTO_RELEASING, ROUTINES.AUTO_RELEASE_LOOP],
+      [EVENTS.LABELLED_AUTO_REWORKING, LABELS.AUTO_REWORKING, ROUTINES.REWORK_LOOP],
+      [EVENTS.LABELLED_AUTO_MERGING, LABELS.AUTO_MERGING, ROUTINES.MERGE_FLOW],
+    ] as const;
+    for (const [event, to, run] of cases) {
+      const rule = reduce(LABELS.AI_STUCK, event);
+      expect(rule?.to, event).toEqual(label(to));
+      expect(rule?.run, event).toBe(run);
+    }
+  });
+
+  it("no (state, event) pair has two rules — reduce()'s first-match can't hide one", () => {
+    const keys = rules.map((r) => `${r.from}|${r.on}`);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });

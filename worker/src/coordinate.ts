@@ -7,7 +7,7 @@
 // issue-coordinator.ts's header for what that leaves unverified).
 
 import { ALL_LABELS, LABELS, type Label } from "../../graph/constants/labels";
-import { reduce, type Rule, type State } from "../../graph/graph";
+import { isWatched, reduce, type Rule, type State } from "../../graph/graph";
 import { translate, type WebhookPayload } from "../../graph/github/from-github";
 import { labelOps } from "../../graph/github/to-github";
 import { deriveMergeGateOutcome, type MergeGateFacts } from "../../graph/github/merge-gate";
@@ -42,13 +42,23 @@ export type TransitionRow = {
   droppedReason: string | null; // null only when a rule actually fired
 };
 
-export type PendingFire = { owner: string; repo: string; issueNumber: number; run: string };
+export type PendingFire = {
+  owner: string;
+  repo: string;
+  issueNumber: number;
+  run: string;
+  // The last "process" heartbeat for this attempt (03-components.md §3.4),
+  // so a watchdog expiry can say where the run got to, not just "timed out".
+  lastStep?: string;
+  lastStepAt?: string; // ISO timestamp
+};
 
 export type Deps = {
   getLabels(owner: string, repo: string, issueNumber: number): Promise<string[]>;
   addLabel(owner: string, repo: string, issueNumber: number, label: string): Promise<void>;
   removeLabel(owner: string, repo: string, issueNumber: number, label: string): Promise<void>;
   closeIssue(owner: string, repo: string, issueNumber: number): Promise<void>;
+  commentOnIssue(owner: string, repo: string, issueNumber: number, body: string): Promise<void>;
   fireRoutine(routine: string, context: string): Promise<void>;
   logTransition(row: TransitionRow): Promise<void>;
   hasSeenDelivery(deliveryId: string): Promise<boolean>;
@@ -62,6 +72,10 @@ export type Deps = {
   getMergeGateFacts(owner: string, repo: string, prNumber: number): Promise<MergeGateFacts>;
 };
 
+/** How long a watched routine gets to report an outcome (or a heartbeat,
+ * which re-arms it) before the watchdog moves the issue to ai-stuck. */
+export const WATCHDOG_MINUTES = 30;
+
 export type CoordinateInput = {
   deliveryId: string;
   owner: string;
@@ -69,6 +83,8 @@ export type CoordinateInput = {
   issueNumber: number;
   payload: WebhookPayload;
 };
+
+export type IssueRef = Pick<CoordinateInput, "owner" | "repo" | "issueNumber">;
 
 export type CoordinateResult =
   | { outcome: "deduped" }
@@ -140,7 +156,7 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
  * already in hand. */
 async function applyEvent(
   deps: Deps,
-  input: CoordinateInput,
+  input: IssueRef,
   event: Event,
   currentLabels: string[],
 ): Promise<CoordinateResult> {
@@ -192,12 +208,20 @@ async function applyEvent(
       rule.run,
       `Issue #${input.issueNumber} in ${input.owner}/${input.repo}: ${event} -> firing ${rule.run}.`,
     );
-    await deps.setPendingFire({
-      owner: input.owner,
-      repo: input.repo,
-      issueNumber: input.issueNumber,
-      run: rule.run,
-    });
+    // Only arm the watchdog where the table says what an expiry means —
+    // see graph.ts's watchdog section (issue-discuss-loop never reports an
+    // outcome, so watching it would only ever raise false alarms).
+    const target = rule.to.kind === "label" ? rule.to.value : current;
+    if (isWatched(target)) {
+      await deps.setPendingFire({
+        owner: input.owner,
+        repo: input.repo,
+        issueNumber: input.issueNumber,
+        run: rule.run,
+      });
+    } else {
+      await deps.clearPendingFire();
+    }
   } else {
     await deps.clearPendingFire();
   }
@@ -249,14 +273,52 @@ export async function coordinateRoutineSignal(
   }
 
   if (update.kind === "process") {
-    // Re-set with the same info: the value doesn't change, but the DO's
-    // setPendingFire always re-schedules the alarm — that's the extension.
-    await deps.setPendingFire(pending);
+    // Records the step (so an expiry can quote it) and, because the DO's
+    // setPendingFire always re-schedules the alarm, extends the watchdog.
+    await deps.setPendingFire({ ...pending, lastStep: update.step, lastStepAt: new Date().toISOString() });
     return { outcome: "heartbeat_extended" };
   }
 
   await deps.clearPendingFire();
   return { outcome: "completion_acknowledged" };
+}
+
+export type WatchdogResult = { outcome: "no_pending_fire" } | CoordinateResult;
+
+/**
+ * The watchdog's expiry, as a real event through the same reduce() ->
+ * labelOps() -> log path as any webhook — so a dead routine moves the issue
+ * to ai-stuck and leaves a D1 row, instead of only a comment.
+ *
+ * Ordering is for the DO's at-least-once alarm retries (a throwing alarm()
+ * is retried with backoff): pendingFire is cleared LAST, so a failure
+ * anywhere before it leaves the retry something to act on. The cost is a
+ * possible duplicate comment on a retry, never a silently lost alert.
+ */
+export async function coordinateWatchdogExpired(deps: Deps): Promise<WatchdogResult> {
+  const pending = await deps.getPendingFire();
+  if (!pending) return { outcome: "no_pending_fire" };
+
+  const lastStep = pending.lastStep
+    ? ` Last reported step: \`${pending.lastStep}\` (${pending.lastStepAt ?? "time unknown"}).`
+    : " No progress step was ever reported.";
+  const currentLabels = await deps.getLabels(pending.owner, pending.repo, pending.issueNumber);
+  const state = deriveState(currentLabels);
+  const willStick = state !== "ambiguous" && reduce(state, EVENTS.WATCHDOG_EXPIRED) !== null;
+  const next = willStick
+    ? ` Moving this to \`${LABELS.AI_STUCK}\`; re-add the trigger label to retry.`
+    : ` Its current labels don't allow an automatic move to \`${LABELS.AI_STUCK}\` — needs a human look.`;
+  await deps.commentOnIssue(
+    pending.owner,
+    pending.repo,
+    pending.issueNumber,
+    `⚠️ The \`${pending.run}\` routine hasn't reported back within ${WATCHDOG_MINUTES} minutes — it may have died mid-run.${lastStep}${next} ` +
+      `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
+  );
+
+  const result = await applyEvent(deps, pending, EVENTS.WATCHDOG_EXPIRED, currentLabels);
+  await deps.clearPendingFire();
+  return result;
 }
 
 /**
@@ -271,5 +333,11 @@ export function deriveState(labels: readonly string[]): State | "ambiguous" {
   const tracked = labels.filter((l) => trackedSet.includes(l)) as Label[];
   if (tracked.length === 0) return "none";
   if (tracked.length === 1) return tracked[0]!;
+  // The one expected pairing: ai-stuck plus a label a late routine swapped
+  // in itself after the watchdog had already fired (e.g. ai-stuck +
+  // ai-generated, just before its outcome comment arrives). A known race
+  // with a defined answer — the issue is still ai-stuck, and graph.ts's
+  // "leaving ai-stuck" rules decide what the late outcome does with it.
+  if (tracked.length === 2 && tracked.includes(LABELS.AI_STUCK)) return LABELS.AI_STUCK;
   return "ambiguous";
 }

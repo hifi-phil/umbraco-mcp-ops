@@ -23,6 +23,12 @@ export const EVENTS = {
   MERGE_GATE_FAILED_SOFT: "merge_gate_failed_soft",
   MERGE_GATE_FAILED_HARD: "merge_gate_failed_hard",
   MERGED: "merged",
+  // the watchdog — the one event NOT sourced from GitHub. The DO raises it
+  // itself when a routine it fired hasn't produced an outcome within the
+  // watchdog window (worker/src/coordinate.ts's coordinateWatchdogExpired).
+  // Still a directly-observed fact, not a guess: "no outcome seen for
+  // attempt X by time T" is exactly what the DO knows first-hand.
+  WATCHDOG_EXPIRED: "watchdog_expired",
 } as const;
 
 export type Event = (typeof EVENTS)[keyof typeof EVENTS];
