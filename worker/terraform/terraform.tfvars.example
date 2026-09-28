@@ -4,7 +4,7 @@
 cloudflare_account_id = "your-account-id"
 workers_subdomain     = "your-subdomain"   # <script>.<this>.workers.dev
 github_owner          = "hifi-phil"
-github_repo           = "your-test-repo"   # must use the renamed labels (ai-ready, …)
+github_repo           = "your-test-repo"   # where the real loops run (ready-for-ai, …)
 github_read_token     = "github_pat_…"     # read-only: Issues, Pull requests, Checks, Metadata
 
 # mode = "shadow"   # the default; "enforce" is Phase 4

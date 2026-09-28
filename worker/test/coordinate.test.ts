@@ -150,9 +150,9 @@ describe("coordinateWebhook — no event / no rule", () => {
   });
 
   it("a labelled_* event's own label doesn't count towards ambiguity — only genuinely pre-existing labels do", async () => {
-    // ai-ready is what THIS event just added, so it's excluded before
-    // checking ambiguity; ai-discussing was already there. The real
-    // pre-event state is just "ai-discussing", which has no rule for
+    // ready-for-ai is what THIS event just added, so it's excluded before
+    // checking ambiguity; ai-discuss was already there. The real
+    // pre-event state is just "ai-discuss", which has no rule for
     // labelled_ai_ready -- correctly dropped, not ambiguous.
     const deps = fakeDeps({
       getLabels: vi.fn(async () => [LABELS.AI_READY, LABELS.AI_DISCUSSING]),
@@ -212,7 +212,7 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
     expect(deps.clearPendingFire).not.toHaveBeenCalled();
   });
 
-  it("build_succeeded outcome artifact, realistic ordering (issue-build-loop's own Step 3 already swapped ai-ready -> ai-generated before commenting): applied as a noop confirm, no GitHub write, clears pendingFire", async () => {
+  it("build_succeeded outcome artifact, realistic ordering (issue-build-loop's own Step 3 already swapped ready-for-ai -> generated-by-ai before commenting): applied as a noop confirm, no GitHub write, clears pendingFire", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
     const body = [
       "PR opened.",
@@ -289,7 +289,7 @@ describe("coordinateWebhook — leaving ai-stuck", () => {
   const outcomeComment = (outcome: Record<string, unknown>) =>
     [`<!-- agent-outcome:${ROUTINES.ISSUE_BUILD_LOOP} -->`, "```json", JSON.stringify(outcome), "```"].join("\n");
 
-  it("a late build_succeeded after the routine's own swap landed (ai-stuck + ai-generated): read as ai-stuck, only ai-stuck removed", async () => {
+  it("a late build_succeeded after the routine's own swap landed (ai-stuck + generated-by-ai): read as ai-stuck, only ai-stuck removed", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK, LABELS.AI_GENERATED]) });
     const result = await coordinateWebhook(
       deps,
@@ -297,7 +297,7 @@ describe("coordinateWebhook — leaving ai-stuck", () => {
     );
     expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_STUCK, event: EVENTS.BUILD_SUCCEEDED });
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
-    expect(deps.addLabel).not.toHaveBeenCalled(); // ai-generated already there
+    expect(deps.addLabel).not.toHaveBeenCalled(); // generated-by-ai already there
   });
 
   it("a late build_blocked with no swap visible yet (only ai-stuck): swaps ai-stuck -> ai-blocked itself", async () => {
@@ -310,7 +310,7 @@ describe("coordinateWebhook — leaving ai-stuck", () => {
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_BLOCKED);
   });
 
-  it("a human retry — re-adding ai-ready on a stuck issue: removes ai-stuck, re-fires issue-build-loop, re-arms the watchdog", async () => {
+  it("a human retry — re-adding ready-for-ai on a stuck issue: removes ai-stuck, re-fires issue-build-loop, re-arms the watchdog", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK, LABELS.AI_READY]) });
     const result = await coordinateWebhook(
       deps,
@@ -343,7 +343,7 @@ describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
     expect(deps.commentOnIssue).not.toHaveBeenCalled();
   });
 
-  it("in-flight ai-ready -> comments, swaps ai-ready -> ai-stuck, logs a watchdog_expired row, then clears pendingFire", async () => {
+  it("in-flight ready-for-ai -> comments, swaps ready-for-ai -> ai-stuck, logs a watchdog_expired row, then clears pendingFire", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
     await deps.setPendingFire(pending);
 
@@ -376,7 +376,7 @@ describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
     );
   });
 
-  it("a build that swapped to ai-generated but never posted its outcome -> also ai-stuck", async () => {
+  it("a build that swapped to generated-by-ai but never posted its outcome -> also ai-stuck", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
     await deps.setPendingFire(pending);
     const result = await coordinateWatchdogExpired(deps);
@@ -424,21 +424,21 @@ describe("coordinateWebhook — check_suite.completed, the real merge-gate aggre
     expect(deps.getMergeGateFacts).not.toHaveBeenCalled();
   });
 
-  it("completed, but this PR isn't in auto-merging -> no_event, never fetches gate facts (nothing else watches CI this way)", async () => {
+  it("completed, but this PR isn't in auto-merge -> no_event, never fetches gate facts (nothing else watches CI this way)", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
     const result = await coordinateWebhook(deps, checkSuiteInput());
     expect(result).toEqual({ outcome: "no_event" });
     expect(deps.getMergeGateFacts).not.toHaveBeenCalled();
   });
 
-  it("completed, in auto-merging, gate genuinely passes -> no_event (merge-flow's own Step 3 does the actual merge, not the reducer)", async () => {
+  it("completed, in auto-merge, gate genuinely passes -> no_event (merge-flow's own Step 3 does the actual merge, not the reducer)", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]) });
     const result = await coordinateWebhook(deps, checkSuiteInput());
     expect(result).toEqual({ outcome: "no_event" });
     expect(deps.getMergeGateFacts).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412);
   });
 
-  it("completed, in auto-merging, still_pending per the real facts (e.g. mergeable still computing) -> no_event", async () => {
+  it("completed, in auto-merge, still_pending per the real facts (e.g. mergeable still computing) -> no_event", async () => {
     const deps = fakeDeps({
       getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
       getMergeGateFacts: vi.fn(async () => gateFacts({ mergeable: null })),
@@ -447,7 +447,7 @@ describe("coordinateWebhook — check_suite.completed, the real merge-gate aggre
     expect(result).toEqual({ outcome: "no_event" });
   });
 
-  it("completed, in auto-merging, a required check genuinely failed -> applied, noop effect, clears pendingFire", async () => {
+  it("completed, in auto-merge, a required check genuinely failed -> applied, noop effect, clears pendingFire", async () => {
     const deps = fakeDeps({
       getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
       getMergeGateFacts: vi.fn(async () =>
@@ -461,7 +461,7 @@ describe("coordinateWebhook — check_suite.completed, the real merge-gate aggre
     expect(deps.clearPendingFire).toHaveBeenCalledOnce();
   });
 
-  it("completed, in auto-merging, unresolvable conflicts -> applied, unlabel effect (needs a human)", async () => {
+  it("completed, in auto-merge, unresolvable conflicts -> applied, unlabel effect (needs a human)", async () => {
     const deps = fakeDeps({
       getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
       getMergeGateFacts: vi.fn(async () => gateFacts({ mergeable: false })),
@@ -471,7 +471,7 @@ describe("coordinateWebhook — check_suite.completed, the real merge-gate aggre
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_MERGING);
   });
 
-  it("completed, in auto-merging, changes requested -> applied, unlabel effect", async () => {
+  it("completed, in auto-merge, changes requested -> applied, unlabel effect", async () => {
     const deps = fakeDeps({
       getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
       getMergeGateFacts: vi.fn(async () => gateFacts({ latestReviewState: "changes_requested" })),

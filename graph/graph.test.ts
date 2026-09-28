@@ -6,13 +6,13 @@ import { close, label, noop, unlabel } from "./github/to-github";
 import { isWatched, reduce, rules } from "./graph";
 
 describe("reduce — issue lifecycle", () => {
-  it("none + labelled_ai_ready -> ai-ready, fires issue-build-loop", () => {
+  it("none + labelled_ai_ready -> ready-for-ai, fires issue-build-loop", () => {
     const rule = reduce("none", EVENTS.LABELLED_AI_READY);
     expect(rule?.to).toEqual(label(LABELS.AI_READY));
     expect(rule?.run).toBe(ROUTINES.ISSUE_BUILD_LOOP);
   });
 
-  it("ai-generated + build_succeeded -> noop (the loop's own swap already applied it; keyed post-swap since AI_READY is gone by the time this fires)", () => {
+  it("generated-by-ai + build_succeeded -> noop (the loop's own swap already applied it; keyed post-swap since AI_READY is gone by the time this fires)", () => {
     expect(reduce(LABELS.AI_GENERATED, EVENTS.BUILD_SUCCEEDED)?.to).toEqual(noop);
     expect(reduce(LABELS.AI_READY, EVENTS.BUILD_SUCCEEDED)).toBeNull();
   });
@@ -27,36 +27,36 @@ describe("reduce — issue lifecycle", () => {
     expect(reduce(LABELS.AUTO_RELEASING, EVENTS.RELEASE_BLOCKED)).toBeNull();
   });
 
-  it("auto-releasing + release_published -> native close, not a label", () => {
+  it("auto-release + release_published -> native close, not a label", () => {
     expect(reduce(LABELS.AUTO_RELEASING, EVENTS.RELEASE_PUBLISHED)?.to).toEqual(close);
   });
 
-  it("ai-discussing has no outbound rules — human-owned by design", () => {
+  it("ai-discuss has no outbound rules — human-owned by design", () => {
     expect(reduce(LABELS.AI_DISCUSSING, EVENTS.LABELLED_AI_READY)).toBeNull();
     expect(reduce(LABELS.AI_DISCUSSING, EVENTS.BUILD_SUCCEEDED)).toBeNull();
   });
 });
 
 describe("reduce — PR lifecycle", () => {
-  it("none + labelled_auto_reworking -> auto-reworking, fires rework-loop", () => {
+  it("none + labelled_auto_reworking -> auto-rework, fires rework-loop", () => {
     const rule = reduce("none", EVENTS.LABELLED_AUTO_REWORKING);
     expect(rule?.to).toEqual(label(LABELS.AUTO_REWORKING));
     expect(rule?.run).toBe(ROUTINES.REWORK_LOOP);
   });
 
-  it("auto-reworking + rework_pushed -> label cleared, no replacement", () => {
+  it("auto-rework + rework_pushed -> label cleared, no replacement", () => {
     expect(reduce(LABELS.AUTO_REWORKING, EVENTS.REWORK_PUSHED)?.to).toEqual(unlabel);
   });
 
-  it("auto-merging + merge_gate_failed_soft -> no GitHub write at all, matches merge-flow's real behaviour", () => {
+  it("auto-merge + merge_gate_failed_soft -> no GitHub write at all, matches merge-flow's real behaviour", () => {
     expect(reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_FAILED_SOFT)?.to).toEqual(noop);
   });
 
-  it("auto-merging + merge_gate_failed_hard -> label cleared, needs a human", () => {
+  it("auto-merge + merge_gate_failed_hard -> label cleared, needs a human", () => {
     expect(reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_FAILED_HARD)?.to).toEqual(unlabel);
   });
 
-  it("auto-merging + merged -> native close", () => {
+  it("auto-merge + merged -> native close", () => {
     expect(reduce(LABELS.AUTO_MERGING, EVENTS.MERGED)?.to).toEqual(close);
   });
 });
@@ -86,7 +86,7 @@ describe("reduce — the watchdog and ai-stuck", () => {
     }
   });
 
-  it("isWatched: ai-discussing (never reports an outcome), none, and ai-stuck itself are not watched", () => {
+  it("isWatched: ai-discuss (never reports an outcome), none, and ai-stuck itself are not watched", () => {
     expect(isWatched(LABELS.AI_READY)).toBe(true);
     expect(isWatched(LABELS.AI_DISCUSSING)).toBe(false);
     expect(isWatched("none")).toBe(false);

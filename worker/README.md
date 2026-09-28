@@ -121,7 +121,7 @@ Then drive it as if a human labelled an issue on github.com:
 ```bash
 curl -X POST http://127.0.0.1:8943/mock/simulate-label \
   -H "Content-Type: application/json" \
-  -d '{"owner":"hifi-phil","repo":"umbraco-mcp-ops","issueNumber":500,"label":"ai-ready","senderLogin":"phil"}'
+  -d '{"owner":"hifi-phil","repo":"umbraco-mcp-ops","issueNumber":500,"label":"ready-for-ai","senderLogin":"phil"}'
 ```
 
 **What actually happened, verified, in one run of this:**
@@ -135,7 +135,7 @@ curl -X POST http://127.0.0.1:8943/mock/simulate-label \
    the bot** (`Authorization: Bearer mock-bot-token`, matching how the
    real loop would authenticate) — via
    `POST /repos/.../issues/500/comments` triggered the real
-   remove-`ai-ready`/add-`ai-generated` label ops, each of which the mock
+   remove-`ready-for-ai`/add-`generated-by-ai` label ops, each of which the mock
    echoed back as its own webhook (`issues.unlabeled`, `issues.labeled`),
    attributed to the bot identity.
 3. **Both of those self-fired webhooks were correctly dropped** —
@@ -145,7 +145,7 @@ curl -X POST http://127.0.0.1:8943/mock/simulate-label \
    the D1 log ending up with exactly **2** rows (the two real
    transitions), not 4 — the self-fired webhooks never reached
    `logTransition`, let alone caused a third transition.
-4. Final mock state: `labels: ["ai-generated"]`, `ai-ready` genuinely
+4. Final mock state: `labels: ["generated-by-ai"]`, `ready-for-ai` genuinely
    gone, the outcome comment recorded — `GET /mock/state` to inspect.
 
 `POST /mock/reset` clears all mock state between runs (D1 needs its own
@@ -183,7 +183,7 @@ webhook a raw curl would.
 
 ```bash
 curl -X POST http://127.0.0.1:8943/repos/o/r/issues/500/labels \
-  -H "Content-Type: application/json" -d '{"labels":["ai-ready"]}'
+  -H "Content-Type: application/json" -d '{"labels":["ready-for-ai"]}'
 
 curl -X POST http://127.0.0.1:8943/mock/run-agent-outcome-test \
   -H "Content-Type: application/json" \
@@ -305,16 +305,16 @@ reducer actually did with it. Six transitions, run this way, across four
 loops:
 
 ```
-issue-build-loop   id=9  from=none          event=labelled_ai_ready  -> label(ai-ready), run issue-build-loop
-issue-build-loop   id=10 from=ai-generated   event=build_succeeded    -> APPLIED: noop (post-swap confirm)
-auto-release-loop  id=13 from=auto-releasing event=release_published  -> APPLIED: close
-rework-loop        id=15 from=none           event=labelled_auto_reworking -> label(auto-reworking), run rework-loop
-rework-loop        id=16 from=auto-reworking event=rework_pushed      -> APPLIED: unlabel
-merge-flow         id=17 from=none           event=labelled_auto_merging  -> label(auto-merging), run merge-flow
-merge-flow         id=18 from=auto-merging   event=merged             -> APPLIED: close
-merge-flow (gate)  id=19 from=none           event=labelled_auto_merging  -> label(auto-merging), run merge-flow
-merge-flow (gate)  id=20 from=auto-merging   event=merge_gate_failed_soft -> APPLIED: noop (a real failed check-run, independently re-fetched)
-merge-flow (gate)  id=22 from=auto-merging   event=merge_gate_failed_hard -> APPLIED: unlabel (real mergeable:false, independently re-fetched)
+issue-build-loop   id=9  from=none          event=labelled_ai_ready  -> label(ready-for-ai), run issue-build-loop
+issue-build-loop   id=10 from=generated-by-ai   event=build_succeeded    -> APPLIED: noop (post-swap confirm)
+auto-release-loop  id=13 from=auto-release event=release_published  -> APPLIED: close
+rework-loop        id=15 from=none           event=labelled_auto_reworking -> label(auto-rework), run rework-loop
+rework-loop        id=16 from=auto-rework event=rework_pushed      -> APPLIED: unlabel
+merge-flow         id=17 from=none           event=labelled_auto_merging  -> label(auto-merge), run merge-flow
+merge-flow         id=18 from=auto-merge   event=merged             -> APPLIED: close
+merge-flow (gate)  id=19 from=none           event=labelled_auto_merging  -> label(auto-merge), run merge-flow
+merge-flow (gate)  id=20 from=auto-merge   event=merge_gate_failed_soft -> APPLIED: noop (a real failed check-run, independently re-fetched)
+merge-flow (gate)  id=22 from=auto-merge   event=merge_gate_failed_hard -> APPLIED: unlabel (real mergeable:false, independently re-fetched)
 ```
 
 Every kickoff labeling and every native signal (`rework_pushed`, `merged`,
@@ -334,8 +334,8 @@ calls fired were correctly dropped by the self-trigger guard — confirmed
 with a real agent doing the firing, not just curl.
 
 **`id=10`'s row above reflects a fix, not the original finding.** The
-first time this ran, `build_succeeded` arrived from state `ai-generated`
-but the rule was keyed on `ai-ready` — issue-build-loop's own Step 3
+first time this ran, `build_succeeded` arrived from state `generated-by-ai`
+but the rule was keyed on `ready-for-ai` — issue-build-loop's own Step 3
 always swaps the label *before* posting the comment, so a rule keyed on
 the pre-swap state can never fire, and this dropped as "no matching
 rule" every time, for all three of `build_succeeded`, `build_blocked`,
@@ -347,25 +347,15 @@ rekeying all three to their post-swap state
 `noop` confirm — same shape `MERGED`'s `to: close` already used. See
 `graph/graph.ts`'s comments on each rule.
 
-## The label rename is now a coordination hazard, not just future work
+## Label spelling
 
-Fixing the mismatch this test first surfaced (`issue-build-loop`'s live
-`SKILL.md` said `ready-for-ai`/`generated-by-ai`; `graph/` already used the
-renamed `ai-ready`/`ai-generated`) meant executing the text side of
-[10-label-rename.md](../docs/agent-orchestration/10-label-rename.md)'s
-migration across all 18 files — done, this pass. **That file itself warns
-this needs to land as one coordinated cutover, not incrementally**, and
-that warning is no longer hypothetical: the skill files now instruct every
-loop to add/remove labels spelled the new way, but **no live GitHub repo's
-actual label is renamed, and no routine's trigger filter config is
-updated** (both outside this repo's reach). Deployed as-is today, against
-real GitHub labels still spelled the old way, a real loop run would try to
-remove a label that isn't actually on the issue (a 404, silently or not
-depending on the client) and never actually clear the real trigger label —
-worse than before this pass, not better, until the live rename + trigger
-config land in the same coordinated change. See
-[10-label-rename.md](../docs/agent-orchestration/10-label-rename.md) for
-what "coordinated" requires.
+This test first surfaced a mismatch between `graph/` (using the proposed
+new label names) and the live skills (old names). The text was briefly
+migrated to the new names, which left every real loop run unable to clear
+its own trigger label. Since 28-09-2026 everything (`graph/`, skills,
+`loop-dispatch`, this Worker, the tests) uses today's live spelling again.
+The rename is deferred to one coordinated cutover; see
+[10-label-rename.md](../docs/agent-orchestration/10-label-rename.md).
 
 ## The direct routine→DO heartbeat channel
 
@@ -408,20 +398,20 @@ reducer like any other fact, rather than only leaving a comment. When the
 alarm fires, `coordinate.ts`'s `coordinateWatchdogExpired` raises
 `watchdog_expired` against the live labels, and `graph.ts`'s table moves
 the issue to **`ai-stuck`** from any state a watched routine can leave it
-in (`ai-ready`, `auto-releasing`, `auto-reworking`, `auto-merging`, plus
-post-swap `ai-generated`/`ai-blocked` for a build that swapped its label
+in (`ready-for-ai`, `auto-release`, `auto-rework`, `auto-merge`, plus
+post-swap `generated-by-ai`/`ai-blocked` for a build that swapped its label
 but never posted its outcome). It also comments (quoting the last heartbeat
 step if there was one) and logs the transition to D1.
 
 - **What gets watched is decided by the table.** A fired routine only arms
   the watchdog if its target state has a `watchdog_expired` rule
   (`graph.ts`'s `isWatched`). `issue-discuss-loop` never posts an outcome,
-  so `ai-discussing` has no such rule, and discussions no longer raise a
+  so `ai-discuss` has no such rule, and discussions no longer raise a
   false alarm 30 minutes after every fire.
 - **Two ways out of `ai-stuck`.** A late, authoritative outcome still wins,
   and a human re-adding the trigger label retries that loop. A slow routine
   that finishes after the watchdog usually swaps its own label first, which
-  leaves `ai-stuck` plus e.g. `ai-generated` on the issue. `deriveState()`
+  leaves `ai-stuck` plus e.g. `generated-by-ai` on the issue. `deriveState()`
   reads that one pairing as `ai-stuck` rather than `ambiguous`. Any other
   pair of tracked labels is still ambiguous.
 - **Retry-safe ordering.** Cloudflare retries a throwing `alarm()` with
@@ -468,10 +458,7 @@ SELECT from_state, COUNT(*) FROM transitions
 WHERE mode = 'shadow' AND event = 'watchdog_expired' GROUP BY from_state;
 ```
 
-Webhooks `translate()` doesn't recognise at all leave no row. On a repo
-still using the old label spelling that's nearly everything, so run
-against a repo whose labels and `loop-dispatch` routing use the renamed
-spelling (see "The label rename is now a coordination hazard" above).
+Webhooks `translate()` doesn't recognise at all leave no row.
 
 ## What's NOT verified
 

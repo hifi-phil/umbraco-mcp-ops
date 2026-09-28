@@ -7,11 +7,8 @@
 // The label names matched below come from constants/labels.ts's LABELS
 // constant, not retyped strings — so a rename there (see
 // 10-label-rename.md) propagates here automatically instead of silently
-// drifting out of sync. They're the PROPOSED renamed labels, not today's
-// exact live spelling (ready-for-ai, auto-release, ai-discuss, auto-rework,
-// auto-merge). Real webhooks won't carry these strings until that
-// migration actually renames the labels; this is written against the
-// target, on the same "no infrastructure yet" basis as the rest of Phase 2.
+// drifting out of sync. They're today's live spelling; the proposed
+// rename is deferred until the basic lane works.
 //
 // build_succeeded/build_blocked/release_blocked/release_published are
 // sourced from a loop's structured outcome comment (see
@@ -122,7 +119,7 @@ export function translate(payload: WebhookPayload): Event | null {
       }
 
       // No rule in ../graph.ts has an outbound transition from
-      // "ai-discussing" — it's a human-owned level-state by design — so a
+      // "ai-discuss" — it's a human-owned level-state by design — so a
       // plain comment never needs to become a domain event here.
       // loop-dispatch's existing router still fires issue-discuss-loop
       // directly; this reducer simply has no opinion on that state.
@@ -147,7 +144,7 @@ export function translate(payload: WebhookPayload): Event | null {
     // no outcome artifact, no loop change: rework-loop already pushes in
     // its own Step 4; this just reads the webhook that action already
     // produces. reduce() only acts on it when the PR is currently in
-    // auto-reworking state, so this can map unconditionally — same
+    // auto-rework state, so this can map unconditionally — same
     // pattern as the label cases above.
     case "pull_request.synchronize":
       return EVENTS.REWORK_PUSHED;

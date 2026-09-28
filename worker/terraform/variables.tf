@@ -36,7 +36,7 @@ variable "github_owner" {
 
 variable "github_repo" {
   type        = string
-  description = "Repo name (no owner) to install the webhook on. Use a test repo whose labels use the renamed spelling (ai-ready, …)."
+  description = "Repo name (no owner) to install the webhook on. Use a test repo where the real loops run, with the usual labels (ready-for-ai, …)."
 }
 
 variable "github_read_token" {

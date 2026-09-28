@@ -1,4 +1,4 @@
-# 10. Label rename — text migrated, live cutover still not done
+# 10. Label rename — deferred, text back on the live spelling
 
 [← Index](00-index.md)
 
@@ -12,7 +12,18 @@ records the renames that fell out of that, why each one is more than a
 style preference, and — separately — what it takes to make any of them
 real.
 
-**Status, updated after running `worker/`'s real-agent test against the
+**Status (28-09-2026): deferred.** The text migration below was reverted.
+`graph/constants/labels.ts`, the loop skills, `loop-dispatch`, the Worker
+and its tests all use today's live spelling again (`ready-for-ai`,
+`generated-by-ai`, `auto-release`, `ai-discuss`, `auto-rework`,
+`auto-merge`), so the code matches the labels that actually exist and the
+hazard described next is gone. `LABELS`' keys keep the proposed names, so
+the eventual rename is a values-only change there. The rename happens later
+as one cutover (live labels, routine triggers, `labels.ts` and the skills
+together), once the basic lane works under the reducer. The mapping and
+rationale below are still the proposal.
+
+**Earlier status, kept for history.** Updated after running `worker/`'s real-agent test against the
 actual live `issue-build-loop/SKILL.md` (see `worker/README.md`):** that
 test surfaced this file's mapping as a live mismatch, not a hypothetical
 one — `graph/` used the renamed vocabulary while the skill files still

@@ -72,11 +72,11 @@ shows how often the routine the existing dispatch fired never reported
 back. See `worker/README.md`'s "Shadow mode" section for the two queries
 that produce this phase's numbers.
 
-Still needed before a run-through: somewhere to deploy (the Cloudflare
-account's owner has to approve it), and a test repo whose live labels
-and `loop-dispatch` routing match the renamed spelling. Against today's
-old-spelling labels, `translate()` recognises almost nothing (see
-[10-label-rename.md](10-label-rename.md)).
+Still needed before a run-through: a deploy (`worker/terraform/`, onto a
+personal Cloudflare account) and a test repo where the real loops run,
+with the webhook on it. Labels use today's live spelling (the rename is
+deferred, see [10-label-rename.md](10-label-rename.md)), so any repo with
+the existing labels works.
 
 ## Phase 4 — Enforce
 
@@ -111,12 +111,12 @@ to be true before it's deleted:
 
 | Loop / step | Self-swap today | Deletable once |
 |---|---|---|
-| `issue-build-loop` Step 3 (success) | remove `ai-ready`, add `ai-generated` | the DO applies `to-github.ts`'s `labelOps()` output for `build_succeeded` itself, shadow-mode-verified against real traffic |
-| `issue-build-loop` Step 3 (blocked) | remove `ai-ready`, add `ai-blocked` | same, for `build_blocked` |
-| `auto-release-loop` Step 2.5 | remove `auto-releasing` on BLOCK | same, for `release_blocked` |
+| `issue-build-loop` Step 3 (success) | remove `ready-for-ai`, add `generated-by-ai` | the DO applies `to-github.ts`'s `labelOps()` output for `build_succeeded` itself, shadow-mode-verified against real traffic |
+| `issue-build-loop` Step 3 (blocked) | remove `ready-for-ai`, add `ai-blocked` | same, for `build_blocked` |
+| `auto-release-loop` Step 2.5 | remove `auto-release` on BLOCK | same, for `release_blocked` |
 | `auto-release-loop` Step 4 | close the issue on publish | same, for `release_published` |
-| `rework-loop` Step 5 | remove `auto-reworking` | same, for `rework_pushed` — already sourced from a native signal, so this one only needs the DO live, not a new artifact |
-| `merge-flow` Step 4 (hard block) | remove `auto-merging` | same, for `merge_gate_failed_hard` — the live gate re-check this event needs now exists for real (`worker/src/coordinate.ts`'s `handleCheckSuiteCompleted` + `graph/github/merge-gate.ts`, see 11-outcome-artifact.md and `worker/README.md`), so this row now only needs the DO live and shadow-verified, same bar as every other row — no longer blocked on infrastructure that doesn't exist |
+| `rework-loop` Step 5 | remove `auto-rework` | same, for `rework_pushed` — already sourced from a native signal, so this one only needs the DO live, not a new artifact |
+| `merge-flow` Step 4 (hard block) | remove `auto-merge` | same, for `merge_gate_failed_hard` — the live gate re-check this event needs now exists for real (`worker/src/coordinate.ts`'s `handleCheckSuiteCompleted` + `graph/github/merge-gate.ts`, see 11-outcome-artifact.md and `worker/README.md`), so this row now only needs the DO live and shadow-verified, same bar as every other row — no longer blocked on infrastructure that doesn't exist |
 
 **Exit:** Every row above deleted, one at a time as its precondition
 clears — not "removed everywhere" as a single cutover, and never left
