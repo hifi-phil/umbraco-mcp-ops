@@ -227,7 +227,8 @@ function buildSystemPrompt(config) {
   return [
     `You are the ${config.routine} routine, currently executing the outcome-reporting step of ` +
       `your own skill, for one issue. You are given the exact, current, verbatim text of that step ` +
-      `below, and of the agent-outcomes skill it points to for the outcome-artifact format. Follow ` +
+      `below, and of the agent-outcomes skill it points to for the outcome-artifact format — ` +
+      `agent-outcomes IS available in this session. Follow ` +
       `them exactly — do not paraphrase or improvise a different action.`,
     "You have six tools: get_labels, add_label, remove_label, post_comment, create_issue, " +
       "close_issue — each takes an explicit issue_number. There is no worktree, no CI, no " +

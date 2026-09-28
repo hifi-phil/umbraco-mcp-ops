@@ -6,7 +6,7 @@ description: >-
   → merge-flow). This loop never responds to human reviews and never merges.
   Repo-agnostic — works whether or not the repo has an Umbraco build/test toolchain
   (Umbraco MCP repos, or content-only repos like this ops repo, docs repos, plugin
-  repos); github-ops required (+ agent-outcomes, for the outcome artifact in Step 3).
+  repos); github-ops required (agent-outcomes optional, for an outcome artifact in Step 3).
   Use this whenever someone wants open `ready-for-ai`
   issues built, worked, actioned, or turned into PRs — including when they only name
   the label, "the AI backlog", or specific issue numbers, and even if they never say
@@ -135,18 +135,18 @@ catch a fix's regressions. Only once `mcp-review` is clean/addressed do the
 **outcome-label swap**: remove `ready-for-ai`, add `generated-by-ai`, and comment the PR
 link on the triggering issue (github-ops → *Add / remove a label* and *Comment on an
 issue*) — the swap is what marks the issue done, so it must wait until review is actually
-finished, not just CI. **Append the `build_succeeded` outcome artifact to that same
-comment** — see the [`agent-outcomes`](../../../agent-outcomes/skills/agent-outcomes/SKILL.md)
-skill for the exact marker + shape (additive only; the label swap above is still the real
-signal, so never skip it because the marker was written).
+finished, not just CI. **Only if the `agent-outcomes` skill is available in this
+session**, append the `build_succeeded` outcome artifact to that same comment (marker +
+shape in that skill). If it isn't available, skip this sentence entirely: don't invent a
+marker. Either way the label swap above is the real signal and is never skipped.
 
 If a build subagent reports it could not finish (e.g. the issue is genuinely ambiguous), or
 the CI-green cap or no-progress guard trips while driving CI **or** while fixing an
 `mcp-review` finding, record the issue as **blocked**: remove `ready-for-ai`, add
 `ai-blocked`, and comment the specific reason (the last failing CI log, the ambiguity, what
 was tried) — that outcome swap is yours too now; don't let one bad issue stall the queue.
-**Append the `build_blocked` outcome artifact to that comment** — same
-[`agent-outcomes`](../../../agent-outcomes/skills/agent-outcomes/SKILL.md) skill, blocked shape.
+Only if `agent-outcomes` is available, append the `build_blocked` outcome artifact to
+that comment (same skill, blocked shape); otherwise skip it.
 
 Keep dispatching until the queue is empty, all build subagents have returned, every PR's CI
 is green (or the issue is blocked), and each green PR has been through `mcp-review` and had

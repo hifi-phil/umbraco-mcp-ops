@@ -10,8 +10,8 @@ description: >-
   notification at start and on completion, and — for stable and release-candidate
   versions — posts a Slack notification to `release-notifications` once published. The
   deliberate act of labelling the issue is the human decision. For gitflow repos.
-  Requires the github-ops skill (+ agent-outcomes, for the outcome artifact on the
-  BLOCK and publish comments). Trigger from a routine on Issue: Labeled =
+  Requires the github-ops skill (agent-outcomes is optional: if installed, the BLOCK and
+  publish comments also carry an outcome artifact). Trigger from a routine on Issue: Labeled =
   auto-release, or run manually as "auto-release-loop <version>".
 ---
 
@@ -51,7 +51,7 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
    the repo's own release skill if it has one (e.g. `umbraco-mcp-skills:release`).
 3. Push and open a PR **`release/<version>` → `main`**, referencing the triggering issue
    (`Closes #<n>`). Send a **Claude push notification** (the `PushNotification` tool)
-   that the auto-release has started: `auto-release v<version> from issue #<n>`.
+   that the auto-release has started: `auto-releasing v<version> from issue #<n>`.
 
 ## Step 2 — drive CI green
 
@@ -153,10 +153,10 @@ hands the agent already-materialized content as plain text. Do this sequence
      block and linking the new issue.
   3. **Comment on the triggering issue** pointing to the blocked issue + PR, and **remove
      its `auto-release` label** so the loop doesn't re-fire until a human fixes the cause
-     and re-labels. **Append the `release_blocked` outcome artifact to that same comment**
-     — see the [`agent-outcomes`](../../../agent-outcomes/skills/agent-outcomes/SKILL.md)
-     skill for the exact marker + shape (additive only; the label removal above is still
-     the real signal).
+     and re-labels. **Only if the `agent-outcomes` skill is available in this session**,
+     append the `release_blocked` outcome artifact to that same comment (marker + shape
+     in that skill); otherwise skip it, don't invent a marker. The label removal above is
+     the real signal either way.
 - **WARN** findings → proceed, but include them in the completion comment.
 - Continue to publish **only** when the checklist passes with no BLOCK.
 
@@ -203,10 +203,9 @@ hands the agent already-materialized content as plain text. Do this sequence
    (`sync-main-to-dev.yml` if installed, else do the back-merge and use `sync-dev`).
    **The `/goal` is not met until `dev` is synced.**
 2. **Comment the outcome on the triggering issue** (Release link, tag, "dev synced") and
-   **close it**. **Append the `release_published` outcome artifact to that same comment**
-   — see the [`agent-outcomes`](../../../agent-outcomes/skills/agent-outcomes/SKILL.md)
-   skill for the exact marker + shape (additive only; closing the issue above is still
-   the real signal). Also send a **Claude push notification** (the `PushNotification`
+   **close it**. Only if `agent-outcomes` is available, append the `release_published`
+   outcome artifact to that same comment; otherwise skip it. Closing the issue is the
+   real signal either way. Also send a **Claude push notification** (the `PushNotification`
    tool): `Released v<version> — published + dev synced.` Fall back to the issue comment
    alone if push isn't available.
 
