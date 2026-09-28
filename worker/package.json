@@ -8,6 +8,7 @@
     "test": "vitest run --project unit",
     "test:evals": "vitest run --project evals",
     "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run --outdir dist",
     "typecheck": "tsc --noEmit",
     "mock-github": "node mock-github/server.mjs"
   },
