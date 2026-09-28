@@ -24,7 +24,7 @@ a version of `worker/`.
 - **Version file**: `worker/package.json`'s `version` field.
 - **Build/test**: `cd worker && npm test && npm run typecheck`.
 - **Trigger**: an issue titled `release <version>`, labelled
-  `auto-releasing` — see `auto-release-loop`'s `SKILL.md`.
+  `auto-release` — see `auto-release-loop`'s `SKILL.md`.
 - Tag + GitHub Release: `.github/workflows/release-tag.yml`, fires on
   push to `main`, reads the version from `worker/package.json`.
 - Sync back: `.github/workflows/sync-main-to-dev.yml` opens a PR merging

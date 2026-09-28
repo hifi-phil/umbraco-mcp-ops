@@ -6,9 +6,9 @@
 // State is deliberately the literal GitHub label string (via LABELS in
 // constants/labels.ts), not a separate renamed internal concept — one
 // vocabulary throughout, not a translation at every layer. A separate
-// "building" name for the "ai-ready" label bought nothing but a mapping
+// "building" name for the "ready-for-ai" label bought nothing but a mapping
 // table to keep in sync, and keeping two names for one thing is exactly
-// what let "remove ai-ready" go missing silently. See constants/labels.ts
+// what let "remove ready-for-ai" go missing silently. See constants/labels.ts
 // for the naming rationale and 10-label-rename.md for what it means for the
 // real, currently-live labels — nothing here renames them yet; this
 // describes the proposed target, not today's exact strings.
@@ -137,12 +137,12 @@ export const rules: Rule[] = [
     on: EVENTS.LABELLED_AUTO_MERGING,
     to: label(LABELS.AUTO_MERGING),
     run: ROUTINES.MERGE_FLOW,
-    verifiedBy: "external-judgment", // the auto-merging label IS the human approval signal
+    verifiedBy: "external-judgment", // the auto-merge label IS the human approval signal
   },
   {
     from: LABELS.AUTO_MERGING,
     on: EVENTS.MERGE_GATE_FAILED_SOFT,
-    to: noop, // matches merge-flow's real Step 4: "by default leave the auto-merging label on" — no GitHub write, not a redundant remove+re-add; the reconciliation sweep re-fires it later
+    to: noop, // matches merge-flow's real Step 4: "by default leave the auto-merge label on" — no GitHub write, not a redundant remove+re-add; the reconciliation sweep re-fires it later
     // Genuinely earned, not aspirational: worker/src/coordinate.ts's
     // handleCheckSuiteCompleted independently fetches the full check-run
     // list, review state, and mergeability (github/merge-gate.ts's
@@ -166,11 +166,11 @@ export const rules: Rule[] = [
   // --- the watchdog: a fired routine that never reported back ---
   // 03-components.md §3.4: "Alarm fires instead, the agent died — move to
   // state:stuck." Keyed on every state a watched routine can leave the issue
-  // in: the in-flight label itself, plus the post-swap ai-generated /
+  // in: the in-flight label itself, plus the post-swap generated-by-ai /
   // ai-blocked for a build that swapped its label but never posted its
   // outcome comment. The table doubles as the watch list — coordinate.ts
   // only arms the watchdog for a fired routine whose target state has a
-  // watchdog_expired rule here, so ai-discussing (issue-discuss-loop posts
+  // watchdog_expired rule here, so ai-discuss (issue-discuss-loop posts
   // no outcome artifact, ever) is deliberately absent rather than raising a
   // false alarm on every discussion.
   ...(
@@ -198,7 +198,7 @@ export const rules: Rule[] = [
   // Two ways out. (1) A late outcome: the routine was slow, not dead, and
   // its authoritative outcome still wins — same verifiedBy as the normal
   // rule for that outcome. The routine's own label swap will usually have
-  // landed first, leaving e.g. ai-stuck + ai-generated together;
+  // landed first, leaving e.g. ai-stuck + generated-by-ai together;
   // coordinate.ts's deriveState() reads that specific pair as ai-stuck, and
   // labelOps() then just removes ai-stuck. (2) A human retry: re-adding the
   // trigger label on a stuck issue re-fires its loop, exactly as from "none".

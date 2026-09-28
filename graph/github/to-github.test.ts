@@ -5,7 +5,7 @@ import { reduce } from "../graph";
 import { labelOps } from "./to-github";
 
 describe("labelOps — the concrete GitHub calls a rule requires", () => {
-  it("build_succeeded is a noop — issue-build-loop's own Step 3 already did the ai-ready -> ai-generated swap before this event reaches the reducer", () => {
+  it("build_succeeded is a noop — issue-build-loop's own Step 3 already did the ready-for-ai -> generated-by-ai swap before this event reaches the reducer", () => {
     const rule = reduce(LABELS.AI_GENERATED, EVENTS.BUILD_SUCCEEDED)!;
     expect(labelOps([LABELS.AI_GENERATED], rule)).toEqual([]);
   });
@@ -20,12 +20,12 @@ describe("labelOps — the concrete GitHub calls a rule requires", () => {
     expect(labelOps([LABELS.AI_READY], rule)).toEqual([]);
   });
 
-  it("release_blocked is a noop — auto-release-loop's own Step 2.5 already removed auto-releasing before this event reaches the reducer", () => {
+  it("release_blocked is a noop — auto-release-loop's own Step 2.5 already removed auto-release before this event reaches the reducer", () => {
     const rule = reduce("none", EVENTS.RELEASE_BLOCKED)!;
     expect(labelOps([], rule)).toEqual([]);
   });
 
-  it("rework_pushed removes auto-reworking with nothing added", () => {
+  it("rework_pushed removes auto-rework with nothing added", () => {
     const rule = reduce(LABELS.AUTO_REWORKING, EVENTS.REWORK_PUSHED)!;
     expect(labelOps([LABELS.AUTO_REWORKING], rule)).toEqual([
       { op: "remove", label: LABELS.AUTO_REWORKING },

@@ -160,7 +160,7 @@ export async function coordinateWebhook(
 
 /**
  * check_suite.completed's own real aggregation path: only matters for a
- * PR currently in `auto-merging` (mirrors merge-flow's own gate — nothing
+ * PR currently in `auto-merge` (mirrors merge-flow's own gate — nothing
  * else watches CI this way), and only once the suite has actually
  * finished (a mid-flight `status: "in_progress"` webhook has nothing to
  * decide yet).
@@ -363,7 +363,7 @@ export function deriveState(labels: readonly string[]): State | "ambiguous" {
   if (tracked.length === 1) return tracked[0]!;
   // The one expected pairing: ai-stuck plus a label a late routine swapped
   // in itself after the watchdog had already fired (e.g. ai-stuck +
-  // ai-generated, just before its outcome comment arrives). A known race
+  // generated-by-ai, just before its outcome comment arrives). A known race
   // with a defined answer — the issue is still ai-stuck, and graph.ts's
   // "leaving ai-stuck" rules decide what the late outcome does with it.
   if (tracked.length === 2 && tracked.includes(LABELS.AI_STUCK)) return LABELS.AI_STUCK;

@@ -105,7 +105,7 @@ const server = http.createServer(async (req, res) => {
   // labeled number is an issue or a PR, even though both go through the
   // same REST path; this mock's single issues Map doesn't track that
   // distinction, so callers pick the right endpoint for what they're
-  // testing (auto-reworking/auto-merging are matched under
+  // testing (auto-rework/auto-merge are matched under
   // pull_request.labeled in translate(), not issues.labeled).
   if (req.method === "POST" && parts[0] === "mock" && parts[1] === "simulate-pr-label") {
     const body = await readJsonBody(req);
@@ -265,7 +265,7 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`GET  /mock/state                  — inspect all in-memory issue state`);
   console.log(`POST /mock/reset                  — clear it`);
   console.log(`POST /mock/simulate-label         — {owner,repo,issueNumber,label,senderLogin} as a human action`);
-  console.log(`POST /mock/simulate-pr-label      — same, but fires pull_request.labeled (for auto-reworking/auto-merging)`);
+  console.log(`POST /mock/simulate-pr-label      — same, but fires pull_request.labeled (for auto-rework/auto-merge)`);
   console.log(`POST /mock/simulate-pr-push       — {owner,repo,prNumber,senderLogin} — native pull_request.synchronize, no agent`);
   console.log(`POST /mock/simulate-pr-merge      — {owner,repo,prNumber,senderLogin} — native pull_request.closed(merged), no agent`);
   console.log(`POST /mock/set-pr-facts           — {owner,repo,prNumber,headSha?,mergeable?,checkRuns?,reviews?} for the merge-gate aggregation`);

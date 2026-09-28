@@ -51,14 +51,14 @@ describe("toWebhookPayload", () => {
       {
         action: "labeled",
         sender: { login: "a-human", type: "User" },
-        label: { name: "ai-ready" },
+        label: { name: "ready-for-ai" },
       },
       "issues",
     );
     expect(payload).toEqual({
       action: "issues.labeled",
       sender: { login: "a-human", type: "User" },
-      label: { name: "ai-ready" },
+      label: { name: "ready-for-ai" },
       comment: undefined,
       review: undefined,
       pull_request: undefined,

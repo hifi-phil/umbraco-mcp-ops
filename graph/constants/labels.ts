@@ -2,48 +2,31 @@
 // place a label's spelling is written down — graph.ts's State, its rules
 // table, and github/from-github.ts's webhook matching all import from here rather
 // than retyping the string, so a rename is a one-line change in this file,
-// not a grep-and-hope across three files. See 10-label-rename.md for the
-// full mapping from today's live label spelling to the proposed one used
-// here — nothing here renames a live GitHub label yet.
+// not a grep-and-hope across three files.
 //
-// Naming rationale for the eight values:
+// These are today's LIVE GitHub spellings, on purpose. A cleaner naming
+// scheme is proposed in 10-label-rename.md (ai-ready, ai-generated, and
+// gerunds for the command-form ones: auto-releasing, ai-discussing,
+// auto-reworking, auto-merging). It was briefly applied to this text while
+// the live labels stayed old, which broke real loop runs, so it's deferred
+// until the basic lane works under the reducer, then done as one cutover
+// (live labels + routine triggers + this file + the skills together).
 //
-// 1. Command-form vs. state-form. Three of today's live labels already
-//    read as a *state* (ready-for-ai, generated-by-ai, ai-blocked —
-//    adjectival, describing a condition) while four read as a *command*
-//    (auto-release, ai-discuss, auto-rework, auto-merge — imperative,
-//    "please do this"). A tracked State has to describe an ongoing
-//    condition, not an instruction, so the four command-form labels use
-//    the gerund here: auto-releasing, ai-discussing, auto-reworking,
-//    auto-merging.
+// The keys (AI_READY, AUTO_MERGING, …) already use the proposed names and
+// stay as they are, so the eventual rename only changes the values below.
 //
-// 2. `ai` as suffix vs. prefix. Within the family of labels describing an
-//    issue's relationship to AI-authored work, two put `ai` at the end
-//    (ready-for-ai, generated-by-ai) and two put it at the front
-//    (ai-blocked, ai-discussing). Renamed the suffix pair to prefix form:
-//    ai-ready, ai-generated.
-//
-// Deliberately NOT folded into the "ai-*" family: auto-releasing,
-// auto-reworking, auto-merging. Those aren't a statement about AI
-// authorship of the issue — they're a request for a specific automated git
-// action (release/rework/merge). That's a real semantic line, not a
-// spelling accident, so "auto-*" stays its own namespace.
-//
-// 3. ai-stuck (the eighth, added with the watchdog-as-a-real-event work —
-//    see 03-components.md §3.4's `state:stuck`). Written by the DO's
-//    watchdog, never by a human or a loop: "an AI routine was fired on this
-//    and never reported an outcome". It's about an AI run's fate on this
-//    issue, so it joins the "ai-*" family even when the routine that died
-//    was one of the auto-* loops.
+// ai-stuck has no older spelling: it's written by the DO's watchdog, never
+// by a human or a loop ("an AI routine was fired on this and never reported
+// an outcome"), see 03-components.md §3.4.
 
 export const LABELS = {
-  AI_READY: "ai-ready",
-  AI_GENERATED: "ai-generated",
+  AI_READY: "ready-for-ai",
+  AI_GENERATED: "generated-by-ai",
   AI_BLOCKED: "ai-blocked",
-  AUTO_RELEASING: "auto-releasing",
-  AI_DISCUSSING: "ai-discussing",
-  AUTO_REWORKING: "auto-reworking",
-  AUTO_MERGING: "auto-merging",
+  AUTO_RELEASING: "auto-release",
+  AI_DISCUSSING: "ai-discuss",
+  AUTO_REWORKING: "auto-rework",
+  AUTO_MERGING: "auto-merge",
   AI_STUCK: "ai-stuck",
 } as const;
 
