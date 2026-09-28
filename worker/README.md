@@ -26,7 +26,7 @@ src/
 
 ## What's actually verified, and how
 
-**103 unit tests** (`npm test` — the `"unit"` vitest workspace project;
+**110 unit tests** (`npm test` — the `"unit"` vitest workspace project;
 see `vitest.workspace.ts`) cover `coordinate.ts` (the decision logic,
 against fake in-memory deps), `webhook-parse.ts` (payload mapping +
 signature verification), `github-client.ts` and `routines-client.ts`
@@ -390,6 +390,49 @@ step if there was one) and logs the transition to D1.
   first, so one failed comment call meant every retry found nothing and the
   alert was lost. A retry can now post a duplicate comment, but never drops
   the alert.
+
+## Shadow mode (Phase 3)
+
+`MODE` (a `wrangler.toml` var, `"shadow"` by default) decides whether the
+Worker writes anything. Only the exact string `"enforce"` does; unset or a
+typo is shadow (`coordinate.ts`'s `resolveMode`), so the Worker can't start
+writing labels next to loops that still swap their own.
+
+In shadow, `shadowDeps()` makes `addLabel`/`removeLabel`/`closeIssue`/
+`commentOnIssue`/`fireRoutine` no-ops. Everything else is real: label and
+merge-gate reads, dedupe, `pendingFire`, the D1 row. So the watchdog still
+arms when a routine would fire, and an expiry logs `watchdog_expired`
+(without commenting). That counts real routines that never reported back.
+Every D1 row carries its `mode` (`migrations/0002_transitions_mode.sql`).
+
+`.dev.vars.example` sets `MODE=enforce`, because the mock scenarios above
+check that the mock's labels changed. Delete that line for a local shadow
+run-through. An existing `.dev.vars` without the line is now shadow.
+
+Phase 3's two numbers (07-build-phases.md), after a run-through:
+
+```sql
+-- 1. The current system fired, but the table says it shouldn't have.
+--    loop-dispatch fires on any trigger label, so a dropped labelled_* row
+--    is a fire the reducer would have blocked.
+SELECT event, from_state, COUNT(*) FROM transitions
+WHERE mode = 'shadow' AND event LIKE 'labelled_%' AND dropped_reason IS NOT NULL
+GROUP BY event, from_state;
+
+-- 2. Gaps in the table: non-trigger events with no matching rule.
+SELECT event, from_state, COUNT(*) FROM transitions
+WHERE mode = 'shadow' AND event NOT LIKE 'labelled_%' AND dropped_reason IS NOT NULL
+GROUP BY event, from_state;
+
+-- Bonus: routines that never reported back.
+SELECT from_state, COUNT(*) FROM transitions
+WHERE mode = 'shadow' AND event = 'watchdog_expired' GROUP BY from_state;
+```
+
+Webhooks `translate()` doesn't recognise at all leave no row. On a repo
+still using the old label spelling that's nearly everything, so run
+against a repo whose labels and `loop-dispatch` routing use the renamed
+spelling (see "The label rename is now a coordination hazard" above).
 
 ## What's NOT verified
 

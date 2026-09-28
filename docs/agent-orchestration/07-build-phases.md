@@ -49,8 +49,10 @@ spec.
 **Entry:** Phase 2 passing.
 
 **Do:** Put `translate()` → `reduce()` in the path, have it log its decision,
-and let it enforce nothing. Fire still happens exactly as it does today. Run
-for a week and compare:
+and let it enforce nothing. Fire still happens exactly as it does today. Do
+a couple of real run-throughs of the basic lane (Build → Review → Integrate
+→ Release) and compare. A week of passive traffic isn't needed at our
+volume (decided 28-09-2026):
 
 - How often does the current system fire when the table says it shouldn't?
 - How often does an event arrive that the table has no rule for?
@@ -60,22 +62,21 @@ is the list of rules missing from the table — feed it back into Phase 1
 before moving on. This also produces the first real data for the
 per-state staleness thresholds the reconciliation sweep needs in Phase 7.
 
-**Status:** `worker/` exists now — a Cloudflare Worker + Durable Object
-that actually calls `translate()`/`reduce()` against real `graph/` code,
-with a real D1 transition log. Unit tested (40 tests) and smoke-tested
-locally end to end via `wrangler dev --local` against a stub API server
-(see `worker/README.md`) — never deployed, no Cloudflare account access
-exists for this repo.
+**Status:** the vehicle is built. `worker/` has a `MODE` var, which is
+`"shadow"` in `wrangler.toml`, and anything other than the exact string
+`"enforce"` means shadow. In shadow mode the Worker runs the same
+translate → reduce path and logs to D1 (each row tagged with its `mode`),
+but `shadowDeps()` turns every GitHub or routines write into a no-op. The
+watchdog still arms, so an expiry logs a `watchdog_expired` row. That
+shows how often the routine the existing dispatch fired never reported
+back. See `worker/README.md`'s "Shadow mode" section for the two queries
+that produce this phase's numbers.
 
-**It's not actually a Phase 3 vehicle as built — it's Phase 4's.**
-`coordinateWebhook()` performs real label writes and fires the routine
-unconditionally whenever a rule matches; there's no dry-run/observe-only
-mode. Deploying it as-is today, alongside loops that still self-swap,
-would mean two systems writing labels at once — the opposite of safe
-shadow mode. Before this can run Phase 3 for real, it needs a shadow-mode
-toggle: log the decision (already happens, via `logTransition`) but skip
-`addLabel`/`removeLabel`/`closeIssue`/`fireRoutine` while it's on. Not
-built yet — a small, contained change once wanted, not a redesign.
+Still needed before a run-through: somewhere to deploy (the Cloudflare
+account's owner has to approve it), and a test repo whose live labels
+and `loop-dispatch` routing match the renamed spelling. Against today's
+old-spelling labels, `translate()` recognises almost nothing (see
+[10-label-rename.md](10-label-rename.md)).
 
 ## Phase 4 — Enforce
 
@@ -87,13 +88,13 @@ cleanest, not with everything at once.
 **Exit:** At least one transition is enforced in production with no
 regressions observed for a full cycle of that transition.
 
-**Status:** the actual enforcement mechanism is what `worker/` already
-is — `coordinateWebhook()` unconditionally applies `labelOps()` and fires
-the routine when a rule matches, real writes, no toggle. What's missing
-isn't the mechanism, it's everything around safely turning it on: real
-deployment, a shadow-mode pass first (see Phase 3's status above) to
-confirm the table's accurate against real traffic before this starts
-writing labels for real, and picking which transition graduates first.
+**Status:** the enforcement mechanism is `worker/` with `MODE = "enforce"`.
+When a rule matches, `coordinateWebhook()` applies `labelOps()` and fires
+the routine for real. The mechanism itself is done. What's missing is
+everything around turning it on safely: real deployment, a shadow-mode
+pass first (see Phase 3's status above) to confirm the table is accurate,
+and picking which transition graduates first. `MODE` is global today;
+enforcing one transition at a time will need it per transition.
 
 ## Phase 5 — Reducer owns labels
 
