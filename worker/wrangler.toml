@@ -3,15 +3,12 @@ main = "src/index.ts"
 compatibility_date = "2026-08-25"
 compatibility_flags = ["nodejs_compat"]
 
-# Not deployed anywhere yet — this repo has no live Cloudflare account
-# access. See ../docs/agent-orchestration/07-build-phases.md. Running this
-# for real needs, in order: `wrangler login` (interactive, the user's own
-# account), `wrangler d1 create agent-orchestration-log` (then paste the
-# real database_id below), and secrets set via `wrangler secret put`
-# (GITHUB_APP_TOKEN, GITHUB_WEBHOOK_SECRET, CLAUDE_API_KEY,
-# ROUTINE_SIGNAL_SECRET — the last one guards POST /routine-signal, the
-# direct routine-to-DO heartbeat channel; see src/coordinate.ts's
-# coordinateRoutineSignal) — never in this file or committed anywhere.
+# Local dev (`wrangler dev`) and bundling (`npm run build`) only. Real
+# deploys go through terraform/ (OpenTofu), which creates the D1 database,
+# Worker, secrets and GitHub webhook, and removes them all on
+# `tofu destroy`. See README.md's "Deploying". The database_id below stays
+# a placeholder: tofu binds the real one itself, and a personal account's
+# id doesn't belong in this public repo.
 
 [vars]
 # Phase 3 shadow mode: decide + log to D1, write nothing to GitHub, fire

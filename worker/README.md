@@ -2,11 +2,50 @@
 
 `graph/` was always a prototype for this: a Cloudflare Worker + Durable
 Object that imports `graph/`'s pure logic directly and adds the I/O a real
-system needs — GitHub API calls, a D1 log, the watchdog alarm. Not
-deployed anywhere. This repo has no live Cloudflare account access; see
-`wrangler.toml`'s header comment for exactly what running this for real
-still needs (`wrangler login`, `wrangler d1 create`, three required secrets
-plus one optional one — see `wrangler.toml`'s header for the exact list).
+system needs — GitHub API calls, a D1 log, the watchdog alarm. Deployed
+with OpenTofu from `terraform/`; see "Deploying" below.
+
+## Deploying
+
+`terraform/` owns every real resource: the D1 database (with
+`migrations/` applied), the Worker and its Durable Object, its secrets,
+its workers.dev route, and the GitHub webhook on one test repo.
+`tofu destroy` removes all of it.
+
+```bash
+cd worker
+npm ci && npm run build                     # wrangler bundles to dist/index.js
+cd terraform
+cp terraform.tfvars.example terraform.tfvars   # fill in; gitignored
+export CLOUDFLARE_API_TOKEN=…   # account token: Workers Scripts: Edit, D1: Edit
+export GITHUB_TOKEN=…           # webhook admin on the test repo only
+mkdir -p -m 700 ~/.local/state/umbraco-mcp-ops
+tofu init -backend-config="path=$HOME/.local/state/umbraco-mcp-ops/agent-orchestration-worker.tfstate"
+tofu apply
+# later:
+tofu destroy
+```
+
+- Re-run `npm run build` before `tofu apply` after any code change; the
+  bundle's hash is what tells tofu the Worker changed.
+- `mode` defaults to `shadow`. The webhook and routine-signal secrets are
+  generated (`random_password`); read the routine one with
+  `tofu output -raw routine_signal_secret`.
+- **State lives outside the repo**, at
+  `~/.local/state/umbraco-mcp-ops/agent-orchestration-worker.tfstate`, so
+  deleting a worktree or checkout doesn't lose it. From any fresh checkout,
+  run the same `tofu init -backend-config=…` line and you're pointing at the
+  same state again. It holds every secret in plain text: keep it off shared
+  drives and never commit it.
+- The migrations step shells out to wrangler
+  (`terraform/apply-d1-migrations.sh`) because tofu can't run SQL.
+
+**Not yet verified against a real account** (`tofu validate` and a
+fake-credential `tofu plan` pass, nothing has been applied):
+- whether a second `apply` that changes the Worker re-sends the Durable
+  Object `migrations` block and gets rejected for an already-applied tag;
+- whether `destroy` deletes a Worker that still has a Durable Object
+  namespace cleanly, or needs the namespace removed first.
 
 ## Structure — same "thin shell around tested pure logic" shape as `graph/`
 
