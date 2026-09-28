@@ -87,7 +87,19 @@
   state?** If a human relabels an issue that was previously `state:stuck`
   straight to `state:rework`, the log needs to record that jump even though
   no rule in the table permits it — worth deciding whether `verifiedBy` even
-  applies to a row the reducer didn't produce.
+  applies to a row the reducer didn't produce. *Narrowed:* the most common
+  exit from stuck (re-adding a trigger label, e.g. `auto-reworking` on an
+  `ai-stuck` PR) is now a real rule in `graph/graph.ts`, not an override.
+  The question still stands for relabels no rule covers.
+- **Does a late routine's own label removal tolerate a label that's already
+  gone?** Once the watchdog has swapped `ai-ready` → `ai-stuck`, a slow
+  `issue-build-loop` still tries to remove `ai-ready` before adding
+  `ai-generated` and posting its outcome. The Worker's own
+  `github-client.ts` treats that 404 as fine, but nobody has checked
+  whether the loops' `gh issue edit --remove-label` / GitHub MCP calls do.
+  If one aborts on it, the late outcome never arrives and the issue stays
+  `ai-stuck` until a human retries it. That's safe, but it isn't the
+  intended recovery.
 - **Atomic or incremental label rename — now urgent, not hypothetical.**
   See [10-label-rename.md](10-label-rename.md) — the 14 referencing skill
   files are already migrated to the new spelling (surfaced and fixed via

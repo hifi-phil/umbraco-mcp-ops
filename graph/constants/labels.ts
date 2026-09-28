@@ -6,7 +6,7 @@
 // full mapping from today's live label spelling to the proposed one used
 // here — nothing here renames a live GitHub label yet.
 //
-// Naming rationale for the seven values:
+// Naming rationale for the eight values:
 //
 // 1. Command-form vs. state-form. Three of today's live labels already
 //    read as a *state* (ready-for-ai, generated-by-ai, ai-blocked —
@@ -28,6 +28,13 @@
 // authorship of the issue — they're a request for a specific automated git
 // action (release/rework/merge). That's a real semantic line, not a
 // spelling accident, so "auto-*" stays its own namespace.
+//
+// 3. ai-stuck (the eighth, added with the watchdog-as-a-real-event work —
+//    see 03-components.md §3.4's `state:stuck`). Written by the DO's
+//    watchdog, never by a human or a loop: "an AI routine was fired on this
+//    and never reported an outcome". It's about an AI run's fate on this
+//    issue, so it joins the "ai-*" family even when the routine that died
+//    was one of the auto-* loops.
 
 export const LABELS = {
   AI_READY: "ai-ready",
@@ -37,11 +44,12 @@ export const LABELS = {
   AI_DISCUSSING: "ai-discussing",
   AUTO_REWORKING: "auto-reworking",
   AUTO_MERGING: "auto-merging",
+  AI_STUCK: "ai-stuck",
 } as const;
 
 export type Label = (typeof LABELS)[keyof typeof LABELS];
 
-/** Same seven values as LABELS, as an array — for anything that needs to
+/** Same eight values as LABELS, as an array — for anything that needs to
  * iterate all of them (a dashboard, a check against a live repo's actual
  * label set, a "does this string name a tracked label" guard). */
 export const ALL_LABELS: readonly Label[] = Object.values(LABELS);

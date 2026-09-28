@@ -193,26 +193,46 @@ describe("IssueCoordinator.fetch()", () => {
 });
 
 describe("IssueCoordinator.alarm() — the watchdog", () => {
-  it("fires: comments on the issue and clears pendingFire, when one was set", async () => {
-    const apiFetch = fakeApiFetch();
+  const pendingBuild = {
+    owner: "hifi-phil",
+    repo: "umbraco-mcp-ops",
+    issueNumber: 412,
+    run: "issue-build-loop",
+  };
+
+  it("fires: comments, swaps ai-ready -> ai-stuck for real, logs a watchdog_expired row to D1, clears pendingFire", async () => {
+    const apiFetch = fakeApiFetch({ labels: ["ai-ready"] });
     vi.stubGlobal("fetch", apiFetch);
     const { ctx, storage } = fakeCtx();
-    await storage.put("pendingFire", {
-      owner: "hifi-phil",
-      repo: "umbraco-mcp-ops",
-      issueNumber: 412,
-      run: "issue-build-loop",
-    });
-    const coordinator = new IssueCoordinator(ctx, fakeEnv());
+    const { db, inserted } = fakeDb();
+    await storage.put("pendingFire", pendingBuild);
+    const coordinator = new IssueCoordinator(ctx, fakeEnv({ DB: db }));
 
     await coordinator.alarm();
 
+    const calls = apiFetch.mock.calls.map(([url, init]) => `${(init as RequestInit)?.method ?? "GET"} ${url as string}`);
     const commentCall = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).includes("/comments"));
-    expect(commentCall).toBeDefined();
-    const [, init] = commentCall!;
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.body).toMatch(/issue-build-loop.*hasn't reported back within 30 minutes/);
+    const body = JSON.parse((commentCall![1] as RequestInit).body as string);
+    expect(body.body).toMatch(/issue-build-loop.*hasn't reported back within 30 minutes.*ai-stuck/);
+    expect(calls.some((c) => c.startsWith("DELETE") && c.endsWith("/labels/ai-ready"))).toBe(true);
+    const addCall = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).endsWith("/labels"));
+    expect(JSON.parse((addCall![1] as RequestInit).body as string)).toEqual({ labels: ["ai-stuck"] });
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toEqual(expect.arrayContaining(["ai-ready", "watchdog_expired"]));
     expect(await storage.get("pendingFire")).toBeUndefined();
+  });
+
+  it("a failing GitHub call throws (so Cloudflare retries the alarm) and leaves pendingFire for that retry", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("bad gateway", { status: 502 })),
+    );
+    const { ctx, storage } = fakeCtx();
+    await storage.put("pendingFire", pendingBuild);
+    const coordinator = new IssueCoordinator(ctx, fakeEnv());
+
+    await expect(coordinator.alarm()).rejects.toThrow();
+    expect(await storage.get("pendingFire")).toEqual(pendingBuild);
   });
 
   it("no-ops when no pendingFire is set — a harmless race, not a bug", async () => {

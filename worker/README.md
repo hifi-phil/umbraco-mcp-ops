@@ -26,7 +26,7 @@ src/
 
 ## What's actually verified, and how
 
-**91 unit tests** (`npm test` — the `"unit"` vitest workspace project;
+**103 unit tests** (`npm test` — the `"unit"` vitest workspace project;
 see `vitest.workspace.ts`) cover `coordinate.ts` (the decision logic,
 against fake in-memory deps), `webhook-parse.ts` (payload mapping +
 signature verification), `github-client.ts` and `routines-client.ts`
@@ -39,8 +39,10 @@ no-secret-configured skip path), routing to the correct DO keyed by
 `owner/repo#issueNumber` (including that two different issues or two
 different repos never produce the same key), delivery-id dedup, the
 watchdog alarm actually *firing* (not just being scheduled — the pending-
-fire case posts the real comment and clears state; the no-pending case is
-a harmless no-op), and that two `IssueCoordinator` instances (standing in
+fire case posts the real comment, swaps the in-flight label to `ai-stuck`,
+logs a `watchdog_expired` row to D1 and clears state; a failing GitHub call
+leaves the pending fire for the platform's alarm retry; the no-pending case
+is a harmless no-op — see "The watchdog is a real event" below), and that two `IssueCoordinator` instances (standing in
 for two different issues' real DOs) never share dedup/pending-fire state.
 All of this via the same fake-deps pattern `coordinate.test.ts` already
 used — no `@cloudflare/vitest-pool-workers` (that package needs vitest
@@ -333,9 +335,10 @@ heartbeat or "completion" fast-path echo a routine can send straight to
 its DO, bypassing GitHub entirely — now has a real receiving endpoint:
 **`POST /routine-signal`** on this Worker. Deliberately narrow, matching
 what that file's own design already specified: neither kind ever calls
-`reduce()` or writes a label/close. `"process"` re-schedules the watchdog
-alarm (`coordinate.ts`'s `coordinateRoutineSignal` → `setPendingFire`
-again with the same info); `"completion"` cancels it early
+`reduce()` or writes a label/close. `"process"` records the step on the
+pending fire (`lastStep`/`lastStepAt`, quoted by the watchdog's comment if
+the run then dies) and re-schedules the watchdog alarm (`coordinate.ts`'s
+`coordinateRoutineSignal` → `setPendingFire`); `"completion"` cancels it early
 (`clearPendingFire`) — the real state transition still only ever comes
 from `github/from-github.ts` reading the actual GitHub comment, later.
 Losing a call here costs a slightly-late watchdog comment or a
@@ -358,6 +361,35 @@ actually pointed `AGENT_OUTCOMES_ENDPOINT` (the `agent-outcomes` plugin's
 `PostToolUse` hook — see `docs/agent-orchestration/11-outcome-artifact.md`)
 at this endpoint, so the *real* sending side has never been exercised
 against it, only this receiving side in isolation.
+
+## The watchdog is a real event
+
+A watched routine that never reports back now moves the issue through the
+reducer like any other fact, rather than only leaving a comment. When the
+alarm fires, `coordinate.ts`'s `coordinateWatchdogExpired` raises
+`watchdog_expired` against the live labels, and `graph.ts`'s table moves
+the issue to **`ai-stuck`** from any state a watched routine can leave it
+in (`ai-ready`, `auto-releasing`, `auto-reworking`, `auto-merging`, plus
+post-swap `ai-generated`/`ai-blocked` for a build that swapped its label
+but never posted its outcome). It also comments (quoting the last heartbeat
+step if there was one) and logs the transition to D1.
+
+- **What gets watched is decided by the table.** A fired routine only arms
+  the watchdog if its target state has a `watchdog_expired` rule
+  (`graph.ts`'s `isWatched`). `issue-discuss-loop` never posts an outcome,
+  so `ai-discussing` has no such rule, and discussions no longer raise a
+  false alarm 30 minutes after every fire.
+- **Two ways out of `ai-stuck`.** A late, authoritative outcome still wins,
+  and a human re-adding the trigger label retries that loop. A slow routine
+  that finishes after the watchdog usually swaps its own label first, which
+  leaves `ai-stuck` plus e.g. `ai-generated` on the issue. `deriveState()`
+  reads that one pairing as `ai-stuck` rather than `ambiguous`. Any other
+  pair of tracked labels is still ambiguous.
+- **Retry-safe ordering.** Cloudflare retries a throwing `alarm()` with
+  backoff, so `pendingFire` is cleared last. The old handler deleted it
+  first, so one failed comment call meant every retry found nothing and the
+  alert was lost. A retry can now post a duplicate comment, but never drops
+  the alert.
 
 ## What's NOT verified
 
@@ -397,8 +429,9 @@ against it, only this receiving side in isolation.
 - **The watchdog alarm's *firing* is verified via a direct unit call
   (`test/issue-coordinator.test.ts`), not a real elapsed 30 minutes.**
   `alarm()` is called directly against a fake `ctx.storage` pre-populated
-  with a pending fire, and asserted to post the real comment and clear
-  state (plus a no-op case with nothing pending) — genuine coverage of
+  with a pending fire, and asserted to post the real comment, swap to
+  `ai-stuck`, log to D1 and clear state (plus a no-op case with nothing
+  pending, and a failing-call case that keeps state) — genuine coverage of
   the firing logic itself, but still not the same as observing
   Miniflare's own alarm-scheduling clock actually elapse and invoke it;
   that would need Miniflare's time-travel testing APIs, not done here.
