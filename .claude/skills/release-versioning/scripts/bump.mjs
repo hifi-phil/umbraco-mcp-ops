@@ -50,12 +50,14 @@ if (cmp(version, previous) <= 0) {
   process.exit(1);
 }
 
-let tag = "";
+// Tags are picked by version, not ancestry: release tags land on main, and a
+// release branch cut from a squash-merged dev doesn't contain them.
 try {
-  tag = git("describe", "--tags", "--abbrev=0", "--match", "v*");
+  git("fetch", "--tags", "--quiet", "origin");
 } catch {
-  // no release tag yet
+  console.warn("warning: could not fetch tags from origin; using local tags only");
 }
+const tag = git("tag", "--list", "v*", "--sort=-v:refname").split("\n")[0];
 
 const [pMaj, pMin] = parse(previous);
 const [nMaj, nMin] = parse(version);

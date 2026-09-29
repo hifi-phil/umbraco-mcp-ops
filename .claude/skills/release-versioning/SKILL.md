@@ -9,7 +9,7 @@ Repo-specific release versioning for umbraco-mcp-ops. The shared `auto-release-l
 to `CLAUDE.md` for the version files; `CLAUDE.md` points here.
 
 1. Take the release version from the issue title (`release 1.1.0` → `1.1.0`).
-2. From the repo root run: `node .claude/skills/release-versioning/scripts/bump.mjs <version>`
+2. From the repo root run: `node .claude/skills/release-versioning/scripts/bump.mjs "<version>"` (must be plain `x.y.z`; the script rejects anything else)
    (`--dry-run` to preview). It edits the JSON files and prints what it did.
 3. Read the reference for the component if the output surprises you:
    - [`references/marketplace.md`](references/marketplace.md)

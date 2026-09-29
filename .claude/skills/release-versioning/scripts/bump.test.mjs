@@ -39,7 +39,12 @@ assert.equal(get("plugins/drift/.claude-plugin/plugin.json").version, "1.3.0");
 assert.equal(get(".claude-plugin/marketplace.json").plugins[2].version, "1.2.0");
 git("add", "-A");
 git("commit", "-qm", "release 1.0.1");
+// tag a commit that is not an ancestor of the release branch (as with main vs squash-merged dev)
+const branch = git("rev-parse", "--abbrev-ref", "HEAD").trim();
+git("checkout", "-q", "-b", "side");
+git("commit", "-q", "--allow-empty", "-m", "tagged on main");
 git("tag", "v1.0.1");
+git("checkout", "-q", branch);
 
 // change one plain plugin, one drifted plugin and worker/, then a minor release
 put("plugins/changed/README.md", "x");
