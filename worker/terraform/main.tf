@@ -11,6 +11,12 @@ locals {
 resource "cloudflare_d1_database" "log" {
   account_id = var.cloudflare_account_id
   name       = var.database_name
+
+  # Cloudflare reports this after create; leaving it out makes every plan
+  # try to "remove" it (a perpetual no-op diff).
+  read_replication = {
+    mode = "disabled"
+  }
 }
 
 # Tofu can't run SQL, so wrangler applies ../migrations/ against the real
