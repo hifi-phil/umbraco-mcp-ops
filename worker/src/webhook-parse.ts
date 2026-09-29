@@ -32,7 +32,10 @@ export function extractRoutingInfo(body: Record<string, unknown>): RoutingInfo {
 export function toWebhookPayload(body: Record<string, unknown>, eventType: string): WebhookPayload {
   const sender = body.sender as { login?: string; type?: "Bot" | "User" } | undefined;
   const label = body.label as { name?: string } | undefined;
-  const comment = body.comment as { body?: string } | undefined;
+  const comment = body.comment as
+    | { body?: string; author_association?: string; user?: { type?: "Bot" | "User" } }
+    | undefined;
+  const issue = body.issue as { state?: "open" | "closed"; pull_request?: unknown } | undefined;
   const review = body.review as { state?: "approved" | "changes_requested" | "commented" } | undefined;
   const pullRequest = body.pull_request as { merged?: boolean } | undefined;
   const checkSuite = body.check_suite as
@@ -43,7 +46,13 @@ export function toWebhookPayload(body: Record<string, unknown>, eventType: strin
     action: combineEventAction(eventType, body.action as string | undefined),
     sender: sender?.login ? { login: sender.login, type: sender.type ?? "User" } : undefined,
     label: label?.name ? { name: label.name } : undefined,
-    comment: comment?.body !== undefined ? { body: comment.body } : undefined,
+    comment:
+      comment?.body !== undefined
+        ? { body: comment.body, author_association: comment.author_association, user_type: comment.user?.type }
+        : undefined,
+    // GitHub sends PR conversation comments as issue_comment too; only a PR
+    // "issue" carries a pull_request key.
+    issue: issue ? { state: issue.state, is_pr: issue.pull_request !== undefined } : undefined,
     review: review?.state ? { state: review.state } : undefined,
     pull_request: pullRequest ? { merged: pullRequest.merged } : undefined,
     check_suite: checkSuite

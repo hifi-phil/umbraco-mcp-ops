@@ -10,6 +10,7 @@ import {
   deriveState,
   resolveMode,
   shadowDeps,
+  watchdogMinutesFor,
   type CoordinateInput,
   type Deps,
   type PendingFire,
@@ -138,15 +139,93 @@ describe("coordinateWebhook — no event / no rule", () => {
   });
 
   it("a legal event with no rule for the current state -> dropped, logged", async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => []) });
+    // generated-by-ai added while the issue is in ai-discuss: build_succeeded
+    // has no rule from there, and it isn't a contextual event, so it's a gap.
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
     const result = await coordinateWebhook(
       deps,
-      input({ payload: { action: "pull_request.closed", pull_request: { merged: true } } }),
+      input({ payload: { action: "issues.labeled", label: { name: LABELS.AI_GENERATED }, sender: { login: "phil", type: "User" } } }),
     );
-    expect(result).toEqual({ outcome: "dropped_no_rule", from: "none", event: EVENTS.MERGED });
+    expect(result).toEqual({ outcome: "dropped_no_rule", from: LABELS.AI_DISCUSSING, event: EVENTS.BUILD_SUCCEEDED });
     expect(deps.logTransition).toHaveBeenCalledWith(
       expect.objectContaining({ droppedReason: "no matching rule for this (state, event) pair" }),
     );
+  });
+
+  it("a contextual event outside its states (a merge with no auto-merge, a push with no auto-rework) -> ignored, not logged", async () => {
+    for (const payload of [
+      { action: "pull_request.closed", pull_request: { merged: true } },
+      { action: "pull_request.synchronize" },
+    ]) {
+      const deps = fakeDeps({ getLabels: vi.fn(async () => []) });
+      const result = await coordinateWebhook(deps, input({ payload }));
+      expect(result, payload.action).toMatchObject({ outcome: "ignored", from: "none" });
+      expect(deps.logTransition, payload.action).not.toHaveBeenCalled();
+    }
+  });
+
+  it("the build loop swapping its own label (no outcome comment) clears the watchdog", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
+    await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.ISSUE_BUILD_LOOP });
+    const result = await coordinateWebhook(
+      deps,
+      input({ payload: { action: "issues.labeled", label: { name: LABELS.AI_GENERATED }, sender: { login: "phil", type: "User" } } }),
+    );
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_GENERATED, event: EVENTS.BUILD_SUCCEEDED });
+    expect(await deps.getPendingFire()).toBeNull();
+    expect(deps.addLabel).not.toHaveBeenCalled();
+    expect(deps.removeLabel).not.toHaveBeenCalled();
+  });
+
+  it("the release loop removing auto-release (blocked, no outcome comment) clears the watchdog", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => []) });
+    await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.AUTO_RELEASE_LOOP });
+    const result = await coordinateWebhook(
+      deps,
+      input({ payload: { action: "issues.unlabeled", label: { name: LABELS.AUTO_RELEASING }, sender: { login: "phil", type: "User" } } }),
+    );
+    expect(result).toMatchObject({ outcome: "applied", from: "none", event: EVENTS.UNLABELLED_AUTO_RELEASING });
+    expect(await deps.getPendingFire()).toBeNull();
+  });
+
+  it("a discussion reply on an ai-discuss issue fires issue-discuss-loop, unwatched", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
+    const result = await coordinateWebhook(
+      deps,
+      input({
+        payload: {
+          action: "issue_comment.created",
+          comment: { body: "Good point, go with option B", author_association: "OWNER", user_type: "User" },
+          issue: { state: "open", is_pr: false },
+        },
+      }),
+    );
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_DISCUSSING, event: EVENTS.DISCUSSION_REPLY });
+    expect(deps.fireRoutine).toHaveBeenCalledWith(ROUTINES.ISSUE_DISCUSS_LOOP, expect.any(String));
+    expect(deps.setPendingFire).not.toHaveBeenCalled();
+  });
+
+  it("the same comment on an issue that isn't in ai-discuss -> ignored, not logged", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => []) });
+    const result = await coordinateWebhook(
+      deps,
+      input({
+        payload: {
+          action: "issue_comment.created",
+          comment: { body: "Thanks!", author_association: "OWNER", user_type: "User" },
+          issue: { state: "open", is_pr: false },
+        },
+      }),
+    );
+    expect(result).toMatchObject({ outcome: "ignored", event: EVENTS.DISCUSSION_REPLY });
+    expect(deps.logTransition).not.toHaveBeenCalled();
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("watchdog timeout is per routine: releases 120, builds 60, others the 30 default", () => {
+    expect(watchdogMinutesFor(ROUTINES.AUTO_RELEASE_LOOP)).toBe(120);
+    expect(watchdogMinutesFor(ROUTINES.ISSUE_BUILD_LOOP)).toBe(60);
+    expect(watchdogMinutesFor(ROUTINES.MERGE_FLOW)).toBe(30);
   });
 
   it("a labelled_* event's own label doesn't count towards ambiguity — only genuinely pre-existing labels do", async () => {
@@ -354,7 +433,7 @@ describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
       "hifi-phil",
       "umbraco-mcp-ops",
       412,
-      expect.stringMatching(/issue-build-loop.*30 minutes.*No progress step.*Moving this to `ai-stuck`/),
+      expect.stringMatching(/issue-build-loop.*60 minutes.*No progress step.*Moving this to `ai-stuck`/),
     );
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_READY);
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
@@ -376,12 +455,12 @@ describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
     );
   });
 
-  it("a build that swapped to generated-by-ai but never posted its outcome -> also ai-stuck", async () => {
+  it("a build that already swapped to generated-by-ai is finished, never moved to ai-stuck (shadow run 1, #116)", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
     await deps.setPendingFire(pending);
     const result = await coordinateWatchdogExpired(deps);
-    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_GENERATED });
-    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
+    expect(result).toMatchObject({ outcome: "dropped_no_rule", from: LABELS.AI_GENERATED });
+    expect(deps.addLabel).not.toHaveBeenCalled();
   });
 
   it("no rule from the current state (e.g. a human already cleared the labels) -> still alerts, logged as dropped, pendingFire cleared", async () => {

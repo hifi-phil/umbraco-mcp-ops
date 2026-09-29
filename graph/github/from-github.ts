@@ -57,7 +57,8 @@ export type WebhookPayload = {
   action: string;
   sender?: { login: string; type: "Bot" | "User" };
   label?: { name: string };
-  comment?: { body: string };
+  comment?: { body: string; author_association?: string; user_type?: "Bot" | "User" };
+  issue?: { state?: "open" | "closed"; is_pr?: boolean };
   review?: { state: "approved" | "changes_requested" | "commented" };
   pull_request?: { merged?: boolean };
   check_suite?: { conclusion: "success" | "failure" | null; status: "completed" | "in_progress" };
@@ -69,6 +70,23 @@ function isOwnBot(sender: WebhookPayload["sender"]): boolean {
 
 function hasOwnSignatureMarker(body: string | undefined): boolean {
   return !!body && body.includes(COMMENT_SIGNATURE);
+}
+
+// loop-dispatch's discussion-round gates 2–7 (route-event.sh's
+// issue_comment case), all fail-closed. Gate 1, "the issue carries
+// ai-discuss", is the reducer's: DISCUSSION_REPLY only has a rule from
+// that state. The self-marker gate (2) is checked by the caller first.
+const TRUSTED_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"];
+function isDiscussionReply(payload: WebhookPayload): boolean {
+  const c = payload.comment;
+  return (
+    !!c &&
+    !c.body.trimStart().startsWith("//") &&
+    TRUSTED_ASSOCIATIONS.includes(c.author_association ?? "") &&
+    c.user_type === "User" &&
+    payload.issue?.state === "open" &&
+    payload.issue.is_pr === false
+  );
 }
 
 export function translate(payload: WebhookPayload): Event | null {
@@ -89,9 +107,30 @@ export function translate(payload: WebhookPayload): Event | null {
           return EVENTS.LABELLED_AUTO_RELEASING;
         case LABELS.AI_DISCUSSING:
           return EVENTS.LABELLED_AI_DISCUSSING;
+        // issue-build-loop's own Step 3 swap. The same fact its outcome
+        // comment carries, but native and reliably present (the comment
+        // wasn't, in shadow run 1). Also how a late build leaves ai-stuck.
+        case LABELS.AI_GENERATED:
+          return EVENTS.BUILD_SUCCEEDED;
+        case LABELS.AI_BLOCKED:
+          return EVENTS.BUILD_BLOCKED;
         default:
           return null;
       }
+
+    case "issues.unlabeled":
+      if (isOwnBot(payload.sender)) return null;
+      switch (payload.label?.name) {
+        case LABELS.AI_READY:
+          return EVENTS.UNLABELLED_AI_READY;
+        case LABELS.AUTO_RELEASING:
+          return EVENTS.UNLABELLED_AUTO_RELEASING;
+        default:
+          return null;
+      }
+
+    case "issues.closed":
+      return EVENTS.ISSUE_CLOSED;
 
     case "issue_comment.created": {
       // Self-trigger guard, content-marker case — see 03-components.md §3.3.
@@ -118,11 +157,9 @@ export function translate(payload: WebhookPayload): Event | null {
         }
       }
 
-      // No rule in ../graph.ts has an outbound transition from
-      // "ai-discuss" — it's a human-owned level-state by design — so a
-      // plain comment never needs to become a domain event here.
-      // loop-dispatch's existing router still fires issue-discuss-loop
-      // directly; this reducer simply has no opinion on that state.
+      // A discussion round. Whether the issue is actually in ai-discuss is
+      // the reducer's call (see isDiscussionReply above).
+      if (isDiscussionReply(payload)) return EVENTS.DISCUSSION_REPLY;
       return null;
     }
 
@@ -138,14 +175,25 @@ export function translate(payload: WebhookPayload): Event | null {
           return null;
       }
 
+    case "pull_request.unlabeled":
+      if (isOwnBot(payload.sender)) return null;
+      switch (payload.label?.name) {
+        case LABELS.AUTO_REWORKING:
+          return EVENTS.UNLABELLED_AUTO_REWORKING;
+        case LABELS.AUTO_MERGING:
+          return EVENTS.UNLABELLED_AUTO_MERGING;
+        default:
+          return null;
+      }
+
     // rework-loop pushing a fix is a native, independently-observable
     // event — GitHub fires this the moment a PR's head branch gets a new
     // commit, regardless of who or what pushed it. No self-report needed,
     // no outcome artifact, no loop change: rework-loop already pushes in
     // its own Step 4; this just reads the webhook that action already
-    // produces. reduce() only acts on it when the PR is currently in
-    // auto-rework state, so this can map unconditionally — same
-    // pattern as the label cases above.
+    // produces. Every push maps here; reduce() only acts on it when the PR
+    // is in auto-rework, and elsewhere it's a CONTEXTUAL_EVENT that the
+    // coordinator ignores without logging (see graph.ts).
     case "pull_request.synchronize":
       return EVENTS.REWORK_PUSHED;
 

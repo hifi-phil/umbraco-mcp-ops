@@ -21,7 +21,6 @@
 // README.md.
 
 import {
-  WATCHDOG_MINUTES,
   coordinateWebhook,
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
@@ -31,6 +30,7 @@ import {
   type Deps,
   type PendingFire,
   type RoutineSignalInput,
+  watchdogMinutesFor,
 } from "./coordinate";
 import * as githubClient from "./github-client";
 import { fireRoutine } from "./routines-client";
@@ -80,7 +80,7 @@ export class IssueCoordinator {
     return Response.json(result);
   }
 
-  /** The watchdog: fires WATCHDOG_MINUTES after a watched routine was fired
+  /** The watchdog: fires watchdogMinutesFor(run) after a watched routine was fired
    * (or after its last heartbeat), unless a later event for the same issue
    * cancelled it first. The expiry itself is a real event through the
    * reducer — see coordinate.ts's coordinateWatchdogExpired, which also
@@ -123,7 +123,7 @@ export class IssueCoordinator {
       },
       setPendingFire: async (info: PendingFire) => {
         await this.ctx.storage.put(PENDING_FIRE_KEY, info);
-        await this.ctx.storage.setAlarm(Date.now() + WATCHDOG_MINUTES * 60_000);
+        await this.ctx.storage.setAlarm(Date.now() + watchdogMinutesFor(info.run) * 60_000);
       },
       clearPendingFire: async () => {
         await this.ctx.storage.delete(PENDING_FIRE_KEY);

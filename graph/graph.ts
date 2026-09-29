@@ -9,9 +9,8 @@
 // "building" name for the "ready-for-ai" label bought nothing but a mapping
 // table to keep in sync, and keeping two names for one thing is exactly
 // what let "remove ready-for-ai" go missing silently. See constants/labels.ts
-// for the naming rationale and 10-label-rename.md for what it means for the
-// real, currently-live labels — nothing here renames them yet; this
-// describes the proposed target, not today's exact strings.
+// for the spelling (today's live labels) and 10-label-rename.md for the
+// deferred rename.
 //
 // Event (constants/events.ts) and Routine (constants/routines.ts) are the
 // same idea applied to the rest of this table's vocabulary — every fixed
@@ -115,8 +114,24 @@ export const rules: Rule[] = [
     run: ROUTINES.ISSUE_DISCUSS_LOOP,
     verifiedBy: "external-judgment", // a human decided this needs discussion
   },
-  // deliberately no outbound rules from LABELS.AI_DISCUSSING — see README:
-  // this state is human-owned by design and doesn't need to enter the reducer at all.
+  {
+    // Each trusted reply fires the next round; the state doesn't change.
+    // Leaving ai-discuss stays human-owned: no outbound rule for that.
+    from: LABELS.AI_DISCUSSING,
+    on: EVENTS.DISCUSSION_REPLY,
+    to: noop,
+    run: ROUTINES.ISSUE_DISCUSS_LOOP,
+    verifiedBy: "external-judgment", // a human wrote the reply
+  },
+  {
+    // auto-release-loop's Step 4 closes the issue on publish, with the
+    // label still on. The native close is enough to know the run ended,
+    // with or without the release_published comment.
+    from: LABELS.AUTO_RELEASING,
+    on: EVENTS.ISSUE_CLOSED,
+    to: noop,
+    verifiedBy: "deterministic",
+  },
 
   // --- PR lifecycle ---
   {
@@ -163,25 +178,36 @@ export const rules: Rule[] = [
     verifiedBy: "deterministic",
   },
 
-  // --- the watchdog: a fired routine that never reported back ---
-  // 03-components.md §3.4: "Alarm fires instead, the agent died — move to
-  // state:stuck." Keyed on every state a watched routine can leave the issue
-  // in: the in-flight label itself, plus the post-swap generated-by-ai /
-  // ai-blocked for a build that swapped its label but never posted its
-  // outcome comment. The table doubles as the watch list — coordinate.ts
-  // only arms the watchdog for a fired routine whose target state has a
-  // watchdog_expired rule here, so ai-discuss (issue-discuss-loop posts
-  // no outcome artifact, ever) is deliberately absent rather than raising a
-  // false alarm on every discussion.
+  // --- a loop taking its own trigger label off ---
+  // Native and reliable: in shadow run 1 every build and release removed its
+  // trigger label, but only 1 of 4 posted the outcome comment. So removal is
+  // what ends a run as far as the watchdog is concerned. to: noop (the label
+  // is already gone); no `run`, so applying the rule clears pendingFire.
+  // Keyed on every state the removal can leave behind: "none", the build's
+  // outcome labels (if they landed first), and ai-stuck (a late loop).
   ...(
     [
-      LABELS.AI_READY,
-      LABELS.AI_GENERATED,
-      LABELS.AI_BLOCKED,
-      LABELS.AUTO_RELEASING,
-      LABELS.AUTO_REWORKING,
-      LABELS.AUTO_MERGING,
+      [EVENTS.UNLABELLED_AI_READY, ["none", LABELS.AI_GENERATED, LABELS.AI_BLOCKED, LABELS.AI_STUCK]],
+      [EVENTS.UNLABELLED_AUTO_RELEASING, ["none", LABELS.AI_STUCK]],
+      [EVENTS.UNLABELLED_AUTO_REWORKING, ["none", LABELS.AI_STUCK]],
+      [EVENTS.UNLABELLED_AUTO_MERGING, ["none", LABELS.AI_STUCK]],
     ] as const
+  ).flatMap(([on, froms]) =>
+    froms.map((from): Rule => ({ from, on, to: noop, verifiedBy: "deterministic" })),
+  ),
+
+  // --- the watchdog: a fired routine that never reported back ---
+  // 03-components.md §3.4: "Alarm fires instead, the agent died — move to
+  // state:stuck." Keyed on the in-flight trigger labels only. Not
+  // generated-by-ai / ai-blocked: a build that swapped to those has
+  // finished, whether or not it posted its outcome comment (shadow run 1
+  // would have marked finished build #116 stuck). The table doubles as the
+  // watch list — coordinate.ts only arms the watchdog for a fired routine
+  // whose target state has a watchdog_expired rule here, so ai-discuss
+  // (issue-discuss-loop posts no outcome artifact, ever) is deliberately
+  // absent rather than raising a false alarm on every discussion.
+  ...(
+    [LABELS.AI_READY, LABELS.AUTO_RELEASING, LABELS.AUTO_REWORKING, LABELS.AUTO_MERGING] as const
   ).map(
     (from): Rule => ({
       from,
@@ -247,6 +273,25 @@ export const rules: Rule[] = [
     verifiedBy: "external-judgment",
   },
 ];
+
+/**
+ * Events that only mean something in a few states. A push is a rework only
+ * on an auto-rework PR, a merge matters only under auto-merge, a comment
+ * is a round only on an ai-discuss issue. Anywhere else they're ordinary
+ * activity, not a missing rule, so coordinate.ts ignores them silently when
+ * no rule matches instead of logging a "gap" (shadow run 1: 8 of 26 rows
+ * were this noise).
+ */
+export const CONTEXTUAL_EVENTS: ReadonlySet<Event> = new Set([
+  EVENTS.REWORK_PUSHED,
+  EVENTS.MERGED,
+  EVENTS.DISCUSSION_REPLY,
+  EVENTS.ISSUE_CLOSED,
+  EVENTS.UNLABELLED_AI_READY,
+  EVENTS.UNLABELLED_AUTO_RELEASING,
+  EVENTS.UNLABELLED_AUTO_REWORKING,
+  EVENTS.UNLABELLED_AUTO_MERGING,
+]);
 
 /** Whether a routine fired into `state` should be watched: true exactly
  * when the table says what a watchdog expiry from that state means. */
