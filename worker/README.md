@@ -40,12 +40,17 @@ tofu destroy
 - The migrations step shells out to wrangler
   (`terraform/apply-d1-migrations.sh`) because tofu can't run SQL.
 
-**Not yet verified against a real account** (`tofu validate` and a
-fake-credential `tofu plan` pass, nothing has been applied):
-- whether a second `apply` that changes the Worker re-sends the Durable
-  Object `migrations` block and gets rejected for an already-applied tag;
-- whether `destroy` deletes a Worker that still has a Durable Object
-  namespace cleanly, or needs the namespace removed first.
+- **After the first apply, set `deployed_do_migration_tag = "v1"`** in
+  `terraform.tfvars`. Every Worker upload re-sends the Durable Object
+  migration, and Cloudflare rejects one whose `old_tag` doesn't match the
+  deployed tag (412, "Actor migration tag precondition failed"; hit on the
+  first code update, 29-09-2026). Leave it unset on a fresh deploy, since
+  that's what creates the class, and unset it again after a `destroy`.
+  `tofu output migration_tag` shows the deployed tag.
+
+**Not yet verified against a real account:** whether `destroy` deletes a
+Worker that still has a Durable Object namespace cleanly, or needs the
+namespace removed first.
 
 ## Structure — same "thin shell around tested pure logic" shape as `graph/`
 
