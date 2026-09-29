@@ -3,7 +3,7 @@ import { EVENTS } from "./constants/events";
 import { LABELS } from "./constants/labels";
 import { ROUTINES } from "./constants/routines";
 import { close, label, noop, unlabel } from "./github/to-github";
-import { isWatched, reduce, rules } from "./graph";
+import { CONTEXTUAL_EVENTS, isWatched, reduce, rules } from "./graph";
 
 describe("reduce — issue lifecycle", () => {
   it("none + labelled_ai_ready -> ready-for-ai, fires issue-build-loop", () => {
@@ -34,6 +34,48 @@ describe("reduce — issue lifecycle", () => {
   it("ai-discuss has no outbound rules — human-owned by design", () => {
     expect(reduce(LABELS.AI_DISCUSSING, EVENTS.LABELLED_AI_READY)).toBeNull();
     expect(reduce(LABELS.AI_DISCUSSING, EVENTS.BUILD_SUCCEEDED)).toBeNull();
+  });
+
+  it("ai-discuss + discussion_reply -> stays put, fires the next round", () => {
+    const rule = reduce(LABELS.AI_DISCUSSING, EVENTS.DISCUSSION_REPLY);
+    expect(rule?.to).toEqual(noop);
+    expect(rule?.run).toBe(ROUTINES.ISSUE_DISCUSS_LOOP);
+    expect(reduce("none", EVENTS.DISCUSSION_REPLY)).toBeNull();
+  });
+
+  it("auto-release + issue_closed -> noop (Step 4's native close ends the run, comment or not)", () => {
+    expect(reduce(LABELS.AUTO_RELEASING, EVENTS.ISSUE_CLOSED)?.to).toEqual(noop);
+  });
+
+  it("a loop removing its trigger label -> noop from every state it can leave behind, fires nothing", () => {
+    const cases = [
+      [EVENTS.UNLABELLED_AI_READY, ["none", LABELS.AI_GENERATED, LABELS.AI_BLOCKED, LABELS.AI_STUCK]],
+      [EVENTS.UNLABELLED_AUTO_RELEASING, ["none", LABELS.AI_STUCK]],
+      [EVENTS.UNLABELLED_AUTO_REWORKING, ["none", LABELS.AI_STUCK]],
+      [EVENTS.UNLABELLED_AUTO_MERGING, ["none", LABELS.AI_STUCK]],
+    ] as const;
+    for (const [event, froms] of cases) {
+      for (const from of froms) {
+        const rule = reduce(from, event);
+        expect(rule?.to, `${from} ${event}`).toEqual(noop);
+        expect(rule?.run, `${from} ${event}`).toBeUndefined();
+      }
+    }
+  });
+});
+
+describe("CONTEXTUAL_EVENTS", () => {
+  it("never includes a trigger-label add or an outcome: those without a rule are real gaps", () => {
+    for (const e of [
+      EVENTS.LABELLED_AI_READY,
+      EVENTS.LABELLED_AUTO_RELEASING,
+      EVENTS.LABELLED_AUTO_MERGING,
+      EVENTS.BUILD_SUCCEEDED,
+      EVENTS.RELEASE_PUBLISHED,
+      EVENTS.WATCHDOG_EXPIRED,
+    ]) {
+      expect(CONTEXTUAL_EVENTS.has(e), e).toBe(false);
+    }
   });
 });
 
@@ -71,14 +113,7 @@ describe("reduce — illegal moves are dropped, not errors", () => {
 
 describe("reduce — the watchdog and ai-stuck", () => {
   it("every state a watched routine runs in, + watchdog_expired -> ai-stuck, deterministic, fires nothing", () => {
-    for (const from of [
-      LABELS.AI_READY,
-      LABELS.AI_GENERATED,
-      LABELS.AI_BLOCKED,
-      LABELS.AUTO_RELEASING,
-      LABELS.AUTO_REWORKING,
-      LABELS.AUTO_MERGING,
-    ]) {
+    for (const from of [LABELS.AI_READY, LABELS.AUTO_RELEASING, LABELS.AUTO_REWORKING, LABELS.AUTO_MERGING]) {
       const rule = reduce(from, EVENTS.WATCHDOG_EXPIRED);
       expect(rule?.to, from).toEqual(label(LABELS.AI_STUCK));
       expect(rule?.run, from).toBeUndefined();
@@ -91,6 +126,11 @@ describe("reduce — the watchdog and ai-stuck", () => {
     expect(isWatched(LABELS.AI_DISCUSSING)).toBe(false);
     expect(isWatched("none")).toBe(false);
     expect(isWatched(LABELS.AI_STUCK)).toBe(false);
+  });
+
+  it("a build's outcome labels are finished states, never watched (shadow run 1: finished #116 would have gone ai-stuck)", () => {
+    expect(isWatched(LABELS.AI_GENERATED)).toBe(false);
+    expect(isWatched(LABELS.AI_BLOCKED)).toBe(false);
   });
 
   it("a late outcome still wins from ai-stuck", () => {

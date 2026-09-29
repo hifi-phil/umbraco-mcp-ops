@@ -7,7 +7,8 @@
 // issue-coordinator.ts's header for what that leaves unverified).
 
 import { ALL_LABELS, LABELS, type Label } from "../../graph/constants/labels";
-import { isWatched, reduce, type Rule, type State } from "../../graph/graph";
+import { CONTEXTUAL_EVENTS, isWatched, reduce, type Rule, type State } from "../../graph/graph";
+import { ROUTINES } from "../../graph/constants/routines";
 import { translate, type WebhookPayload } from "../../graph/github/from-github";
 import { labelOps } from "../../graph/github/to-github";
 import { deriveMergeGateOutcome, type MergeGateFacts } from "../../graph/github/merge-gate";
@@ -104,6 +105,18 @@ export function shadowDeps(deps: Deps): Deps {
  * which re-arms it) before the watchdog moves the issue to ai-stuck. */
 export const WATCHDOG_MINUTES = 30;
 
+// Per-routine overrides. Shadow run 1's release was still working at 36
+// minutes (13-shadow-results.md); builds on the MCP repos run full test
+// suites. First guesses from one run each; tune from the D1 log.
+const WATCHDOG_MINUTES_BY_ROUTINE: Partial<Record<string, number>> = {
+  [ROUTINES.AUTO_RELEASE_LOOP]: 120,
+  [ROUTINES.ISSUE_BUILD_LOOP]: 60,
+};
+
+export function watchdogMinutesFor(routine: string): number {
+  return WATCHDOG_MINUTES_BY_ROUTINE[routine] ?? WATCHDOG_MINUTES;
+}
+
 export type CoordinateInput = {
   deliveryId: string;
   owner: string;
@@ -119,6 +132,7 @@ export type CoordinateResult =
   | { outcome: "no_event" }
   | { outcome: "ambiguous_state" }
   | { outcome: "dropped_no_rule"; from: State; event: Event }
+  | { outcome: "ignored"; from: State; event: Event } // a CONTEXTUAL_EVENT outside its states; not logged
   | { outcome: "applied"; from: State; event: Event; rule: Rule };
 
 /**
@@ -208,6 +222,7 @@ async function applyEvent(
   }
 
   const rule = reduce(current, event);
+  if (!rule && CONTEXTUAL_EVENTS.has(event)) return { outcome: "ignored", from: current, event };
   if (!rule) {
     await deps.logTransition({
       owner: input.owner,
@@ -340,7 +355,7 @@ export async function coordinateWatchdogExpired(deps: Deps): Promise<WatchdogRes
     pending.owner,
     pending.repo,
     pending.issueNumber,
-    `⚠️ The \`${pending.run}\` routine hasn't reported back within ${WATCHDOG_MINUTES} minutes — it may have died mid-run.${lastStep}${next} ` +
+    `⚠️ The \`${pending.run}\` routine hasn't reported back within ${watchdogMinutesFor(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
       `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
   );
 

@@ -65,7 +65,7 @@ src/
 
 ## What's actually verified, and how
 
-**110 unit tests** (`npm test` — the `"unit"` vitest workspace project;
+**117 unit tests** (`npm test` — the `"unit"` vitest workspace project;
 see `vitest.workspace.ts`) cover `coordinate.ts` (the decision logic,
 against fake in-memory deps), `webhook-parse.ts` (payload mapping +
 signature verification), `github-client.ts` and `routines-client.ts`
@@ -458,7 +458,14 @@ SELECT from_state, COUNT(*) FROM transitions
 WHERE mode = 'shadow' AND event = 'watchdog_expired' GROUP BY from_state;
 ```
 
-Webhooks `translate()` doesn't recognise at all leave no row.
+Webhooks `translate()` doesn't recognise at all leave no row. Neither do
+**contextual events** (`graph.ts`'s `CONTEXTUAL_EVENTS`: pushes, merges,
+comments, closes and trigger-label removals) outside the states where they
+mean something. A push to a PR that isn't in `auto-rework` is ordinary
+activity, not a gap. The watchdog's timeout is per routine
+(`coordinate.ts`'s `watchdogMinutesFor`: release 120 min, build 60,
+others 30). Run 1's numbers and the fixes they led to are in
+[13-shadow-results.md](../docs/agent-orchestration/13-shadow-results.md).
 
 ## What's NOT verified
 

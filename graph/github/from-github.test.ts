@@ -242,3 +242,70 @@ describe("translate — unmapped events", () => {
     expect(translate(payload({ action: "pull_request.opened" }))).toBeNull();
   });
 });
+
+describe("translate — a loop's own label swap (native completion signal)", () => {
+  it("issues.labeled generated-by-ai / ai-blocked -> build_succeeded / build_blocked", () => {
+    expect(translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_GENERATED } }))).toBe(EVENTS.BUILD_SUCCEEDED);
+    expect(translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_BLOCKED } }))).toBe(EVENTS.BUILD_BLOCKED);
+  });
+
+  it("removing a trigger label -> unlabelled_*, issues and PRs", () => {
+    expect(translate(payload({ action: "issues.unlabeled", label: { name: LABELS.AI_READY } }))).toBe(EVENTS.UNLABELLED_AI_READY);
+    expect(translate(payload({ action: "issues.unlabeled", label: { name: LABELS.AUTO_RELEASING } }))).toBe(
+      EVENTS.UNLABELLED_AUTO_RELEASING,
+    );
+    expect(translate(payload({ action: "pull_request.unlabeled", label: { name: LABELS.AUTO_REWORKING } }))).toBe(
+      EVENTS.UNLABELLED_AUTO_REWORKING,
+    );
+    expect(translate(payload({ action: "pull_request.unlabeled", label: { name: LABELS.AUTO_MERGING } }))).toBe(
+      EVENTS.UNLABELLED_AUTO_MERGING,
+    );
+    expect(translate(payload({ action: "issues.unlabeled", label: { name: "bug" } }))).toBeNull();
+  });
+
+  it("our own bot removing a label is not an event (self-trigger guard)", () => {
+    expect(
+      translate(
+        payload({ action: "issues.unlabeled", label: { name: LABELS.AI_READY }, sender: { login: BOT_LOGIN, type: "Bot" } }),
+      ),
+    ).toBeNull();
+  });
+
+  it("issues.closed -> issue_closed", () => {
+    expect(translate(payload({ action: "issues.closed" }))).toBe(EVENTS.ISSUE_CLOSED);
+  });
+});
+
+describe("translate — discussion rounds (loop-dispatch's gates 2–7)", () => {
+  const reply = (
+    over: Partial<WebhookPayload> = {},
+    comment: Partial<NonNullable<WebhookPayload["comment"]>> = {},
+  ) =>
+    payload({
+      action: "issue_comment.created",
+      comment: { body: "Option B, please", author_association: "OWNER", user_type: "User", ...comment },
+      issue: { state: "open", is_pr: false },
+      ...over,
+    });
+
+  it("a trusted human's reply on an open issue -> discussion_reply", () => {
+    expect(translate(reply())).toBe(EVENTS.DISCUSSION_REPLY);
+    expect(translate(reply({}, { author_association: "MEMBER" }))).toBe(EVENTS.DISCUSSION_REPLY);
+  });
+
+  it("each gate fails closed", () => {
+    expect(translate(reply({}, { body: `Round 2 ${COMMENT_SIGNATURE}` })), "loop-signed").toBeNull();
+    expect(translate(reply({}, { body: "  // for a colleague, not the loop" })), "// prefix").toBeNull();
+    expect(translate(reply({}, { author_association: "CONTRIBUTOR" })), "untrusted").toBeNull();
+    expect(translate(reply({}, { author_association: undefined })), "no association").toBeNull();
+    expect(translate(reply({}, { user_type: "Bot" })), "bot author").toBeNull();
+    expect(translate(reply({ issue: { state: "closed", is_pr: false } })), "closed").toBeNull();
+    expect(translate(reply({ issue: { state: "open", is_pr: true } })), "PR").toBeNull();
+    expect(translate(reply({ issue: undefined })), "no issue").toBeNull();
+  });
+
+  it("an outcome artifact still wins over the reply check", () => {
+    const body = outcomeComment(ROUTINES.ISSUE_BUILD_LOOP, { outcome: "build_succeeded", pr: 123 });
+    expect(translate(reply({}, { body }))).toBe(EVENTS.BUILD_SUCCEEDED);
+  });
+});
