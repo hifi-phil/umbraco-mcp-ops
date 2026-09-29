@@ -77,8 +77,11 @@ against `umbraco-mcp-ops`. Number 1 was **0** (every trigger fire matched
 the table). Number 2 found **5 gaps**, now folded back into the table. The
 biggest: the outcome comment appeared only 1 time in 4, so the loop's own
 label swap is now the completion signal. Full results:
-[13-shadow-results.md](13-shadow-results.md). Next is run 2, to confirm the
-fixes.
+[13-shadow-results.md](13-shadow-results.md).
+
+**Run 2 (29-09-2026): 0 and 0.** One real issue through all five loops.
+Every fix confirmed, with no gaps and no false watchdog alarms. **Phase 3
+is done.** Two prerequisites for Phase 4 came out of it (see below).
 
 ## Phase 4 — Enforce
 
@@ -92,11 +95,14 @@ regressions observed for a full cycle of that transition.
 
 **Status:** the enforcement mechanism is `worker/` with `MODE = "enforce"`.
 When a rule matches, `coordinateWebhook()` applies `labelOps()` and fires
-the routine for real. The mechanism itself is done. What's missing is
-everything around turning it on safely: real deployment, a shadow-mode
-pass first (see Phase 3's status above) to confirm the table is accurate,
-and picking which transition graduates first. `MODE` is global today;
-enforcing one transition at a time will need it per transition.
+the routine for real. The mechanism, the deployment and the shadow pass
+are done. Two things remain before turning it on:
+- **`MODE` per transition.** It's global today, and this phase enforces
+  one transition at a time. First candidate: merge (`auto-merge` → merged),
+  5 of 5 correct across both shadow runs.
+- **A separate identity for the Worker (the GitHub App).** Every action,
+  loops included, is attributed to `hifi-phil`, so the self-trigger guard
+  can't tell the Worker's own label writes from anyone else's.
 
 ## Phase 5 — Reducer owns labels
 
