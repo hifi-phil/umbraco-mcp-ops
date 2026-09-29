@@ -58,9 +58,18 @@ resource "cloudflare_workers_script" "worker" {
   compatibility_date  = "2026-08-25"
   compatibility_flags = ["nodejs_compat"]
 
-  migrations = {
+  # Cloudflare rejects an upload whose old_tag doesn't match the tag already
+  # deployed (412, "Actor migration tag precondition failed"). First deploy:
+  # no old_tag, create the class. After that: old_tag = new_tag = v1 and no
+  # steps, a no-op. The provider can't read the deployed tag, hence the var.
+  migrations = var.deployed_do_migration_tag == null ? {
+    old_tag            = null
     new_tag            = "v1"
     new_sqlite_classes = ["IssueCoordinator"]
+    } : {
+    old_tag            = var.deployed_do_migration_tag
+    new_tag            = var.deployed_do_migration_tag
+    new_sqlite_classes = null
   }
 
   bindings = [
