@@ -6,6 +6,11 @@ variable "cloudflare_account_id" {
 variable "workers_subdomain" {
   type        = string
   description = "The account's workers.dev subdomain, i.e. the <x> in <script>.<x>.workers.dev. Used to build the webhook URL."
+
+  validation {
+    condition     = !endswith(var.workers_subdomain, ".workers.dev") && !strcontains(var.workers_subdomain, "/")
+    error_message = "workers_subdomain is only the part before .workers.dev (e.g. \"my-sub\", not \"my-sub.workers.dev\")."
+  }
 }
 
 variable "script_name" {
