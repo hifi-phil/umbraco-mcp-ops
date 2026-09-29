@@ -16,17 +16,19 @@ base-branch detection (`git branch -a`) picks this up automatically.
 
 ## Releases
 
-Most of this repo is skills/plugins content, which doesn't version. The
-one thing that does: **`worker/`** — the Cloudflare Worker + Durable
-Object prototype (see `worker/README.md`). A "release" here means cutting
-a version of `worker/`.
+A release is the marketplace version (`.claude-plugin/marketplace.json`
+`metadata.version`). Plugins and `worker/` carry their own versions and are
+bumped only when files under their folder changed since the last `v*` tag.
 
-- **Version file**: `worker/package.json`'s `version` field.
-- **Build/test**: `cd worker && npm test && npm run typecheck`.
+- **Version files / bump rules**: follow the `release-versioning` skill
+  (`.claude/skills/release-versioning/`) — it takes the version from the
+  issue title and runs `scripts/bump.mjs`. Don't list paths by hand.
+- **Build/test**: `cd worker && npm test && npm run typecheck`, and
+  `node .claude/skills/release-versioning/scripts/bump.test.mjs`.
 - **Trigger**: an issue titled `release <version>`, labelled
   `auto-release` — see `auto-release-loop`'s `SKILL.md`.
 - Tag + GitHub Release: `.github/workflows/release-tag.yml`, fires on
-  push to `main`, reads the version from `worker/package.json`.
+  push to `main`, tags `v<marketplace version>`. No per-component tags.
 - Sync back: `.github/workflows/sync-main-to-dev.yml` opens a PR merging
   `main` back into `dev` after a release, so `dev` picks up the bump.
 
