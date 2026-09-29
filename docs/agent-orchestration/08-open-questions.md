@@ -55,6 +55,35 @@
   SubagentStop/SessionEnd hooks are the closest precedent that they do, but
   that's not the same event type, and this hasn't been confirmed against a
   real cloud routine run.
+- **Why did the loops skip the `agent-outcomes` marker in shadow run 1?**
+  In [13-shadow-results.md](13-shadow-results.md) (on `dev`, reaches `main`
+  with the next release) the marker appeared in only 1 of 5 outcome
+  comments: #114's build comment carried it, while #116's build comment,
+  both of #118's release comments and #125's "PR opened: #126" comment did
+  not. The loops' own label swaps are the completion signal today, so
+  nothing breaks, but in Phase 5 the reducer owns labels and the marker
+  becomes the only self-reported signal.
+  - **What was seen:** the comments themselves lacked the marker. That is a
+    different failure from a marker written but never forwarded by the
+    `PostToolUse` hook (hooks in cloud routines are still unconfirmed,
+    above). All ran in the same cloud environment, and a session there
+    listed `agent-outcomes` among its skills.
+  - **Suspects:**
+    1. The "only if `agent-outcomes` is available" wording from #108 in
+       `issue-build-loop` and `auto-release-loop`, an escape hatch the
+       session decides for itself.
+    2. The session never reading the `agent-outcomes` skill.
+    3. A long session losing the instruction. Weakened: #125's build took
+       about 2 minutes and still skipped the marker.
+  - **What would tell them apart**, per skipped session's transcript, with
+    #114's build as the control: was the skill listed, and was it invoked?
+    Did the session reach the outcome step, and did it mention the marker at
+    all?
+    - Listed but never invoked points to the wording.
+    - Not listed points to environment or plugin loading.
+    - Invoked early but silent at the step points to long-session loss.
+  - **Next transcript to check:** #125's build session, a fresh and short
+    one.
 - **How is the heartbeat endpoint authenticated per attempt?** It needs a
   short-lived, narrowly-scoped credential (write-a-step-name only, nothing
   else) threaded into the routine's invocation — worth deciding whether
