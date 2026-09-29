@@ -23,6 +23,17 @@ variable "database_name" {
   default = "agent-orchestration-log"
 }
 
+variable "deployed_do_migration_tag" {
+  type        = string
+  default     = null
+  description = "The Durable Object migration tag already deployed. Leave unset for the first apply (it creates the class, tag v1); set to \"v1\" for every apply after that. Unset it again after a destroy. See `tofu output migration_tag`."
+
+  validation {
+    condition     = var.deployed_do_migration_tag == null || var.deployed_do_migration_tag == "v1"
+    error_message = "Only migration v1 exists. Use \"v1\" once deployed, or leave unset for a fresh deploy."
+  }
+}
+
 variable "mode" {
   type        = string
   default     = "shadow"

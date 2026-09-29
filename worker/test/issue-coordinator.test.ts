@@ -217,7 +217,7 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
     const calls = apiFetch.mock.calls.map(([url, init]) => `${(init as RequestInit)?.method ?? "GET"} ${url as string}`);
     const commentCall = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).includes("/comments"));
     const body = JSON.parse((commentCall![1] as RequestInit).body as string);
-    expect(body.body).toMatch(/issue-build-loop.*hasn't reported back within 30 minutes.*ai-stuck/);
+    expect(body.body).toMatch(/issue-build-loop.*hasn't reported back within 60 minutes.*ai-stuck/);
     expect(calls.some((c) => c.startsWith("DELETE") && c.endsWith("/labels/ready-for-ai"))).toBe(true);
     const addCall = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).endsWith("/labels"));
     expect(JSON.parse((addCall![1] as RequestInit).body as string)).toEqual({ labels: ["ai-stuck"] });

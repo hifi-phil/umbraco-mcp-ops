@@ -72,11 +72,13 @@ shows how often the routine the existing dispatch fired never reported
 back. See `worker/README.md`'s "Shadow mode" section for the two queries
 that produce this phase's numbers.
 
-Still needed before a run-through: a deploy (`worker/terraform/`, onto a
-personal Cloudflare account) and a test repo where the real loops run,
-with the webhook on it. Labels use today's live spelling (the rename is
-deferred, see [10-label-rename.md](10-label-rename.md)), so any repo with
-the existing labels works.
+**Run 1 done (29-09-2026)**, deployed on a personal Cloudflare account
+against `umbraco-mcp-ops`. Number 1 was **0** (every trigger fire matched
+the table). Number 2 found **5 gaps**, now folded back into the table. The
+biggest: the outcome comment appeared only 1 time in 4, so the loop's own
+label swap is now the completion signal. Full results:
+[13-shadow-results.md](13-shadow-results.md). Next is run 2, to confirm the
+fixes.
 
 ## Phase 4 — Enforce
 

@@ -82,6 +82,25 @@ describe("toWebhookPayload", () => {
     );
     expect(payload.comment).toEqual({ body: "" });
   });
+
+  it("carries what the discussion-round gates need: author association and type, issue state, PR-or-not", () => {
+    const issueComment = toWebhookPayload(
+      {
+        action: "created",
+        comment: { body: "Option B", author_association: "OWNER", user: { type: "User" } },
+        issue: { state: "open" },
+      },
+      "issue_comment",
+    );
+    expect(issueComment.comment).toEqual({ body: "Option B", author_association: "OWNER", user_type: "User" });
+    expect(issueComment.issue).toEqual({ state: "open", is_pr: false });
+
+    const prComment = toWebhookPayload(
+      { action: "created", comment: { body: "x" }, issue: { state: "open", pull_request: { url: "…" } } },
+      "issue_comment",
+    );
+    expect(prComment.issue).toEqual({ state: "open", is_pr: true });
+  });
 });
 
 describe("verifySignature", () => {

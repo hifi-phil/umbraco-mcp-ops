@@ -16,12 +16,24 @@ export const EVENTS = {
   RELEASE_BLOCKED: "release_blocked",
   RELEASE_PUBLISHED: "release_published",
   LABELLED_AI_DISCUSSING: "labelled_ai_discussing",
+  // A trusted human's reply on an open ai-discuss issue: loop-dispatch fires
+  // the next discussion round on it (route-event.sh's issue_comment case).
+  DISCUSSION_REPLY: "discussion_reply",
+  // The loop (or a human) taking its trigger label off. Native, and the
+  // loops do it every time, unlike the outcome comment (shadow run 1, see
+  // 13-shadow-results.md), so it's what tells the watchdog a run is over.
+  UNLABELLED_AI_READY: "unlabelled_ai_ready",
+  UNLABELLED_AUTO_RELEASING: "unlabelled_auto_releasing",
+  // auto-release-loop's Step 4 closes the issue on publish.
+  ISSUE_CLOSED: "issue_closed",
   // PR lifecycle
   LABELLED_AUTO_REWORKING: "labelled_auto_reworking",
   REWORK_PUSHED: "rework_pushed",
+  UNLABELLED_AUTO_REWORKING: "unlabelled_auto_reworking",
   LABELLED_AUTO_MERGING: "labelled_auto_merging",
   MERGE_GATE_FAILED_SOFT: "merge_gate_failed_soft",
   MERGE_GATE_FAILED_HARD: "merge_gate_failed_hard",
+  UNLABELLED_AUTO_MERGING: "unlabelled_auto_merging",
   MERGED: "merged",
   // the watchdog — the one event NOT sourced from GitHub. The DO raises it
   // itself when a routine it fired hasn't produced an outcome within the
