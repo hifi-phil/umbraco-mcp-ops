@@ -81,6 +81,9 @@ Immediately after pushing (no waiting for CI): **reply briefly on each addressed
 review*), and **remove the `auto-rework` label** from the PR (github-ops → *Add / remove a
 label*). The label means "rework pending" — clearing it marks the round done and re-arms
 the trigger, so a later review can re-add `auto-rework` to fire the next round.
+**Orchestrated mode** (the dispatch said so): don't remove the label after a push. The
+orchestrator removes it when it sees your push. If you pushed nothing (no actionable
+feedback), there's no push for it to see, so remove the label yourself as above.
 **Do not merge** — re-approval + `merge-flow` (via the `auto-merge` label) handle that.
 Send a Claude push notification: `Reworked PR #N per review — pushed & re-requested review (CI will verify).`
 

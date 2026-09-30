@@ -8,9 +8,10 @@ description: >-
   label as the only signal. Load this whenever a loop skill needs to report
   build_succeeded, build_blocked, release_blocked, release_published, or any
   other cataloged outcome, or when
-  adding a new outcome type to the catalog. Always additive — this skill
-  never tells a loop to skip or replace its existing load-bearing action
-  (a label swap, a merge, a push). Bundles a PostToolUse hook that forwards
+  adding a new outcome type to the catalog. Additive by default; in
+  orchestrated mode (a repo the agent-orchestration Worker dispatches) the
+  artifact REPLACES the loop's label swap and is required — the Worker
+  reads it and swaps the labels. Bundles a PostToolUse hook that forwards
   the artifact on a fast, non-authoritative path automatically — nothing
   extra for the loop to do.
 ---
@@ -25,11 +26,15 @@ next instead of a loop deciding for itself — but it can only do that once
 the fact it needs exists somewhere machine-readable. This skill is the one
 place that format is defined, so five loops don't each invent their own.
 
-**Nothing authoritative reads this artifact yet.** A Worker + Durable
-Object exist as code (`worker/` in this repo) but nothing is *deployed* —
-no production reducer is live anywhere. Writing it is still mostly
-preparation — it costs one comment, changes no behaviour, and is safe to
-add to any loop. The one thing that *is* real: this plugin bundles a
+**Two modes.** On most repos nothing authoritative reads this artifact
+yet: it costs one comment, changes no behaviour, and the loop's own label
+swap stays the real signal. On a repo the agent-orchestration Worker
+dispatches (`worker/` in `umbraco-mcp-ops`), the dispatch says
+**orchestrated mode**: there the Worker reads the artifact from the comment
+and applies the outcome labels itself, so the loop **must** write it and
+must **not** swap the labels. Each loop's skill says which steps that covers.
+
+This plugin also bundles a
 `PostToolUse` hook (`hooks/report-completion.sh`) that fires automatically
 whenever a loop posts the artifact — no extra step for the loop, nothing
 to call, nothing to remember. It forwards the raw JSON to

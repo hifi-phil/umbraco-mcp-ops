@@ -44,6 +44,12 @@ describe("dispatchText", () => {
     expect(text).toContain("routed at the edge: route=merge-flow repo=hifi-phil/umbraco-mcp-ops number=126.");
     expect(text).toContain("Run the loop-dispatch skill");
   });
+
+  it("tells the loop it is orchestrated (Phase 5): the Worker owns outcome labels", () => {
+    const text = dispatchText("issue-build-loop", "hifi-phil", "umbraco-mcp-ops", 7);
+    expect(text).toContain("orchestrated=true");
+    expect(text).toContain("does not swap labels itself");
+  });
 });
 
 describe("fireRoutine", () => {
