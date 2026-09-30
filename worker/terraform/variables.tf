@@ -81,3 +81,26 @@ variable "repo_routines" {
   default     = {}
   description = "Each repo's loop-dispatch routine, keyed \"owner/repo\": its Fire URL (Routines UI → Call via API) and token, the same pair as that repo's LOOP_DISPATCH_FIRE_URL / LOOP_DISPATCH_TOKEN secrets. Only used when an enforced transition fires; shadow never does, so it can stay empty until then."
 }
+
+variable "e2e_repo" {
+  type        = string
+  default     = null
+  description = "The e2e sandbox repo (no owner), e.g. \"mcp-ops-e2e-testing\". Set it to deploy the stub agent as the sandbox's Fire URL and install the sandbox's webhook; leave unset for none. See docs/agent-orchestration/14-e2e-testing.md."
+}
+
+variable "e2e_stub_script_name" {
+  type    = string
+  default = "agent-orchestration-e2e-stub"
+}
+
+variable "e2e_stub_github_token" {
+  type        = string
+  sensitive   = true
+  default     = null
+  description = "The stub agent's GitHub token: fine-grained, the sandbox repo only, with Contents, Issues and Pull requests read/write. Required when e2e_repo is set."
+
+  validation {
+    condition     = var.e2e_repo == null || var.e2e_stub_github_token != null
+    error_message = "e2e_stub_github_token is required when e2e_repo is set."
+  }
+}

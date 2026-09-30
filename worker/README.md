@@ -590,3 +590,11 @@ three steps.
   those rules need a `run` instead. The attempt count (`ciFix`, capped at
   `MAX_CI_FIX_ATTEMPTS`) lives in DO storage and resets when a human
   re-adds `auto-merge` after `merge-blocked`.
+- **The merge gate only works on public repos today.** It reads CI through
+  the check-runs API, and fine-grained tokens have no Checks permission.
+  So on a private repo every gate read gets 403 "Resource not accessible by
+  personal access token", both when `auto-merge` is added and when CI
+  finishes. Found by the e2e suite while the sandbox was private (it's
+  public now, like `umbraco-mcp-ops`). A private repo needs the GitHub App
+  (Checks: read), or a gate that reads workflow runs (Actions: read) and
+  so sees only GitHub Actions checks.
