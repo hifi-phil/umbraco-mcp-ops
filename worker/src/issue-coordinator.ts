@@ -49,6 +49,25 @@ export type IssueCoordinatorEnv = GitHubEnv &
     WATCHDOG?: string;
   };
 
+/**
+ * A thrown error becomes a 500 carrying its message, instead of escaping to
+ * Cloudflare, which replaces it with a bare "error code: 1101". The message
+ * (e.g. "GitHub API PATCH …/issues/152 failed: 403 …") then shows in the
+ * webhook's Recent Deliveries. Only signed senders get this far (index.ts
+ * checks the signature first), and the messages carry API statuses and
+ * bodies, never tokens. Still a 500, so GitHub marks the delivery failed and
+ * it can be redelivered (coordinateWebhook releases its dedupe claim first).
+ */
+async function respond(run: () => Promise<unknown>): Promise<Response> {
+  try {
+    return Response.json(await run());
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    console.error("coordinator failed:", error);
+    return Response.json({ outcome: "error", error }, { status: 500 });
+  }
+}
+
 const PENDING_FIRE_KEY = "pendingFire";
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
 
@@ -68,8 +87,7 @@ export class IssueCoordinator {
       } catch {
         return new Response("invalid JSON body", { status: 400 });
       }
-      const result = await coordinateRoutineSignal(this.deps(), input);
-      return Response.json(result);
+      return respond(() => coordinateRoutineSignal(this.deps(), input));
     }
 
     let input: CoordinateInput;
@@ -79,8 +97,7 @@ export class IssueCoordinator {
       return new Response("invalid JSON body", { status: 400 });
     }
 
-    const result = await coordinateWebhook(this.deps(), input);
-    return Response.json(result);
+    return respond(() => coordinateWebhook(this.deps(), input));
   }
 
   /** The watchdog: fires watchdogMinutesFor(run) after a watched routine was fired

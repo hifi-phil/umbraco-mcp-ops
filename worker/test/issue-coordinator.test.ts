@@ -174,6 +174,37 @@ describe("IssueCoordinator.fetch()", () => {
     expect(setAlarm).toHaveBeenCalledTimes(1);
   });
 
+  it("a failure returns 500 with the error text (not Cloudflare's bare 1101), and the redelivery is processed", async () => {
+    const { ctx } = fakeCtx();
+    const { db, inserted } = fakeDb();
+    const coordinator = new IssueCoordinator(ctx, fakeEnv({ DB: db }));
+    // The routine fire fails once with a 401, then works.
+    let failFire = true;
+    const ok = fakeApiFetch();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (failFire && url.startsWith("https://routines.example/fire/")) {
+          failFire = false;
+          return new Response("bad token", { status: 401 });
+        }
+        return ok(url, init);
+      }),
+    );
+
+    const first = await coordinator.fetch(fetchRequest(labeledInput()));
+    expect(first.status).toBe(500);
+    expect(await first.json()).toEqual({
+      outcome: "error",
+      error: expect.stringMatching(/Routine fire failed for hifi-phil\/umbraco-mcp-ops.*401 bad token/),
+    });
+    expect(inserted).toHaveLength(0);
+
+    const redelivered = await coordinator.fetch(fetchRequest(labeledInput()));
+    expect(redelivered.status).toBe(200);
+    expect(((await redelivered.json()) as { outcome: string }).outcome).toBe("applied");
+  });
+
   it("dedupes a repeated delivery id without re-hitting the API or D1", async () => {
     const apiFetch = fakeApiFetch();
     vi.stubGlobal("fetch", apiFetch);
