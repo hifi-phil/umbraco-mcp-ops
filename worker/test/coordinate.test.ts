@@ -8,6 +8,7 @@ import {
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
   deriveState,
+  MAX_CI_FIX_ATTEMPTS,
   resolveEnforced,
   resolveMode,
   shadowDeps,
@@ -727,6 +728,10 @@ describe("coordinateWebhook — the merge gate when auto-merge is added", () => 
 });
 
 describe("coordinateWebhook — CI failing under auto-merge goes to rework, then back", () => {
+  it("the cap is three fix attempts, then merge-blocked", () => {
+    expect(MAX_CI_FIX_ATTEMPTS).toBe(3);
+  });
+
   const failing = [{ name: "test", status: "completed" as const, conclusion: "failure" as const }];
   const autoMergeAdded = input({
     payload: { action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING }, sender: { login: "phil", type: "User" } },
