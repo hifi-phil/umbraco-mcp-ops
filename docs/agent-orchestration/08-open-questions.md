@@ -56,15 +56,15 @@
   that's not the same event type, and this hasn't been confirmed against a
   real cloud routine run.
 - **Why do the loops skip the `agent-outcomes` marker?**
-  In [13-shadow-results.md](13-shadow-results.md) (on `dev`, reaches `main`
-  with the next release) the marker appeared in only 1 of 6 outcome
-  opportunities: #114's build comment carried it, while #116's build comment,
-  both of #118's release comments and #125's "PR opened: #126" comment did
-  not, and #127's release closed the issue without posting any outcome
-  comment at all (the run 2 figures come from the Run 2 section). A missing
-  comment is a different gap from a comment without a marker. The loops' own label swaps are the completion signal today, so
-  nothing breaks, but in Phase 5 the reducer owns labels and the marker
-  becomes the only self-reported signal.
+  In [13-shadow-results.md](13-shadow-results.md) the marker appeared in
+  only 1 of 6 outcome opportunities: #114's build comment carried it,
+  while #116's build comment, both of #118's release comments and #125's
+  "PR opened: #126" comment did not, and #127's release closed the issue
+  without posting any outcome comment at all. A missing comment is a
+  different gap from a comment without a marker. The loops' own label
+  swaps are the completion signal today, so nothing breaks, but in Phase 5
+  the reducer owns labels and the marker becomes the only self-reported
+  signal.
   - **What was seen:** two distinct gaps. Four comments lacked the marker,
     and one release (#127) posted no outcome comment at all. Both are a
     different failure from a marker written but never forwarded by the
