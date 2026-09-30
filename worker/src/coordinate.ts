@@ -331,12 +331,17 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
   const currentLabels = await deps.getLabels(input.owner, input.repo, input.issueNumber);
   if (!currentLabels.includes(LABELS.AUTO_MERGING)) return { outcome: "no_event" };
 
-  const facts = await deps.getMergeGateFacts(input.owner, input.repo, input.issueNumber);
-  const gateOutcome = deriveMergeGateOutcome(facts);
-  if (gateOutcome === "still_pending" || gateOutcome === null) return { outcome: "no_event" };
+  // Same reading as when auto-merge is added. CI often fails within seconds
+  // of a push, before GitHub has computed `mergeable`; waiting on that here
+  // dropped the red CI for good (nothing else re-checks it), so an unknown
+  // `mergeable` counts as "no known conflict", as hardBlockReason reads it.
+  const facts = await settledGateFacts(deps, input);
+  if (facts.checkRuns.some((c) => c.status !== "completed")) return { outcome: "no_event" };
 
-  if (gateOutcome === "hard") return blockMerge(deps, input, currentLabels, hardBlockReason(facts) ?? "blocked");
-  return handToRework(deps, input, currentLabels, facts);
+  const reason = hardBlockReason(facts);
+  if (reason) return blockMerge(deps, input, currentLabels, reason);
+  if (failedCheckNames(facts).length > 0) return handToRework(deps, input, currentLabels, facts);
+  return { outcome: "no_event" };
 }
 
 /** The shared reduce() -> labelOps() -> fire/log tail, once an Event has
