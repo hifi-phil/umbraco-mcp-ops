@@ -25,6 +25,7 @@ import {
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
   resolveEnforced,
+  type CiFix,
   type CoordinateInput,
   type Deps,
   type PendingFire,
@@ -49,7 +50,27 @@ export type IssueCoordinatorEnv = GitHubEnv &
     WATCHDOG?: string;
   };
 
+/**
+ * A thrown error becomes a 500 carrying its message, instead of escaping to
+ * Cloudflare, which replaces it with a bare "error code: 1101". The message
+ * (e.g. "GitHub API PATCH …/issues/152 failed: 403 …") then shows in the
+ * webhook's Recent Deliveries. Only signed senders get this far (index.ts
+ * checks the signature first), and the messages carry API statuses and
+ * bodies, never tokens. Still a 500, so GitHub marks the delivery failed and
+ * it can be redelivered (coordinateWebhook releases its dedupe claim first).
+ */
+async function respond(run: () => Promise<unknown>): Promise<Response> {
+  try {
+    return Response.json(await run());
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    console.error("coordinator failed:", error);
+    return Response.json({ outcome: "error", error }, { status: 500 });
+  }
+}
+
 const PENDING_FIRE_KEY = "pendingFire";
+const CI_FIX_KEY = "ciFix";
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
 
 export class IssueCoordinator {
@@ -68,8 +89,7 @@ export class IssueCoordinator {
       } catch {
         return new Response("invalid JSON body", { status: 400 });
       }
-      const result = await coordinateRoutineSignal(this.deps(), input);
-      return Response.json(result);
+      return respond(() => coordinateRoutineSignal(this.deps(), input));
     }
 
     let input: CoordinateInput;
@@ -79,8 +99,7 @@ export class IssueCoordinator {
       return new Response("invalid JSON body", { status: 400 });
     }
 
-    const result = await coordinateWebhook(this.deps(), input);
-    return Response.json(result);
+    return respond(() => coordinateWebhook(this.deps(), input));
   }
 
   /** The watchdog: fires watchdogMinutesFor(run) after a watched routine was fired
@@ -131,6 +150,11 @@ export class IssueCoordinator {
         await this.ctx.storage.deleteAlarm();
       },
       getPendingFire: async () => (await this.ctx.storage.get<PendingFire>(PENDING_FIRE_KEY)) ?? null,
+      getCiFix: async () => (await this.ctx.storage.get<CiFix>(CI_FIX_KEY)) ?? null,
+      setCiFix: async (state: CiFix | null) => {
+        if (state) await this.ctx.storage.put(CI_FIX_KEY, state);
+        else await this.ctx.storage.delete(CI_FIX_KEY);
+      },
       getMergeGateFacts: async (owner: string, repo: string, prNumber: number): Promise<MergeGateFacts> => {
         // checkRuns depends on the PR's head SHA, so getPull has to
         // resolve first; getLatestReviewState doesn't, so it runs alongside it.

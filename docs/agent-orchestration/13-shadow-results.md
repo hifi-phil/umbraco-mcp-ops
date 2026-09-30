@@ -83,3 +83,42 @@ done. Before Phase 4 (enforce): `MODE` per transition, so one rule can be
 enforced at a time (merge is the cleanest candidate: 5 of 5 correct across
 both runs), and the GitHub App, so the self-trigger guard can tell the
 Worker's own writes from `hifi-phil`'s.
+
+(Phase 4 later went for the whole lane at once, watchdog aside; see 07.)
+
+## Phase 5 validation — 30-09-2026
+
+**Setup:** Worker in `mode = enforce` with the Phase 5 bundle (orchestrated
+mode, #146), the routine's environment rebuilt on the v1.3.0 skills. Each
+step was checked from the Worker's own response on the webhook's Recent
+Deliveries page (it returns its decision as JSON).
+
+| Path | Issue | Loop | Worker's response to the loop's outcome |
+|---|---|---|---|
+| build succeeded | #150 → PR #151 | marker posted, no swap | `ready-for-ai` + `build_succeeded` → label `generated-by-ai` (3 s after the comment) |
+| rework pushed | PR #151 | pushed, left `auto-rework` | `auto-rework` + `rework_pushed` → unlabel |
+| merge | PR #151 | merge-flow merged (unchanged) | ✅ |
+| release published | #152, v1.3.1 | published and closed, marker posted | `auto-release` + `release_published` → close (on redelivery, see below) |
+| build blocked | #155 (deliberately impossible) | marker posted, no swap, no PR | swapped `ready-for-ai` → `ai-blocked` (3 s after the comment) |
+| release blocked | #156 (`release 1.0.0`, below v1.3.1) | blocked at its Step 1 version guard, marker posted, kept the label | removed `auto-release` (3 s after the comment); nothing published |
+
+The Worker's own writes came back as webhooks and landed as no-ops
+(`unlabelled_*`, `build_succeeded` from `generated-by-ai`), as designed.
+
+**The marker appeared in 4 of 4 required cases** (#150, #152, #155, #156),
+against 1 of 6 while it was optional. That's a small sample, but it points
+at the "only if available" wording as the main cause of the earlier
+misses (08's open question, suspect 1).
+
+**One failure.** The `release_published` comment's delivery threw once
+(`error code: 1101`, with no message then). Its redelivery applied
+cleanly, so it was transient; the most likely cause is overlapping with
+the loop's own close two seconds later. Two fixes came out of this: the
+dedupe claim is released on failure (#142), which is why the redelivery
+could work at all, and the Worker now returns the error text in its 500
+instead of Cloudflare's bare 1101, so the next one will say what went wrong.
+
+**Merge hard block, added afterwards:** at first left with merge-flow,
+because the Worker's gate check only ran on `check_suite.completed`. It now
+also runs when `auto-merge` is added, so the Worker swaps `auto-merge` →
+`merge-blocked` for a conflict or requested changes (see 07's Phase 5 table).

@@ -101,12 +101,26 @@ describe("reduce — PR lifecycle", () => {
     expect(reduce(LABELS.AUTO_REWORKING, EVENTS.REWORK_PUSHED)?.to).toEqual(unlabel);
   });
 
-  it("auto-merge + merge_gate_failed_soft -> no GitHub write at all, matches merge-flow's real behaviour", () => {
-    expect(reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_FAILED_SOFT)?.to).toEqual(noop);
+  it("auto-merge + merge_gate_failed_soft (CI failed) -> auto-rework; the label's echo fires rework-loop", () => {
+    const rule = reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_FAILED_SOFT);
+    expect(rule?.to).toEqual(label(LABELS.AUTO_REWORKING));
+    expect(rule?.run).toBeUndefined();
   });
 
-  it("auto-merge + merge_gate_failed_hard -> label cleared, needs a human", () => {
-    expect(reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_FAILED_HARD)?.to).toEqual(unlabel);
+  it("auto-rework + ci_fix_pushed -> back to auto-merge; its echo fires merge-flow", () => {
+    const rule = reduce(LABELS.AUTO_REWORKING, EVENTS.CI_FIX_PUSHED);
+    expect(rule?.to).toEqual(label(LABELS.AUTO_MERGING));
+    expect(rule?.run).toBeUndefined();
+  });
+
+  it("auto-merge + merge_gate_failed_hard -> merge-blocked, needs a human", () => {
+    expect(reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_FAILED_HARD)?.to).toEqual(label(LABELS.MERGE_BLOCKED));
+  });
+
+  it("merge-blocked + auto-merge re-added -> auto-merge again, fires merge-flow", () => {
+    const rule = reduce(LABELS.MERGE_BLOCKED, EVENTS.LABELLED_AUTO_MERGING);
+    expect(rule?.to).toEqual(label(LABELS.AUTO_MERGING));
+    expect(rule?.run).toBe(ROUTINES.MERGE_FLOW);
   });
 
   it("auto-merge + merged -> native close", () => {

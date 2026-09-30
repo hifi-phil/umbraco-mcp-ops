@@ -92,6 +92,17 @@ approval", "conflicts with base — rebase needed"), and log it as deferred. By 
 Remove the label only for a hard, human-needed block (unresolvable conflicts, changes
 requested) so the loop stops re-poking it — say which in the comment.
 
+**Orchestrated mode** (the dispatch said so): the orchestrator checks for conflicts
+and requested changes itself, when `auto-merge` is added and whenever CI finishes. It
+swaps `auto-merge` → `merge-blocked` and comments the reason, so usually you never see
+a hard block. If you do hit one it missed (say a conflict appeared with no CI run
+since), make the same swap yourself: remove `auto-merge`, add `merge-blocked`, and
+comment the reason. A human re-adds `auto-merge` once it's fixed.
+Failing CI is also the orchestrator's: when the checks finish red it swaps `auto-merge`
+→ `auto-rework` so `rework-loop` fixes them, and the fix push brings `auto-merge` back.
+After three fix attempts it goes to `merge-blocked`. So on red CI, comment the failing
+checks and stop, and leave the labels alone.
+
 ## Running as a routine
 
 **Primary: event-triggered.** Set up a routine with trigger **PR: Labeled**, filtered to
