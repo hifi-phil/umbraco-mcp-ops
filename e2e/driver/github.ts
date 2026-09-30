@@ -12,18 +12,35 @@ function authToken(): string {
   return token;
 }
 
+const ATTEMPTS = 4;
+
+/** Retries a network error or a 5xx: a scenario runs for minutes, and one
+ * dropped connection from the driver's own side shouldn't fail it. */
 export async function gh<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`https://api.github.com${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${authToken()}`,
-      Accept: "application/vnd.github+json",
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`GitHub ${method} ${path} failed: ${res.status} ${await res.text()}`);
-  return (res.status === 204 ? null : await res.json()) as T;
+  for (let attempt = 1; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`https://api.github.com${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${authToken()}`,
+          Accept: "application/vnd.github+json",
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (e) {
+      if (attempt >= ATTEMPTS) throw e;
+      await sleep(2000 * attempt);
+      continue;
+    }
+    if (res.status >= 500 && attempt < ATTEMPTS) {
+      await sleep(2000 * attempt);
+      continue;
+    }
+    if (!res.ok) throw new Error(`GitHub ${method} ${path} failed: ${res.status} ${await res.text()}`);
+    return (res.status === 204 ? null : await res.json()) as T;
+  }
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -106,10 +123,13 @@ export async function openPr(opts: {
   hint: string;
   files: Record<string, string>;
   fromSha?: string;
+  /** Runs after the branch's commits, before the PR opens (e.g. the other side of a conflict). */
+  beforePr?: () => Promise<void>;
 }): Promise<{ number: number; branch: string }> {
   const branch = `e2e/${opts.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
   await gh("POST", `${R}/git/refs`, { ref: `refs/heads/${branch}`, sha: opts.fromSha ?? (await devSha()) });
   for (const [path, content] of Object.entries(opts.files)) await putFile(branch, path, content, `e2e: ${path}`);
+  await opts.beforePr?.();
   const { number } = await gh<{ number: number }>("POST", `${R}/pulls`, {
     title: `e2e: ${opts.title}`,
     head: branch,

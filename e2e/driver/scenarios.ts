@@ -157,10 +157,17 @@ export const scenarios: Scenario[] = [
       scoped(async (t) => {
         const path = `conflicts/${Date.now()}.txt`;
         const base = await devSha();
-        const pr = await openPr({ title: "conflict", hint: "merge", files: { [path]: "from the PR\n" }, fromSha: base });
+        // dev's side lands before the PR opens: GitHub computes mergeable at
+        // open and doesn't recompute it promptly for a later push to the base.
+        const pr = await openPr({
+          title: "conflict",
+          hint: "merge",
+          files: { [path]: "from the PR\n" },
+          fromSha: base,
+          beforePr: () => putFile("dev", path, "from dev\n", "e2e: the other side of a conflict"),
+        });
         t.n(pr.number);
         t.branch(pr.branch);
-        await putFile("dev", path, "from dev\n", "e2e: the other side of a conflict");
         expect(await waitForMergeable(pr.number), `PR #${pr.number} mergeable`).toBe(false);
 
         await addLabel(pr.number, LABELS.AUTO_MERGING);
