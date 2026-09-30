@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Cross-repo ops tooling and autonomous workflows for the Umbraco MCP repos — issue automation, branch housekeeping, and the self-learning loop that feeds improvements back into the repos and shared skills.",
-    "version": "1.3.1",
+    "version": "1.4.0",
     "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops"
   },
   "plugins": [
@@ -14,7 +14,7 @@
       "name": "mcp-issue-loop",
       "source": "./plugins/mcp-issue-loop",
       "description": "Label-driven loops that take an issue from rough idea to merged PR: `ai-discuss` talks it into shape before anyone builds it, `ready-for-ai` builds it to a CI-green PR, `auto-rework` acts on your review feedback. Bundles issue-discuss-loop, issue-build-loop, rework-loop, and mcp-review. Runs locally (worktrees + parallel subagents + local tests) or as a cloud routine. Repo-agnostic.",
-      "version": "1.10.0",
+      "version": "1.11.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
@@ -84,7 +84,7 @@
       "name": "merge-flow",
       "source": "./plugins/merge-flow",
       "description": "Guardrail loop that merges PRs labelled auto-merge — the maintainer's deliberate go-signal (the human approval, since you can't review-approve your own PR) — only once they are also CI-green, conflict-free, on the right base, and free of an unresolved 'changes requested'. Replaces error-prone manual merges. Uses /goal so a merge job is provably finished. Repo-agnostic; local or scheduled cloud routine.",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
