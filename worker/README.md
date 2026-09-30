@@ -487,19 +487,33 @@ shared reusable `loop-dispatch.yml` and `route-event.sh` stay until every
 repo has moved, because the remaining repos' callers load them from `main`
 on every event.
 
-`umbraco-mcp-ops` switched over by deleting `loop-dispatch-caller.yml`.
-Label and comment events run the caller from the default branch, so that
-deletion only takes effect when it reaches `main`. The cutover is:
+`umbraco-mcp-ops` switched over (30-09-2026) by deleting
+`loop-dispatch-caller.yml`. Label and comment events run the caller from the
+default branch, so that deletion only takes effect when it reaches `main`.
+
+**Never let the Worker and the old caller both fire.** loop-dispatch's
+re-check doesn't protect against two fires at once: both sessions start
+before either has changed anything, so a `ready-for-ai` would get two builds
+(two PRs) and an `ai-discuss` two replies. The cutover closes that window:
 
 1. In `terraform.tfvars`: fill in `repo_routines` (Fire URL + token), set
    `mode = "enforce"`, and give `github_read_token` Issues + Pull requests
    **write** (enforced rules remove labels and close). `tofu apply`.
-   Until step 2 both the Worker and the old caller fire; loop-dispatch
-   re-checks the entity and no-ops the second, so that's safe.
-2. Release to `main`. The caller is gone, and the Worker alone dispatches.
+2. **Straight away**, disable the old caller, and don't label anything
+   between steps 1 and 2:
+   `gh workflow disable "loop-dispatch (caller)" --repo <owner>/<repo>`
+   (in other repos the caller is `.github/workflows/loop-dispatch.yml`).
+3. Delete the caller: release to `main` here, or a PR in the other repo.
+   The disable was only the bridge until then.
 
-For another repo: the same `repo_routines` entry and webhook, then a PR in
-that repo deleting its `.github/workflows/loop-dispatch.yml` caller.
+Check it with a throwaway `ai-discuss` issue: exactly one reply, and a
+`mode = enforce` row in D1.
+
+To undo: re-enable the caller workflow (or restore the file) first, and in
+the same breath set `mode` back to shadow and apply.
+
+For another repo: add its `repo_routines` entry and webhook, then the same
+three steps.
 
 ## What's NOT verified
 
