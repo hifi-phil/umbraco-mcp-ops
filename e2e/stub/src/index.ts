@@ -1,23 +1,28 @@
 // The stub agent: the e2e sandbox's Fire URL. The orchestrator Worker fires
 // it exactly as it fires a real loop-dispatch routine (same body, same
 // bearer token), and the stub does what that loop does in orchestrated
-// mode, through the GitHub API, with no LLM. What it does is scripted by
-// the issue's or PR's hint, `<!-- e2e: <hint> -->`. See
+// mode, through the GitHub API, with no LLM (see loops.ts). What it does is
+// scripted by the issue's or PR's hint, `<!-- e2e: <hint> -->`. See
 // docs/agent-orchestration/14-e2e-testing.md.
 //
-// Only the sandbox repo (E2E_REPO) is ever acted on, whatever the fire says.
+// Two routes:
+// - POST /         a fire from the orchestrator (bearer FIRE_TOKEN)
+// - POST /webhook  the sandbox's check_suite webhook (HMAC HOOK_SECRET), so
+//                  merge-flow can merge once CI goes green, as the real one
+//                  does by polling
+//
+// Only the sandbox repo (E2E_REPO) is ever acted on, whatever a request says.
 
-import type { Outcome } from "../../../graph/outcomes";
+import { act, mergeIfGreen, type Fire, type Gh } from "./loops";
+
+export { outcomeComment, type Action, type Fire, type Gh } from "./loops";
 
 export type StubEnv = {
   GITHUB_TOKEN: string;
   FIRE_TOKEN: string;
+  HOOK_SECRET: string;
   E2E_REPO: string;
 };
-
-export type Fire = { route: string; owner: string; repo: string; number: number };
-
-export type Gh = (method: string, path: string, body?: unknown) => Promise<unknown>;
 
 /** A real routine takes seconds to start. Acting at once would let the
  * outcome's webhook reach the orchestrator before its fire call returns,
@@ -33,30 +38,6 @@ export function parseFire(text: string): Fire | null {
 
 export function parseHint(body: string | null | undefined): string | null {
   return body?.match(/<!--\s*e2e:\s*([\w-]+)\s*-->/)?.[1] ?? null;
-}
-
-/** plugins/agent-outcomes's comment format, which from-github.ts parses. */
-export function outcomeComment(loop: string, outcome: Outcome): string {
-  return (
-    `e2e stub (${loop}): ${outcome.outcome}.\n\n` +
-    `<!-- agent-outcome:${loop} -->\n\`\`\`json\n${JSON.stringify(outcome)}\n\`\`\``
-  );
-}
-
-/** What the stub did, for its response and the tests. `none` covers both a
- * `silent` hint and a route or hint it doesn't script yet: either way the
- * orchestrator sees a loop that never reported back. */
-export type Action = "build_blocked" | "none";
-
-export async function act(gh: Gh, fire: Fire, hint: string | null): Promise<Action> {
-  const issue = `/repos/${fire.owner}/${fire.repo}/issues/${fire.number}`;
-  if (fire.route === "issue-build-loop" && hint === "blocked") {
-    await gh("POST", `${issue}/comments`, {
-      body: outcomeComment("issue-build-loop", { outcome: "build_blocked", reason: "e2e stub: scripted block" }),
-    });
-    return "build_blocked";
-  }
-  return "none";
 }
 
 export function github(token: string): Gh {
@@ -76,6 +57,14 @@ export function github(token: string): Gh {
   };
 }
 
+const isSandbox = (env: StubEnv, owner: string, repo: string) =>
+  `${owner}/${repo}`.toLowerCase() === env.E2E_REPO.toLowerCase();
+
+const logged = (label: string, work: () => Promise<unknown>) =>
+  work()
+    .then((result) => console.log(`e2e stub: ${label} -> ${result}`))
+    .catch((e) => console.error(`e2e stub failed (${label}):`, e instanceof Error ? e.message : e));
+
 export async function handleFire(
   request: Request,
   env: StubEnv,
@@ -83,7 +72,6 @@ export async function handleFire(
   gh: Gh = github(env.GITHUB_TOKEN),
   delayMs = STUB_DELAY_MS,
 ): Promise<Response> {
-  if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
   if (request.headers.get("Authorization") !== `Bearer ${env.FIRE_TOKEN}`) {
     return new Response("unauthorized", { status: 401 });
   }
@@ -95,25 +83,70 @@ export async function handleFire(
   }
   const fire = typeof text === "string" ? parseFire(text) : null;
   if (!fire) return new Response("no route=… repo=… number=… in text", { status: 400 });
-  if (`${fire.owner}/${fire.repo}`.toLowerCase() !== env.E2E_REPO.toLowerCase()) {
+  if (!isSandbox(env, fire.owner, fire.repo)) {
     return new Response(`not the e2e repo: ${fire.owner}/${fire.repo}`, { status: 403 });
   }
 
   defer(
-    (async () => {
+    logged(`${fire.route} #${fire.number}`, async () => {
       await new Promise((r) => setTimeout(r, delayMs));
       const { body } = (await gh("GET", `/repos/${fire.owner}/${fire.repo}/issues/${fire.number}`)) as {
         body: string | null;
       };
-      const action = await act(gh, fire, parseHint(body));
-      console.log(`e2e stub: ${fire.route} #${fire.number} -> ${action}`);
-    })().catch((e) => console.error("e2e stub failed:", e instanceof Error ? e.message : e)),
+      return act(gh, fire, parseHint(body));
+    }),
   );
   return Response.json({ accepted: true, route: fire.route, number: fire.number });
 }
 
+export async function verifySignature(secret: string, rawBody: string, header: string | null): Promise<boolean> {
+  if (!header?.startsWith("sha256=")) return false;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+  ]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody)));
+  const expected = [...mac].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const given = header.slice("sha256=".length);
+  if (given.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ given.charCodeAt(i);
+  return diff === 0;
+}
+
+/** CI finished on a sandbox PR: if it carries auto-merge, run merge-flow's
+ * gate again, as the real merge-flow's polling would. */
+export async function handleWebhook(
+  request: Request,
+  env: StubEnv,
+  defer: (work: Promise<unknown>) => void,
+  gh: Gh = github(env.GITHUB_TOKEN),
+): Promise<Response> {
+  const raw = await request.text();
+  if (!(await verifySignature(env.HOOK_SECRET, raw, request.headers.get("X-Hub-Signature-256")))) {
+    return new Response("invalid signature", { status: 401 });
+  }
+  if (request.headers.get("X-GitHub-Event") !== "check_suite") return Response.json({ ignored: "not check_suite" });
+  const body = JSON.parse(raw) as {
+    action?: string;
+    repository?: { name: string; owner: { login: string } };
+    check_suite?: { pull_requests?: { number: number }[] };
+  };
+  const owner = body.repository?.owner.login ?? "";
+  const repo = body.repository?.name ?? "";
+  if (body.action !== "completed" || !isSandbox(env, owner, repo)) return Response.json({ ignored: true });
+
+  const prs = (body.check_suite?.pull_requests ?? []).map((p) => p.number);
+  for (const number of prs) {
+    defer(logged(`check_suite -> merge-flow #${number}`, () => mergeIfGreen(gh, { route: "merge-flow", owner, repo, number })));
+  }
+  return Response.json({ prs });
+}
+
 export default {
-  fetch(request: Request, env: StubEnv, ctx: ExecutionContext): Promise<Response> {
-    return handleFire(request, env, (work) => ctx.waitUntil(work));
+  fetch(request: Request, env: StubEnv, ctx: ExecutionContext): Promise<Response> | Response {
+    if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+    const defer = (work: Promise<unknown>) => ctx.waitUntil(work);
+    if (new URL(request.url).pathname === "/webhook") return handleWebhook(request, env, defer);
+    return handleFire(request, env, defer);
   },
 };

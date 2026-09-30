@@ -147,7 +147,14 @@ resource "cloudflare_workers_script" "e2e_stub" {
     { type = "plain_text", name = "E2E_REPO", text = "${var.github_owner}/${var.e2e_repo}" },
     { type = "secret_text", name = "FIRE_TOKEN", text = random_password.e2e_fire_token[0].result },
     { type = "secret_text", name = "GITHUB_TOKEN", text = var.e2e_stub_github_token },
+    { type = "secret_text", name = "HOOK_SECRET", text = random_password.e2e_hook_secret[0].result },
   ]
+}
+
+resource "random_password" "e2e_hook_secret" {
+  count   = local.e2e ? 1 : 0
+  length  = 40
+  special = false
 }
 
 resource "cloudflare_workers_script_subdomain" "e2e_stub" {
@@ -172,4 +179,22 @@ resource "github_repository_webhook" "e2e" {
 
   # The stub has to be answering before the sandbox can fire it.
   depends_on = [cloudflare_workers_script_subdomain.worker, cloudflare_workers_script_subdomain.e2e_stub]
+}
+
+# The stub's own webhook: CI finishing, so its merge-flow can merge on green
+# (the real merge-flow polls for that instead).
+resource "github_repository_webhook" "e2e_stub" {
+  count      = local.e2e ? 1 : 0
+  repository = var.e2e_repo
+  active     = true
+  events     = ["check_suite"]
+
+  configuration {
+    url          = "${local.e2e_url}/webhook"
+    content_type = "json"
+    secret       = random_password.e2e_hook_secret[0].result
+    insecure_ssl = false
+  }
+
+  depends_on = [cloudflare_workers_script_subdomain.e2e_stub]
 }
