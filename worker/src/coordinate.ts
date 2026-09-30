@@ -91,6 +91,9 @@ export type Deps = {
   // Phase 4: whether this event's writes and fire are real. Everything not
   // enforced runs in shadow (see resolveEnforced).
   enforced(event: Event): boolean;
+  // How long a fired routine has before the watchdog expires, for this
+  // issue's repo (watchdogMinutesFor, unless the repo overrides it).
+  watchdogMinutes(routine: string): number;
 };
 
 /**
@@ -156,6 +159,31 @@ const WATCHDOG_MINUTES_BY_ROUTINE: Partial<Record<string, number>> = {
 
 export function watchdogMinutesFor(routine: string): number {
   return WATCHDOG_MINUTES_BY_ROUTINE[routine] ?? WATCHDOG_MINUTES;
+}
+
+/**
+ * Per-repo watchdog settings, keyed "owner/repo" (any case), from
+ * WATCHDOG_OVERRIDES_JSON. Only the e2e sandbox uses it today: `mode` makes
+ * its watchdog real while every other repo's stays on WATCHDOG, and
+ * `minutes` shortens every routine's timeout so a scenario can watch an
+ * expiry happen. Unset or `{}` means no overrides.
+ */
+export type WatchdogOverride = { mode?: string; minutes?: number };
+
+export function watchdogOverrideFor(
+  raw: string | undefined,
+  owner: string,
+  repo: string,
+): WatchdogOverride | undefined {
+  if (!raw) return undefined;
+  let map: Record<string, WatchdogOverride>;
+  try {
+    map = JSON.parse(raw);
+  } catch {
+    throw new Error("WATCHDOG_OVERRIDES_JSON is not valid JSON");
+  }
+  const want = `${owner}/${repo}`.toLowerCase();
+  return Object.entries(map).find(([key]) => key.toLowerCase() === want)?.[1];
 }
 
 export type CoordinateInput = {
@@ -503,7 +531,7 @@ export async function coordinateWatchdogExpired(deps: Deps): Promise<WatchdogRes
     pending.owner,
     pending.repo,
     pending.issueNumber,
-    `⚠️ The \`${pending.run}\` routine hasn't reported back within ${watchdogMinutesFor(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
+    `⚠️ The \`${pending.run}\` routine hasn't reported back within ${deps.watchdogMinutes(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
       `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
   );
 

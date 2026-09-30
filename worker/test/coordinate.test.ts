@@ -64,6 +64,7 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     // These tests are about the write path; shadow and per-event
     // enforcement have their own describe blocks.
     enforced: () => true,
+    watchdogMinutes: watchdogMinutesFor,
     ...overrides,
   };
 }
