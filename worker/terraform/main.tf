@@ -76,11 +76,15 @@ resource "cloudflare_workers_script" "worker" {
     { type = "durable_object_namespace", name = "ISSUE_COORDINATOR", class_name = "IssueCoordinator" },
     { type = "d1", name = "DB", id = cloudflare_d1_database.log.id },
     { type = "plain_text", name = "MODE", text = var.mode },
+    { type = "plain_text", name = "WATCHDOG", text = var.watchdog },
     { type = "secret_text", name = "GITHUB_APP_TOKEN", text = var.github_read_token },
     { type = "secret_text", name = "GITHUB_WEBHOOK_SECRET", text = random_password.webhook_secret.result },
     { type = "secret_text", name = "ROUTINE_SIGNAL_SECRET", text = random_password.routine_signal_secret.result },
-    { type = "secret_text", name = "CLAUDE_API_KEY", text = var.claude_api_key },
-    { type = "secret_text", name = "ROUTINE_IDS_JSON", text = var.routine_ids_json },
+    {
+      type = "secret_text",
+      name = "REPO_ROUTINES_JSON",
+      text = jsonencode({ for repo, r in var.repo_routines : repo => { fireUrl = r.fire_url, token = r.token } }),
+    },
   ]
 
   # Don't take webhook traffic before the log table exists.

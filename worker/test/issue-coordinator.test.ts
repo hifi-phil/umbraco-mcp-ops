@@ -54,18 +54,14 @@ function fakeDb() {
 function fakeEnv(overrides: Partial<IssueCoordinatorEnv> = {}): IssueCoordinatorEnv {
   return {
     GITHUB_APP_TOKEN: "test-token",
-    CLAUDE_API_KEY: "test-key",
-    ROUTINE_IDS_JSON: JSON.stringify({
-      "issue-build-loop": "rt_abc123",
-      "auto-release-loop": "rt_release",
-      "issue-discuss-loop": "rt_discuss",
-      "rework-loop": "rt_rework",
-      "merge-flow": "rt_merge",
+    REPO_ROUTINES_JSON: JSON.stringify({
+      "hifi-phil/umbraco-mcp-ops": { fireUrl: "https://routines.example/fire/ops", token: "tok-ops" },
     }),
     DB: fakeDb().db,
     // Explicit, because unset means shadow — these tests are about the
     // enforced write path; shadow mode has its own describe block below.
     MODE: "enforce",
+    WATCHDOG: "enforce",
     ...overrides,
   };
 }
@@ -96,7 +92,7 @@ function fakeApiFetch(
     if (method === "GET" && url.includes("/labels")) {
       return new Response(JSON.stringify(labels.map((name) => ({ name }))), { status: 200 });
     }
-    if (method === "POST" && url.includes("/routines/")) return new Response("{}", { status: 200 });
+    if (method === "POST" && url.startsWith("https://routines.example/fire/")) return new Response("{}", { status: 200 });
     if (method === "POST" && url.includes("/comments")) return new Response("{}", { status: 201 });
     if (method === "POST" && url.includes("/labels")) return new Response("[]", { status: 200 });
     if (method === "DELETE" && url.includes("/labels/")) return new Response("", { status: 200 });
@@ -248,6 +244,50 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
     await coordinator.alarm();
 
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("IssueCoordinator — MODE=enforce with the watchdog shadowed (Phase 4)", () => {
+  const mergeLabeledInput = () => ({
+    deliveryId: "d-merge",
+    owner: "hifi-phil",
+    repo: "umbraco-mcp-ops",
+    issueNumber: 126,
+    payload: { action: "pull_request.labeled", label: { name: "auto-merge" }, sender: { login: "phil", type: "User" } },
+  });
+  const fires = (apiFetch: ReturnType<typeof fakeApiFetch>) =>
+    apiFetch.mock.calls.filter(([url]) => (url as string).startsWith("https://routines.example/fire/"));
+
+  it("auto-merge fires the repo's loop-dispatch routine for real, logged as enforce", async () => {
+    const apiFetch = fakeApiFetch();
+    vi.stubGlobal("fetch", apiFetch);
+    const { ctx } = fakeCtx();
+    const { db, inserted } = fakeDb();
+    const coordinator = new IssueCoordinator(ctx, fakeEnv({ DB: db, MODE: "enforce", WATCHDOG: undefined }));
+
+    await coordinator.fetch(fetchRequest(mergeLabeledInput()));
+
+    expect(fires(apiFetch)).toHaveLength(1);
+    const [, init] = fires(apiFetch)[0]!;
+    expect(JSON.parse((init as RequestInit).body as string).text).toContain(
+      "route=merge-flow repo=hifi-phil/umbraco-mcp-ops number=126",
+    );
+    expect(inserted[0]).toEqual(expect.arrayContaining(["labelled_auto_merging", "merge-flow", "enforce"]));
+  });
+
+  it("the watchdog stays shadow: an expiry comments nothing, swaps nothing, and logs shadow", async () => {
+    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    vi.stubGlobal("fetch", apiFetch);
+    const { ctx, storage } = fakeCtx();
+    const { db, inserted } = fakeDb();
+    await storage.put("pendingFire", { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: "issue-build-loop" });
+    const coordinator = new IssueCoordinator(ctx, fakeEnv({ DB: db, MODE: "enforce", WATCHDOG: undefined }));
+
+    await coordinator.alarm();
+
+    const writes = apiFetch.mock.calls.filter(([, init]) => ((init as RequestInit)?.method ?? "GET") !== "GET");
+    expect(writes).toEqual([]);
+    expect(inserted[0]).toEqual(expect.arrayContaining(["watchdog_expired", "shadow"]));
   });
 });
 

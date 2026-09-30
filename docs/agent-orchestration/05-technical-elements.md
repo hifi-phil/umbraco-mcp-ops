@@ -34,17 +34,23 @@ it feels tidier.
 ## Claude Code routines
 
 We already fire via the API endpoint, which is the right pattern — the
-reducer becomes the only thing allowed to make that call:
+reducer becomes the only thing allowed to make that call. Each repo has one
+`loop-dispatch` routine with its own Fire URL (Routines UI → Call via API)
+and token; the fire names the route and loop-dispatch dispatches it
+(`.github/workflows/loop-dispatch.yml` today, `worker/src/routines-client.ts`
+once a transition is enforced):
 
 ```ts
-await fetch(`https://api.claude.com/routines/${routineId}`, {
+await fetch(fireUrl, {
   method: "POST",
   headers: {
-    "Authorization": `Bearer ${env.CLAUDE_API_KEY}`,
+    Authorization: `Bearer ${token}`,
+    "anthropic-version": "2023-06-01",
+    "anthropic-beta": "experimental-cc-routine-2026-04-01",
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    additional_context: `Issue #412. Branch feat/412. Tests passed. Do the review.`,
+    text: "loop-dispatch (cloud worker). … routed at the edge: route=merge-flow repo=owner/repo number=412. Run the loop-dispatch skill …",
   }),
 });
 ```

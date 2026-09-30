@@ -5,13 +5,16 @@
 
 GITHUB_APP_TOKEN=mock-bot-token
 GITHUB_API_BASE_URL=http://127.0.0.1:8943
-CLAUDE_API_KEY=fake-local-key
-CLAUDE_API_BASE_URL=http://127.0.0.1:8943
 # Overrides wrangler.toml's MODE = "shadow". The mock scenarios in
 # README.md check that the mock's labels actually changed, so they need
 # enforce. Delete this line for a shadow run-through (D1 rows only).
 MODE=enforce
-ROUTINE_IDS_JSON={"issue-build-loop":"rt_fake","auto-release-loop":"rt_fake_release","issue-discuss-loop":"rt_fake_discuss","rework-loop":"rt_fake_rework","merge-flow":"rt_fake_merge"}
+# The watchdog has its own switch (shadow unless "enforce"); on here so the
+# mock scenarios can see ai-stuck.
+WATCHDOG=enforce
+# Each repo's loop-dispatch routine. Here, the mock's /fire/<name> stand-in
+# for a Fire URL; o/r is the repo README.md's mock scenarios use.
+REPO_ROUTINES_JSON={"o/r":{"fireUrl":"http://127.0.0.1:8943/fire/o-r","token":"fake-routine-token"},"hifi-phil/umbraco-mcp-ops":{"fireUrl":"http://127.0.0.1:8943/fire/ops","token":"fake-routine-token"}}
 
 # Optional — guards POST /routine-signal (the direct routine-to-DO
 # heartbeat channel; see src/coordinate.ts's coordinateRoutineSignal).
@@ -20,7 +23,9 @@ ROUTINE_IDS_JSON={"issue-build-loop":"rt_fake","auto-release-loop":"rt_fake_rele
 # ROUTINE_SIGNAL_SECRET=some-local-test-secret
 
 # To point at the real APIs instead (e.g. once real credentials exist),
-# remove the two *_API_BASE_URL lines and set real values for the rest —
-# GITHUB_APP_TOKEN will then genuinely write labels/comments on whatever
-# repo it can reach, so do that deliberately, not by habit. Drop MODE=enforce
-# above when you do, unless enforcing against that repo is the point.
+# remove GITHUB_API_BASE_URL, put real Fire URLs + tokens in
+# REPO_ROUTINES_JSON and set real values for the rest — GITHUB_APP_TOKEN
+# will then genuinely write labels/comments on whatever repo it can reach,
+# and each fire starts a real routine session, so do that deliberately, not
+# by habit. Drop MODE=enforce above when you do, unless enforcing against
+# that repo is the point.

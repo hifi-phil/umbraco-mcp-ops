@@ -48,7 +48,38 @@ the marker when #114 wrote it, in the same environment, is still unknown.
 - Heartbeats weren't wired (`AGENT_OUTCOMES_ENDPOINT` unset), so the
   watchdog had only the fire time to go on.
 
-## Next
+## Run 2 — 29-09-2026
 
-Redeploy, then run 2 to confirm A–E: number 2 should drop to about 0,
-with no false `watchdog_expired` rows.
+**Setup:** same deployment, redeployed with #123's fixes (and #124 for the
+DO migration tag). One real issue driven through every loop in the
+browser: #125 discuss → build (PR #126) → review + rework → merge →
+release 1.1.1 (#127). About 17 minutes end to end. **16** D1 rows (27–42).
+
+### Number 1 — **0**
+
+All 7 trigger-label fires matched a rule and the loop the dispatcher
+fired.
+
+### Number 2 — **0**
+
+Every row matched a rule. Each fix from run 1 showed up:
+
+| Fix | Evidence |
+|---|---|
+| A | row 32: `discussion_reply` from `ai-discuss`, fires `issue-discuss-loop`; the loop's own signed comments made no row |
+| B | rows 34–35: `unlabelled_ai_ready` + `build_succeeded` from the `generated-by-ai` swap, with no marker in the comment; row 38: `unlabelled_auto_reworking`; row 42: `issue_closed` ended the release, which posted no comment at all |
+| C, B | no `watchdog_expired` rows (run 1 had 2 false ones) |
+| D, E | no rows for the release PR's merge, PR-opening pushes, or #125's close |
+
+The marker was missing again (#125's build comment; #127 had no comment),
+so it's now absent in 1 of 6 opportunities. The label swaps carried every
+completion. See the open question in
+[08-open-questions.md](08-open-questions.md).
+
+## Phase 3 exit
+
+Both numbers exist and the gaps are folded back and confirmed. Phase 3 is
+done. Before Phase 4 (enforce): `MODE` per transition, so one rule can be
+enforced at a time (merge is the cleanest candidate: 5 of 5 correct across
+both runs), and the GitHub App, so the self-trigger guard can tell the
+Worker's own writes from `hifi-phil`'s.

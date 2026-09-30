@@ -1,46 +1,84 @@
-// Fires a Claude Code routine by name, per the routines API call already
-// sketched in 05-technical-elements.md — this is that call made real.
-// Routine IDs aren't hardcoded: ROUTINE_IDS_JSON is a secret holding
-// {"issue-build-loop": "rt_...", ...}, since the actual IDs only exist
-// once routines are configured for real, outside this repo.
+// Fires a repo's loop-dispatch routine exactly the way
+// .github/workflows/loop-dispatch.yml does today: POST to that routine's
+// Fire URL (Routines UI → Call via API) with its own token, the routines
+// beta headers, and the same `route=… repo=… number=…` text. The
+// loop-dispatch skill then dispatches to the named loop, so a fire from
+// here is indistinguishable from one from the workflow.
+//
+// One routine per repo, so the config is a map: REPO_ROUTINES_JSON is a
+// secret holding {"owner/repo": {"fireUrl": "...", "token": "..."}}. Keys
+// match case-insensitively (GitHub names do).
+
+export type RoutineTarget = { fireUrl: string; token: string };
 
 export type RoutinesEnv = {
-  CLAUDE_API_KEY: string;
-  ROUTINE_IDS_JSON: string;
-  // Overridable for local smoke-testing against a stub server instead of
-  // the real API — see worker/README.md. Defaults to the real API in
-  // every environment that doesn't set it, including production.
-  CLAUDE_API_BASE_URL?: string;
+  REPO_ROUTINES_JSON: string;
 };
+
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 1000;
+
+export function routineTargetFor(env: RoutinesEnv, owner: string, repo: string): RoutineTarget {
+  let map: Record<string, Partial<RoutineTarget>>;
+  try {
+    map = JSON.parse(env.REPO_ROUTINES_JSON);
+  } catch {
+    throw new Error("REPO_ROUTINES_JSON is not valid JSON");
+  }
+  const want = `${owner}/${repo}`.toLowerCase();
+  const entry = Object.entries(map).find(([key]) => key.toLowerCase() === want)?.[1];
+  if (!entry?.fireUrl || !entry.token) {
+    // A config error, not a quiet skip: in enforce mode an unfired routine
+    // is exactly the stall this system exists to prevent.
+    throw new Error(`No loop-dispatch routine (fireUrl + token) configured for "${owner}/${repo}" in REPO_ROUTINES_JSON`);
+  }
+  return { fireUrl: entry.fireUrl, token: entry.token };
+}
+
+/** The workflow's text, word for word, with route-event.sh's result line. */
+export function dispatchText(route: string, owner: string, repo: string, issueNumber: number): string {
+  const result = `route=${route} repo=${owner}/${repo} number=${issueNumber}`;
+  return (
+    `loop-dispatch (cloud worker). A GitHub loop event was routed at the edge: ${result}. ` +
+    `Run the loop-dispatch skill and dispatch this already-resolved route to its loop for that number, ` +
+    `following loop-dispatch's guardrails (do all GitHub work via the GitHub MCP / github-ops). ` +
+    `Re-check the entity still qualifies before acting; quiet no-op if not.`
+  );
+}
 
 export async function fireRoutine(
   env: RoutinesEnv,
-  routine: string,
-  additionalContext: string,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  route: string,
 ): Promise<void> {
-  let ids: Record<string, string>;
-  try {
-    ids = JSON.parse(env.ROUTINE_IDS_JSON);
-  } catch {
-    throw new Error("ROUTINE_IDS_JSON is not valid JSON");
-  }
+  const target = routineTargetFor(env, owner, repo);
+  const body = JSON.stringify({ text: dispatchText(route, owner, repo, issueNumber) });
 
-  const routineId = ids[routine];
-  if (!routineId) {
-    throw new Error(`No routine id configured for "${routine}" in ROUTINE_IDS_JSON`);
+  // Same retry policy as the workflow's curl (--retry 3 on any 5xx or
+  // network error). A retried fire is safe: loop-dispatch re-checks the
+  // entity still qualifies and no-ops if the first fire already handled it.
+  let lastError = "";
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(target.fireUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${target.token}`,
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "experimental-cc-routine-2026-04-01",
+          "Content-Type": "application/json",
+        },
+        body,
+      });
+      if (res.ok) return;
+      lastError = `${res.status} ${await res.text()}`;
+      if (res.status < 500) break; // a 4xx won't fix itself
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+    }
+    if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
   }
-
-  const base = env.CLAUDE_API_BASE_URL ?? "https://api.claude.com";
-  const res = await fetch(`${base}/routines/${routineId}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.CLAUDE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ additional_context: additionalContext }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Routine fire failed for "${routine}": ${res.status} ${await res.text()}`);
-  }
+  throw new Error(`Routine fire failed for ${owner}/${repo} (route=${route}): ${lastError}`);
 }
