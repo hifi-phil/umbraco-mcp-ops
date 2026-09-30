@@ -105,8 +105,9 @@ watchdog, so that keeps its own switch until its timeouts are proven.
   (`REPO_ROUTINES_JSON`, exactly as the edge does) and applies label
   writes. `WATCHDOG` is separate and defaults to shadow. Each D1 row
   records its own mode.
-- The repo's `LOOP_DISPATCH_VIA_WORKER=true` variable makes the edge stop
-  firing. Repos without it are unchanged.
+- Switching a repo over retires its old edge: disable its loop-dispatch
+  caller workflow once the Worker enforces. No code change; repos not yet
+  switched keep the shared reusable workflow as is.
 
 The procedure and switch order are in `worker/README.md`'s "Enforcing".
 The self-trigger guard doesn't block this: the table never adds a trigger

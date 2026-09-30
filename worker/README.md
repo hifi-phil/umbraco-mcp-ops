@@ -481,10 +481,10 @@ switch (tofu `watchdog`, default shadow) because its timeouts are still
 guesses (`coordinate.ts`'s `resolveEnforced`). Each D1 row records its own
 `mode`, so watchdog rows stay `shadow` until it's switched on.
 
-Once the Worker dispatches a repo, the edge must stop: the repo's
-**`LOOP_DISPATCH_VIA_WORKER=true`** Actions variable makes `loop-dispatch.yml`
-skip its fire step (it logs "left to the orchestration Worker" instead).
-Repos without the variable dispatch exactly as before.
+Once the Worker dispatches a repo, the old edge (that repo's loop-dispatch
+caller workflow) must stop, or every loop fires twice. It's retired per
+repo by disabling the workflow, not by a code change; the shared reusable
+workflow stays as it is for repos not yet switched.
 
 To switch a repo over, in this order:
 
@@ -493,16 +493,12 @@ To switch a repo over, in this order:
    **write** (enforced rules remove labels and close). `tofu apply`.
    For a moment both the Worker and the edge fire; loop-dispatch re-checks
    the entity and no-ops the second, so that's safe.
-2. Set the repo variable `LOOP_DISPATCH_VIA_WORKER=true`
-   (*Settings → Secrets and variables → Actions → Variables*).
+2. Disable the repo's caller workflow: *Actions → loop-dispatch (caller) →
+   ⋯ → Disable workflow*, or `gh workflow disable "loop-dispatch (caller)"`
+   (named `loop-dispatch-caller.yml` here, `loop-dispatch.yml` in other repos).
 
-To undo, reverse the order: delete the variable first, then set `mode`
+To undo, reverse the order: re-enable the workflow first, then set `mode`
 back to shadow and apply. The other way round, nobody fires for a moment.
-
-The edge reads the variable from `vars` inside the reusable workflow. That the
-caller repo's variables are visible there is expected but **not yet verified**;
-after step 2, a `loop-dispatch` run's log should show the skip step instead of
-a fire.
 
 ## What's NOT verified
 
