@@ -729,7 +729,7 @@ describe("coordinateWebhook — the merge gate when auto-merge is added", () => 
 
 describe("coordinateWebhook — CI failing under auto-merge goes to rework, then back", () => {
   it("the cap is three fix attempts, then merge-blocked", () => {
-    expect(MAX_CI_FIX_ATTEMPTS).toBe(4);
+    expect(MAX_CI_FIX_ATTEMPTS).toBe(3);
   });
 
   const failing = [{ name: "test", status: "completed" as const, conclusion: "failure" as const }];
