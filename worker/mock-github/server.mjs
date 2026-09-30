@@ -5,8 +5,8 @@
 // - GitHub REST (labels, issue state, comments) — in-memory, so a label
 //   the Worker just added actually shows up on the next GET, unlike a
 //   canned-response stub.
-// - Claude Code's routines API (POST /routines/:id) — a stub that just
-//   logs the fired context and returns 200. This only covers the KICKOFF
+// - A routine's Fire URL (POST /fire/<name>) — a stub that just
+//   logs the fired text and returns 200. This only covers the KICKOFF
 //   fire (the routine starting); it does not simulate the routine's own
 //   multi-step work. See agent-runner.mjs + the "Testing outcome fidelity
 //   with a real agent" section in README.md for the part that actually
@@ -181,11 +181,12 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true, facts: getPrFacts(owner, repo, prNumber) });
   }
 
-  // Minimal Claude Code routines API stub — enough for fireRoutine() to
+  // Minimal stand-in for a routine's Fire URL (POST /fire/<name>, see
+  // .dev.vars.example's REPO_ROUTINES_JSON) — enough for fireRoutine() to
   // succeed; not a real simulation of what the routine would then do.
-  if (req.method === "POST" && parts[0] === "routines" && parts[1]) {
+  if (req.method === "POST" && parts[0] === "fire" && parts[1]) {
     const body = await readJsonBody(req);
-    console.log(`routine ${parts[1]} fired: ${body.additional_context ?? ""}`);
+    console.log(`routine ${parts[1]} fired: ${body.text ?? ""}`);
     return sendJson(res, 200, { ok: true });
   }
 

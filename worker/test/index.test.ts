@@ -23,8 +23,7 @@ function fakeEnv(overrides: Partial<Env> = {}): {
     ISSUE_COORDINATOR: { idFromName, get } as unknown as Env["ISSUE_COORDINATOR"],
     DB: {} as unknown as Env["DB"],
     GITHUB_APP_TOKEN: "test-token",
-    CLAUDE_API_KEY: "test-key",
-    ROUTINE_IDS_JSON: "{}",
+    REPO_ROUTINES_JSON: "{}",
     ...overrides,
   };
   return { env, idFromName, get, stubFetch };
@@ -179,6 +178,15 @@ describe("index.ts fetch() — DO routing and isolation", () => {
 
     const keys = idFromName.mock.calls.map((c) => c[0]);
     expect(new Set(keys).size).toBe(2);
+  });
+
+  it("the DO key ignores owner/repo case, as GitHub does", async () => {
+    const { env, idFromName } = fakeEnv();
+    await worker.fetch(
+      request(labeledIssuePayload({ repository: { name: "Umbraco-MCP-Ops", owner: { login: "Hifi-Phil" } } })),
+      env,
+    );
+    expect(idFromName).toHaveBeenCalledWith("hifi-phil/umbraco-mcp-ops#412");
   });
 
   it("passes through the DO's response verbatim", async () => {

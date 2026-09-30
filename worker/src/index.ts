@@ -19,14 +19,21 @@ export type Env = {
   GITHUB_APP_TOKEN: string;
   GITHUB_API_BASE_URL?: string; // local smoke-testing seam — see github-client.ts
   GITHUB_WEBHOOK_SECRET?: string;
-  CLAUDE_API_KEY: string;
-  CLAUDE_API_BASE_URL?: string; // local smoke-testing seam — see routines-client.ts
-  ROUTINE_IDS_JSON: string;
+  // {"owner/repo": {"fireUrl", "token"}} — each repo's loop-dispatch routine.
+  // See routines-client.ts.
+  REPO_ROUTINES_JSON: string;
   // Auth for POST /routine-signal (see coordinate.ts's coordinateRoutineSignal
   // doc comment). Same permissive-when-unset shape as GITHUB_WEBHOOK_SECRET —
   // easy local dev, a real secret required once actually deployed.
   ROUTINE_SIGNAL_SECRET?: string;
 };
+
+/** One DO per issue/PR. Lowercased: GitHub treats owner/repo names
+ * case-insensitively, so a routine signal spelling the repo differently
+ * from the webhook must still reach the same DO (and its watchdog). */
+function doKey(owner: string, repo: string, issueNumber: number): string {
+  return `${owner}/${repo}`.toLowerCase() + `#${issueNumber}`;
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -68,7 +75,7 @@ export default {
       payload: toWebhookPayload(body, eventType),
     };
 
-    const id = env.ISSUE_COORDINATOR.idFromName(`${routing.owner}/${routing.repo}#${routing.issueNumber}`);
+    const id = env.ISSUE_COORDINATOR.idFromName(doKey(routing.owner, routing.repo, routing.issueNumber));
     const stub = env.ISSUE_COORDINATOR.get(id);
     return stub.fetch("https://issue-coordinator/", {
       method: "POST",
@@ -101,7 +108,7 @@ async function handleRoutineSignal(request: Request, env: Env): Promise<Response
     return new Response("owner, repo, and signal are required", { status: 400 });
   }
 
-  const id = env.ISSUE_COORDINATOR.idFromName(`${input.owner}/${input.repo}#${input.signal.issue}`);
+  const id = env.ISSUE_COORDINATOR.idFromName(doKey(input.owner, input.repo, input.signal.issue));
   const stub = env.ISSUE_COORDINATOR.get(id);
   return stub.fetch("https://issue-coordinator/routine-signal", {
     method: "POST",

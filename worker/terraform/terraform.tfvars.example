@@ -11,3 +11,9 @@ github_read_token     = "github_pat_…"     # read-only: Issues, Pull requests,
 
 # Leave commented for the first apply; uncomment once the Worker exists.
 # deployed_do_migration_tag = "v1"
+
+# Only needed once a transition is enforced (shadow never fires). Same Fire
+# URL + token as the repo's LOOP_DISPATCH_FIRE_URL / LOOP_DISPATCH_TOKEN.
+# repo_routines = {
+#   "hifi-phil/umbraco-mcp-ops" = { fire_url = "https://…", token = "…" }
+# }

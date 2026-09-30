@@ -201,7 +201,7 @@ describe("coordinateWebhook — no event / no rule", () => {
       }),
     );
     expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_DISCUSSING, event: EVENTS.DISCUSSION_REPLY });
-    expect(deps.fireRoutine).toHaveBeenCalledWith(ROUTINES.ISSUE_DISCUSS_LOOP, expect.any(String));
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.ISSUE_DISCUSS_LOOP);
     expect(deps.setPendingFire).not.toHaveBeenCalled();
   });
 
@@ -278,10 +278,7 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
     );
     expect(result.outcome).toBe("applied");
     expect(deps.addLabel).not.toHaveBeenCalled(); // already present from the triggering webhook
-    expect(deps.fireRoutine).toHaveBeenCalledWith(
-      ROUTINES.ISSUE_BUILD_LOOP,
-      expect.stringContaining("#412"),
-    );
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.ISSUE_BUILD_LOOP);
     expect(deps.setPendingFire).toHaveBeenCalledWith({
       owner: "hifi-phil",
       repo: "umbraco-mcp-ops",
@@ -358,7 +355,7 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
       input({ payload: { action: "issues.labeled", label: { name: LABELS.AI_DISCUSSING } } }),
     );
     expect(result.outcome).toBe("applied");
-    expect(deps.fireRoutine).toHaveBeenCalledWith(ROUTINES.ISSUE_DISCUSS_LOOP, expect.any(String));
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.ISSUE_DISCUSS_LOOP);
     expect(deps.setPendingFire).not.toHaveBeenCalled();
     expect(deps.clearPendingFire).toHaveBeenCalledOnce();
   });
@@ -398,7 +395,7 @@ describe("coordinateWebhook — leaving ai-stuck", () => {
     expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_STUCK });
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
     expect(deps.addLabel).not.toHaveBeenCalled();
-    expect(deps.fireRoutine).toHaveBeenCalledWith(ROUTINES.ISSUE_BUILD_LOOP, expect.any(String));
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.ISSUE_BUILD_LOOP);
     expect(deps.setPendingFire).toHaveBeenCalledOnce();
   });
 

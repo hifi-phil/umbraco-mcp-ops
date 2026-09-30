@@ -70,12 +70,13 @@ src/
 
 ## What's actually verified, and how
 
-**117 unit tests** (`npm test` — the `"unit"` vitest workspace project;
+**124 unit tests** (`npm test` — the `"unit"` vitest workspace project;
 see `vitest.workspace.ts`) cover `coordinate.ts` (the decision logic,
 against fake in-memory deps), `webhook-parse.ts` (payload mapping +
 signature verification), `github-client.ts` and `routines-client.ts`
-(against mocked `fetch`, including the `GITHUB_API_BASE_URL`/
-`CLAUDE_API_BASE_URL` override seam used below) — **plus `index.ts` and
+(against mocked `fetch`, including the `GITHUB_API_BASE_URL` override seam
+used below; `routines-client.ts` fires each repo's loop-dispatch routine
+from `REPO_ROUTINES_JSON`, so pointing it at the mock is just a Fire URL) — **plus `index.ts` and
 `issue-coordinator.ts` themselves** (`test/index.test.ts`,
 `test/issue-coordinator.test.ts`), covering: webhook signature
 verification end-to-end (missing/wrong/correct signature, and the
@@ -250,13 +251,12 @@ MCP product repos use for their own eval suites, not a bespoke system.
 Needs `ANTHROPIC_API_KEY` provisioned as a secret before it can run for
 real in CI — not done as of this writing.
 
-**Second gotcha, real but mundane:** `.dev.vars.example`'s
-`ROUTINE_IDS_JSON` originally only had an entry for `issue-build-loop`.
-Kicking off `auto-release-loop` (or any of the other three) without
-adding its own entry makes `fireRoutine()` throw *before*
-`logTransition` runs — a genuine 500 to the webhook sender, and a silently
-missing D1 row, not a Worker bug. Fixed by giving `.dev.vars`/
-`.dev.vars.example` a fake ID for all five loops.
+**Second gotcha, real but mundane:** a fire for a repo with no entry in
+`REPO_ROUTINES_JSON` makes `fireRoutine()` throw *before* `logTransition`
+runs — a genuine 500 to the webhook sender and a missing D1 row, by
+design (an unfired routine in enforce mode is the stall this system
+exists to prevent). `.dev.vars.example` has entries for the mock's `o/r`
+and for `hifi-phil/umbraco-mcp-ops`.
 
 ## The black-box shape: everything real except the loops themselves
 
@@ -486,7 +486,7 @@ others 30). Run 1's numbers and the fixes they led to are in
   (missing signature, wrong signature, correct signature, no secret
   configured) against a real computed HMAC, not just `verifySignature()`
   in isolation.
-- **`/routines/:id` (the kickoff fire) is still a no-op log-and-200 stub**
+- **`/fire/<name>` (the kickoff fire) is still a no-op log-and-200 stub**
   — deliberately: at kickoff there's nothing for a real agent to decide
   yet (the loop hasn't done any work), so there's nothing meaningful to
   test there. The real-agent tests exercise each loop's outcome-reporting
