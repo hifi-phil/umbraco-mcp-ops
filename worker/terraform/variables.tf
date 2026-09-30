@@ -37,7 +37,7 @@ variable "deployed_do_migration_tag" {
 variable "mode" {
   type        = string
   default     = "shadow"
-  description = "shadow = decide and log only. enforce = write labels and fire routines for real for EVERY event. For Phase 4, leave this shadow and list individual events in enforce_events."
+  description = "shadow = decide and log only. enforce = the Worker dispatches the repo's loops and writes labels for real (Phase 4); pair it with the repo's LOOP_DISPATCH_VIA_WORKER=true variable, or loops fire twice (see worker/README.md)."
 
   validation {
     condition     = contains(["shadow", "enforce"], var.mode)
@@ -45,22 +45,14 @@ variable "mode" {
   }
 }
 
-variable "enforce_events" {
-  type        = list(string)
-  default     = []
-  description = "Events enforced while mode is shadow (Phase 4, one transition at a time), e.g. [\"labelled_auto_merging\"]. Each enforced event that fires a loop must also be in the repo's LOOP_DISPATCH_WORKER_ROUTES variable, or the loop fires twice (see worker/README.md)."
+variable "watchdog" {
+  type        = string
+  default     = "shadow"
+  description = "The watchdog's own switch, only honoured when mode is enforce. shadow = expiries only log; enforce = move the issue to ai-stuck and comment. Kept separate because its timeouts are still guesses."
 
-  # Mirrors graph/constants/events.ts. A typo here fails the plan instead of
-  # silently staying in shadow.
   validation {
-    condition = alltrue([for e in var.enforce_events : contains([
-      "labelled_ai_ready", "build_succeeded", "build_blocked", "labelled_auto_releasing",
-      "release_blocked", "release_published", "labelled_ai_discussing", "discussion_reply",
-      "unlabelled_ai_ready", "unlabelled_auto_releasing", "issue_closed", "labelled_auto_reworking",
-      "rework_pushed", "unlabelled_auto_reworking", "labelled_auto_merging", "merge_gate_failed_soft",
-      "merge_gate_failed_hard", "unlabelled_auto_merging", "merged", "watchdog_expired",
-    ], e)])
-    error_message = "enforce_events has a name that isn't an event in graph/constants/events.ts."
+    condition     = contains(["shadow", "enforce"], var.watchdog)
+    error_message = "watchdog must be \"shadow\" or \"enforce\"."
   }
 }
 

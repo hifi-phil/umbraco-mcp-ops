@@ -41,13 +41,12 @@ import type { MergeGateFacts } from "../../graph/github/merge-gate";
 export type IssueCoordinatorEnv = GitHubEnv &
   RoutinesEnv & {
     DB: D1Database;
-    // "enforce" to write labels / fire routines for real for every event;
-    // anything else (including unset) is shadow — see coordinate.ts's
-    // resolveMode.
+    // "enforce" to write labels / fire routines for real; anything else
+    // (including unset) is shadow — see coordinate.ts's resolveEnforced.
     MODE?: string;
-    // Comma-separated events to enforce while MODE is shadow (Phase 4, one
-    // transition at a time) — see coordinate.ts's resolveEnforced.
-    ENFORCE_EVENTS?: string;
+    // The watchdog's own switch, only honoured under MODE=enforce: "enforce"
+    // makes expiries move issues to ai-stuck and comment; else they only log.
+    WATCHDOG?: string;
   };
 
 const PENDING_FIRE_KEY = "pendingFire";
@@ -97,7 +96,7 @@ export class IssueCoordinator {
    * `enforced` says otherwise. */
   private deps(): Deps {
     return {
-      enforced: resolveEnforced(this.env.MODE, this.env.ENFORCE_EVENTS),
+      enforced: resolveEnforced(this.env.MODE, this.env.WATCHDOG),
       getLabels: (owner: string, repo: string, issueNumber: number) =>
         githubClient.getLabels(this.env, owner, repo, issueNumber),
       addLabel: (owner: string, repo: string, issueNumber: number, label: string) =>

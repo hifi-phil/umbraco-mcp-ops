@@ -9,6 +9,9 @@ GITHUB_API_BASE_URL=http://127.0.0.1:8943
 # README.md check that the mock's labels actually changed, so they need
 # enforce. Delete this line for a shadow run-through (D1 rows only).
 MODE=enforce
+# The watchdog has its own switch (shadow unless "enforce"); on here so the
+# mock scenarios can see ai-stuck.
+WATCHDOG=enforce
 # Each repo's loop-dispatch routine. Here, the mock's /fire/<name> stand-in
 # for a Fire URL; o/r is the repo README.md's mock scenarios use.
 REPO_ROUTINES_JSON={"o/r":{"fireUrl":"http://127.0.0.1:8943/fire/o-r","token":"fake-routine-token"},"hifi-phil/umbraco-mcp-ops":{"fireUrl":"http://127.0.0.1:8943/fire/ops","token":"fake-routine-token"}}

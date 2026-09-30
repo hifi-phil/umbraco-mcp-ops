@@ -12,7 +12,7 @@ import { ROUTINES } from "../../graph/constants/routines";
 import { translate, type WebhookPayload } from "../../graph/github/from-github";
 import { labelOps } from "../../graph/github/to-github";
 import { deriveMergeGateOutcome, type MergeGateFacts } from "../../graph/github/merge-gate";
-import { ALL_EVENTS, EVENTS, type Event } from "../../graph/constants/events";
+import { EVENTS, type Event } from "../../graph/constants/events";
 import { parseRoutineSignal, type RoutineSignal } from "../../graph/routines/from-routine";
 
 // A GitHub label-add webhook is only delivered *after* the label already
@@ -95,25 +95,18 @@ export function resolveMode(raw: string | undefined): Mode {
 }
 
 /**
- * Phase 4 enforces one transition at a time. MODE=enforce still means
- * everything (the local mock harness); otherwise only the events named in
- * ENFORCE_EVENTS (comma-separated EVENTS values, e.g.
- * "labelled_auto_merging") write and fire. Unknown names are ignored, so a
- * typo fails towards shadow, never towards writing.
+ * Phase 4: MODE=enforce makes every event real except the watchdog, which
+ * has its own WATCHDOG switch (shadow unless exactly "enforce"). Its
+ * timeouts are still guesses, and a wrong expiry would move a live issue to
+ * ai-stuck, so it goes live separately.
  */
 export function resolveEnforced(
   mode: string | undefined,
-  enforceEvents: string | undefined,
+  watchdog: string | undefined,
 ): (event: Event) => boolean {
-  if (resolveMode(mode) === "enforce") return () => true;
-  const known: readonly string[] = ALL_EVENTS;
-  const listed = new Set(
-    (enforceEvents ?? "")
-      .split(",")
-      .map((e) => e.trim())
-      .filter((e) => known.includes(e)),
-  );
-  return (event) => listed.has(event);
+  const all = resolveMode(mode) === "enforce";
+  const watchdogToo = all && resolveMode(watchdog) === "enforce";
+  return (event) => (event === EVENTS.WATCHDOG_EXPIRED ? watchdogToo : all);
 }
 
 export function shadowDeps(deps: Deps): Deps {

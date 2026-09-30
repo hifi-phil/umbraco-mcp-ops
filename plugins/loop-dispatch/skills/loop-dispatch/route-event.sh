@@ -20,16 +20,11 @@
 # route=none means "not ours — quiet no-op". `none` is a normal outcome, not an error.
 #
 # Unknown / missing / unmatched fields always resolve to route=none. It never guesses.
-#
-# --worker-routes <a,b>: routes the agent-orchestration Worker fires itself for this repo
-# (an enforced transition, worker/ ENFORCE_EVENTS). A matching route prints route=none
-# worker_owned=<route>, so the edge doesn't fire the same loop a second time. Unset (every
-# repo without the Worker) changes nothing.
 set -uo pipefail
 
 event="" action="" label="" state="" number="" repo=""
 issue_labels="" issue_state="" author_type="" author_assoc="" self_marked="" is_pr=""
-human_only="" worker_routes=""
+human_only=""
 
 # The marker the discussion loop signs every comment with. Matched as a PREFIX so the
 # variants (e.g. `<!-- issue-discuss-loop:capped -->`) match too.
@@ -53,7 +48,6 @@ while [ $# -gt 0 ]; do
     --self-marked)  self_marked="${2:-}";  shift 2 ;;
     --human-only)   human_only="${2:-}";   shift 2 ;;
     --is-pr)        is_pr="${2:-}";        shift 2 ;;
-    --worker-routes) worker_routes="${2:-}"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -170,11 +164,6 @@ case "$event/$action" in
       route="issue-discuss-loop"
     fi ;;
 esac
-
-if [ "$route" != "none" ] && labels_include "$worker_routes" "$route"; then
-  printf 'route=none repo=%s number=%s worker_owned=%s\n' "$repo" "$number" "$route"
-  exit 0
-fi
 
 printf 'route=%s repo=%s number=%s\n' "$route" "$repo" "$number"
 exit 0

@@ -37,15 +37,10 @@ jobs:
 
       - name: Decide the route (deterministic, at the edge)
         id: route
-        env:
-          # Optional repo variable on the CALLER repo: routes the agent-orchestration Worker
-          # fires itself there (worker/ ENFORCE_EVENTS), so the edge must not fire them too.
-          # Unset on every repo without the Worker, which leaves routing unchanged.
-          WORKER_ROUTES: ${{ vars.LOOP_DISPATCH_WORKER_ROUTES }}
         run: |
           set -uo pipefail
           # $GITHUB_EVENT_PATH / $GITHUB_EVENT_NAME are the CALLER repo's triggering event.
-          out="$(bash ops/plugins/loop-dispatch/skills/loop-dispatch/route-event.sh --event "$GITHUB_EVENT_NAME" --worker-routes "${WORKER_ROUTES:-}")"
+          out="$(bash ops/plugins/loop-dispatch/skills/loop-dispatch/route-event.sh --event "$GITHUB_EVENT_NAME")"
           echo "route-event: $out"
           route="${out#route=}"; route="${route%% *}"
           {
@@ -53,8 +48,15 @@ jobs:
             echo "result=$out"
           } >> "$GITHUB_OUTPUT"
 
+      # Optional repo variable on the CALLER repo: when the agent-orchestration Worker
+      # dispatches this repo itself (worker/ MODE=enforce), the edge must not fire as well.
+      # Unset on every repo without the Worker, which leaves dispatch unchanged.
+      - name: Skip — this repo is dispatched by the orchestration Worker
+        if: vars.LOOP_DISPATCH_VIA_WORKER == 'true' && steps.route.outputs.route != 'none' && steps.route.outputs.route != ''
+        run: echo "route ${{ steps.route.outputs.route }} left to the orchestration Worker (LOOP_DISPATCH_VIA_WORKER=true)"
+
       - name: Fire the routine (only when the event maps to a loop)
-        if: steps.route.outputs.route != 'none' && steps.route.outputs.route != ''
+        if: vars.LOOP_DISPATCH_VIA_WORKER != 'true' && steps.route.outputs.route != 'none' && steps.route.outputs.route != ''
         env:
           FIRE_URL: ${{ secrets.LOOP_DISPATCH_FIRE_URL }}
           TOKEN: ${{ secrets.LOOP_DISPATCH_TOKEN }}

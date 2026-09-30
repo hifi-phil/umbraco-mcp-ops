@@ -70,7 +70,7 @@ src/
 
 ## What's actually verified, and how
 
-**133 unit tests** (`npm test` — the `"unit"` vitest workspace project;
+**131 unit tests** (`npm test` — the `"unit"` vitest workspace project;
 see `vitest.workspace.ts`) cover `coordinate.ts` (the decision logic,
 against fake in-memory deps), `webhook-parse.ts` (payload mapping +
 signature verification), `github-client.ts` and `routines-client.ts`
@@ -472,33 +472,37 @@ activity, not a gap. The watchdog's timeout is per routine
 others 30). Run 1's numbers and the fixes they led to are in
 [13-shadow-results.md](../docs/agent-orchestration/13-shadow-results.md).
 
-## Enforcing one transition (Phase 4)
+## Enforcing (Phase 4)
 
-`ENFORCE_EVENTS` (tofu `enforce_events`) lists the events whose writes and
-fire are real; everything else stays shadow (`coordinate.ts`'s
-`resolveEnforced`). Each D1 row records its own `mode`. An event that fires a
-loop is then fired by the Worker, through the repo's loop-dispatch routine
-(`REPO_ROUTINES_JSON`), so the edge must stop firing it: the repo's
-**`LOOP_DISPATCH_WORKER_ROUTES`** Actions variable names the routes the Worker
-owns, and `route-event.sh --worker-routes` turns those into `route=none
-worker_owned=<route>`. Repos without the variable route exactly as before.
+`MODE=enforce` (tofu `mode`) makes every event real: the Worker fires the
+repo's loop-dispatch routine (`REPO_ROUTINES_JSON`) and applies its label
+writes. The one exception is the watchdog, which has its own `WATCHDOG`
+switch (tofu `watchdog`, default shadow) because its timeouts are still
+guesses (`coordinate.ts`'s `resolveEnforced`). Each D1 row records its own
+`mode`, so watchdog rows stay `shadow` until it's switched on.
 
-To enforce merge on a repo, in this order:
+Once the Worker dispatches a repo, the edge must stop: the repo's
+**`LOOP_DISPATCH_VIA_WORKER=true`** Actions variable makes `loop-dispatch.yml`
+skip its fire step (it logs "left to the orchestration Worker" instead).
+Repos without the variable dispatch exactly as before.
 
-1. Fill in `repo_routines` for the repo (Fire URL + token), add
-   `"labelled_auto_merging"` to `enforce_events`, `tofu apply`.
-   For a moment both the Worker and the edge fire merge-flow; loop-dispatch
-   re-checks the PR and no-ops the second, so that's safe.
-2. Set the repo variable `LOOP_DISPATCH_WORKER_ROUTES=merge-flow`
-   (*Settings → Secrets and variables → Actions → Variables*). The edge now
-   skips it; the next `loop-dispatch` run's log shows `worker_owned=merge-flow`.
+To switch a repo over, in this order:
 
-To undo, reverse the order: delete the variable first, then remove the
-event and apply. Reversed the other way round, nobody fires for a moment.
+1. In `terraform.tfvars`: fill in `repo_routines` (Fire URL + token), set
+   `mode = "enforce"`, and give `github_read_token` Issues + Pull requests
+   **write** (enforced rules remove labels and close). `tofu apply`.
+   For a moment both the Worker and the edge fire; loop-dispatch re-checks
+   the entity and no-ops the second, so that's safe.
+2. Set the repo variable `LOOP_DISPATCH_VIA_WORKER=true`
+   (*Settings → Secrets and variables → Actions → Variables*).
+
+To undo, reverse the order: delete the variable first, then set `mode`
+back to shadow and apply. The other way round, nobody fires for a moment.
 
 The edge reads the variable from `vars` inside the reusable workflow. That the
 caller repo's variables are visible there is expected but **not yet verified**;
-the log line in step 2 is the check.
+after step 2, a `loop-dispatch` run's log should show the skip step instead of
+a fire.
 
 ## What's NOT verified
 
