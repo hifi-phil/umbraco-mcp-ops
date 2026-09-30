@@ -2,6 +2,7 @@
 // label adds arrive as a human's, the way a maintainer's do.
 
 import { execFileSync } from "node:child_process";
+import { progress } from "./progress";
 
 export const REPO = process.env.E2E_REPO ?? "hifi-phil/mcp-ops-e2e-testing";
 const R = `/repos/${REPO}`;
@@ -65,9 +66,17 @@ export async function snapshot(number: number): Promise<Snapshot> {
  * snapshot either way so a failed assertion shows where it got stuck. */
 export async function waitFor(number: number, done: (s: Snapshot) => boolean, timeoutMs: number, pollMs = 8000) {
   const deadline = Date.now() + timeoutMs;
+  let seen: string | undefined;
   for (;;) {
     const s = await snapshot(number);
-    if (done(s) || Date.now() >= deadline) return s;
+    const now = `${s.merged ? "merged" : s.state} [${s.labels.join(", ")}]`;
+    if (seen !== undefined && now !== seen) progress(`#${number} ${seen} -> ${now}`);
+    seen = now;
+    if (done(s)) return s;
+    if (Date.now() >= deadline) {
+      progress(`#${number} gave up waiting after ${Math.round(timeoutMs / 1000)}s at ${now}`);
+      return s;
+    }
     await sleep(pollMs);
   }
 }
@@ -90,11 +99,13 @@ export async function openIssue(title: string, body: string, hint: string): Prom
     title: `e2e: ${title}`,
     body: `${body}\n\n<!-- e2e: ${hint} -->`,
   });
+  progress(`opened issue #${number} (hint: ${hint})`);
   return number;
 }
 
 export async function addLabel(number: number, label: string): Promise<void> {
   await gh("POST", `${R}/issues/${number}/labels`, { labels: [label] });
+  progress(`#${number} +${label}`);
 }
 
 export async function devSha(): Promise<string> {
@@ -115,6 +126,7 @@ export async function putFile(branch: string, path: string, content: string, mes
     branch,
     ...(sha ? { sha } : {}),
   });
+  if (branch === "dev" || process.env.E2E_VERBOSE) progress(`pushed ${path} to ${branch}`);
 }
 
 /** A branch off dev (or `fromSha`) with `files` committed, and a PR into dev. */
@@ -141,6 +153,7 @@ export async function openPr(opts: {
     base: opts.base ?? "dev",
     body: `An e2e scenario's PR.\n\n<!-- e2e: ${opts.hint} -->`,
   });
+  progress(`opened PR #${number} into ${opts.base ?? "dev"} (hint: ${opts.hint})`);
   return { number, branch };
 }
 
@@ -158,16 +171,19 @@ export async function waitForMergeable(number: number, want: boolean, timeoutMs 
 
 export async function comment(number: number, body: string): Promise<void> {
   await gh("POST", `${R}/issues/${number}/comments`, { body });
+  progress(`#${number} comment: ${body.split("\n")[0]!.slice(0, 60)}`);
 }
 
 /** Changes an issue's or PR's hint, e.g. before a retry. */
 export async function setHint(number: number, hint: string): Promise<void> {
   const { body } = await gh<{ body: string | null }>("GET", `${R}/issues/${number}`);
   await gh("PATCH", `${R}/issues/${number}`, { body: (body ?? "").replace(/<!--\s*e2e:\s*[\w-]+\s*-->/, `<!-- e2e: ${hint} -->`) });
+  progress(`#${number} hint -> ${hint}`);
 }
 
 export async function merge(number: number): Promise<void> {
   await gh("PUT", `${R}/pulls/${number}/merge`, { merge_method: "squash" });
+  progress(`PR #${number} merged by hand`);
 }
 
 export type CheckRun = { name: string; status: string; conclusion: string | null; completed_at: string | null };

@@ -8,6 +8,9 @@ export default defineConfig({
     include: ["driver/**/*.e2e.test.ts"],
     fileParallelism: false,
     maxConcurrency: 5,
+    // Progress lines (driver/progress.ts) go straight to the terminal as they
+    // happen, instead of being held and printed per test.
+    disableConsoleIntercept: true,
     testTimeout: 15 * 60_000,
   },
 });

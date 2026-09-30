@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { deliveriesSince, deliveryDetail, redeliver, sleep, workerHookId, type DeliveryDetail } from "./github";
+import { inScenario, progress } from "./progress";
 import { runLog, scenarios } from "./scenarios";
 
 const only = process.env.E2E_ONLY?.toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
@@ -14,7 +15,22 @@ const runStart = new Date(Date.now() - 5_000).toISOString().replace(/\.\d+Z$/, "
 describe.concurrent("scenarios", () => {
   for (const s of scenarios) {
     const run = !only || only.some((o) => s.name.toLowerCase().includes(o)) ? it : it.skip;
-    run(s.name, s.run, s.timeoutMs);
+    run(
+      s.name,
+      () =>
+        inScenario(s.name, async () => {
+          const start = Date.now();
+          progress("start");
+          try {
+            await s.run();
+            progress(`PASSED in ${Math.round((Date.now() - start) / 1000)}s`);
+          } catch (e) {
+            progress(`FAILED after ${Math.round((Date.now() - start) / 1000)}s: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
+            throw e;
+          }
+        }),
+      s.timeoutMs,
+    );
   }
 });
 
@@ -40,6 +56,7 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       await sleep(15_000); // the last scenarios' echoes
       const hook = await workerHookId();
       const deliveries = await deliveriesSince(hook, runStart);
+      progress(`audit: checking the orchestrator's answers to ${deliveries.length} deliveries`);
       const details: (DeliveryDetail & { id: string })[] = await pool(deliveries, 6, async (d) => ({
         id: d.id,
         ...(await deliveryDetail(hook, d.id)),

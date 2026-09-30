@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run --dir stub",
-    "e2e": "vitest run --config vitest.e2e.config.ts",
+    "e2e": "vitest run --config vitest.e2e.config.ts --reporter=verbose",
     "build": "wrangler deploy --dry-run --outdir dist --config stub/wrangler.toml",
     "typecheck": "tsc --noEmit"
   },
