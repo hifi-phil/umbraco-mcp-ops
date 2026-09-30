@@ -118,5 +118,7 @@ dedupe claim is released on failure (#142), which is why the redelivery
 could work at all, and the Worker now returns the error text in its 500
 instead of Cloudflare's bare 1101, so the next one will say what went wrong.
 
-**Not changed by Phase 5, on purpose:** merge-flow's hard-block label
-removal (the gate check only runs on `check_suite.completed`).
+**Merge hard block, added afterwards:** at first left with merge-flow,
+because the Worker's gate check only ran on `check_suite.completed`. It now
+also runs when `auto-merge` is added, so the Worker swaps `auto-merge` →
+`merge-blocked` for a conflict or requested changes (see 07's Phase 5 table).

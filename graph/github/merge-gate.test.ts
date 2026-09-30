@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveMergeGateOutcome, type MergeGateFacts } from "./merge-gate";
+import { deriveMergeGateOutcome, hardBlockReason, type MergeGateFacts } from "./merge-gate";
 
 function facts(overrides: Partial<MergeGateFacts> = {}): MergeGateFacts {
   return {
@@ -9,6 +9,26 @@ function facts(overrides: Partial<MergeGateFacts> = {}): MergeGateFacts {
     ...overrides,
   };
 }
+
+describe("hardBlockReason (checked when auto-merge is added, CI or not)", () => {
+  const pending = [{ status: "in_progress" as const, conclusion: null }];
+
+  it("a conflict or requested changes block even while CI is still running", () => {
+    expect(hardBlockReason(facts({ mergeable: false, checkRuns: pending }))).toBe("merge conflict");
+    expect(hardBlockReason(facts({ latestReviewState: "changes_requested", checkRuns: pending }))).toBe(
+      "changes requested",
+    );
+  });
+
+  it("mergeable not computed yet (null) is not a conflict", () => {
+    expect(hardBlockReason(facts({ mergeable: null }))).toBeNull();
+  });
+
+  it("failing or pending CI alone isn't a hard block (merge-flow handles that)", () => {
+    expect(hardBlockReason(facts({ checkRuns: [{ status: "completed", conclusion: "failure" }] }))).toBeNull();
+    expect(hardBlockReason(facts({ checkRuns: pending }))).toBeNull();
+  });
+});
 
 describe("deriveMergeGateOutcome", () => {
   it("everything green -> null (the gate passes; not this function's job to say so)", () => {

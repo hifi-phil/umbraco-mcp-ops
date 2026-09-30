@@ -108,9 +108,11 @@ export async function getCheckRuns(
   owner: string,
   repo: string,
   ref: string,
-): Promise<Array<{ status: string; conclusion: string | null }>> {
+): Promise<Array<{ status: string; conclusion: string | null; name?: string }>> {
   const res = await gh(env, "GET", `/repos/${owner}/${repo}/commits/${ref}/check-runs`);
-  const body = (await res.json()) as { check_runs: Array<{ status: string; conclusion: string | null }> };
+  const body = (await res.json()) as {
+    check_runs: Array<{ status: string; conclusion: string | null; name?: string }>;
+  };
   return body.check_runs;
 }
 

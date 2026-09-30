@@ -18,6 +18,10 @@
 // ai-stuck has no older spelling: it's written by the DO's watchdog, never
 // by a human or a loop ("an AI routine was fired on this and never reported
 // an outcome"), see 03-components.md §3.4.
+//
+// merge-blocked marks a PR that can't merge without a human: a merge conflict
+// or requested changes, found when auto-merge is added or while it waits.
+// Separate from ai-blocked, which means the build loop gave up on an issue.
 
 export const LABELS = {
   AI_READY: "ready-for-ai",
@@ -28,11 +32,12 @@ export const LABELS = {
   AUTO_REWORKING: "auto-rework",
   AUTO_MERGING: "auto-merge",
   AI_STUCK: "ai-stuck",
+  MERGE_BLOCKED: "merge-blocked",
 } as const;
 
 export type Label = (typeof LABELS)[keyof typeof LABELS];
 
-/** Same eight values as LABELS, as an array — for anything that needs to
+/** Same nine values as LABELS, as an array — for anything that needs to
  * iterate all of them (a dashboard, a check against a live repo's actual
  * label set, a "does this string name a tracked label" guard). */
 export const ALL_LABELS: readonly Label[] = Object.values(LABELS);

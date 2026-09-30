@@ -29,6 +29,9 @@ export const EVENTS = {
   // PR lifecycle
   LABELLED_AUTO_REWORKING: "labelled_auto_reworking",
   REWORK_PUSHED: "rework_pushed",
+  // A push by a rework the Worker started because CI failed under
+  // auto-merge (coordinate.ts tells it apart from a review rework).
+  CI_FIX_PUSHED: "ci_fix_pushed",
   UNLABELLED_AUTO_REWORKING: "unlabelled_auto_reworking",
   LABELLED_AUTO_MERGING: "labelled_auto_merging",
   MERGE_GATE_FAILED_SOFT: "merge_gate_failed_soft",
