@@ -22,14 +22,15 @@ export type StubEnv = {
   FIRE_TOKEN: string;
   HOOK_SECRET: string;
   E2E_REPO: string;
-  // The orchestrator, for heartbeat and completion signals.
-  WORKER_URL: string;
+  // The orchestrator, for heartbeat and completion signals: a service
+  // binding, since a Worker can't fetch another on the same workers.dev.
+  ORCHESTRATOR: { fetch: (input: string, init?: RequestInit) => Promise<Response> };
   ROUTINE_SIGNAL_SECRET: string;
 };
 
 export function routineSignal(env: StubEnv, owner: string, repo: string): Signal {
   return async (signal) => {
-    const res = await fetch(`${env.WORKER_URL}/routine-signal`, {
+    const res = await env.ORCHESTRATOR.fetch("https://orchestrator/routine-signal", {
       method: "POST",
       headers: { Authorization: `Bearer ${env.ROUTINE_SIGNAL_SECRET}`, "Content-Type": "application/json" },
       body: JSON.stringify({ owner, repo, signal }),

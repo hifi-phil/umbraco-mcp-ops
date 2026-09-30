@@ -157,8 +157,10 @@ resource "cloudflare_workers_script" "e2e_stub" {
     { type = "secret_text", name = "FIRE_TOKEN", text = random_password.e2e_fire_token[0].result },
     { type = "secret_text", name = "GITHUB_TOKEN", text = var.e2e_stub_github_token },
     { type = "secret_text", name = "HOOK_SECRET", text = random_password.e2e_hook_secret[0].result },
-    # For heartbeats and completion signals to the orchestrator's /routine-signal.
-    { type = "plain_text", name = "WORKER_URL", text = local.worker_url },
+    # Heartbeats and completion signals to the orchestrator's /routine-signal.
+    # A service binding, because a Worker can't fetch another Worker on the
+    # same account's workers.dev URL (Cloudflare error 1042).
+    { type = "service", name = "ORCHESTRATOR", service = cloudflare_workers_script.worker.script_name },
     { type = "secret_text", name = "ROUTINE_SIGNAL_SECRET", text = random_password.routine_signal_secret.result },
   ]
 }

@@ -5,6 +5,7 @@ import {
   outcomeComment,
   parseFire,
   parseHint,
+  routineSignal,
   verifySignature,
   type Gh,
   type StubEnv,
@@ -16,7 +17,7 @@ const env: StubEnv = {
   FIRE_TOKEN: "fire",
   HOOK_SECRET: "hook",
   E2E_REPO: "hifi-phil/mcp-ops-e2e-testing",
-  WORKER_URL: "https://worker.example",
+  ORCHESTRATOR: { fetch: async () => new Response("{}") },
   ROUTINE_SIGNAL_SECRET: "sig",
 };
 const R = "/repos/hifi-phil/mcp-ops-e2e-testing";
@@ -163,6 +164,27 @@ describe("act — issue-discuss-loop", () => {
     expect(gh).toHaveBeenLastCalledWith("POST", `${R}/issues/7/comments`, {
       body: expect.stringMatching(/^<!-- issue-discuss-loop -->\n.*round 2/),
     });
+  });
+});
+
+describe("routineSignal", () => {
+  it("posts {owner, repo, signal} to /routine-signal over the service binding, with the bearer secret", async () => {
+    const fetch = vi.fn(async (_input: string, _init?: RequestInit) => new Response('{"outcome":"heartbeat_extended"}'));
+    const signal = routineSignal({ ...env, ORCHESTRATOR: { fetch } }, "hifi-phil", "mcp-ops-e2e-testing");
+    expect(await signal({ kind: "process", routine: "issue-build-loop", issue: 7, step: "s" })).toContain("heartbeat_extended");
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(new URL(url).pathname).toBe("/routine-signal");
+    expect((init!.headers as Record<string, string>).Authorization).toBe("Bearer sig");
+    expect(JSON.parse(init!.body as string)).toEqual({
+      owner: "hifi-phil",
+      repo: "mcp-ops-e2e-testing",
+      signal: { kind: "process", routine: "issue-build-loop", issue: 7, step: "s" },
+    });
+  });
+
+  it("a refused signal throws, so the stub's log says so", async () => {
+    const signal = routineSignal({ ...env, ORCHESTRATOR: { fetch: async () => new Response("unauthorized", { status: 401 }) } }, "o", "r");
+    await expect(signal({})).rejects.toThrow(/401/);
   });
 });
 
