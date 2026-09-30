@@ -119,6 +119,9 @@ export class IssueCoordinator {
       markSeenDelivery: async (deliveryId: string) => {
         await this.ctx.storage.put(seenKeyFor(deliveryId), true);
       },
+      unmarkSeenDelivery: async (deliveryId: string) => {
+        await this.ctx.storage.delete(seenKeyFor(deliveryId));
+      },
       setPendingFire: async (info: PendingFire) => {
         await this.ctx.storage.put(PENDING_FIRE_KEY, info);
         await this.ctx.storage.setAlarm(Date.now() + watchdogMinutesFor(info.run) * 60_000);
