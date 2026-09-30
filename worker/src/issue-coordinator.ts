@@ -110,7 +110,8 @@ export class IssueCoordinator {
         githubClient.closeIssue(this.env, owner, repo, issueNumber),
       commentOnIssue: (owner: string, repo: string, issueNumber: number, body: string) =>
         githubClient.commentOnIssue(this.env, owner, repo, issueNumber, body),
-      fireRoutine: (routine: string, context: string) => fireRoutine(this.env, routine, context),
+      fireRoutine: (owner: string, repo: string, issueNumber: number, routine: string) =>
+        fireRoutine(this.env, owner, repo, issueNumber, routine),
       logTransition: async (row: Parameters<typeof this.insertTransition>[0]) => {
         await this.insertTransition(row);
       },

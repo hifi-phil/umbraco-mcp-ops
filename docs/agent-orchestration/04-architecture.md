@@ -18,7 +18,7 @@ flowchart TD
     DO -->|set state label| GH
     DO -->|append row| D1[(D1<br/>transition log)]
     DO -->|upsert row| CS[(D1<br/>current-status view)]
-    DO -->|POST /routines/id| CR[Claude Code Routine]
+    DO -->|POST repo's Fire URL| CR[loop-dispatch routine]
     DO -.->|setAlarm 30min| DO
 
     CR -->|outcome: comment, push, check<br/>authoritative| GH

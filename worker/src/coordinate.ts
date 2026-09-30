@@ -60,7 +60,8 @@ export type Deps = {
   removeLabel(owner: string, repo: string, issueNumber: number, label: string): Promise<void>;
   closeIssue(owner: string, repo: string, issueNumber: number): Promise<void>;
   commentOnIssue(owner: string, repo: string, issueNumber: number, body: string): Promise<void>;
-  fireRoutine(routine: string, context: string): Promise<void>;
+  // Fires the repo's loop-dispatch routine with this route (routines-client.ts).
+  fireRoutine(owner: string, repo: string, issueNumber: number, routine: string): Promise<void>;
   logTransition(row: TransitionRow): Promise<void>;
   hasSeenDelivery(deliveryId: string): Promise<boolean>;
   markSeenDelivery(deliveryId: string): Promise<void>;
@@ -247,10 +248,7 @@ async function applyEvent(
   }
 
   if (rule.run) {
-    await deps.fireRoutine(
-      rule.run,
-      `Issue #${input.issueNumber} in ${input.owner}/${input.repo}: ${event} -> firing ${rule.run}.`,
-    );
+    await deps.fireRoutine(input.owner, input.repo, input.issueNumber, rule.run);
     // Only arm the watchdog where the table says what an expiry means —
     // see graph.ts's watchdog section (issue-discuss-loop never reports an
     // outcome, so watching it would only ever raise false alarms).

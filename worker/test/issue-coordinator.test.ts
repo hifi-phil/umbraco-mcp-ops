@@ -54,13 +54,8 @@ function fakeDb() {
 function fakeEnv(overrides: Partial<IssueCoordinatorEnv> = {}): IssueCoordinatorEnv {
   return {
     GITHUB_APP_TOKEN: "test-token",
-    CLAUDE_API_KEY: "test-key",
-    ROUTINE_IDS_JSON: JSON.stringify({
-      "issue-build-loop": "rt_abc123",
-      "auto-release-loop": "rt_release",
-      "issue-discuss-loop": "rt_discuss",
-      "rework-loop": "rt_rework",
-      "merge-flow": "rt_merge",
+    REPO_ROUTINES_JSON: JSON.stringify({
+      "hifi-phil/umbraco-mcp-ops": { fireUrl: "https://routines.example/fire/ops", token: "tok-ops" },
     }),
     DB: fakeDb().db,
     // Explicit, because unset means shadow — these tests are about the
@@ -96,7 +91,7 @@ function fakeApiFetch(
     if (method === "GET" && url.includes("/labels")) {
       return new Response(JSON.stringify(labels.map((name) => ({ name }))), { status: 200 });
     }
-    if (method === "POST" && url.includes("/routines/")) return new Response("{}", { status: 200 });
+    if (method === "POST" && url.startsWith("https://routines.example/fire/")) return new Response("{}", { status: 200 });
     if (method === "POST" && url.includes("/comments")) return new Response("{}", { status: 201 });
     if (method === "POST" && url.includes("/labels")) return new Response("[]", { status: 200 });
     if (method === "DELETE" && url.includes("/labels/")) return new Response("", { status: 200 });

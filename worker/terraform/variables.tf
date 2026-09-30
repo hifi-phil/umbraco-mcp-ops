@@ -58,18 +58,15 @@ variable "github_repo" {
 variable "github_read_token" {
   type        = string
   sensitive   = true
-  description = "The Worker's GITHUB_APP_TOKEN. In shadow it only reads, so a fine-grained token with read access to Issues, Pull requests, Checks and Metadata is enough."
+  description = "The Worker's GITHUB_APP_TOKEN. In shadow it only reads, so a fine-grained token with read access to Issues, Pull requests and Metadata is enough (fine-grained tokens have no Checks permission)."
 }
 
-variable "claude_api_key" {
-  type        = string
+variable "repo_routines" {
+  type = map(object({
+    fire_url = string
+    token    = string
+  }))
   sensitive   = true
-  default     = "unused-in-shadow"
-  description = "Only used to fire routines, which shadow never does. Leave the default until enforce."
-}
-
-variable "routine_ids_json" {
-  type      = string
-  sensitive = true
-  default   = "{\"issue-build-loop\":\"unused\",\"auto-release-loop\":\"unused\",\"issue-discuss-loop\":\"unused\",\"rework-loop\":\"unused\",\"merge-flow\":\"unused\"}"
+  default     = {}
+  description = "Each repo's loop-dispatch routine, keyed \"owner/repo\": its Fire URL (Routines UI → Call via API) and token, the same pair as that repo's LOOP_DISPATCH_FIRE_URL / LOOP_DISPATCH_TOKEN secrets. Only used when an enforced transition fires; shadow never does, so it can stay empty until then."
 }
