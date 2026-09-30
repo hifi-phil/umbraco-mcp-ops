@@ -11,7 +11,14 @@ import {
 } from "../src/index";
 import { act, mergeIfGreen } from "../src/loops";
 
-const env: StubEnv = { GITHUB_TOKEN: "gh", FIRE_TOKEN: "fire", HOOK_SECRET: "hook", E2E_REPO: "hifi-phil/mcp-ops-e2e-testing" };
+const env: StubEnv = {
+  GITHUB_TOKEN: "gh",
+  FIRE_TOKEN: "fire",
+  HOOK_SECRET: "hook",
+  E2E_REPO: "hifi-phil/mcp-ops-e2e-testing",
+  WORKER_URL: "https://worker.example",
+  ROUTINE_SIGNAL_SECRET: "sig",
+};
 const R = "/repos/hifi-phil/mcp-ops-e2e-testing";
 const fireFor = (route: string, number = 7) => ({ route, owner: "hifi-phil", repo: "mcp-ops-e2e-testing", number });
 const text = (repo = "hifi-phil/mcp-ops-e2e-testing") =>
@@ -146,6 +153,36 @@ describe("act — merge-flow (mergeIfGreen)", () => {
       [`PUT ${R}/pulls/7/merge`]: new Error(`GitHub PUT ${R}/pulls/7/merge failed: 405 Pull Request is not mergeable`),
     });
     expect(await mergeIfGreen(gh, fireFor("merge-flow"))).toBe("none");
+  });
+});
+
+describe("act — issue-discuss-loop", () => {
+  it("discuss -> one signed question, numbered by the rounds so far", async () => {
+    const gh = fakeGh({ [`GET ${R}/issues/7/comments`]: [{ body: "<!-- issue-discuss-loop -->\nround 1" }, { body: "a human reply" }] });
+    expect(await act(gh, fireFor("issue-discuss-loop"), "discuss")).toBe("discussed");
+    expect(gh).toHaveBeenLastCalledWith("POST", `${R}/issues/7/comments`, {
+      body: expect.stringMatching(/^<!-- issue-discuss-loop -->\n.*round 2/),
+    });
+  });
+});
+
+describe("act — heartbeat and completion signals", () => {
+  it("heartbeat -> one process signal for this routine and issue, no GitHub writes", async () => {
+    const gh = fakeGh();
+    const signal = vi.fn(async () => '{"outcome":"heartbeat_extended"}');
+    expect(await act(gh, fireFor("issue-build-loop"), "heartbeat", signal)).toBe("heartbeat");
+    expect(signal).toHaveBeenCalledWith({ routine: "issue-build-loop", issue: 7, kind: "process", step: "e2e-heartbeat" });
+    expect(gh).not.toHaveBeenCalled();
+  });
+
+  it("complete -> one completion signal with a valid outcome, no GitHub writes", async () => {
+    const gh = fakeGh();
+    const signal = vi.fn(async () => '{"outcome":"completion_acknowledged"}');
+    expect(await act(gh, fireFor("issue-build-loop"), "complete", signal)).toBe("completion");
+    expect(signal).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "completion", outcome: expect.objectContaining({ outcome: "build_blocked" }) }),
+    );
+    expect(gh).not.toHaveBeenCalled();
   });
 });
 

@@ -86,6 +86,15 @@ resource "cloudflare_workers_script" "worker" {
     { type = "d1", name = "DB", id = cloudflare_d1_database.log.id },
     { type = "plain_text", name = "MODE", text = var.mode },
     { type = "plain_text", name = "WATCHDOG", text = var.watchdog },
+    # The sandbox's own watchdog: real, with a short timeout a scenario can
+    # wait out. Every other repo keeps `watchdog` and the default minutes.
+    {
+      type = "plain_text",
+      name = "WATCHDOG_OVERRIDES_JSON",
+      text = jsonencode(local.e2e ? {
+        "${var.github_owner}/${var.e2e_repo}" = { mode = "enforce", minutes = var.e2e_watchdog_minutes }
+      } : {}),
+    },
     { type = "secret_text", name = "GITHUB_APP_TOKEN", text = var.github_read_token },
     { type = "secret_text", name = "GITHUB_WEBHOOK_SECRET", text = random_password.webhook_secret.result },
     { type = "secret_text", name = "ROUTINE_SIGNAL_SECRET", text = random_password.routine_signal_secret.result },
@@ -148,6 +157,9 @@ resource "cloudflare_workers_script" "e2e_stub" {
     { type = "secret_text", name = "FIRE_TOKEN", text = random_password.e2e_fire_token[0].result },
     { type = "secret_text", name = "GITHUB_TOKEN", text = var.e2e_stub_github_token },
     { type = "secret_text", name = "HOOK_SECRET", text = random_password.e2e_hook_secret[0].result },
+    # For heartbeats and completion signals to the orchestrator's /routine-signal.
+    { type = "plain_text", name = "WORKER_URL", text = local.worker_url },
+    { type = "secret_text", name = "ROUTINE_SIGNAL_SECRET", text = random_password.routine_signal_secret.result },
   ]
 }
 
