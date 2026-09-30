@@ -66,8 +66,9 @@ Your turn contains the decision the **edge already made** — e.g.
 and only fired you because it matched, so **take that route as given; don't re-derive it.**
 (If a fire ever arrives with no resolved route, **quiet no-op** — never go looking for work.)
 The fire may also come from the agent-orchestration Worker instead of the caller workflow,
-on a repo that has handed dispatch over to it; the text and
-route line are identical, so handle it the same way.
+on a repo that has handed dispatch over to it; the route line is identical, so handle it the
+same way. **If the fire text contains `orchestrated=true`**, the Worker owns that repo's
+outcome labels: tell the loop it is in **orchestrated mode** when you dispatch it (Step 2).
 
 **Re-check the entity before acting.** Between the event and this session a label can be
 removed or the PR/issue closed. Fetch it (github-ops → `issue_read`/`pull_request_read`,
@@ -75,6 +76,10 @@ removed or the PR/issue closed. Fetch it (github-ops → `issue_read`/`pull_requ
 triggering label / is still open. If not, **quiet no-op**.
 
 ## Step 2 — dispatch the route
+
+In orchestrated mode (Step 1), start the loop's instructions with "orchestrated mode: the
+orchestrator applies outcome labels; post the agent-outcomes marker, don't swap labels".
+Each loop's skill says exactly which of its label steps that replaces.
 
 Invoke the matched skill exactly as its own dedicated routine would, scoped to the
 specific issue/PR, and **follow that skill's instructions verbatim**:

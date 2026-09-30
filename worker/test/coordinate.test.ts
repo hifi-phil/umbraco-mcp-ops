@@ -385,13 +385,13 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
     expect(deps.setPendingFire).not.toHaveBeenCalled();
   });
 
-  it("build_succeeded outcome artifact arriving BEFORE the label swap is visible (a webhook race): dropped_no_rule, not a redundant swap", async () => {
-    // rule.from is keyed on AI_GENERATED specifically because the real
-    // ordering always swaps first — this documents what happens on the
-    // (currently unobserved) reverse ordering: dropped, not a second
-    // remove/add. See graph.ts's comment on this rule and
-    // worker/README.md's "black-box shape" section for how this was found.
+  it("Phase 5: build_succeeded marker while ready-for-ai is still on -> the Worker does the swap itself", async () => {
+    // Orchestrated loops post the marker and don't swap, so this is the main
+    // path now. For a loop that still swaps, this is the rare reverse race;
+    // the Worker's swap is then redundant but harmless (the loop's own
+    // remove gets a tolerated 404, its add finds the label present).
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.ISSUE_BUILD_LOOP });
     const body = [
       `<!-- agent-outcome:${ROUTINES.ISSUE_BUILD_LOOP} -->`,
       "```json",
@@ -402,13 +402,24 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
       deps,
       input({ payload: { action: "issue_comment.created", comment: { body } } }),
     );
-    expect(result).toEqual({
-      outcome: "dropped_no_rule",
-      from: LABELS.AI_READY,
-      event: EVENTS.BUILD_SUCCEEDED,
-    });
-    expect(deps.removeLabel).not.toHaveBeenCalled();
-    expect(deps.addLabel).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_READY, event: EVENTS.BUILD_SUCCEEDED });
+    expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_READY);
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_GENERATED);
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+    expect(await deps.getPendingFire()).toBeNull(); // the outcome ends the watch
+  });
+
+  it("Phase 5: release_blocked marker while auto-release is still on -> the Worker removes it", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]) });
+    const body = [
+      `<!-- agent-outcome:${ROUTINES.AUTO_RELEASE_LOOP} -->`,
+      "```json",
+      JSON.stringify({ outcome: "release_blocked", reason: "pre-publish review: BLOCK" }),
+      "```",
+    ].join("\n");
+    const result = await coordinateWebhook(deps, input({ payload: { action: "issue_comment.created", comment: { body } } }));
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AUTO_RELEASING, event: EVENTS.RELEASE_BLOCKED });
+    expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_RELEASING);
   });
 
   it("merged PR: closes the issue via the close effect, not a label op", async () => {

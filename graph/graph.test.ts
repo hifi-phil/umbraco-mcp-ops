@@ -12,19 +12,30 @@ describe("reduce — issue lifecycle", () => {
     expect(rule?.run).toBe(ROUTINES.ISSUE_BUILD_LOOP);
   });
 
-  it("generated-by-ai + build_succeeded -> noop (the loop's own swap already applied it; keyed post-swap since AI_READY is gone by the time this fires)", () => {
+  it("generated-by-ai + build_succeeded -> noop (a loop that swaps itself already applied it)", () => {
     expect(reduce(LABELS.AI_GENERATED, EVENTS.BUILD_SUCCEEDED)?.to).toEqual(noop);
-    expect(reduce(LABELS.AI_READY, EVENTS.BUILD_SUCCEEDED)).toBeNull();
   });
 
-  it("ai-blocked + build_blocked -> noop (same reasoning, keyed post-swap)", () => {
+  it("ai-blocked + build_blocked -> noop (same, for a loop that swaps itself)", () => {
     expect(reduce(LABELS.AI_BLOCKED, EVENTS.BUILD_BLOCKED)?.to).toEqual(noop);
-    expect(reduce(LABELS.AI_READY, EVENTS.BUILD_BLOCKED)).toBeNull();
   });
 
-  it("none + release_blocked -> noop (the loop's own removal already applied it; keyed post-swap since AUTO_RELEASING is gone by the time this fires)", () => {
+  it("none + release_blocked -> noop (a loop that removed auto-release itself)", () => {
     expect(reduce("none", EVENTS.RELEASE_BLOCKED)?.to).toEqual(noop);
-    expect(reduce(LABELS.AUTO_RELEASING, EVENTS.RELEASE_BLOCKED)).toBeNull();
+  });
+
+  it("Phase 5, orchestrated: the outcome arrives pre-swap and the Worker does the swap, firing nothing", () => {
+    const cases = [
+      [LABELS.AI_READY, EVENTS.BUILD_SUCCEEDED, label(LABELS.AI_GENERATED)],
+      [LABELS.AI_READY, EVENTS.BUILD_BLOCKED, label(LABELS.AI_BLOCKED)],
+      [LABELS.AUTO_RELEASING, EVENTS.RELEASE_BLOCKED, unlabel],
+      [LABELS.AUTO_RELEASING, EVENTS.RELEASE_PUBLISHED, close],
+    ] as const;
+    for (const [from, event, to] of cases) {
+      const rule = reduce(from, event);
+      expect(rule?.to, `${from} ${event}`).toEqual(to);
+      expect(rule?.run, `${from} ${event}`).toBeUndefined();
+    }
   });
 
   it("auto-release + release_published -> native close, not a label", () => {

@@ -157,6 +157,9 @@ hands the agent already-materialized content as plain text. Do this sequence
      append the `release_blocked` outcome artifact to that same comment (marker + shape
      in that skill); otherwise skip it, don't invent a marker. The label removal above is
      the real signal either way.
+     **Orchestrated mode** (the dispatch said so): **don't remove `auto-release`**, and the
+     `release_blocked` artifact is **required** in that comment. The orchestrator reads it
+     and removes the label itself.
 - **WARN** findings → proceed, but include them in the completion comment.
 - Continue to publish **only** when the checklist passes with no BLOCK.
 
@@ -205,7 +208,8 @@ hands the agent already-materialized content as plain text. Do this sequence
 2. **Comment the outcome on the triggering issue** (Release link, tag, "dev synced") and
    **close it**. Only if `agent-outcomes` is available, append the `release_published`
    outcome artifact to that same comment; otherwise skip it. Closing the issue is the
-   real signal either way. Also send a **Claude push notification** (the `PushNotification`
+   real signal either way (in orchestrated mode too; the artifact is then required as
+   well). Also send a **Claude push notification** (the `PushNotification`
    tool): `Released v<version> — published + dev synced.` Fall back to the issue comment
    alone if push isn't available.
 

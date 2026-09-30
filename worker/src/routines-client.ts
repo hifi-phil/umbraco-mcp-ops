@@ -35,14 +35,23 @@ export function routineTargetFor(env: RoutinesEnv, owner: string, repo: string):
   return { fireUrl: entry.fireUrl, token: entry.token };
 }
 
-/** The workflow's text, word for word, with route-event.sh's result line. */
+/** The marker the loops look for (Phase 5): on a Worker-dispatched repo the
+ * orchestrator applies outcome labels, so loops post their outcome marker
+ * instead of swapping labels. The old caller workflow never sends it, so the
+ * repos still on it keep today's behaviour. */
+export const ORCHESTRATED_MARKER = "orchestrated=true";
+
+/** The workflow's text, word for word, with route-event.sh's result line,
+ * plus the orchestrated line only the Worker sends. */
 export function dispatchText(route: string, owner: string, repo: string, issueNumber: number): string {
   const result = `route=${route} repo=${owner}/${repo} number=${issueNumber}`;
   return (
     `loop-dispatch (cloud worker). A GitHub loop event was routed at the edge: ${result}. ` +
     `Run the loop-dispatch skill and dispatch this already-resolved route to its loop for that number, ` +
     `following loop-dispatch's guardrails (do all GitHub work via the GitHub MCP / github-ops). ` +
-    `Re-check the entity still qualifies before acting; quiet no-op if not.`
+    `Re-check the entity still qualifies before acting; quiet no-op if not. ` +
+    `${ORCHESTRATED_MARKER}: the agent-orchestration Worker owns this repo's outcome labels. ` +
+    `Tell the loop it is in orchestrated mode: it posts its agent-outcomes marker and does not swap labels itself.`
   );
 }
 
