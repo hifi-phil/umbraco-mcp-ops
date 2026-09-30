@@ -1,3 +1,4 @@
 node_modules/
 stub/dist/
 .wrangler/
+dist/
