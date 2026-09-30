@@ -57,6 +57,18 @@ export type MergeGateOutcome = "still_pending" | "soft" | "hard" | null;
  * job to report (merge-flow's own Step 3 does the actual merge; the
  * reducer only ever needs to hear about a *failure*).
  */
+/**
+ * The blocks that need a human, checked on their own, without waiting for
+ * CI: used when auto-merge is added (CI is usually still running then) and
+ * to word the block comment. null also covers "mergeable not computed yet":
+ * too early to call a conflict, so it isn't treated as one.
+ */
+export function hardBlockReason(facts: MergeGateFacts): "merge conflict" | "changes requested" | null {
+  if (facts.mergeable === false) return "merge conflict";
+  if (facts.latestReviewState === "changes_requested") return "changes requested";
+  return null;
+}
+
 export function deriveMergeGateOutcome(facts: MergeGateFacts): MergeGateOutcome {
   if (facts.checkRuns.some((c) => c.status !== "completed")) return "still_pending";
   if (facts.mergeable === null) return "still_pending";

@@ -190,10 +190,22 @@ export const rules: Rule[] = [
     verifiedBy: "deterministic",
   },
   {
+    // Needs a human: a merge conflict or requested changes. Checked when
+    // auto-merge is added and whenever CI finishes (coordinate.ts). The
+    // swap auto-merge -> merge-blocked stops retries and says why it stopped.
     from: LABELS.AUTO_MERGING,
     on: EVENTS.MERGE_GATE_FAILED_HARD,
-    to: unlabel, // needs a human; matches merge-flow's real Step 4
+    to: label(LABELS.MERGE_BLOCKED),
     verifiedBy: "deterministic", // same real aggregation as MERGE_GATE_FAILED_SOFT above
+  },
+  {
+    // A human fixed the block and re-added auto-merge: clear merge-blocked
+    // and try again (coordinate.ts re-checks the gate first).
+    from: LABELS.MERGE_BLOCKED,
+    on: EVENTS.LABELLED_AUTO_MERGING,
+    to: label(LABELS.AUTO_MERGING),
+    run: ROUTINES.MERGE_FLOW,
+    verifiedBy: "external-judgment",
   },
   {
     from: LABELS.AUTO_MERGING,

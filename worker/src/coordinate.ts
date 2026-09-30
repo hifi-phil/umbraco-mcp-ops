@@ -11,7 +11,7 @@ import { CONTEXTUAL_EVENTS, isWatched, reduce, type Rule, type State } from "../
 import { ROUTINES } from "../../graph/constants/routines";
 import { translate, type WebhookPayload } from "../../graph/github/from-github";
 import { labelOps } from "../../graph/github/to-github";
-import { deriveMergeGateOutcome, type MergeGateFacts } from "../../graph/github/merge-gate";
+import { deriveMergeGateOutcome, hardBlockReason, type MergeGateFacts } from "../../graph/github/merge-gate";
 import { EVENTS, type Event } from "../../graph/constants/events";
 import { parseRoutineSignal, type RoutineSignal } from "../../graph/routines/from-routine";
 
@@ -210,7 +210,53 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
   // itself just added), even though deriveState() below needs it filtered.
   const currentLabels = await deps.getLabels(input.owner, input.repo, input.issueNumber);
 
+  // auto-merge added: check for a block a human must fix before firing
+  // merge-flow. Reviews aren't expected once the label is on, so this is
+  // where requested changes are caught; conflicts are caught here and
+  // again each time CI finishes (handleCheckSuiteCompleted).
+  if (event === EVENTS.LABELLED_AUTO_MERGING) {
+    const facts = await settledGateFacts(deps, input);
+    const reason = hardBlockReason(facts);
+    if (reason) return blockMerge(deps, input, currentLabels, reason);
+  }
+
   return applyEvent(deps, input, event, currentLabels);
+}
+
+/** GitHub computes `mergeable` in the background, so right after a push it
+ * reads null. Re-read a couple of times before deciding; if it's still
+ * null, hardBlockReason treats that as "no conflict known". */
+async function settledGateFacts(deps: Deps, input: IssueRef): Promise<MergeGateFacts> {
+  let facts = await deps.getMergeGateFacts(input.owner, input.repo, input.issueNumber);
+  for (let i = 0; i < MERGEABLE_RETRIES && facts.mergeable === null; i++) {
+    await new Promise((r) => setTimeout(r, MERGEABLE_RETRY_MS));
+    facts = await deps.getMergeGateFacts(input.owner, input.repo, input.issueNumber);
+  }
+  return facts;
+}
+
+export const MERGEABLE_RETRIES = 2;
+export const MERGEABLE_RETRY_MS = 1000;
+
+/** auto-merge -> merge-blocked (the table's MERGE_GATE_FAILED_HARD rule),
+ * plus a comment saying why, since the label alone doesn't. */
+async function blockMerge(
+  deps: Deps,
+  input: IssueRef,
+  currentLabels: string[],
+  reason: string,
+): Promise<CoordinateResult> {
+  const result = await applyEvent(deps, input, EVENTS.MERGE_GATE_FAILED_HARD, currentLabels);
+  if (result.outcome === "applied") {
+    await depsFor(deps, EVENTS.MERGE_GATE_FAILED_HARD).io.commentOnIssue(
+      input.owner,
+      input.repo,
+      input.issueNumber,
+      `🛑 Not merging: ${reason}. \`auto-merge\` is replaced by \`${LABELS.MERGE_BLOCKED}\`. ` +
+        `Fix it, then re-add \`auto-merge\` to try again. (Automatic, from the orchestrator's merge gate.)`,
+    );
+  }
+  return result;
 }
 
 /**
@@ -230,8 +276,8 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
   const gateOutcome = deriveMergeGateOutcome(facts);
   if (gateOutcome === "still_pending" || gateOutcome === null) return { outcome: "no_event" };
 
-  const event = gateOutcome === "soft" ? EVENTS.MERGE_GATE_FAILED_SOFT : EVENTS.MERGE_GATE_FAILED_HARD;
-  return applyEvent(deps, input, event, currentLabels);
+  if (gateOutcome === "hard") return blockMerge(deps, input, currentLabels, hardBlockReason(facts) ?? "blocked");
+  return applyEvent(deps, input, EVENTS.MERGE_GATE_FAILED_SOFT, currentLabels);
 }
 
 /** The shared reduce() -> labelOps() -> fire/log tail, once an Event has
@@ -425,5 +471,11 @@ export function deriveState(labels: readonly string[]): State | "ambiguous" {
   // with a defined answer — the issue is still ai-stuck, and graph.ts's
   // "leaving ai-stuck" rules decide what the late outcome does with it.
   if (tracked.length === 2 && tracked.includes(LABELS.AI_STUCK)) return LABELS.AI_STUCK;
+  // A human re-added auto-merge to a merge-blocked PR that's still blocked:
+  // read it as auto-merge, so the hard-block rule swaps it back to
+  // merge-blocked (which is already there, so only auto-merge comes off).
+  if (tracked.length === 2 && tracked.includes(LABELS.MERGE_BLOCKED) && tracked.includes(LABELS.AUTO_MERGING)) {
+    return LABELS.AUTO_MERGING;
+  }
   return "ambiguous";
 }
