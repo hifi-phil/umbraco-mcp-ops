@@ -70,7 +70,7 @@ src/
 
 ## What's actually verified, and how
 
-**131 unit tests** (`npm test` — the `"unit"` vitest workspace project;
+**135 unit tests** (`npm test` — the `"unit"` vitest workspace project;
 see `vitest.workspace.ts`) cover `coordinate.ts` (the decision logic,
 against fake in-memory deps), `webhook-parse.ts` (payload mapping +
 signature verification), `github-client.ts` and `routines-client.ts`
