@@ -6,6 +6,15 @@
 locals {
   bundle     = "${path.module}/../dist/index.js"
   worker_url = "https://${var.script_name}.${var.workers_subdomain}.workers.dev"
+
+  # The e2e sandbox (docs/agent-orchestration/14-e2e-testing.md): off unless
+  # e2e_repo is set. Its Fire URL is the stub agent, not a real routine.
+  e2e        = var.e2e_repo != null
+  e2e_bundle = "${path.module}/../../e2e/stub/dist/index.js"
+  e2e_url    = "https://${var.e2e_stub_script_name}.${var.workers_subdomain}.workers.dev"
+  e2e_routines = local.e2e ? {
+    "${var.github_owner}/${var.e2e_repo}" = { fireUrl = local.e2e_url, token = random_password.e2e_fire_token[0].result }
+  } : {}
 }
 
 resource "cloudflare_d1_database" "log" {
@@ -83,7 +92,10 @@ resource "cloudflare_workers_script" "worker" {
     {
       type = "secret_text",
       name = "REPO_ROUTINES_JSON",
-      text = jsonencode({ for repo, r in var.repo_routines : repo => { fireUrl = r.fire_url, token = r.token } }),
+      text = jsonencode(merge(
+        { for repo, r in var.repo_routines : repo => { fireUrl = r.fire_url, token = r.token } },
+        local.e2e_routines,
+      )),
     },
   ]
 
@@ -111,4 +123,53 @@ resource "github_repository_webhook" "worker" {
   }
 
   depends_on = [cloudflare_workers_script_subdomain.worker]
+}
+
+# --- The e2e sandbox: the stub agent and the sandbox's webhook -------------
+# Build the stub first: `cd ../../e2e && npm run build` (→ e2e/stub/dist/index.js).
+
+resource "random_password" "e2e_fire_token" {
+  count   = local.e2e ? 1 : 0
+  length  = 40
+  special = false
+}
+
+resource "cloudflare_workers_script" "e2e_stub" {
+  count              = local.e2e ? 1 : 0
+  account_id         = var.cloudflare_account_id
+  script_name        = var.e2e_stub_script_name
+  main_module        = "index.js"
+  content_file       = local.e2e_bundle
+  content_sha256     = filesha256(local.e2e_bundle)
+  compatibility_date = "2026-08-25"
+
+  bindings = [
+    { type = "plain_text", name = "E2E_REPO", text = "${var.github_owner}/${var.e2e_repo}" },
+    { type = "secret_text", name = "FIRE_TOKEN", text = random_password.e2e_fire_token[0].result },
+    { type = "secret_text", name = "GITHUB_TOKEN", text = var.e2e_stub_github_token },
+  ]
+}
+
+resource "cloudflare_workers_script_subdomain" "e2e_stub" {
+  count       = local.e2e ? 1 : 0
+  account_id  = var.cloudflare_account_id
+  script_name = cloudflare_workers_script.e2e_stub[0].script_name
+  enabled     = true
+}
+
+resource "github_repository_webhook" "e2e" {
+  count      = local.e2e ? 1 : 0
+  repository = var.e2e_repo
+  active     = true
+  events     = ["issues", "issue_comment", "pull_request", "check_suite"]
+
+  configuration {
+    url          = local.worker_url
+    content_type = "json"
+    secret       = random_password.webhook_secret.result
+    insecure_ssl = false
+  }
+
+  # The stub has to be answering before the sandbox can fire it.
+  depends_on = [cloudflare_workers_script_subdomain.worker, cloudflare_workers_script_subdomain.e2e_stub]
 }

@@ -21,3 +21,7 @@ output "routine_signal_secret" {
   value     = random_password.routine_signal_secret.result
   sensitive = true
 }
+
+output "e2e_stub_url" {
+  value = local.e2e ? local.e2e_url : null
+}
