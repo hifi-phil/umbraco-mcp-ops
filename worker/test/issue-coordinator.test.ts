@@ -278,6 +278,48 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
   });
 });
 
+describe("IssueCoordinator — a repo's watchdog override (WATCHDOG_OVERRIDES_JSON)", () => {
+  const overrides = JSON.stringify({ "Hifi-Phil/MCP-Ops-E2E-Testing": { mode: "enforce", minutes: 1 } });
+  const sandboxBuild = { owner: "hifi-phil", repo: "mcp-ops-e2e-testing", issueNumber: 5, run: "issue-build-loop" };
+
+  it("the overridden repo's fire schedules its alarm at its own minutes", async () => {
+    vi.stubGlobal("fetch", fakeApiFetch());
+    const { ctx, setAlarm } = fakeCtx();
+    const env = fakeEnv({
+      WATCHDOG: undefined,
+      WATCHDOG_OVERRIDES_JSON: overrides,
+      REPO_ROUTINES_JSON: JSON.stringify({ "hifi-phil/mcp-ops-e2e-testing": { fireUrl: "https://routines.example/fire/e2e", token: "t" } }),
+    });
+    const before = Date.now();
+    await new IssueCoordinator(ctx, env).fetch(fetchRequest(labeledInput({ repo: "mcp-ops-e2e-testing", issueNumber: 5 })));
+    const [at] = setAlarm.mock.calls[0]! as unknown as [number];
+    expect(at - before).toBeGreaterThanOrEqual(60_000);
+    expect(at - before).toBeLessThan(61_000);
+  });
+
+  it("its expiry is real (comments, swaps to ai-stuck) though WATCHDOG is shadow, and quotes its own minutes", async () => {
+    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    vi.stubGlobal("fetch", apiFetch);
+    const { ctx, storage } = fakeCtx();
+    await storage.put("pendingFire", sandboxBuild);
+    await new IssueCoordinator(ctx, fakeEnv({ WATCHDOG: undefined, WATCHDOG_OVERRIDES_JSON: overrides })).alarm();
+    const comment = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).includes("/comments"));
+    expect(JSON.parse((comment![1] as RequestInit).body as string).body).toMatch(/within 1 minutes/);
+    const add = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).endsWith("/labels"));
+    expect(JSON.parse((add![1] as RequestInit).body as string)).toEqual({ labels: ["ai-stuck"] });
+  });
+
+  it("every other repo keeps WATCHDOG (shadow) and the default minutes", async () => {
+    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    vi.stubGlobal("fetch", apiFetch);
+    const { ctx, storage } = fakeCtx();
+    await storage.put("pendingFire", { ...sandboxBuild, repo: "umbraco-mcp-ops" });
+    await new IssueCoordinator(ctx, fakeEnv({ WATCHDOG: undefined, WATCHDOG_OVERRIDES_JSON: overrides })).alarm();
+    const writes = apiFetch.mock.calls.filter(([, init]) => ((init as RequestInit)?.method ?? "GET") !== "GET");
+    expect(writes).toEqual([]);
+  });
+});
+
 describe("IssueCoordinator — MODE=enforce with the watchdog shadowed (Phase 4)", () => {
   const mergeLabeledInput = () => ({
     deliveryId: "d-merge",
