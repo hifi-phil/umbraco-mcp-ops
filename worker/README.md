@@ -70,7 +70,7 @@ src/
 
 ## What's actually verified, and how
 
-**124 unit tests** (`npm test` — the `"unit"` vitest workspace project;
+**131 unit tests** (`npm test` — the `"unit"` vitest workspace project;
 see `vitest.workspace.ts`) cover `coordinate.ts` (the decision logic,
 against fake in-memory deps), `webhook-parse.ts` (payload mapping +
 signature verification), `github-client.ts` and `routines-client.ts`
@@ -471,6 +471,35 @@ activity, not a gap. The watchdog's timeout is per routine
 (`coordinate.ts`'s `watchdogMinutesFor`: release 120 min, build 60,
 others 30). Run 1's numbers and the fixes they led to are in
 [13-shadow-results.md](../docs/agent-orchestration/13-shadow-results.md).
+
+## Enforcing (Phase 4)
+
+`MODE=enforce` (tofu `mode`) makes every event real: the Worker fires the
+repo's loop-dispatch routine (`REPO_ROUTINES_JSON`) and applies its label
+writes. The one exception is the watchdog, which has its own `WATCHDOG`
+switch (tofu `watchdog`, default shadow) because its timeouts are still
+guesses (`coordinate.ts`'s `resolveEnforced`). Each D1 row records its own
+`mode`, so watchdog rows stay `shadow` until it's switched on.
+
+A repo moved to the Worker is a clean break: its old edge (the loop-dispatch
+caller workflow) is **deleted**, so the Worker is its only dispatcher. The
+shared reusable `loop-dispatch.yml` and `route-event.sh` stay until every
+repo has moved, because the remaining repos' callers load them from `main`
+on every event.
+
+`umbraco-mcp-ops` switched over by deleting `loop-dispatch-caller.yml`.
+Label and comment events run the caller from the default branch, so that
+deletion only takes effect when it reaches `main`. The cutover is:
+
+1. In `terraform.tfvars`: fill in `repo_routines` (Fire URL + token), set
+   `mode = "enforce"`, and give `github_read_token` Issues + Pull requests
+   **write** (enforced rules remove labels and close). `tofu apply`.
+   Until step 2 both the Worker and the old caller fire; loop-dispatch
+   re-checks the entity and no-ops the second, so that's safe.
+2. Release to `main`. The caller is gone, and the Worker alone dispatches.
+
+For another repo: the same `repo_routines` entry and webhook, then a PR in
+that repo deleting its `.github/workflows/loop-dispatch.yml` caller.
 
 ## What's NOT verified
 

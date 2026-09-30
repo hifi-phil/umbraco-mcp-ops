@@ -37,11 +37,22 @@ variable "deployed_do_migration_tag" {
 variable "mode" {
   type        = string
   default     = "shadow"
-  description = "shadow = decide and log only. enforce = write labels and fire routines for real (Phase 4)."
+  description = "shadow = decide and log only. enforce = the Worker dispatches the repo's loops and writes labels for real (Phase 4); then delete the repo's loop-dispatch caller workflow (a clean break), or loops fire twice (see worker/README.md)."
 
   validation {
     condition     = contains(["shadow", "enforce"], var.mode)
     error_message = "mode must be \"shadow\" or \"enforce\"."
+  }
+}
+
+variable "watchdog" {
+  type        = string
+  default     = "shadow"
+  description = "The watchdog's own switch, only honoured when mode is enforce. shadow = expiries only log; enforce = move the issue to ai-stuck and comment. Kept separate because its timeouts are still guesses."
+
+  validation {
+    condition     = contains(["shadow", "enforce"], var.watchdog)
+    error_message = "watchdog must be \"shadow\" or \"enforce\"."
   }
 }
 

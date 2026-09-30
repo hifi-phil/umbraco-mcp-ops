@@ -307,25 +307,12 @@ exception — it's local-only; see §1b.)
 
 ### This repo runs the loops too
 
-`umbraco-mcp-ops` has its own caller at
-[`.github/workflows/loop-dispatch-caller.yml`](../.github/workflows/loop-dispatch-caller.yml) —
-a copy of the locked template under a different filename, because the name
-`loop-dispatch.yml` is taken here by the **reusable** workflow it calls. It points at
-`…@main`, so this repo uses the same published router as everywhere else.
-
-**It needs two secrets before it does anything:**
-
-```bash
-gh secret set LOOP_DISPATCH_FIRE_URL --repo hifi-phil/umbraco-mcp-ops   # Routines UI → Call via API
-gh secret set LOOP_DISPATCH_TOKEN    --repo hifi-phil/umbraco-mcp-ops   # …→ Generate token
-```
-
-Both come from a `loop-dispatch → umbraco-mcp-ops` routine you create with
-[`new-loop-routine`](../plugins/loop-dispatch/skills/new-loop-routine/SKILL.md) (model it on
-the live `loop-dispatch → Umbraco-MCP-Base` one). Until they exist, a **matching** event fails
-loudly with `LOOP_DISPATCH_FIRE_URL / LOOP_DISPATCH_TOKEN secret not set on this repo` — which
-is the error you want; non-matching events still cost nothing. Meanwhile every loop skill can be
-run by hand here.
+`umbraco-mcp-ops` is dispatched by the agent-orchestration **Worker**, not a caller
+workflow: GitHub sends its events to the Worker's webhook, and the Worker fires the
+`loop-dispatch → umbraco-mcp-ops` routine at its Fire URL (see
+[`worker/README.md`](../worker/README.md) "Enforcing"). Its old caller,
+`loop-dispatch-caller.yml`, was deleted as a clean break. The other repos still use a caller
+workflow until they move over too. Every loop skill can still be run by hand here.
 
 One thing to know: `ready-for-ai` on this repo routes to **`issue-build-loop`**'s
 content-repo shape — there's no Umbraco toolchain here to build against, so it uses the

@@ -93,16 +93,28 @@ cleanest, not with everything at once.
 **Exit:** At least one transition is enforced in production with no
 regressions observed for a full cycle of that transition.
 
-**Status:** the enforcement mechanism is `worker/` with `MODE = "enforce"`.
-When a rule matches, `coordinateWebhook()` applies `labelOps()` and fires
-the routine for real. The mechanism, the deployment and the shadow pass
-are done. Two things remain before turning it on:
-- **`MODE` per transition.** It's global today, and this phase enforces
-  one transition at a time. First candidate: merge (`auto-merge` → merged),
-  5 of 5 correct across both shadow runs.
-- **A separate identity for the Worker (the GitHub App).** Every action,
-  loops included, is attributed to `hifi-phil`, so the self-trigger guard
-  can't tell the Worker's own label writes from anyone else's.
+**Decision (30-09-2026): enforce the whole lane at once, not one
+transition at a time.** Both shadow runs were clean (0 wrong fires, 0 gaps
+after #123). While the loops still swap their own labels, enforcing mostly
+means the Worker takes over firing; the other enforced writes are removals
+and closes the loops already do. The one genuinely new behaviour is the
+watchdog, so that keeps its own switch until its timeouts are proven.
+
+**Status:** the mechanism is in place.
+- `MODE=enforce`: the Worker fires each repo's loop-dispatch routine
+  (`REPO_ROUTINES_JSON`, exactly as the edge does) and applies label
+  writes. `WATCHDOG` is separate and defaults to shadow. Each D1 row
+  records its own mode.
+- Switching a repo over is a clean break: its loop-dispatch caller workflow
+  is deleted, so the Worker is its only dispatcher (`umbraco-mcp-ops`
+  first). The shared reusable workflow and `route-event.sh` stay until the
+  other repos have moved, then go in one cleanup.
+
+The procedure and switch order are in `worker/README.md`'s "Enforcing".
+The self-trigger guard doesn't block this: the table never adds a trigger
+label, so the Worker's own writes (removals, `ai-stuck`) come back as
+no-ops. The GitHub App (a separate identity) is still wanted for Phase 5,
+multiple orgs, and the Checks permission.
 
 ## Phase 5 — Reducer owns labels
 

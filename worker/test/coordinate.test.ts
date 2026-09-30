@@ -8,6 +8,7 @@ import {
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
   deriveState,
+  resolveEnforced,
   resolveMode,
   shadowDeps,
   watchdogMinutesFor,
@@ -50,6 +51,9 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     }),
     getPendingFire: vi.fn(async () => pendingFire),
     getMergeGateFacts: vi.fn(async () => gateFacts()),
+    // These tests are about the write path; shadow and per-event
+    // enforcement have their own describe blocks.
+    enforced: () => true,
     ...overrides,
   };
 }
@@ -113,6 +117,52 @@ describe("shadowDeps", () => {
     }
     expect(deps.logTransition).toHaveBeenCalledTimes(1);
     expect(deps.setPendingFire).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("resolveEnforced — MODE plus the watchdog's own switch (Phase 4)", () => {
+  it("MODE=enforce enforces every event except the watchdog", () => {
+    const enforced = resolveEnforced("enforce", undefined);
+    expect(enforced(EVENTS.LABELLED_AI_READY)).toBe(true);
+    expect(enforced(EVENTS.MERGED)).toBe(true);
+    expect(enforced(EVENTS.WATCHDOG_EXPIRED)).toBe(false);
+  });
+
+  it("WATCHDOG=enforce adds the watchdog, but only under MODE=enforce", () => {
+    expect(resolveEnforced("enforce", "enforce")(EVENTS.WATCHDOG_EXPIRED)).toBe(true);
+    expect(resolveEnforced(undefined, "enforce")(EVENTS.WATCHDOG_EXPIRED)).toBe(false);
+  });
+
+  it("anything but exactly \"enforce\" is shadow (fails towards shadow)", () => {
+    for (const raw of [undefined, "", "shadow", "enforced", "ENFORCE"]) {
+      expect(resolveEnforced(raw, "enforce")(EVENTS.LABELLED_AUTO_MERGING), String(raw)).toBe(false);
+    }
+  });
+});
+
+describe("coordinateWebhook — enforced events vs the shadowed watchdog", () => {
+  const enforced = resolveEnforced("enforce", undefined);
+  const mergeLabel = { action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING }, sender: { login: "phil", type: "User" as const } };
+
+  it("an enforced event fires for real and its row says enforce", async () => {
+    const deps = fakeDeps({ enforced });
+    const result = await coordinateWebhook(deps, input({ payload: mergeLabel }));
+    expect(result).toMatchObject({ outcome: "applied", event: EVENTS.LABELLED_AUTO_MERGING });
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.MERGE_FLOW);
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ mode: "enforce" }));
+    expect(deps.setPendingFire).toHaveBeenCalledOnce();
+  });
+
+  it("with the watchdog in shadow, an expiry posts no comment, moves nothing, and logs shadow", async () => {
+    const pending = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.MERGE_FLOW };
+    const deps = fakeDeps({ enforced, getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]) });
+    await deps.setPendingFire(pending);
+    await coordinateWatchdogExpired(deps);
+    expect(deps.commentOnIssue).not.toHaveBeenCalled();
+    expect(deps.addLabel).not.toHaveBeenCalled();
+    expect(deps.logTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ event: EVENTS.WATCHDOG_EXPIRED, mode: "shadow" }),
+    );
   });
 });
 

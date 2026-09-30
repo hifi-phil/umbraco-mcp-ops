@@ -41,6 +41,7 @@ export type TransitionRow = {
   toEffect: string | null; // JSON.stringify(rule.to), or null if nothing fired
   run: string | null;
   droppedReason: string | null; // null only when a rule actually fired
+  mode: Mode; // whether this event's writes were real (see Deps.enforced)
 };
 
 export type PendingFire = {
@@ -72,6 +73,9 @@ export type Deps = {
   // HARD — see graph/github/merge-gate.ts's header for why this needs to
   // be a Dep (I/O) rather than living in translate() (pure).
   getMergeGateFacts(owner: string, repo: string, prNumber: number): Promise<MergeGateFacts>;
+  // Phase 4: whether this event's writes and fire are real. Everything not
+  // enforced runs in shadow (see resolveEnforced).
+  enforced(event: Event): boolean;
 };
 
 /**
@@ -90,6 +94,21 @@ export function resolveMode(raw: string | undefined): Mode {
   return raw === "enforce" ? "enforce" : "shadow";
 }
 
+/**
+ * Phase 4: MODE=enforce makes every event real except the watchdog, which
+ * has its own WATCHDOG switch (shadow unless exactly "enforce"). Its
+ * timeouts are still guesses, and a wrong expiry would move a live issue to
+ * ai-stuck, so it goes live separately.
+ */
+export function resolveEnforced(
+  mode: string | undefined,
+  watchdog: string | undefined,
+): (event: Event) => boolean {
+  const all = resolveMode(mode) === "enforce";
+  const watchdogToo = all && resolveMode(watchdog) === "enforce";
+  return (event) => (event === EVENTS.WATCHDOG_EXPIRED ? watchdogToo : all);
+}
+
 export function shadowDeps(deps: Deps): Deps {
   const skip = async () => {};
   return {
@@ -99,7 +118,13 @@ export function shadowDeps(deps: Deps): Deps {
     closeIssue: skip,
     commentOnIssue: skip,
     fireRoutine: skip,
+    enforced: () => false,
   };
+}
+
+/** The deps to use for one event: real writes if it's enforced, else shadow. */
+function depsFor(deps: Deps, event: Event): { io: Deps; mode: Mode } {
+  return deps.enforced(event) ? { io: deps, mode: "enforce" } : { io: shadowDeps(deps), mode: "shadow" };
 }
 
 /** How long a watched routine gets to report an outcome (or a heartbeat,
@@ -198,11 +223,12 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
  * been decided (however it was decided) and the current labels are
  * already in hand. */
 async function applyEvent(
-  deps: Deps,
+  allDeps: Deps,
   input: IssueRef,
   event: Event,
   currentLabels: string[],
 ): Promise<CoordinateResult> {
+  const { io: deps, mode } = depsFor(allDeps, event);
   const justAdded = LABEL_JUST_ADDED_BY[event];
   const labelsBeforeThisEvent = justAdded
     ? currentLabels.filter((l) => l !== justAdded)
@@ -218,6 +244,7 @@ async function applyEvent(
       toEffect: null,
       run: null,
       droppedReason: "ambiguous current state — multiple tracked labels present",
+      mode,
     });
     return { outcome: "ambiguous_state" };
   }
@@ -234,6 +261,7 @@ async function applyEvent(
       toEffect: null,
       run: null,
       droppedReason: "no matching rule for this (state, event) pair",
+      mode,
     });
     return { outcome: "dropped_no_rule", from: current, event };
   }
@@ -276,6 +304,7 @@ async function applyEvent(
     toEffect: JSON.stringify(rule.to),
     run: rule.run ?? null,
     droppedReason: null,
+    mode,
   });
 
   return { outcome: "applied", from: current, event, rule };
@@ -349,7 +378,8 @@ export async function coordinateWatchdogExpired(deps: Deps): Promise<WatchdogRes
   const next = willStick
     ? ` Moving this to \`${LABELS.AI_STUCK}\`; re-add the trigger label to retry.`
     : ` Its current labels don't allow an automatic move to \`${LABELS.AI_STUCK}\` — needs a human look.`;
-  await deps.commentOnIssue(
+  // The alert is a write too: only real when watchdog_expired is enforced.
+  await depsFor(deps, EVENTS.WATCHDOG_EXPIRED).io.commentOnIssue(
     pending.owner,
     pending.repo,
     pending.issueNumber,
