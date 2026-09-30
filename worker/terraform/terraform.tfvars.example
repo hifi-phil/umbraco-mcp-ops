@@ -10,7 +10,7 @@ github_repo           = "your-test-repo"   # where the real loops run (ready-for
 github_read_token     = "github_pat_…"
 
 # mode = "shadow"      # the default; "enforce" = the Worker dispatches the repo.
-#                      # Then disable the repo's loop-dispatch caller workflow.
+#                      # Then delete the repo's loop-dispatch caller workflow.
 # watchdog = "shadow"  # only honoured under mode = "enforce"
 
 # Leave commented for the first apply; uncomment once the Worker exists.

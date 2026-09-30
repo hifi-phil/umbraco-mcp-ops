@@ -105,9 +105,10 @@ watchdog, so that keeps its own switch until its timeouts are proven.
   (`REPO_ROUTINES_JSON`, exactly as the edge does) and applies label
   writes. `WATCHDOG` is separate and defaults to shadow. Each D1 row
   records its own mode.
-- Switching a repo over retires its old edge: disable its loop-dispatch
-  caller workflow once the Worker enforces. No code change; repos not yet
-  switched keep the shared reusable workflow as is.
+- Switching a repo over is a clean break: its loop-dispatch caller workflow
+  is deleted, so the Worker is its only dispatcher (`umbraco-mcp-ops`
+  first). The shared reusable workflow and `route-event.sh` stay until the
+  other repos have moved, then go in one cleanup.
 
 The procedure and switch order are in `worker/README.md`'s "Enforcing".
 The self-trigger guard doesn't block this: the table never adds a trigger

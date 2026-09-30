@@ -481,24 +481,25 @@ switch (tofu `watchdog`, default shadow) because its timeouts are still
 guesses (`coordinate.ts`'s `resolveEnforced`). Each D1 row records its own
 `mode`, so watchdog rows stay `shadow` until it's switched on.
 
-Once the Worker dispatches a repo, the old edge (that repo's loop-dispatch
-caller workflow) must stop, or every loop fires twice. It's retired per
-repo by disabling the workflow, not by a code change; the shared reusable
-workflow stays as it is for repos not yet switched.
+A repo moved to the Worker is a clean break: its old edge (the loop-dispatch
+caller workflow) is **deleted**, so the Worker is its only dispatcher. The
+shared reusable `loop-dispatch.yml` and `route-event.sh` stay until every
+repo has moved, because the remaining repos' callers load them from `main`
+on every event.
 
-To switch a repo over, in this order:
+`umbraco-mcp-ops` switched over by deleting `loop-dispatch-caller.yml`.
+Label and comment events run the caller from the default branch, so that
+deletion only takes effect when it reaches `main`. The cutover is:
 
 1. In `terraform.tfvars`: fill in `repo_routines` (Fire URL + token), set
    `mode = "enforce"`, and give `github_read_token` Issues + Pull requests
    **write** (enforced rules remove labels and close). `tofu apply`.
-   For a moment both the Worker and the edge fire; loop-dispatch re-checks
-   the entity and no-ops the second, so that's safe.
-2. Disable the repo's caller workflow: *Actions → loop-dispatch (caller) →
-   ⋯ → Disable workflow*, or `gh workflow disable "loop-dispatch (caller)"`
-   (named `loop-dispatch-caller.yml` here, `loop-dispatch.yml` in other repos).
+   Until step 2 both the Worker and the old caller fire; loop-dispatch
+   re-checks the entity and no-ops the second, so that's safe.
+2. Release to `main`. The caller is gone, and the Worker alone dispatches.
 
-To undo, reverse the order: re-enable the workflow first, then set `mode`
-back to shadow and apply. The other way round, nobody fires for a moment.
+For another repo: the same `repo_routines` entry and webhook, then a PR in
+that repo deleting its `.github/workflows/loop-dispatch.yml` caller.
 
 ## What's NOT verified
 
