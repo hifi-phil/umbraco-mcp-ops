@@ -144,12 +144,14 @@ export async function openPr(opts: {
   return { number, branch };
 }
 
-/** GitHub computes `mergeable` in the background; wait until it has. */
-export async function waitForMergeable(number: number, timeoutMs = 60_000): Promise<boolean | null> {
+/** GitHub computes `mergeable` in the background; wait until it reads
+ * `want`. Right after a push it can still show the old value rather than
+ * null, so the first non-null answer isn't enough. */
+export async function waitForMergeable(number: number, want: boolean, timeoutMs = 60_000): Promise<boolean | null> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const { mergeable } = await gh<{ mergeable: boolean | null }>("GET", `${R}/pulls/${number}`);
-    if (mergeable !== null || Date.now() >= deadline) return mergeable;
+    if (mergeable === want || Date.now() >= deadline) return mergeable;
     await sleep(2000);
   }
 }

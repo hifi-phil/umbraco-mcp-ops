@@ -238,7 +238,7 @@ export const scenarios: Scenario[] = [
           fromSha: base,
           beforePr: () => putFile("dev", path, "from dev\n", "e2e: the other side of a conflict"),
         });
-        expect(await waitForMergeable(pr.number), `PR #${pr.number} mergeable`).toBe(false);
+        expect(await waitForMergeable(pr.number, false), `PR #${pr.number} mergeable`).toBe(false);
 
         await addLabel(pr.number, LABELS.AUTO_MERGING);
         const blocked = await waitFor(pr.number, labelsAre(LABELS.MERGE_BLOCKED), 2 * MIN);
@@ -249,7 +249,7 @@ export const scenarios: Scenario[] = [
 
         // A human resolves it (same content both sides) and retries.
         await putFile(pr.branch, path, "from dev\n", "e2e: resolve the conflict");
-        expect(await waitForMergeable(pr.number), `PR #${pr.number} mergeable after the fix`).toBe(true);
+        expect(await waitForMergeable(pr.number, true), `PR #${pr.number} mergeable after the fix`).toBe(true);
         await addLabel(pr.number, LABELS.AUTO_MERGING);
         const merged = await waitFor(pr.number, (x) => x.merged, 4 * MIN);
         expect(merged.merged, `PR #${pr.number} merged after the retry`).toBe(true);
