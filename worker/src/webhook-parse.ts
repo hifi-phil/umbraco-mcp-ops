@@ -5,7 +5,7 @@
 
 import type { WebhookPayload } from "../../graph/github/from-github";
 
-export type RoutingInfo = { owner: string; repo: string; issueNumber: number } | null;
+export type RoutingInfo = { owner: string; repo: string; issueNumbers: number[] } | null;
 
 /**
  * translate() expects a single compound action string ("issues.labeled",
@@ -23,10 +23,17 @@ export function extractRoutingInfo(body: Record<string, unknown>): RoutingInfo {
   const repo = repository?.name;
   const issue = body.issue as { number?: number } | undefined;
   const pullRequest = body.pull_request as { number?: number } | undefined;
-  const issueNumber = issue?.number ?? pullRequest?.number;
+  // A check_suite has no issue or pull_request key: its PRs (same-repo only,
+  // possibly several) are listed under check_suite.pull_requests.
+  const checkSuite = body.check_suite as { pull_requests?: Array<{ number?: number }> } | undefined;
+  const single = issue?.number ?? pullRequest?.number;
+  const issueNumbers =
+    single !== undefined
+      ? [single]
+      : (checkSuite?.pull_requests ?? []).flatMap((pr) => (typeof pr.number === "number" ? [pr.number] : []));
 
-  if (!owner || !repo || issueNumber === undefined) return null;
-  return { owner, repo, issueNumber };
+  if (!owner || !repo || issueNumbers.length === 0) return null;
+  return { owner, repo, issueNumbers };
 }
 
 export function toWebhookPayload(body: Record<string, unknown>, eventType: string): WebhookPayload {
