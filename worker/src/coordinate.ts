@@ -66,6 +66,7 @@ export type Deps = {
   logTransition(row: TransitionRow): Promise<void>;
   hasSeenDelivery(deliveryId: string): Promise<boolean>;
   markSeenDelivery(deliveryId: string): Promise<void>;
+  unmarkSeenDelivery(deliveryId: string): Promise<void>;
   setPendingFire(info: PendingFire): Promise<void>;
   clearPendingFire(): Promise<void>;
   getPendingFire(): Promise<PendingFire | null>;
@@ -178,11 +179,25 @@ export async function coordinateWebhook(
   deps: Deps,
   input: CoordinateInput,
 ): Promise<CoordinateResult> {
-  if (input.deliveryId) {
-    if (await deps.hasSeenDelivery(input.deliveryId)) return { outcome: "deduped" };
-    await deps.markSeenDelivery(input.deliveryId);
-  }
+  if (!input.deliveryId) return processWebhook(deps, input);
 
+  // Claim the delivery before processing, so a duplicate arriving while
+  // this one is mid-flight is dropped. But release the claim if processing
+  // throws: GitHub redelivers with the SAME delivery id, and a claim left
+  // behind by a failed attempt would dedupe that redelivery, losing the
+  // event for good (found 30-09-2026: a redelivered 500 came back
+  // "deduped").
+  if (await deps.hasSeenDelivery(input.deliveryId)) return { outcome: "deduped" };
+  await deps.markSeenDelivery(input.deliveryId);
+  try {
+    return await processWebhook(deps, input);
+  } catch (e) {
+    await deps.unmarkSeenDelivery(input.deliveryId);
+    throw e;
+  }
+}
+
+async function processWebhook(deps: Deps, input: CoordinateInput): Promise<CoordinateResult> {
   if (input.payload.action === "check_suite.completed") {
     return handleCheckSuiteCompleted(deps, input);
   }
