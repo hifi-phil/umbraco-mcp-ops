@@ -65,7 +65,7 @@
   comment is a different gap from a comment without a marker. The loops' own label swaps are the completion signal today, so
   nothing breaks, but in Phase 5 the reducer owns labels and the marker
   becomes the only self-reported signal.
-  - **What was seen:** two distinct gaps. Five comments lacked the marker,
+  - **What was seen:** two distinct gaps. Four comments lacked the marker,
     and one release (#127) posted no outcome comment at all. Both are a
     different failure from a marker written but never forwarded by the
     `PostToolUse` hook (hooks in cloud routines are still unconfirmed,
