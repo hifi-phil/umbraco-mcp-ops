@@ -32,9 +32,12 @@ describe("labelOps — the concrete GitHub calls a rule requires", () => {
     ]);
   });
 
-  it("merge_gate_failed_soft makes no GitHub call at all", () => {
+  it("merge_gate_failed_soft (CI failed) swaps auto-merge -> auto-rework", () => {
     const rule = reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_FAILED_SOFT)!;
-    expect(labelOps([LABELS.AUTO_MERGING], rule)).toEqual([]);
+    expect(labelOps([LABELS.AUTO_MERGING], rule)).toEqual([
+      { op: "remove", label: LABELS.AUTO_MERGING },
+      { op: "add", label: LABELS.AUTO_REWORKING },
+    ]);
   });
 
   it("release_published and merged just close — no label call", () => {

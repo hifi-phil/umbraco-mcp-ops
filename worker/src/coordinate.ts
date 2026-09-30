@@ -11,7 +11,12 @@ import { CONTEXTUAL_EVENTS, isWatched, reduce, type Rule, type State } from "../
 import { ROUTINES } from "../../graph/constants/routines";
 import { translate, type WebhookPayload } from "../../graph/github/from-github";
 import { labelOps } from "../../graph/github/to-github";
-import { deriveMergeGateOutcome, hardBlockReason, type MergeGateFacts } from "../../graph/github/merge-gate";
+import {
+  deriveMergeGateOutcome,
+  failedCheckNames,
+  hardBlockReason,
+  type MergeGateFacts,
+} from "../../graph/github/merge-gate";
 import { EVENTS, type Event } from "../../graph/constants/events";
 import { parseRoutineSignal, type RoutineSignal } from "../../graph/routines/from-routine";
 
@@ -55,6 +60,11 @@ export type PendingFire = {
   lastStepAt?: string; // ISO timestamp
 };
 
+export type CiFix = { attempts: number; pending: boolean };
+
+/** After this many CI-fix reworks on one PR, stop and ask a human. */
+export const MAX_CI_FIX_ATTEMPTS = 3;
+
 export type Deps = {
   getLabels(owner: string, repo: string, issueNumber: number): Promise<string[]>;
   addLabel(owner: string, repo: string, issueNumber: number, label: string): Promise<void>;
@@ -74,6 +84,10 @@ export type Deps = {
   // HARD — see graph/github/merge-gate.ts's header for why this needs to
   // be a Dep (I/O) rather than living in translate() (pure).
   getMergeGateFacts(owner: string, repo: string, prNumber: number): Promise<MergeGateFacts>;
+  // The CI-fix cycle for this PR (DO storage): how many times CI failure
+  // has been handed to rework-loop, and whether one is running now.
+  getCiFix(): Promise<CiFix | null>;
+  setCiFix(state: CiFix | null): Promise<void>;
   // Phase 4: whether this event's writes and fire are real. Everything not
   // enforced runs in shadow (see resolveEnforced).
   enforced(event: Event): boolean;
@@ -202,7 +216,7 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
     return handleCheckSuiteCompleted(deps, input);
   }
 
-  const event = translate(input.payload);
+  let event = translate(input.payload);
   if (!event) return { outcome: "no_event" };
 
   // Fresh, per §3.4/to-github.ts's "never cache" principle -- and the one
@@ -210,17 +224,62 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
   // itself just added), even though deriveState() below needs it filtered.
   const currentLabels = await deps.getLabels(input.owner, input.repo, input.issueNumber);
 
-  // auto-merge added: check for a block a human must fix before firing
-  // merge-flow. Reviews aren't expected once the label is on, so this is
-  // where requested changes are caught; conflicts are caught here and
-  // again each time CI finishes (handleCheckSuiteCompleted).
+  // A push by a rework this Worker started for failing CI: hand it back to
+  // auto-merge instead of just clearing auto-rework (a review rework).
+  if (event === EVENTS.REWORK_PUSHED || event === EVENTS.UNLABELLED_AUTO_REWORKING) {
+    const ciFix = await deps.getCiFix();
+    if (ciFix?.pending) {
+      // auto-rework removed without a push (nothing to fix) ends the CI-fix
+      // too, so a later review rework isn't mistaken for one.
+      if (event === EVENTS.REWORK_PUSHED) event = EVENTS.CI_FIX_PUSHED;
+      await deps.setCiFix({ ...ciFix, pending: false });
+    }
+  }
+
+  // auto-merge added: check the PR before firing merge-flow. Reviews aren't
+  // expected once the label is on, so this is where requested changes are
+  // caught; conflicts are caught here and again each time CI finishes
+  // (handleCheckSuiteCompleted). CI that has already failed goes straight
+  // to rework.
   if (event === EVENTS.LABELLED_AUTO_MERGING) {
+    // A human re-adding auto-merge after merge-blocked starts a fresh count.
+    if (currentLabels.includes(LABELS.MERGE_BLOCKED)) await deps.setCiFix(null);
     const facts = await settledGateFacts(deps, input);
     const reason = hardBlockReason(facts);
     if (reason) return blockMerge(deps, input, currentLabels, reason);
+    if (deriveMergeGateOutcome(facts) === "soft") return handToRework(deps, input, currentLabels, facts);
   }
 
   return applyEvent(deps, input, event, currentLabels);
+}
+
+/** CI failed under auto-merge: swap auto-merge -> auto-rework so
+ * rework-loop fixes it (its push swaps back to auto-merge), up to
+ * MAX_CI_FIX_ATTEMPTS per PR, then merge-blocked. */
+async function handToRework(
+  deps: Deps,
+  input: IssueRef,
+  currentLabels: string[],
+  facts: MergeGateFacts,
+): Promise<CoordinateResult> {
+  const failed = failedCheckNames(facts).join(", ") || "a required check";
+  const attempts = (await deps.getCiFix())?.attempts ?? 0;
+  if (attempts >= MAX_CI_FIX_ATTEMPTS) {
+    return blockMerge(deps, input, currentLabels, `CI still failing after ${attempts} fix attempts (${failed})`);
+  }
+  const result = await applyEvent(deps, input, EVENTS.MERGE_GATE_FAILED_SOFT, currentLabels);
+  if (result.outcome === "applied") {
+    await deps.setCiFix({ attempts: attempts + 1, pending: true });
+    await depsFor(deps, EVENTS.MERGE_GATE_FAILED_SOFT).io.commentOnIssue(
+      input.owner,
+      input.repo,
+      input.issueNumber,
+      `🔧 CI failing: ${failed}. Handing this to rework-loop to fix (attempt ${attempts + 1} of ` +
+        `${MAX_CI_FIX_ATTEMPTS}); \`auto-merge\` comes back when it pushes the fix. ` +
+        `(Automatic, from the orchestrator's merge gate.)`,
+    );
+  }
+  return result;
 }
 
 /** GitHub computes `mergeable` in the background, so right after a push it
@@ -277,7 +336,7 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
   if (gateOutcome === "still_pending" || gateOutcome === null) return { outcome: "no_event" };
 
   if (gateOutcome === "hard") return blockMerge(deps, input, currentLabels, hardBlockReason(facts) ?? "blocked");
-  return applyEvent(deps, input, EVENTS.MERGE_GATE_FAILED_SOFT, currentLabels);
+  return handToRework(deps, input, currentLabels, facts);
 }
 
 /** The shared reduce() -> labelOps() -> fire/log tail, once an Event has

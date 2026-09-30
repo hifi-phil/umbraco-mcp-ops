@@ -181,12 +181,23 @@ export const rules: Rule[] = [
   {
     from: LABELS.AUTO_MERGING,
     on: EVENTS.MERGE_GATE_FAILED_SOFT,
-    to: noop, // matches merge-flow's real Step 4: "by default leave the auto-merge label on" — no GitHub write, not a redundant remove+re-add; the reconciliation sweep re-fires it later
-    // Genuinely earned, not aspirational: worker/src/coordinate.ts's
-    // handleCheckSuiteCompleted independently fetches the full check-run
-    // list, review state, and mergeability (github/merge-gate.ts's
-    // deriveMergeGateOutcome) rather than trusting a self-report — see
-    // worker/README.md.
+    // CI failed under auto-merge (retryable, not a human block): hand the PR
+    // to rework-loop. No `run`: the Worker's own label add comes back as a
+    // label webhook and fires rework-loop through the normal rule, just as
+    // the CI_FIX_PUSHED rule below re-adds auto-merge and its echo fires
+    // merge-flow (after the label-time gate check). That relies on the
+    // Worker's writes not being filtered as self-triggers, true while it
+    // writes as the same account as everyone else; a GitHub App identity
+    // would need a `run` on both instead. coordinate.ts caps the cycle at
+    // MAX_CI_FIX_ATTEMPTS, then merge-blocked.
+    to: label(LABELS.AUTO_REWORKING),
+    verifiedBy: "deterministic", // the Worker's own re-fetched check runs
+  },
+  {
+    // That CI-fix rework pushed: back to auto-merge.
+    from: LABELS.AUTO_REWORKING,
+    on: EVENTS.CI_FIX_PUSHED,
+    to: label(LABELS.AUTO_MERGING),
     verifiedBy: "deterministic",
   },
   {
@@ -320,6 +331,7 @@ export const rules: Rule[] = [
  */
 export const CONTEXTUAL_EVENTS: ReadonlySet<Event> = new Set([
   EVENTS.REWORK_PUSHED,
+  EVENTS.CI_FIX_PUSHED,
   EVENTS.MERGED,
   EVENTS.DISCUSSION_REPLY,
   EVENTS.ISSUE_CLOSED,

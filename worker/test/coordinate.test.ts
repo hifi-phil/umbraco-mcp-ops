@@ -12,6 +12,7 @@ import {
   resolveMode,
   shadowDeps,
   watchdogMinutesFor,
+  type CiFix,
   type CoordinateInput,
   type Deps,
   type PendingFire,
@@ -31,6 +32,7 @@ function gateFacts(overrides: Partial<MergeGateFacts> = {}): MergeGateFacts {
 function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   const seen = new Set<string>();
   let pendingFire: PendingFire | null = null;
+  let ciFix: CiFix | null = null;
   return {
     getLabels: vi.fn(async () => []),
     addLabel: vi.fn(async () => {}),
@@ -54,6 +56,10 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     }),
     getPendingFire: vi.fn(async () => pendingFire),
     getMergeGateFacts: vi.fn(async () => gateFacts()),
+    getCiFix: vi.fn(async () => ciFix),
+    setCiFix: vi.fn(async (state: CiFix | null) => {
+      ciFix = state;
+    }),
     // These tests are about the write path; shadow and per-event
     // enforcement have their own describe blocks.
     enforced: () => true,
@@ -609,17 +615,19 @@ describe("coordinateWebhook — check_suite.completed, the real merge-gate aggre
     expect(result).toEqual({ outcome: "no_event" });
   });
 
-  it("completed, in auto-merge, a required check genuinely failed -> applied, noop effect, clears pendingFire", async () => {
+  it("completed, in auto-merge, a required check genuinely failed -> auto-merge swapped for auto-rework, with a comment", async () => {
     const deps = fakeDeps({
       getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
       getMergeGateFacts: vi.fn(async () =>
-        gateFacts({ checkRuns: [{ status: "completed", conclusion: "failure" }] }),
+        gateFacts({ checkRuns: [{ name: "build", status: "completed", conclusion: "failure" }] }),
       ),
     });
     const result = await coordinateWebhook(deps, checkSuiteInput());
-    expect(result.outcome).toBe("applied");
-    expect(deps.addLabel).not.toHaveBeenCalled();
-    expect(deps.removeLabel).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ outcome: "applied", event: EVENTS.MERGE_GATE_FAILED_SOFT });
+    expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_MERGING);
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_REWORKING);
+    expect(deps.commentOnIssue).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, expect.stringContaining("CI failing: build"));
+    expect(deps.setCiFix).toHaveBeenCalledWith({ attempts: 1, pending: true });
     expect(deps.clearPendingFire).toHaveBeenCalledOnce();
   });
 
@@ -715,6 +723,87 @@ describe("coordinateWebhook — the merge gate when auto-merge is added", () => 
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_MERGING);
     expect(deps.addLabel).not.toHaveBeenCalled();
     expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+});
+
+describe("coordinateWebhook — CI failing under auto-merge goes to rework, then back", () => {
+  const failing = [{ name: "test", status: "completed" as const, conclusion: "failure" as const }];
+  const autoMergeAdded = input({
+    payload: { action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING }, sender: { login: "phil", type: "User" } },
+  });
+  const pushed = input({ deliveryId: "push-1", payload: { action: "pull_request.synchronize" } });
+  const reworkRemoved = input({
+    deliveryId: "unlabel-1",
+    payload: { action: "pull_request.unlabeled", label: { name: LABELS.AUTO_REWORKING }, sender: { login: "phil", type: "User" } },
+  });
+
+  it("auto-merge added after CI already failed -> auto-rework and a comment, merge-flow NOT fired", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
+      getMergeGateFacts: vi.fn(async () => gateFacts({ checkRuns: failing })),
+    });
+    const result = await coordinateWebhook(deps, autoMergeAdded);
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AUTO_MERGING, event: EVENTS.MERGE_GATE_FAILED_SOFT });
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_REWORKING);
+    expect(deps.commentOnIssue).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, expect.stringContaining("attempt 1 of 3"));
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("the fix push -> auto-rework swapped back to auto-merge", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AUTO_REWORKING]),
+      getCiFix: vi.fn(async () => ({ attempts: 1, pending: true })),
+    });
+    const result = await coordinateWebhook(deps, pushed);
+    expect(result).toMatchObject({ outcome: "applied", event: EVENTS.CI_FIX_PUSHED });
+    expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_REWORKING);
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_MERGING);
+    expect(deps.setCiFix).toHaveBeenCalledWith({ attempts: 1, pending: false });
+  });
+
+  it("a review rework's push (no CI-fix pending) -> auto-rework just cleared, as before", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_REWORKING]) });
+    const result = await coordinateWebhook(deps, pushed);
+    expect(result).toMatchObject({ outcome: "applied", event: EVENTS.REWORK_PUSHED });
+    expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_REWORKING);
+    expect(deps.addLabel).not.toHaveBeenCalled();
+  });
+
+  it("auto-rework removed without a push -> the CI-fix ends, so the next push is a plain rework", async () => {
+    const deps = fakeDeps({ getCiFix: vi.fn(async () => ({ attempts: 2, pending: true })) });
+    await coordinateWebhook(deps, reworkRemoved);
+    expect(deps.setCiFix).toHaveBeenCalledWith({ attempts: 2, pending: false });
+  });
+
+  it("CI still failing after 3 fix attempts -> merge-blocked instead of another rework", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
+      getMergeGateFacts: vi.fn(async () => gateFacts({ checkRuns: failing })),
+      getCiFix: vi.fn(async () => ({ attempts: 3, pending: false })),
+    });
+    const result = await coordinateWebhook(deps, input({ payload: { action: "check_suite.completed", check_suite: { conclusion: "failure", status: "completed" } } }));
+    expect(result).toMatchObject({ outcome: "applied", event: EVENTS.MERGE_GATE_FAILED_HARD });
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.MERGE_BLOCKED);
+    expect(deps.addLabel).not.toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_REWORKING);
+    expect(deps.commentOnIssue).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, expect.stringContaining("after 3 fix attempts (test)"));
+  });
+
+  it("a human re-adding auto-merge after merge-blocked resets the count", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.MERGE_BLOCKED, LABELS.AUTO_MERGING]) });
+    await coordinateWebhook(deps, autoMergeAdded);
+    expect(deps.setCiFix).toHaveBeenCalledWith(null);
+  });
+
+  it("shadow mode: logged as the swap, nothing written or commented", async () => {
+    const deps = fakeDeps({
+      enforced: () => false,
+      getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
+      getMergeGateFacts: vi.fn(async () => gateFacts({ checkRuns: failing })),
+    });
+    const result = await coordinateWebhook(deps, autoMergeAdded);
+    expect(result).toMatchObject({ event: EVENTS.MERGE_GATE_FAILED_SOFT });
+    expect(deps.addLabel).not.toHaveBeenCalled();
+    expect(deps.commentOnIssue).not.toHaveBeenCalled();
   });
 });
 

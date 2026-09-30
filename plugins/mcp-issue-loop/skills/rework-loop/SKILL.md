@@ -45,6 +45,13 @@ after reading) → clear `auto-rework` with a brief note and stop — clearing o
 too, not just Step 5's, keeps the label meaning "rework pending" and the trigger
 re-armable.
 
+**Failing CI (orchestrated mode).** If the orchestrator added `auto-rework` with a
+"🔧 CI failing" comment, the failing checks it names are the feedback. Read those
+checks' logs (github-ops → *Get PR CI / check-run status*) and fix what failed; there
+may be no review at all. Read the logs once, don't poll. For this kind of rework, Step 5
+has no threads to reply to and no reviewer to re-request. The orchestrator swaps
+`auto-rework` back to `auto-merge` when it sees your push.
+
 ## Step 2 — address it (with a local test gate)
 
 Check out the PR's head branch. **As your first action, boot a local Umbraco** so it's

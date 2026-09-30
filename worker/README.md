@@ -582,3 +582,11 @@ three steps.
   deliberately excluded from `deriveMergeGateOutcome` — a static PR
   property `check_suite.completed` completing doesn't change or motivate
   re-checking, so it's out of scope for this specific event-triggered path.
+- The CI-fix cycle (`auto-merge` → `auto-rework` → `auto-merge`) relies on
+  the Worker's own label writes echoing back as webhooks: the
+  `auto-rework` echo fires rework-loop, and the `auto-merge` echo fires
+  merge-flow. That works while the Worker writes as the same user as
+  everyone else. Once it writes as a GitHub App that `isOwnBot` filters,
+  those rules need a `run` instead. The attempt count (`ciFix`, capped at
+  `MAX_CI_FIX_ATTEMPTS`) lives in DO storage and resets when a human
+  re-adds `auto-merge` after `merge-blocked`.

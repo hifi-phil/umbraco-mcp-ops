@@ -25,6 +25,7 @@ import {
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
   resolveEnforced,
+  type CiFix,
   type CoordinateInput,
   type Deps,
   type PendingFire,
@@ -69,6 +70,7 @@ async function respond(run: () => Promise<unknown>): Promise<Response> {
 }
 
 const PENDING_FIRE_KEY = "pendingFire";
+const CI_FIX_KEY = "ciFix";
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
 
 export class IssueCoordinator {
@@ -148,6 +150,11 @@ export class IssueCoordinator {
         await this.ctx.storage.deleteAlarm();
       },
       getPendingFire: async () => (await this.ctx.storage.get<PendingFire>(PENDING_FIRE_KEY)) ?? null,
+      getCiFix: async () => (await this.ctx.storage.get<CiFix>(CI_FIX_KEY)) ?? null,
+      setCiFix: async (state: CiFix | null) => {
+        if (state) await this.ctx.storage.put(CI_FIX_KEY, state);
+        else await this.ctx.storage.delete(CI_FIX_KEY);
+      },
       getMergeGateFacts: async (owner: string, repo: string, prNumber: number): Promise<MergeGateFacts> => {
         // checkRuns depends on the PR's head SHA, so getPull has to
         // resolve first; getLatestReviewState doesn't, so it runs alongside it.

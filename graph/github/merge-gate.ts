@@ -32,7 +32,7 @@ export type CheckRunConclusion =
   | "action_required"
   | null;
 
-export type CheckRun = { status: CheckRunStatus; conclusion: CheckRunConclusion };
+export type CheckRun = { status: CheckRunStatus; conclusion: CheckRunConclusion; name?: string };
 
 // Deliberately simplified vs. github-ops's real "Get reviews + review
 // comments" operation: this takes the single most recent review's state
@@ -49,6 +49,14 @@ export type MergeGateFacts = {
 };
 
 const NON_FAILING_CONCLUSIONS: readonly CheckRunConclusion[] = ["success", "neutral", "skipped"];
+
+/** Names of the completed checks that failed, for the rework hand-off
+ * comment ("unnamed check" when GitHub didn't send one). */
+export function failedCheckNames(facts: MergeGateFacts): string[] {
+  return facts.checkRuns
+    .filter((c) => c.status === "completed" && !NON_FAILING_CONCLUSIONS.includes(c.conclusion))
+    .map((c) => c.name ?? "unnamed check");
+}
 
 export type MergeGateOutcome = "still_pending" | "soft" | "hard" | null;
 

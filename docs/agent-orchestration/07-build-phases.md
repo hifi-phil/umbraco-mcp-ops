@@ -157,6 +157,7 @@ passes it on, and each loop skips its own swap only in that mode:
 | release published | unchanged: the loop's close is itself native, and the marker is required too |
 | rework pushed | loop doesn't remove `auto-rework` after a push; Worker does on the native push. Still removes it itself if it pushed nothing |
 | merge hard block | the **Worker** checks for a conflict or requested changes when `auto-merge` is added (reviews aren't expected after that) and whenever CI finishes, swaps `auto-merge` → **`merge-blocked`** and comments the reason, without firing merge-flow. Re-adding `auto-merge` retries. merge-flow makes the same swap only for a block the Worker missed |
+| merge CI failure | when CI is red under `auto-merge` (at label time or when a suite finishes), the **Worker** swaps `auto-merge` → **`auto-rework`** and comments the failing checks; rework-loop fixes them, and its push swaps `auto-rework` back to `auto-merge`, which re-runs the gate. After 3 attempts on one PR it goes to `merge-blocked` |
 
 The risk this moves: an orchestrated loop that skips the marker now leaves
 the issue in its trigger label (the marker appeared 1 in 6 times while it
