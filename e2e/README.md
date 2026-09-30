@@ -23,7 +23,12 @@ E2E_ONLY=conflict npm run e2e   # just the scenarios whose name contains "confli
 ```
 
 `npm run e2e` uses your `gh` login (or `GITHUB_TOKEN`). The Worker and the
-stub must be deployed with `e2e_repo` set in `worker/terraform/`.
+stub must be deployed with `e2e_repo` set in `worker/terraform/`. The
+sandbox has to stay **public**: the merge gate reads check-runs, which a
+fine-grained token can't read on a private repo (see `worker/README.md`'s
+known gaps).
+
+The first full run (30-09-2026): all eight pass in about 5 minutes.
 
 ## What the stub does
 
