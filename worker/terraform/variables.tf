@@ -37,11 +37,30 @@ variable "deployed_do_migration_tag" {
 variable "mode" {
   type        = string
   default     = "shadow"
-  description = "shadow = decide and log only. enforce = write labels and fire routines for real (Phase 4)."
+  description = "shadow = decide and log only. enforce = write labels and fire routines for real for EVERY event. For Phase 4, leave this shadow and list individual events in enforce_events."
 
   validation {
     condition     = contains(["shadow", "enforce"], var.mode)
     error_message = "mode must be \"shadow\" or \"enforce\"."
+  }
+}
+
+variable "enforce_events" {
+  type        = list(string)
+  default     = []
+  description = "Events enforced while mode is shadow (Phase 4, one transition at a time), e.g. [\"labelled_auto_merging\"]. Each enforced event that fires a loop must also be in the repo's LOOP_DISPATCH_WORKER_ROUTES variable, or the loop fires twice (see worker/README.md)."
+
+  # Mirrors graph/constants/events.ts. A typo here fails the plan instead of
+  # silently staying in shadow.
+  validation {
+    condition = alltrue([for e in var.enforce_events : contains([
+      "labelled_ai_ready", "build_succeeded", "build_blocked", "labelled_auto_releasing",
+      "release_blocked", "release_published", "labelled_ai_discussing", "discussion_reply",
+      "unlabelled_ai_ready", "unlabelled_auto_releasing", "issue_closed", "labelled_auto_reworking",
+      "rework_pushed", "unlabelled_auto_reworking", "labelled_auto_merging", "merge_gate_failed_soft",
+      "merge_gate_failed_hard", "unlabelled_auto_merging", "merged", "watchdog_expired",
+    ], e)])
+    error_message = "enforce_events has a name that isn't an event in graph/constants/events.ts."
   }
 }
 

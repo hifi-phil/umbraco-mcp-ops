@@ -93,16 +93,23 @@ cleanest, not with everything at once.
 **Exit:** At least one transition is enforced in production with no
 regressions observed for a full cycle of that transition.
 
-**Status:** the enforcement mechanism is `worker/` with `MODE = "enforce"`.
-When a rule matches, `coordinateWebhook()` applies `labelOps()` and fires
-the routine for real. The mechanism, the deployment and the shadow pass
-are done. Two things remain before turning it on:
-- **`MODE` per transition.** It's global today, and this phase enforces
-  one transition at a time. First candidate: merge (`auto-merge` → merged),
-  5 of 5 correct across both shadow runs.
-- **A separate identity for the Worker (the GitHub App).** Every action,
-  loops included, is attributed to `hifi-phil`, so the self-trigger guard
-  can't tell the Worker's own label writes from anyone else's.
+**Status:** the mechanism is in place.
+- **One transition at a time:** `ENFORCE_EVENTS` lists the events whose
+  writes and fire are real; everything else stays shadow, and each D1 row
+  records its own mode.
+- **Firing:** the Worker fires each repo's loop-dispatch routine with its
+  Fire URL and token (`REPO_ROUTINES_JSON`), exactly as the edge does.
+- **No double fire:** the repo's `LOOP_DISPATCH_WORKER_ROUTES` variable
+  makes the edge skip routes the Worker owns. Repos without it are
+  unchanged.
+
+The procedure and switch order are in `worker/README.md`'s "Enforcing one
+transition". First candidate: merge (`labelled_auto_merging`), 5 of 5
+correct across both shadow runs. It needs no GitHub write access, only the
+fire. Still needed before enforcing anything that writes labels (build,
+rework, release): **a separate identity for the Worker (the GitHub App)**.
+Every action, loops included, is attributed to `hifi-phil`, so the
+self-trigger guard can't tell the Worker's own writes from anyone else's.
 
 ## Phase 5 — Reducer owns labels
 

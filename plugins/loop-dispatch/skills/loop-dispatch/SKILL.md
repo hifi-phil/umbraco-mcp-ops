@@ -65,6 +65,9 @@ Your turn contains the decision the **edge already made** — e.g.
 `route=merge-flow repo=umbraco/… number=269`. The caller workflow ran `route-event.sh`
 and only fired you because it matched, so **take that route as given; don't re-derive it.**
 (If a fire ever arrives with no resolved route, **quiet no-op** — never go looking for work.)
+The fire may also come from the agent-orchestration Worker instead of the caller workflow,
+for routes a repo has handed over to it (`LOOP_DISPATCH_WORKER_ROUTES`); the text and
+route line are identical, so handle it the same way.
 
 **Re-check the entity before acting.** Between the event and this session a label can be
 removed or the PR/issue closed. Fetch it (github-ops → `issue_read`/`pull_request_read`,

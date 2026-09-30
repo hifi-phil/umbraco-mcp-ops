@@ -24,12 +24,12 @@ import {
   coordinateWebhook,
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
-  resolveMode,
-  shadowDeps,
+  resolveEnforced,
   type CoordinateInput,
   type Deps,
   type PendingFire,
   type RoutineSignalInput,
+  type TransitionRow,
   watchdogMinutesFor,
 } from "./coordinate";
 import * as githubClient from "./github-client";
@@ -41,9 +41,13 @@ import type { MergeGateFacts } from "../../graph/github/merge-gate";
 export type IssueCoordinatorEnv = GitHubEnv &
   RoutinesEnv & {
     DB: D1Database;
-    // "enforce" to write labels / fire routines for real; anything else
-    // (including unset) is shadow — see coordinate.ts's resolveMode.
+    // "enforce" to write labels / fire routines for real for every event;
+    // anything else (including unset) is shadow — see coordinate.ts's
+    // resolveMode.
     MODE?: string;
+    // Comma-separated events to enforce while MODE is shadow (Phase 4, one
+    // transition at a time) — see coordinate.ts's resolveEnforced.
+    ENFORCE_EVENTS?: string;
   };
 
 const PENDING_FIRE_KEY = "pendingFire";
@@ -89,17 +93,11 @@ export class IssueCoordinator {
     await coordinateWatchdogExpired(this.deps());
   }
 
-  private get mode() {
-    return resolveMode(this.env.MODE);
-  }
-
+  /** Real I/O; coordinate.ts switches each event to shadow writes unless
+   * `enforced` says otherwise. */
   private deps(): Deps {
-    const real = this.realDeps();
-    return this.mode === "enforce" ? real : shadowDeps(real);
-  }
-
-  private realDeps(): Deps {
     return {
+      enforced: resolveEnforced(this.env.MODE, this.env.ENFORCE_EVENTS),
       getLabels: (owner: string, repo: string, issueNumber: number) =>
         githubClient.getLabels(this.env, owner, repo, issueNumber),
       addLabel: (owner: string, repo: string, issueNumber: number, label: string) =>
@@ -112,7 +110,7 @@ export class IssueCoordinator {
         githubClient.commentOnIssue(this.env, owner, repo, issueNumber, body),
       fireRoutine: (owner: string, repo: string, issueNumber: number, routine: string) =>
         fireRoutine(this.env, owner, repo, issueNumber, routine),
-      logTransition: async (row: Parameters<typeof this.insertTransition>[0]) => {
+      logTransition: async (row: TransitionRow) => {
         await this.insertTransition(row);
       },
       hasSeenDelivery: async (deliveryId: string) => {
@@ -148,16 +146,7 @@ export class IssueCoordinator {
     };
   }
 
-  private async insertTransition(row: {
-    owner: string;
-    repo: string;
-    issueNumber: number;
-    fromState: string;
-    event: string;
-    toEffect: string | null;
-    run: string | null;
-    droppedReason: string | null;
-  }): Promise<void> {
+  private async insertTransition(row: TransitionRow): Promise<void> {
     await this.env.DB.prepare(
       `INSERT INTO transitions
          (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode)
@@ -173,7 +162,7 @@ export class IssueCoordinator {
         row.toEffect,
         row.run,
         row.droppedReason,
-        this.mode,
+        row.mode, // per event since Phase 4, not per Worker
       )
       .run();
   }

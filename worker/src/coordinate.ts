@@ -12,7 +12,7 @@ import { ROUTINES } from "../../graph/constants/routines";
 import { translate, type WebhookPayload } from "../../graph/github/from-github";
 import { labelOps } from "../../graph/github/to-github";
 import { deriveMergeGateOutcome, type MergeGateFacts } from "../../graph/github/merge-gate";
-import { EVENTS, type Event } from "../../graph/constants/events";
+import { ALL_EVENTS, EVENTS, type Event } from "../../graph/constants/events";
 import { parseRoutineSignal, type RoutineSignal } from "../../graph/routines/from-routine";
 
 // A GitHub label-add webhook is only delivered *after* the label already
@@ -41,6 +41,7 @@ export type TransitionRow = {
   toEffect: string | null; // JSON.stringify(rule.to), or null if nothing fired
   run: string | null;
   droppedReason: string | null; // null only when a rule actually fired
+  mode: Mode; // whether this event's writes were real (see Deps.enforced)
 };
 
 export type PendingFire = {
@@ -72,6 +73,9 @@ export type Deps = {
   // HARD — see graph/github/merge-gate.ts's header for why this needs to
   // be a Dep (I/O) rather than living in translate() (pure).
   getMergeGateFacts(owner: string, repo: string, prNumber: number): Promise<MergeGateFacts>;
+  // Phase 4: whether this event's writes and fire are real. Everything not
+  // enforced runs in shadow (see resolveEnforced).
+  enforced(event: Event): boolean;
 };
 
 /**
@@ -90,6 +94,28 @@ export function resolveMode(raw: string | undefined): Mode {
   return raw === "enforce" ? "enforce" : "shadow";
 }
 
+/**
+ * Phase 4 enforces one transition at a time. MODE=enforce still means
+ * everything (the local mock harness); otherwise only the events named in
+ * ENFORCE_EVENTS (comma-separated EVENTS values, e.g.
+ * "labelled_auto_merging") write and fire. Unknown names are ignored, so a
+ * typo fails towards shadow, never towards writing.
+ */
+export function resolveEnforced(
+  mode: string | undefined,
+  enforceEvents: string | undefined,
+): (event: Event) => boolean {
+  if (resolveMode(mode) === "enforce") return () => true;
+  const known: readonly string[] = ALL_EVENTS;
+  const listed = new Set(
+    (enforceEvents ?? "")
+      .split(",")
+      .map((e) => e.trim())
+      .filter((e) => known.includes(e)),
+  );
+  return (event) => listed.has(event);
+}
+
 export function shadowDeps(deps: Deps): Deps {
   const skip = async () => {};
   return {
@@ -99,7 +125,13 @@ export function shadowDeps(deps: Deps): Deps {
     closeIssue: skip,
     commentOnIssue: skip,
     fireRoutine: skip,
+    enforced: () => false,
   };
+}
+
+/** The deps to use for one event: real writes if it's enforced, else shadow. */
+function depsFor(deps: Deps, event: Event): { io: Deps; mode: Mode } {
+  return deps.enforced(event) ? { io: deps, mode: "enforce" } : { io: shadowDeps(deps), mode: "shadow" };
 }
 
 /** How long a watched routine gets to report an outcome (or a heartbeat,
@@ -198,11 +230,12 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
  * been decided (however it was decided) and the current labels are
  * already in hand. */
 async function applyEvent(
-  deps: Deps,
+  allDeps: Deps,
   input: IssueRef,
   event: Event,
   currentLabels: string[],
 ): Promise<CoordinateResult> {
+  const { io: deps, mode } = depsFor(allDeps, event);
   const justAdded = LABEL_JUST_ADDED_BY[event];
   const labelsBeforeThisEvent = justAdded
     ? currentLabels.filter((l) => l !== justAdded)
@@ -218,6 +251,7 @@ async function applyEvent(
       toEffect: null,
       run: null,
       droppedReason: "ambiguous current state — multiple tracked labels present",
+      mode,
     });
     return { outcome: "ambiguous_state" };
   }
@@ -234,6 +268,7 @@ async function applyEvent(
       toEffect: null,
       run: null,
       droppedReason: "no matching rule for this (state, event) pair",
+      mode,
     });
     return { outcome: "dropped_no_rule", from: current, event };
   }
@@ -276,6 +311,7 @@ async function applyEvent(
     toEffect: JSON.stringify(rule.to),
     run: rule.run ?? null,
     droppedReason: null,
+    mode,
   });
 
   return { outcome: "applied", from: current, event, rule };
@@ -349,7 +385,8 @@ export async function coordinateWatchdogExpired(deps: Deps): Promise<WatchdogRes
   const next = willStick
     ? ` Moving this to \`${LABELS.AI_STUCK}\`; re-add the trigger label to retry.`
     : ` Its current labels don't allow an automatic move to \`${LABELS.AI_STUCK}\` — needs a human look.`;
-  await deps.commentOnIssue(
+  // The alert is a write too: only real when watchdog_expired is enforced.
+  await depsFor(deps, EVENTS.WATCHDOG_EXPIRED).io.commentOnIssue(
     pending.owner,
     pending.repo,
     pending.issueNumber,

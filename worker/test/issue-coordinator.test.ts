@@ -246,6 +246,49 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
   });
 });
 
+describe("IssueCoordinator — ENFORCE_EVENTS (Phase 4)", () => {
+  const mergeLabeledInput = () => ({
+    deliveryId: "d-merge",
+    owner: "hifi-phil",
+    repo: "umbraco-mcp-ops",
+    issueNumber: 126,
+    payload: { action: "pull_request.labeled", label: { name: "auto-merge" }, sender: { login: "phil", type: "User" } },
+  });
+  const fires = (apiFetch: ReturnType<typeof fakeApiFetch>) =>
+    apiFetch.mock.calls.filter(([url]) => (url as string).startsWith("https://routines.example/fire/"));
+
+  it("enforces only the listed event: auto-merge fires the repo's routine for real, logged as enforce", async () => {
+    const apiFetch = fakeApiFetch();
+    vi.stubGlobal("fetch", apiFetch);
+    const { ctx } = fakeCtx();
+    const { db, inserted } = fakeDb();
+    const env = fakeEnv({ DB: db, MODE: undefined, ENFORCE_EVENTS: "labelled_auto_merging" });
+    const coordinator = new IssueCoordinator(ctx, env);
+
+    await coordinator.fetch(fetchRequest(mergeLabeledInput()));
+
+    expect(fires(apiFetch)).toHaveLength(1);
+    const [, init] = fires(apiFetch)[0]!;
+    expect(JSON.parse((init as RequestInit).body as string).text).toContain(
+      "route=merge-flow repo=hifi-phil/umbraco-mcp-ops number=126",
+    );
+    expect(inserted[0]).toEqual(expect.arrayContaining(["labelled_auto_merging", "merge-flow", "enforce"]));
+  });
+
+  it("the same Worker leaves every other event in shadow", async () => {
+    const apiFetch = fakeApiFetch();
+    vi.stubGlobal("fetch", apiFetch);
+    const { ctx } = fakeCtx();
+    const { db, inserted } = fakeDb();
+    const coordinator = new IssueCoordinator(ctx, fakeEnv({ DB: db, MODE: undefined, ENFORCE_EVENTS: "labelled_auto_merging" }));
+
+    await coordinator.fetch(fetchRequest(labeledInput()));
+
+    expect(fires(apiFetch)).toHaveLength(0);
+    expect(inserted[0]).toEqual(expect.arrayContaining(["labelled_ai_ready", "issue-build-loop", "shadow"]));
+  });
+});
+
 describe("IssueCoordinator — shadow mode (Phase 3)", () => {
   const writes = (apiFetch: ReturnType<typeof fakeApiFetch>) =>
     apiFetch.mock.calls.filter(([, init]) => ((init as RequestInit)?.method ?? "GET") !== "GET");

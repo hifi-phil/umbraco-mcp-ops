@@ -76,6 +76,7 @@ resource "cloudflare_workers_script" "worker" {
     { type = "durable_object_namespace", name = "ISSUE_COORDINATOR", class_name = "IssueCoordinator" },
     { type = "d1", name = "DB", id = cloudflare_d1_database.log.id },
     { type = "plain_text", name = "MODE", text = var.mode },
+    { type = "plain_text", name = "ENFORCE_EVENTS", text = join(",", var.enforce_events) },
     { type = "secret_text", name = "GITHUB_APP_TOKEN", text = var.github_read_token },
     { type = "secret_text", name = "GITHUB_WEBHOOK_SECRET", text = random_password.webhook_secret.result },
     { type = "secret_text", name = "ROUTINE_SIGNAL_SECRET", text = random_password.routine_signal_secret.result },

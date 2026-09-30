@@ -37,10 +37,15 @@ jobs:
 
       - name: Decide the route (deterministic, at the edge)
         id: route
+        env:
+          # Optional repo variable on the CALLER repo: routes the agent-orchestration Worker
+          # fires itself there (worker/ ENFORCE_EVENTS), so the edge must not fire them too.
+          # Unset on every repo without the Worker, which leaves routing unchanged.
+          WORKER_ROUTES: ${{ vars.LOOP_DISPATCH_WORKER_ROUTES }}
         run: |
           set -uo pipefail
           # $GITHUB_EVENT_PATH / $GITHUB_EVENT_NAME are the CALLER repo's triggering event.
-          out="$(bash ops/plugins/loop-dispatch/skills/loop-dispatch/route-event.sh --event "$GITHUB_EVENT_NAME")"
+          out="$(bash ops/plugins/loop-dispatch/skills/loop-dispatch/route-event.sh --event "$GITHUB_EVENT_NAME" --worker-routes "${WORKER_ROUTES:-}")"
           echo "route-event: $out"
           route="${out#route=}"; route="${route%% *}"
           {

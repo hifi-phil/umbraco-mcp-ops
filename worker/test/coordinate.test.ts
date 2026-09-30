@@ -8,6 +8,7 @@ import {
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
   deriveState,
+  resolveEnforced,
   resolveMode,
   shadowDeps,
   watchdogMinutesFor,
@@ -50,6 +51,9 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     }),
     getPendingFire: vi.fn(async () => pendingFire),
     getMergeGateFacts: vi.fn(async () => gateFacts()),
+    // These tests are about the write path; shadow and per-event
+    // enforcement have their own describe blocks.
+    enforced: () => true,
     ...overrides,
   };
 }
@@ -113,6 +117,67 @@ describe("shadowDeps", () => {
     }
     expect(deps.logTransition).toHaveBeenCalledTimes(1);
     expect(deps.setPendingFire).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("resolveEnforced — one transition at a time (Phase 4)", () => {
+  it("MODE=enforce enforces everything", () => {
+    const enforced = resolveEnforced("enforce", undefined);
+    expect(enforced(EVENTS.LABELLED_AI_READY)).toBe(true);
+    expect(enforced(EVENTS.WATCHDOG_EXPIRED)).toBe(true);
+  });
+
+  it("otherwise only the listed events; spaces tolerated", () => {
+    const enforced = resolveEnforced(undefined, " labelled_auto_merging , merged");
+    expect(enforced(EVENTS.LABELLED_AUTO_MERGING)).toBe(true);
+    expect(enforced(EVENTS.MERGED)).toBe(true);
+    expect(enforced(EVENTS.LABELLED_AI_READY)).toBe(false);
+  });
+
+  it("unset, empty or unknown names enforce nothing (fails towards shadow)", () => {
+    for (const raw of [undefined, "", "labelled_auto_merge", "*", "all"]) {
+      const enforced = resolveEnforced("shadow", raw);
+      expect(enforced(EVENTS.LABELLED_AUTO_MERGING), String(raw)).toBe(false);
+    }
+  });
+});
+
+describe("coordinateWebhook — per-event enforcement", () => {
+  const onlyMerge = (e: string) => e === EVENTS.LABELLED_AUTO_MERGING;
+  const mergeLabel = { action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING }, sender: { login: "phil", type: "User" as const } };
+  const buildLabel = { action: "issues.labeled", label: { name: LABELS.AI_READY }, sender: { login: "phil", type: "User" as const } };
+
+  it("an enforced event fires for real and its row says enforce", async () => {
+    const deps = fakeDeps({ enforced: onlyMerge });
+    const result = await coordinateWebhook(deps, input({ payload: mergeLabel }));
+    expect(result).toMatchObject({ outcome: "applied", event: EVENTS.LABELLED_AUTO_MERGING });
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.MERGE_FLOW);
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ mode: "enforce" }));
+    expect(deps.setPendingFire).toHaveBeenCalledOnce();
+  });
+
+  it("an event that isn't enforced decides and logs, but writes and fires nothing", async () => {
+    const deps = fakeDeps({ enforced: onlyMerge });
+    const result = await coordinateWebhook(deps, input({ payload: buildLabel }));
+    expect(result).toMatchObject({ outcome: "applied", event: EVENTS.LABELLED_AI_READY });
+    for (const write of ["addLabel", "removeLabel", "closeIssue", "commentOnIssue", "fireRoutine"] as const) {
+      expect(deps[write], write).not.toHaveBeenCalled();
+    }
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ mode: "shadow" }));
+    // The watchdog still arms in shadow: it measures the dispatcher's fire.
+    expect(deps.setPendingFire).toHaveBeenCalledOnce();
+  });
+
+  it("the watchdog alert comment is only posted when watchdog_expired itself is enforced", async () => {
+    const pending = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.MERGE_FLOW };
+    const deps = fakeDeps({ enforced: onlyMerge, getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]) });
+    await deps.setPendingFire(pending);
+    await coordinateWatchdogExpired(deps);
+    expect(deps.commentOnIssue).not.toHaveBeenCalled();
+    expect(deps.addLabel).not.toHaveBeenCalled();
+    expect(deps.logTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ event: EVENTS.WATCHDOG_EXPIRED, mode: "shadow" }),
+    );
   });
 });
 

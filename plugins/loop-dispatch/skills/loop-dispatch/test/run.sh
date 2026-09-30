@@ -50,6 +50,16 @@ expect_route "issue auto-release → auto-release"   auto-release-loop -- --even
 expect_route "issue bug → none"                    none              -- --event issues --action labeled --label bug --number 3 --repo o/r
 expect_route "issue ai-discuss → discuss loop"     issue-discuss-loop -- --event issues --action labeled --label ai-discuss --number 50 --repo o/r
 
+# --- --worker-routes: routes the orchestrator Worker fires itself ------------
+expect_route "worker owns merge-flow → none"       none              -- --event pull_request --action labeled --label auto-merge --number 42 --repo o/r --worker-routes merge-flow
+expect_route "worker owns merge-flow, rework still routes" rework-loop -- --event pull_request --action labeled --label auto-rework --number 50 --repo o/r --worker-routes merge-flow
+expect_route "worker routes: list with spaces"     none              -- --event pull_request --action labeled --label auto-merge --number 42 --repo o/r --worker-routes "rework-loop, merge-flow"
+expect_route "worker routes: substring can't match" merge-flow       -- --event pull_request --action labeled --label auto-merge --number 42 --repo o/r --worker-routes merge-flow-v2
+expect_route "worker routes empty → unchanged"     merge-flow        -- --event pull_request --action labeled --label auto-merge --number 42 --repo o/r --worker-routes ""
+out="$(bash "$SCRIPT" --event pull_request --action labeled --label auto-merge --number 42 --repo o/r --worker-routes merge-flow </dev/null)"
+if [ "$out" = "route=none repo=o/r number=42 worker_owned=merge-flow" ]; then pass=$((pass+1));
+else fail=$((fail+1)); echo "FAIL: worker-owned line names the route — got [$out]"; fi
+
 # --- discussion rounds (issue_comment) -------------------------------------
 # A trusted human's comment on an open, `ai-discuss`-labelled issue. `OK` is that happy path;
 # each case below flips exactly ONE gate off and must route nowhere.

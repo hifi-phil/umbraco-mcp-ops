@@ -7,7 +7,11 @@ github_owner          = "hifi-phil"
 github_repo           = "your-test-repo"   # where the real loops run (ready-for-ai, …)
 github_read_token     = "github_pat_…"     # read-only: Issues, Pull requests, Metadata (fine-grained tokens have no Checks permission)
 
-# mode = "shadow"   # the default; "enforce" is Phase 4
+# mode = "shadow"   # the default; "enforce" enforces EVERY event
+
+# Phase 4, one transition at a time. Pair each with the repo's
+# LOOP_DISPATCH_WORKER_ROUTES variable (see worker/README.md).
+# enforce_events = ["labelled_auto_merging"]
 
 # Leave commented for the first apply; uncomment once the Worker exists.
 # deployed_do_migration_tag = "v1"
