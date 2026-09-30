@@ -158,10 +158,13 @@ real agents.
 
 ## Open
 
-- **One Worker or a staging one.** The same Worker, with the sandbox as one
-  more entry in its map, is enough to start. A second tofu workspace
-  (staging) would let a Worker change be tested before it reaches
-  `umbraco-mcp-ops`.
+- **Staging comes with CI-driven deploys (decided 30-09-2026).** For now
+  the sandbox is one more entry on the same Worker, so e2e checks code just
+  after it's deployed instead of gating it. A staging Worker (a second tofu
+  workspace, with the sandbox's webhook pointed at it) arrives when tofu
+  moves from manual `apply` to CI. Then CI can deploy to staging, run
+  stub-mode e2e, and promote to prod. Deploying twice by hand is too much
+  overhead before that.
 - **Real loops need the sandbox to work as a project.** rework-loop and
   issue-build-loop boot and test per `worker-env`, which assumes an MCP
   repo. The sandbox's `CLAUDE.md` has to give them something to build and
