@@ -55,15 +55,18 @@
   SubagentStop/SessionEnd hooks are the closest precedent that they do, but
   that's not the same event type, and this hasn't been confirmed against a
   real cloud routine run.
-- **Why did the loops skip the `agent-outcomes` marker in shadow run 1?**
+- **Why do the loops skip the `agent-outcomes` marker?**
   In [13-shadow-results.md](13-shadow-results.md) (on `dev`, reaches `main`
-  with the next release) the marker appeared in only 1 of 5 outcome
-  comments: #114's build comment carried it, while #116's build comment,
+  with the next release) the marker appeared in only 1 of 6 outcome
+  opportunities: #114's build comment carried it, while #116's build comment,
   both of #118's release comments and #125's "PR opened: #126" comment did
-  not. The loops' own label swaps are the completion signal today, so
+  not, and #127's release closed the issue without posting any outcome
+  comment at all (the run 2 figures come from the Run 2 section). A missing
+  comment is a different gap from a comment without a marker. The loops' own label swaps are the completion signal today, so
   nothing breaks, but in Phase 5 the reducer owns labels and the marker
   becomes the only self-reported signal.
-  - **What was seen:** the comments themselves lacked the marker. That is a
+  - **What was seen:** two distinct gaps. Five comments lacked the marker,
+    and one release (#127) posted no outcome comment at all. Both are a
     different failure from a marker written but never forwarded by the
     `PostToolUse` hook (hooks in cloud routines are still unconfirmed,
     above). All ran in the same cloud environment, and a session there
@@ -84,6 +87,9 @@
     - Invoked early but silent at the step points to long-session loss.
   - **Next transcript to check:** #125's build session, a fresh and short
     one.
+  - **Also check:** #127's release session. Did it reach the outcome step at
+    all? A session that never got there is a different question from one that
+    got there and wrote nothing.
 - **How is the heartbeat endpoint authenticated per attempt?** It needs a
   short-lived, narrowly-scoped credential (write-a-step-name only, nothing
   else) threaded into the routine's invocation — worth deciding whether
