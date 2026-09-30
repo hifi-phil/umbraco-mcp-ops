@@ -145,6 +145,24 @@ deleted in the same change that turns on enforcement for it, not
 sometime after. The missing-label symptom is gone by construction, not
 mitigated, once the table is empty.
 
+**Status (30-09-2026): built as "orchestrated mode".** The skills are shared
+with repos not yet on the Worker, so the self-swaps can't simply be deleted.
+Instead the Worker's fire text carries `orchestrated=true`, `loop-dispatch`
+passes it on, and each loop skips its own swap only in that mode:
+
+| Row | In orchestrated mode |
+|---|---|
+| build success / blocked | loop posts the **required** marker, no swap; Worker swaps via new pre-swap rules (`ready-for-ai` + `build_*`) |
+| release blocked | loop posts the required marker, keeps the label; Worker removes `auto-release` |
+| release published | unchanged: the loop's close is itself native, and the marker is required too |
+| rework pushed | loop doesn't remove `auto-rework` after a push; Worker does on the native push. Still removes it itself if it pushed nothing |
+| merge hard block | **unchanged, deliberately.** The Worker's gate check only runs on `check_suite.completed`, so a block from requested changes or a conflict isn't observed |
+
+The risk this moves: an orchestrated loop that skips the marker now leaves
+the issue in its trigger label (the marker appeared 1 in 6 times while it
+was optional; see 08's open question). The watchdog, still in shadow, logs
+it. Validated end to end in the UI: see 13-shadow-results.md.
+
 ## Phase 6 — Watchdog timer
 
 **Entry:** Phase 5 done (no point watching for death while agents can still

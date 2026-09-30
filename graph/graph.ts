@@ -69,6 +69,30 @@ export const rules: Rule[] = [
     to: noop,
     verifiedBy: "external-judgment", // the agent decided the issue was ambiguous / capped out
   },
+  // --- Phase 5: the orchestrator owns the swap ---
+  // On a repo the Worker dispatches, the fire text tells the loop the
+  // orchestrator owns labels (routines-client.ts's dispatchText), so the loop
+  // posts its outcome marker and does NOT swap. The outcome then arrives while
+  // the trigger label is still on, and these pre-swap rules make the Worker do
+  // the swap. The post-swap rules above stay for repos whose loops still swap.
+  {
+    from: LABELS.AI_READY,
+    on: EVENTS.BUILD_SUCCEEDED,
+    to: label(LABELS.AI_GENERATED),
+    verifiedBy: "external-judgment",
+  },
+  {
+    from: LABELS.AI_READY,
+    on: EVENTS.BUILD_BLOCKED,
+    to: label(LABELS.AI_BLOCKED),
+    verifiedBy: "external-judgment",
+  },
+  {
+    from: LABELS.AUTO_RELEASING,
+    on: EVENTS.RELEASE_BLOCKED,
+    to: unlabel,
+    verifiedBy: "external-judgment",
+  },
   {
     from: "none",
     on: EVENTS.LABELLED_AUTO_RELEASING,

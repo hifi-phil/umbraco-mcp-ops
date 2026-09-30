@@ -140,13 +140,19 @@ session**, append the `build_succeeded` outcome artifact to that same comment (m
 shape in that skill). If it isn't available, skip this sentence entirely: don't invent a
 marker. Either way the label swap above is the real signal and is never skipped.
 
+**Orchestrated mode** (the dispatch said so) reverses that: **don't swap the labels**,
+and the `build_succeeded` or `build_blocked` artifact is **required** in that comment
+(load the `agent-outcomes` skill for the marker + shape). The orchestrator reads it and
+does the swap itself. Without it the issue stays `ready-for-ai`, so never skip it.
+
 If a build subagent reports it could not finish (e.g. the issue is genuinely ambiguous), or
 the CI-green cap or no-progress guard trips while driving CI **or** while fixing an
 `mcp-review` finding, record the issue as **blocked**: remove `ready-for-ai`, add
 `ai-blocked`, and comment the specific reason (the last failing CI log, the ambiguity, what
 was tried) — that outcome swap is yours too now; don't let one bad issue stall the queue.
 Only if `agent-outcomes` is available, append the `build_blocked` outcome artifact to
-that comment (same skill, blocked shape); otherwise skip it.
+that comment (same skill, blocked shape); otherwise skip it. In orchestrated mode, as
+above: comment with the required artifact, and leave the labels to the orchestrator.
 
 Keep dispatching until the queue is empty, all build subagents have returned, every PR's CI
 is green (or the issue is blocked), and each green PR has been through `mcp-review` and had
