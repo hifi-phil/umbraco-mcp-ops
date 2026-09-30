@@ -34,9 +34,9 @@ describe("getLabels", () => {
     );
   });
 
-  it("a 404 (issue not found) -> empty array, not a throw", async () => {
+  it("a 404 throws: GitHub also means 'this token can't see the repo' by it, not just 'no labels'", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
-    expect(await getLabels(env, "hifi-phil", "umbraco-mcp-ops", 999)).toEqual([]);
+    await expect(getLabels(env, "hifi-phil", "umbraco-mcp-ops", 999)).rejects.toThrow(/404/);
   });
 
   it("a real error status throws with the response body included", async () => {
@@ -54,6 +54,11 @@ describe("addLabel / removeLabel", () => {
     await addLabel(env, "hifi-phil", "umbraco-mcp-ops", 412, "generated-by-ai");
     const [, options] = fetchMock.mock.calls[0]!;
     expect(JSON.parse(options!.body as string)).toEqual({ labels: ["generated-by-ai"] });
+  });
+
+  it("addLabel throws on a 404 (e.g. no access to the repo) instead of silently doing nothing", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
+    await expect(addLabel(env, "hifi-phil", "mcp-ops-e2e-testing", 4, "ai-blocked")).rejects.toThrow(/404/);
   });
 
   it("removeLabel tolerates a 404 (already removed) without throwing", async () => {
