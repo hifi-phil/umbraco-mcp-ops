@@ -37,7 +37,7 @@ variable "deployed_do_migration_tag" {
 variable "mode" {
   type        = string
   default     = "shadow"
-  description = "shadow = decide and log only. enforce = the Worker dispatches the repo's loops and writes labels for real (Phase 4); then delete the repo's loop-dispatch caller workflow (a clean break), or loops fire twice (see worker/README.md)."
+  description = "shadow = decide and log only. enforce = the Worker dispatches the repo's loops and writes labels for real (Phase 4); then immediately disable and delete the repo's loop-dispatch caller workflow (a clean break), or loops fire twice (see worker/README.md \"Enforcing\")."
 
   validation {
     condition     = contains(["shadow", "enforce"], var.mode)

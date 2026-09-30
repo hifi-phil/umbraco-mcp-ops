@@ -43,6 +43,9 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     markSeenDelivery: vi.fn(async (id: string) => {
       seen.add(id);
     }),
+    unmarkSeenDelivery: vi.fn(async (id: string) => {
+      seen.delete(id);
+    }),
     setPendingFire: vi.fn(async (info: PendingFire) => {
       pendingFire = info;
     }),
@@ -176,6 +179,28 @@ describe("coordinateWebhook — dedupe", () => {
     const second = await coordinateWebhook(deps, msg);
     expect(second).toEqual({ outcome: "deduped" });
     expect(deps.logTransition).toHaveBeenCalledTimes(1);
+  });
+
+  it("a delivery that failed is processed again when GitHub redelivers it (same id)", async () => {
+    let failOnce = true;
+    const deps = fakeDeps({
+      closeIssue: vi.fn(async () => {
+        if (failOnce) {
+          failOnce = false;
+          throw new Error("GitHub API PATCH …/issues/412 failed: 403");
+        }
+      }),
+      getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
+    });
+    const merged = input({ deliveryId: "d-merged", payload: { action: "pull_request.closed", pull_request: { merged: true } } });
+
+    await expect(coordinateWebhook(deps, merged)).rejects.toThrow(/403/);
+    const redelivered = await coordinateWebhook(deps, merged);
+
+    expect(redelivered).toMatchObject({ outcome: "applied", event: EVENTS.MERGED });
+    expect(deps.closeIssue).toHaveBeenCalledTimes(2);
+    // And now it IS seen: a third copy is dropped.
+    expect(await coordinateWebhook(deps, merged)).toEqual({ outcome: "deduped" });
   });
 });
 
