@@ -67,20 +67,29 @@ export default {
     const routing = extractRoutingInfo(body);
     if (!routing) return Response.json({ ok: true, dropped: "no routable issue/PR number" });
 
-    const input: CoordinateInput = {
-      deliveryId,
-      owner: routing.owner,
-      repo: routing.repo,
-      issueNumber: routing.issueNumber,
-      payload: toWebhookPayload(body, eventType),
+    const payload = toWebhookPayload(body, eventType);
+    const forward = (issueNumber: number) => {
+      const input: CoordinateInput = { deliveryId, owner: routing.owner, repo: routing.repo, issueNumber, payload };
+      const id = env.ISSUE_COORDINATOR.idFromName(doKey(routing.owner, routing.repo, issueNumber));
+      return env.ISSUE_COORDINATOR.get(id).fetch("https://issue-coordinator/", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
     };
 
-    const id = env.ISSUE_COORDINATOR.idFromName(doKey(routing.owner, routing.repo, routing.issueNumber));
-    const stub = env.ISSUE_COORDINATOR.get(id);
-    return stub.fetch("https://issue-coordinator/", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
+    const [only, ...more] = routing.issueNumbers;
+    if (more.length === 0) return forward(only!);
+
+    // A check_suite on a commit several PRs share: each PR's DO decides for
+    // itself. Any failure fails the delivery so it can be redelivered, and
+    // each DO's own dedupe makes the redelivery safe for the ones that passed.
+    const results = [];
+    for (const issueNumber of routing.issueNumbers) {
+      const res = await forward(issueNumber);
+      results.push({ issueNumber, status: res.status, body: await res.json().catch(() => null) });
+    }
+    const failed = results.some((r) => r.status >= 400);
+    return Response.json({ routed: results }, { status: failed ? 500 : 200 });
   },
 };
 

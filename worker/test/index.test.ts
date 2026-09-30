@@ -189,6 +189,33 @@ describe("index.ts fetch() — DO routing and isolation", () => {
     expect(idFromName).toHaveBeenCalledWith("hifi-phil/umbraco-mcp-ops#412");
   });
 
+  it("a check_suite goes to each of its PRs' DOs; any failure fails the delivery", async () => {
+    const { env, idFromName, stubFetch } = fakeEnv();
+    stubFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ outcome: "no_event" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ outcome: "error", error: "boom" }), { status: 500 }));
+    const res = await worker.fetch(
+      request(
+        {
+          action: "completed",
+          repository: { name: "umbraco-mcp-ops", owner: { login: "hifi-phil" } },
+          check_suite: { status: "completed", conclusion: "failure", pull_requests: [{ number: 7 }, { number: 8 }] },
+        },
+        { "X-GitHub-Event": "check_suite" },
+      ),
+      env,
+    );
+    expect(idFromName).toHaveBeenNthCalledWith(1, "hifi-phil/umbraco-mcp-ops#7");
+    expect(idFromName).toHaveBeenNthCalledWith(2, "hifi-phil/umbraco-mcp-ops#8");
+    const [, init] = stubFetch.mock.calls[0]!;
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      issueNumber: 7,
+      payload: { action: "check_suite.completed", check_suite: { status: "completed", conclusion: "failure" } },
+    });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({ routed: [{ issueNumber: 7, status: 200 }, { issueNumber: 8, status: 500 }] });
+  });
+
   it("passes through the DO's response verbatim", async () => {
     const { env, stubFetch } = fakeEnv();
     stubFetch.mockResolvedValueOnce(new Response(JSON.stringify({ outcome: "applied" }), { status: 200 }));
