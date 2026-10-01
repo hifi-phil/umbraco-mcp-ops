@@ -568,10 +568,6 @@ three steps.
 
 ## Known gaps in the coordinator itself
 
-- `delivery_id` isn't threaded into the D1 log row (`insertTransition`
-  hardcodes `null`) — the dedupe check uses DO storage, not the log, so
-  this doesn't affect correctness, just makes the log slightly less
-  useful for debugging a specific delivery.
 - `getLatestReviewState` is a deliberate simplification, not full parity
   with github-ops's real review-state operation — it takes the single most
   recent review's state across all reviewers, not each reviewer's own

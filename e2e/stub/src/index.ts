@@ -13,16 +13,33 @@
 //
 // Only the sandbox repo (E2E_REPO) is ever acted on, whatever a request says.
 
-import { act, mergeIfGreen, type Fire, type Gh } from "./loops";
+import { act, mergeIfGreen, type Fire, type Gh, type Signal } from "./loops";
 
-export { outcomeComment, type Action, type Fire, type Gh } from "./loops";
+export { outcomeComment, type Action, type Fire, type Gh, type Signal } from "./loops";
 
 export type StubEnv = {
   GITHUB_TOKEN: string;
   FIRE_TOKEN: string;
   HOOK_SECRET: string;
   E2E_REPO: string;
+  // The orchestrator, for heartbeat and completion signals: a service
+  // binding, since a Worker can't fetch another on the same workers.dev.
+  ORCHESTRATOR: { fetch: (input: string, init?: RequestInit) => Promise<Response> };
+  ROUTINE_SIGNAL_SECRET: string;
 };
+
+export function routineSignal(env: StubEnv, owner: string, repo: string): Signal {
+  return async (signal) => {
+    const res = await env.ORCHESTRATOR.fetch("https://orchestrator/routine-signal", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.ROUTINE_SIGNAL_SECRET}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ owner, repo, signal }),
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`routine-signal failed: ${res.status} ${text}`);
+    return text;
+  };
+}
 
 /** A real routine takes seconds to start. Acting at once would let the
  * outcome's webhook reach the orchestrator before its fire call returns,
@@ -71,6 +88,7 @@ export async function handleFire(
   defer: (work: Promise<unknown>) => void,
   gh: Gh = github(env.GITHUB_TOKEN),
   delayMs = STUB_DELAY_MS,
+  signalFor: (owner: string, repo: string) => Signal = (o, r) => routineSignal(env, o, r),
 ): Promise<Response> {
   if (request.headers.get("Authorization") !== `Bearer ${env.FIRE_TOKEN}`) {
     return new Response("unauthorized", { status: 401 });
@@ -93,7 +111,7 @@ export async function handleFire(
       const { body } = (await gh("GET", `/repos/${fire.owner}/${fire.repo}/issues/${fire.number}`)) as {
         body: string | null;
       };
-      return act(gh, fire, parseHint(body));
+      return act(gh, fire, parseHint(body), signalFor(fire.owner, fire.repo));
     }),
   );
   return Response.json({ accepted: true, route: fire.route, number: fire.number });
@@ -115,11 +133,18 @@ export async function verifySignature(secret: string, rawBody: string, header: s
 
 /** CI finished on a sandbox PR: if it carries auto-merge, run merge-flow's
  * gate again, as the real merge-flow's polling would. */
+/** How often, and how long apart, the webhook re-checks a gate that still
+ * reads "CI running": a commit here gets two CI runs, and the first one's
+ * suite can land while the second still reads unfinished. */
+export const WAIT_RETRIES = 3;
+export const WAIT_RETRY_MS = 6000; // 3 × 6 s fits inside a Worker's 30 s waitUntil
+
 export async function handleWebhook(
   request: Request,
   env: StubEnv,
   defer: (work: Promise<unknown>) => void,
   gh: Gh = github(env.GITHUB_TOKEN),
+  retryMs = WAIT_RETRY_MS,
 ): Promise<Response> {
   const raw = await request.text();
   if (!(await verifySignature(env.HOOK_SECRET, raw, request.headers.get("X-Hub-Signature-256")))) {
@@ -129,15 +154,36 @@ export async function handleWebhook(
   const body = JSON.parse(raw) as {
     action?: string;
     repository?: { name: string; owner: { login: string } };
-    check_suite?: { pull_requests?: { number: number }[] };
+    check_suite?: { head_sha?: string; pull_requests?: { number: number }[] };
   };
   const owner = body.repository?.owner.login ?? "";
   const repo = body.repository?.name ?? "";
   if (body.action !== "completed" || !isSandbox(env, owner, repo)) return Response.json({ ignored: true });
 
-  const prs = (body.check_suite?.pull_requests ?? []).map((p) => p.number);
+  let prs = (body.check_suite?.pull_requests ?? []).map((p) => p.number);
+  // GitHub sometimes sends a suite with no pull_requests; find them by commit.
+  if (prs.length === 0 && body.check_suite?.head_sha) {
+    const open = (await gh("GET", `/repos/${owner}/${repo}/commits/${body.check_suite.head_sha}/pulls`)) as {
+      number: number;
+      state: string;
+    }[];
+    prs = open.filter((p) => p.state === "open").map((p) => p.number);
+  }
   for (const number of prs) {
-    defer(logged(`check_suite -> merge-flow #${number}`, () => mergeIfGreen(gh, { route: "merge-flow", owner, repo, number })));
+    defer(
+      logged(`check_suite -> merge-flow #${number}`, async () => {
+        // A silent merge-flow stays silent here too (the watchdog scenarios).
+        const { body: prBody } = (await gh("GET", `/repos/${owner}/${repo}/issues/${number}`)) as { body: string | null };
+        if (parseHint(prBody) === "silent") return "none";
+        const fire = { route: "merge-flow", owner, repo, number };
+        let result = await mergeIfGreen(gh, fire);
+        for (let i = 0; i < WAIT_RETRIES && result === "waiting_for_ci"; i++) {
+          await new Promise((r) => setTimeout(r, retryMs));
+          result = await mergeIfGreen(gh, fire);
+        }
+        return result;
+      }),
+    );
   }
   return Response.json({ prs });
 }

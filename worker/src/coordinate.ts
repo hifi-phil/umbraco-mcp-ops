@@ -38,6 +38,9 @@ export const LABEL_JUST_ADDED_BY: Partial<Record<Event, Label>> = {
 };
 
 export type TransitionRow = {
+  // The GitHub delivery (X-GitHub-Delivery) that caused this row; null for
+  // a row nothing delivered, i.e. the watchdog's own expiry.
+  deliveryId: string | null;
   owner: string;
   repo: string;
   issueNumber: number;
@@ -382,6 +385,8 @@ async function applyEvent(
   currentLabels: string[],
 ): Promise<CoordinateResult> {
   const { io: deps, mode } = depsFor(allDeps, event);
+  // Present when a webhook caused this; the watchdog passes its pending fire.
+  const deliveryId = (input as Partial<CoordinateInput>).deliveryId || null;
   const justAdded = LABEL_JUST_ADDED_BY[event];
   const labelsBeforeThisEvent = justAdded
     ? currentLabels.filter((l) => l !== justAdded)
@@ -389,6 +394,7 @@ async function applyEvent(
   const current = deriveState(labelsBeforeThisEvent);
   if (current === "ambiguous") {
     await deps.logTransition({
+      deliveryId,
       owner: input.owner,
       repo: input.repo,
       issueNumber: input.issueNumber,
@@ -406,6 +412,7 @@ async function applyEvent(
   if (!rule && CONTEXTUAL_EVENTS.has(event)) return { outcome: "ignored", from: current, event };
   if (!rule) {
     await deps.logTransition({
+      deliveryId,
       owner: input.owner,
       repo: input.repo,
       issueNumber: input.issueNumber,
@@ -449,6 +456,7 @@ async function applyEvent(
   }
 
   await deps.logTransition({
+    deliveryId,
     owner: input.owner,
     repo: input.repo,
     issueNumber: input.issueNumber,

@@ -93,6 +93,12 @@ variable "e2e_stub_script_name" {
   default = "agent-orchestration-e2e-stub"
 }
 
+variable "e2e_watchdog_minutes" {
+  type        = number
+  default     = 2
+  description = "The sandbox's watchdog timeout, for every routine. Its watchdog is always real (enforce), whatever `watchdog` is; no other repo is affected. Long enough for merge-flow to outlast a CI run (it stays watched while CI runs), short enough for a scenario to wait out."
+}
+
 variable "e2e_stub_github_token" {
   type        = string
   sensitive   = true

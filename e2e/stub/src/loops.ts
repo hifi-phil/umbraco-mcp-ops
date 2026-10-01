@@ -8,6 +8,14 @@ import type { Outcome } from "../../../graph/outcomes";
 
 export type Gh = (method: string, path: string, body?: unknown) => Promise<unknown>;
 
+/** Posts a routine signal (graph/routines/from-routine.ts's RoutineSignal)
+ * to the orchestrator's /routine-signal, returning its outcome. */
+export type Signal = (signal: Record<string, unknown>) => Promise<string>;
+
+/** issue-discuss-loop's own signature, which from-github.ts uses to ignore
+ * the loop's comments (so only a human's reply starts the next round). */
+export const DISCUSS_SIGNATURE = "<!-- issue-discuss-loop -->";
+
 export type Fire = { route: string; owner: string; repo: string; number: number };
 
 export type Action =
@@ -19,6 +27,9 @@ export type Action =
   | "ci_red"
   | "release_published"
   | "release_blocked"
+  | "discussed"
+  | "heartbeat"
+  | "completion"
   | "none";
 
 /** plugins/agent-outcomes's comment format, which from-github.ts parses. */
@@ -51,9 +62,22 @@ async function putFile(gh: Gh, f: Fire, branch: string, path: string, content: s
   });
 }
 
-export async function act(gh: Gh, fire: Fire, hint: string | null): Promise<Action> {
+export async function act(gh: Gh, fire: Fire, hint: string | null, signal?: Signal): Promise<Action> {
   if (hint === "silent") return "none";
+  // A routine that reports progress (or finishes) over the direct channel
+  // but never posts an outcome: what the watchdog and its heartbeat handle.
+  if ((hint === "heartbeat" || hint === "complete") && signal) {
+    const base = { routine: fire.route, issue: fire.number };
+    await signal(
+      hint === "heartbeat"
+        ? { ...base, kind: "process", step: "e2e-heartbeat" }
+        : { ...base, kind: "completion", outcome: { outcome: "build_blocked", reason: "e2e stub: completion signal only" } },
+    );
+    return hint === "heartbeat" ? "heartbeat" : "completion";
+  }
   switch (fire.route) {
+    case "issue-discuss-loop":
+      return discuss(gh, fire, hint);
     case "issue-build-loop":
       return build(gh, fire, hint);
     case "rework-loop":
@@ -65,6 +89,15 @@ export async function act(gh: Gh, fire: Fire, hint: string | null): Promise<Acti
     default:
       return "none";
   }
+}
+
+/** One discussion round: a signed question, numbered by the rounds so far. */
+async function discuss(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
+  if (hint !== "discuss") return "none";
+  const comments = (await gh("GET", `${base(f)}/issues/${f.number}/comments?per_page=100`)) as { body: string }[];
+  const round = comments.filter((c) => c.body.includes(DISCUSS_SIGNATURE)).length + 1;
+  await comment(gh, f, `${DISCUSS_SIGNATURE}\ne2e stub (issue-discuss-loop): round ${round}. What should this do?`);
+  return "discussed";
 }
 
 async function build(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
@@ -107,13 +140,18 @@ async function rework(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
 
 const GREEN = new Set(["success", "neutral", "skipped"]);
 
+/** Merge attempts while the base branch settles: 2 s, then 4 s (inside a
+ * Worker's 30 s waitUntil, with the webhook's own re-checks). */
+const MERGE_ATTEMPTS = 3;
+const MERGE_RETRY_MS = 2000;
+
 /**
  * merge-flow's gate and merge. Real merge-flow polls CI for minutes; the
  * stub can't wait inside a request, so it acts on what's there now and the
  * stub's own check_suite webhook calls this again when CI finishes.
  * A conflict or requested changes are the orchestrator's to block.
  */
-export async function mergeIfGreen(gh: Gh, f: Fire): Promise<Action> {
+export async function mergeIfGreen(gh: Gh, f: Fire, mergeRetryMs = MERGE_RETRY_MS): Promise<Action> {
   const pr = (await gh("GET", `${base(f)}/pulls/${f.number}`)) as {
     state: string;
     mergeable: boolean | null;
@@ -134,13 +172,20 @@ export async function mergeIfGreen(gh: Gh, f: Fire): Promise<Action> {
   }
   if (pr.mergeable === false) return "none";
 
-  try {
-    await gh("PUT", `${base(f)}/pulls/${f.number}/merge`, { merge_method: "squash" });
-  } catch (e) {
-    // The fire and the check_suite webhook can both get here; the loser's
-    // merge is refused (405/409), which is fine.
-    if (e instanceof Error && / (405|409) /.test(e.message)) return "none";
-    throw e;
+  // GitHub refuses a merge (405/409) both when another attempt already merged
+  // it (the fire and the check_suite webhook can race) and while the base
+  // branch is still settling after another merge into it. Tell them apart by
+  // re-reading the PR, and retry the second, as the real merge-flow would.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await gh("PUT", `${base(f)}/pulls/${f.number}/merge`, { merge_method: "squash" });
+      break;
+    } catch (e) {
+      if (!(e instanceof Error && / (405|409) /.test(e.message))) throw e;
+      const now = (await gh("GET", `${base(f)}/pulls/${f.number}`)) as { state: string; merged?: boolean };
+      if (now.merged || now.state !== "open" || attempt >= MERGE_ATTEMPTS) return "none";
+      await new Promise((r) => setTimeout(r, mergeRetryMs * attempt));
+    }
   }
   await comment(gh, f, "e2e stub (merge-flow): merged (squash).");
   return "merged";
