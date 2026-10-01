@@ -147,13 +147,36 @@ describe("act — merge-flow (mergeIfGreen)", () => {
     }
   });
 
-  it("losing a merge race (405) -> none, not an error", async () => {
-    const gh = fakeGh({
-      ...pull(),
-      ...runs({ status: "completed", conclusion: "success" }),
-      [`PUT ${R}/pulls/7/merge`]: new Error(`GitHub PUT ${R}/pulls/7/merge failed: 405 Pull Request is not mergeable`),
+  it("losing a merge race (405, and the PR is already merged) -> none, not an error", async () => {
+    let reads = 0;
+    const gh = vi.fn<Gh>(async (method, path) => {
+      if (method === "PUT") throw new Error(`GitHub PUT ${path} failed: 405 Pull Request is not mergeable`);
+      if (path.endsWith("/pulls/7")) {
+        reads++;
+        return reads === 1
+          ? { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merge" }] }
+          : { state: "closed", merged: true };
+      }
+      if (path.endsWith("/check-runs")) return { check_runs: [{ name: "ci", status: "completed", conclusion: "success" }] };
+      return {};
     });
-    expect(await mergeIfGreen(gh, fireFor("merge-flow"))).toBe("none");
+    expect(await mergeIfGreen(gh, fireFor("merge-flow"), 0)).toBe("none");
+    expect(gh.mock.calls.filter(([m]) => m === "PUT")).toHaveLength(1);
+  });
+
+  it("a merge refused while dev settles (405, PR still open) -> retried, then merged (found by e2e: PR #167)", async () => {
+    let puts = 0;
+    const gh = vi.fn<Gh>(async (method, path) => {
+      if (method === "PUT") {
+        if (++puts === 1) throw new Error(`GitHub PUT ${path} failed: 405 Base branch was modified`);
+        return {};
+      }
+      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merge" }] };
+      if (path.endsWith("/check-runs")) return { check_runs: [{ name: "ci", status: "completed", conclusion: "success" }] };
+      return {};
+    });
+    expect(await mergeIfGreen(gh, fireFor("merge-flow"), 0)).toBe("merged");
+    expect(puts).toBe(2);
   });
 });
 

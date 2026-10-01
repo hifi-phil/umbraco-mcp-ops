@@ -140,13 +140,18 @@ async function rework(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
 
 const GREEN = new Set(["success", "neutral", "skipped"]);
 
+/** Merge attempts while the base branch settles: 2 s, then 4 s (inside a
+ * Worker's 30 s waitUntil, with the webhook's own re-checks). */
+const MERGE_ATTEMPTS = 3;
+const MERGE_RETRY_MS = 2000;
+
 /**
  * merge-flow's gate and merge. Real merge-flow polls CI for minutes; the
  * stub can't wait inside a request, so it acts on what's there now and the
  * stub's own check_suite webhook calls this again when CI finishes.
  * A conflict or requested changes are the orchestrator's to block.
  */
-export async function mergeIfGreen(gh: Gh, f: Fire): Promise<Action> {
+export async function mergeIfGreen(gh: Gh, f: Fire, mergeRetryMs = MERGE_RETRY_MS): Promise<Action> {
   const pr = (await gh("GET", `${base(f)}/pulls/${f.number}`)) as {
     state: string;
     mergeable: boolean | null;
@@ -167,13 +172,20 @@ export async function mergeIfGreen(gh: Gh, f: Fire): Promise<Action> {
   }
   if (pr.mergeable === false) return "none";
 
-  try {
-    await gh("PUT", `${base(f)}/pulls/${f.number}/merge`, { merge_method: "squash" });
-  } catch (e) {
-    // The fire and the check_suite webhook can both get here; the loser's
-    // merge is refused (405/409), which is fine.
-    if (e instanceof Error && / (405|409) /.test(e.message)) return "none";
-    throw e;
+  // GitHub refuses a merge (405/409) both when another attempt already merged
+  // it (the fire and the check_suite webhook can race) and while the base
+  // branch is still settling after another merge into it. Tell them apart by
+  // re-reading the PR, and retry the second, as the real merge-flow would.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await gh("PUT", `${base(f)}/pulls/${f.number}/merge`, { merge_method: "squash" });
+      break;
+    } catch (e) {
+      if (!(e instanceof Error && / (405|409) /.test(e.message))) throw e;
+      const now = (await gh("GET", `${base(f)}/pulls/${f.number}`)) as { state: string; merged?: boolean };
+      if (now.merged || now.state !== "open" || attempt >= MERGE_ATTEMPTS) return "none";
+      await new Promise((r) => setTimeout(r, mergeRetryMs * attempt));
+    }
   }
   await comment(gh, f, "e2e stub (merge-flow): merged (squash).");
   return "merged";
