@@ -46,6 +46,52 @@ Never use `fable`. Never put secrets in the prompt or config.
    `cloud-skill-sync` `SKILLS` list and the env has been rebuilt (bump `VERSION`, re-paste).
 3. **Org Actions policy** allows calling a reusable workflow from `hifi-phil/umbraco-mcp-ops`
    (if the org restricts actions to "selected", allowlist it).
+4. **Heartbeats to the Worker** (only for repos the agent-orchestration Worker
+   dispatches; once per environment, not per repo). The `agent-outcomes` plugin's hook
+   tells the Worker the run is alive and what step it's on, so a run that dies goes
+   `ai-stuck` naming its last step. See
+   [Routine heartbeats](#routine-heartbeats-worker-dispatched-repos).
+
+## Routine heartbeats (Worker-dispatched repos)
+
+The `agent-outcomes` hook runs after every tool call in the routine. In a session the
+Worker fired, it sends the Worker's `POST /routine-signal`:
+- a heartbeat naming the step, at most once a minute
+- a completion when the loop posts its outcome
+
+A session the Worker didn't fire sends nothing, so one environment can serve Worker repos
+and caller-workflow repos alike.
+
+**Set up, on the ops cloud environment:**
+1. **Two environment variables.** They're secrets: set them in the environment's settings,
+   never in the setup script, the routine prompt or the repo.
+
+   | Variable | Value |
+   |---|---|
+   | `AGENT_OUTCOMES_ENDPOINT` | the Worker's URL + `/routine-signal`: `tofu -chdir=worker/terraform output -raw worker_url`, then append `/routine-signal` |
+   | `AGENT_OUTCOMES_TOKEN` | `tofu -chdir=worker/terraform output -raw routine_signal_secret` |
+
+2. **Network access.** If the environment limits outbound hosts, allow the Worker's host
+   (`<script>.<subdomain>.workers.dev`).
+3. **The plugin is in the env.** `agent-outcomes` is in the `cloud-skill-sync` `SKILLS`
+   list, as it already is for orchestrated mode. Rebuild the env after any of these
+   (bump `VERSION`, re-paste).
+
+**How it behaves:**
+- Each heartbeat pushes the run's watchdog deadline back, so a run expires only after a
+  whole timeout with no tool calls: a dead session, not a slow one.
+- The step is the tool plus the call's own description or skill name (`Bash: Run the
+  tests`, `Skill: mcp-review`), never a command, prompt or path, because an expiry quotes
+  it in a public GitHub comment.
+- Nothing runs between tool calls or after the session ends, so the heartbeats never keep
+  the environment alive.
+- A failed send is logged in the container (`~/.cache/agent-outcomes/capture.log`) and
+  changes nothing: the GitHub write stays the authoritative signal.
+
+**Checking it works:** the e2e suite's two `real hook` scenarios (`e2e/` in
+`umbraco-mcp-ops`) run this hook against the deployed Worker, which proves the contract.
+On a live repo, the proof is a run's `ai-stuck` comment quoting a step (`Last reported
+step: …`) instead of "No progress step was ever reported".
 
 **Stand it up:**
 1. **Create the routine** (via `RemoteTrigger` `create`) with the [Standard config](#standard-routine-config-identical-for-every-repo),

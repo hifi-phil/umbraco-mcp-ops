@@ -305,8 +305,8 @@ describe("coordinateWebhook — no event / no rule", () => {
     expect(deps.fireRoutine).not.toHaveBeenCalled();
   });
 
-  it("watchdog timeout is per routine: releases 120, builds 60, others the 30 default", () => {
-    expect(watchdogMinutesFor(ROUTINES.AUTO_RELEASE_LOOP)).toBe(120);
+  it("watchdog timeout is per routine: releases 60, builds 60, others the 30 default", () => {
+    expect(watchdogMinutesFor(ROUTINES.AUTO_RELEASE_LOOP)).toBe(60);
     expect(watchdogMinutesFor(ROUTINES.ISSUE_BUILD_LOOP)).toBe(60);
     expect(watchdogMinutesFor(ROUTINES.MERGE_FLOW)).toBe(30);
   });

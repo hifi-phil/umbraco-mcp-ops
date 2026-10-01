@@ -89,6 +89,10 @@ re-checks a gate that still reads "CI running".
   9. A stuck rework retried.
   10. A stuck merge-flow retried.
   11. A stuck merge-flow merged by hand.
+- The real `agent-outcomes` hook (`driver/hook.ts` runs it, as a routine
+  session would, against the deployed Worker):
+  1. Its heartbeat is quoted by the expiry.
+  2. Its completion signal cancels the watchdog.
 
 **The audit**, after every run, over every delivery the orchestrator answered:
 - none errored

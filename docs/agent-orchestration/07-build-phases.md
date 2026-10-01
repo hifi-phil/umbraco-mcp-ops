@@ -184,6 +184,41 @@ race to set labels themselves).
 **Exit:** A killed/dead session becomes a visible, automatic `state:stuck`
 within 30 minutes, quoting its last known step, not an invisible stall.
 
+**Status (01-10-2026):**
+- **Built.** The alarm on fire, cancelling it on an outcome, expiry →
+  `ai-stuck` with a comment, the heartbeat route (`/routine-signal`:
+  `process` extends the alarm and records the step; `completion` cancels
+  it), and per-routine timeouts. Expiries only log until `WATCHDOG=enforce`.
+- **Proven live** on the e2e sandbox, which has a real 2-minute watchdog:
+  expiry, a heartbeat quoted in the expiry, a completion signal cancelling
+  it, and late outcomes or retries out of `ai-stuck` from every watched
+  state (14-e2e-testing.md).
+- **Timeouts set from data.** These come from `umbraco-mcp-ops`'s D1 log
+  (`worker/queries/routine-durations.sql`): build 60 min, release 60,
+  rework and merge-flow 30. The slowest real runs were 23, 7, 2.4 and 3.3
+  minutes. The four shadow expiries:
+  - two were run-1 issues, both since fixed: one false alarm (#116), and
+    one release that really did run long (#118)
+  - one was a real stall: a merge-flow left on `auto-merge` before
+    `merge-blocked` existed (#138)
+  - one fire never got anything back (#139)
+- **Turning it on** for `umbraco-mcp-ops` is `watchdog = "enforce"` in tofu.
+- **The real routines' heartbeats.** The `agent-outcomes` hook (every
+  loop has it) now signals `/routine-signal` from any session the Worker
+  fired:
+  - a heartbeat naming the step, at most once a minute, which extends the
+    watchdog and gets quoted by an expiry
+  - a completion when the loop posts its outcome
+
+  It finds the run from the fire text in the session's transcript. Tested
+  in the hook's own suite and live by two e2e scenarios, which run the real
+  hook against the real Worker. It's live once the routine environment
+  sets `AGENT_OUTCOMES_ENDPOINT` and `AGENT_OUTCOMES_TOKEN`.
+  - **Heartbeats change what times out:** a run now expires only after a
+    whole timeout with no tool calls, so a dead session, not a slow one.
+    A run that stays busy but never finishes won't expire. That's Phase
+    9's rework cap.
+
 ## Phase 7 — Full logging and reconciliation
 
 **Entry:** Phase 6 live (Phase 3's shadow logging may already satisfy most of
