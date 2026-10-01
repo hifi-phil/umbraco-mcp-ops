@@ -11,9 +11,10 @@ description: >-
   adding a new outcome type to the catalog. Additive by default; in
   orchestrated mode (a repo the agent-orchestration Worker dispatches) the
   artifact REPLACES the loop's label swap and is required — the Worker
-  reads it and swaps the labels. Bundles a PostToolUse hook that forwards
-  the artifact on a fast, non-authoritative path automatically — nothing
-  extra for the loop to do.
+  reads it and swaps the labels. Bundles a PostToolUse hook that signals the
+  Worker on a fast, non-authoritative path automatically (a completion when
+  the artifact is posted, heartbeats naming the step while the loop works),
+  with nothing extra for the loop to do.
 ---
 
 # agent-outcomes
@@ -35,14 +36,22 @@ and applies the outcome labels itself, so the loop **must** write it and
 must **not** swap the labels. Each loop's skill says which steps that covers.
 
 This plugin also bundles a
-`PostToolUse` hook (`hooks/report-completion.sh`) that fires automatically
-whenever a loop posts the artifact — no extra step for the loop, nothing
-to call, nothing to remember. It forwards the raw JSON to
-`AGENT_OUTCOMES_ENDPOINT` if that's set (logs only otherwise — there's no
-real endpoint to point it at yet), and it's deliberately not authoritative:
-losing this call costs a slower watchdog cancel or a staler dashboard,
-never a wrong state transition. The comment write above is still the only
-thing that counts as the actual fact.
+`PostToolUse` hook (`hooks/report-completion.sh`) that runs after every tool
+call, with no extra step for the loop. In a session the Worker fired (its
+first prompt carries `route=… repo=… number=…`), it signals the Worker's
+`/routine-signal` endpoint in two ways:
+- **A completion** when the loop posts the artifact. This cancels the run's
+  watchdog early.
+- **A heartbeat** naming the current step, at most once a minute. This keeps
+  the watchdog's deadline moving, and an expiry quotes the last step.
+
+It needs `AGENT_OUTCOMES_ENDPOINT` (the Worker's `.../routine-signal` URL) and
+`AGENT_OUTCOMES_TOKEN` set in the routine environment. Without them it only
+logs, and it sends nothing from a session the Worker didn't fire.
+
+It's deliberately not authoritative: losing a signal costs a slower watchdog
+cancel or a vaguer `ai-stuck` comment, never a wrong state transition. The
+comment write above is still the only thing that counts as the actual fact.
 
 ## The rule
 

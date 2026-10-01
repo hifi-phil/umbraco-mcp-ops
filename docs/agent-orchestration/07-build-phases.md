@@ -203,11 +203,21 @@ within 30 minutes, quoting its last known step, not an invisible stall.
     `merge-blocked` existed (#138)
   - one fire never got anything back (#139)
 - **Turning it on** for `umbraco-mcp-ops` is `watchdog = "enforce"` in tofu.
-- **Not yet: the real routines' heartbeats.** The `agent-outcomes` hook
-  only forwards a completion, in a shape and without the auth
-  `/routine-signal` expects, and nothing sends `process` steps. So a real
-  expiry says "no progress step was ever reported" instead of naming the
-  step. A stall still becomes a visible `ai-stuck` within the timeout.
+- **The real routines' heartbeats.** The `agent-outcomes` hook (every
+  loop has it) now signals `/routine-signal` from any session the Worker
+  fired:
+  - a heartbeat naming the step, at most once a minute, which extends the
+    watchdog and gets quoted by an expiry
+  - a completion when the loop posts its outcome
+
+  It finds the run from the fire text in the session's transcript. Tested
+  in the hook's own suite and live by two e2e scenarios, which run the real
+  hook against the real Worker. It's live once the routine environment
+  sets `AGENT_OUTCOMES_ENDPOINT` and `AGENT_OUTCOMES_TOKEN`.
+  - **Heartbeats change what times out:** a run now expires only after a
+    whole timeout with no tool calls, so a dead session, not a slow one.
+    A run that stays busy but never finishes won't expire. That's Phase
+    9's rework cap.
 
 ## Phase 7 — Full logging and reconciliation
 
