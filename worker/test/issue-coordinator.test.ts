@@ -223,6 +223,59 @@ describe("IssueCoordinator.fetch()", () => {
   });
 });
 
+describe("IssueCoordinator — one request at a time per issue", () => {
+  it("a second webhook waits for the first to finish, even while the first awaits GitHub", async () => {
+    const order: string[] = [];
+    let releaseFirst!: () => void;
+    const firstHeld = new Promise<void>((r) => (releaseFirst = r));
+    let labelReads = 0;
+    const apiFetch = fakeApiFetch();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if ((init?.method ?? "GET") === "GET" && url.includes("/labels")) {
+          const n = ++labelReads;
+          order.push(`read ${n}`);
+          if (n === 1) await firstHeld; // the first request is mid-await on GitHub
+        }
+        return apiFetch(url, init);
+      }),
+    );
+    const { ctx } = fakeCtx();
+    const coordinator = new IssueCoordinator(ctx, fakeEnv());
+
+    const first = coordinator.fetch(fetchRequest(labeledInput({ deliveryId: "d-a" })));
+    const second = coordinator.fetch(fetchRequest(labeledInput({ deliveryId: "d-b" })));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(order, "the second hasn't started while the first is waiting").toEqual(["read 1"]);
+
+    releaseFirst();
+    await first;
+    await second;
+    expect(order).toEqual(["read 1", "read 2"]);
+  });
+
+  it("a failing request doesn't block the next one", async () => {
+    let calls = 0;
+    const apiFetch = fakeApiFetch();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes("/labels") && (init?.method ?? "GET") === "GET" && ++calls === 1) {
+          return new Response("bad gateway", { status: 502 });
+        }
+        return apiFetch(url, init);
+      }),
+    );
+    const { ctx } = fakeCtx();
+    const coordinator = new IssueCoordinator(ctx, fakeEnv());
+    const failed = await coordinator.fetch(fetchRequest(labeledInput({ deliveryId: "d-a" })));
+    const next = await coordinator.fetch(fetchRequest(labeledInput({ deliveryId: "d-b" })));
+    expect(failed.status).toBe(500);
+    expect(next.status).toBe(200);
+  });
+});
+
 describe("IssueCoordinator.alarm() — the watchdog", () => {
   const pendingBuild = {
     owner: "hifi-phil",
