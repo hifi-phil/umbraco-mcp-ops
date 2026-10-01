@@ -390,11 +390,16 @@ signal touching the wrong run's watchdog.
 Unit tested end to end — `coordinate.test.ts` (the parse/mismatch/extend/
 cancel logic against fake deps), `issue-coordinator.test.ts` (the DO's
 `/routine-signal` branch, real `ctx.storage.setAlarm`/`deleteAlarm` calls),
-`index.test.ts` (auth, routing, validation). **Not verified**: nothing has
-actually pointed `AGENT_OUTCOMES_ENDPOINT` (the `agent-outcomes` plugin's
-`PostToolUse` hook — see `docs/agent-orchestration/11-outcome-artifact.md`)
-at this endpoint, so the *real* sending side has never been exercised
-against it, only this receiving side in isolation.
+`index.test.ts` (auth, routing, validation).
+
+**The sending side** is the `agent-outcomes` plugin's `PostToolUse` hook
+(`plugins/agent-outcomes/hooks/report-completion.sh`). From any session this
+Worker fired, it sends a heartbeat naming the step, at most once a minute, and
+a completion when the loop posts its outcome. It's verified live by the e2e
+suite's `real hook` scenarios, which run the real hook against this deployed
+Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
+`AGENT_OUTCOMES_TOKEN` on the routine environment: see `new-loop-routine`'s
+"Routine heartbeats" section.
 
 ## The watchdog is a real event
 
