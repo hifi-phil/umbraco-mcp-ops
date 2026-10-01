@@ -83,6 +83,22 @@ export class IssueCoordinator {
     private readonly env: IssueCoordinatorEnv,
   ) {}
 
+  /**
+   * One request at a time for this issue, start to finish. Cloudflare only
+   * holds back the next request while a DO awaits its own storage, not while
+   * it awaits GitHub or a routine, so two webhooks for one PR (say its
+   * auto-merge label and its CI finishing red) used to interleave mid-run:
+   * one read labels the other was halfway through swapping (found by e2e on
+   * sandbox PR #168). In memory is enough: a DO instance is the only one for
+   * its issue, and an evicted instance has nothing in flight.
+   */
+  private queue: Promise<unknown> = Promise.resolve();
+  private serial<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(work, work);
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
 
@@ -93,7 +109,7 @@ export class IssueCoordinator {
       } catch {
         return new Response("invalid JSON body", { status: 400 });
       }
-      return respond(() => coordinateRoutineSignal(this.deps(input), input));
+      return this.serial(() => respond(() => coordinateRoutineSignal(this.deps(input), input)));
     }
 
     let input: CoordinateInput;
@@ -103,7 +119,7 @@ export class IssueCoordinator {
       return new Response("invalid JSON body", { status: 400 });
     }
 
-    return respond(() => coordinateWebhook(this.deps(input), input));
+    return this.serial(() => respond(() => coordinateWebhook(this.deps(input), input)));
   }
 
   /** The watchdog: fires watchdogMinutesFor(run) after a watched routine was fired
@@ -114,8 +130,10 @@ export class IssueCoordinator {
   async alarm(): Promise<void> {
     // The repo comes from the pending fire; no pending fire, nothing to do
     // (coordinateWatchdogExpired no-ops on that too).
-    const pending = await this.ctx.storage.get<PendingFire>(PENDING_FIRE_KEY);
-    await coordinateWatchdogExpired(this.deps(pending ?? undefined));
+    await this.serial(async () => {
+      const pending = await this.ctx.storage.get<PendingFire>(PENDING_FIRE_KEY);
+      await coordinateWatchdogExpired(this.deps(pending ?? undefined));
+    });
   }
 
   /** Real I/O; coordinate.ts switches each event to shadow writes unless
