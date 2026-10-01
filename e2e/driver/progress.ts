@@ -8,9 +8,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 const scenario = new AsyncLocalStorage<string>();
 
-/** Runs `fn` with its progress lines tagged `name` (up to its first ":"). */
+/** Runs `fn` with its progress lines tagged `name`, up to its first " -> "
+ * (so "watchdog: stuck release; late …" still says which watchdog case). */
 export function inScenario<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  return scenario.run(name.split(":")[0]!.trim(), fn);
+  return scenario.run(name.split(" -> ")[0]!.trim(), fn);
 }
 
 export function progress(message: string): void {
