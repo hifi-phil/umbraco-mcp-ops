@@ -68,9 +68,11 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       const noRule = details.filter((d) => d.response.includes('"outcome":"dropped_no_rule"'));
       expect(noRule.map(line), "events the table had no rule for").toEqual([]);
 
-      // The D1 log agrees: every issue/PR in the run logged only enforced,
-      // applied rows (the sandbox Worker enforces, and nothing was dropped),
-      // and every delivery the Worker applied has its row.
+      // The D1 log agrees, delivery by delivery: every issue/PR in the run
+      // logged only enforced, applied rows (the sandbox Worker enforces, and
+      // nothing was dropped); every delivery the Worker applied has exactly
+      // one row, carrying its delivery id and event; and the only rows no
+      // delivery caused are the watchdog's own expiries.
       const numbers = [...new Set(details.flatMap((d) => d.numbers))];
       progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
       const logs = new Map(await pool(numbers, 6, async (n) => [n, await transitions(n)] as const));
@@ -78,13 +80,21 @@ describe("audit: every answer the orchestrator gave during the run", () => {
         rows.filter((r) => r.mode !== "enforce" || r.dropped_reason !== null).map((r) => `#${n} ${r.event}: ${r.mode} ${r.dropped_reason ?? ""}`),
       );
       expect(badRows, "log rows not enforced-and-applied").toEqual([]);
-      const unlogged = details
+      const unmatched = details
         .filter((d) => d.response.includes('"outcome":"applied"') && d.numbers.length === 1)
         .filter((d) => {
           const event = d.response.match(/"event":"([a-z_]+)"/)?.[1];
-          return !logs.get(d.numbers[0]!)?.some((r) => r.event === event);
+          const rows = logs.get(d.numbers[0]!)?.filter((r) => r.delivery_id === d.guid) ?? [];
+          return rows.length !== 1 || rows[0]!.event !== event;
         });
-      expect(unlogged.map(line), "applied deliveries with no log row").toEqual([]);
+      expect(unmatched.map(line), "applied deliveries without exactly one matching row").toEqual([]);
+      const guids = new Set(details.map((d) => d.guid));
+      const orphans = [...logs].flatMap(([n, rows]) =>
+        rows
+          .filter((r) => (r.delivery_id === null ? r.event !== "watchdog_expired" : !guids.has(r.delivery_id)))
+          .map((r) => `#${n} ${r.event} delivery=${r.delivery_id}`),
+      );
+      expect(orphans, "log rows no delivery in the run explains").toEqual([]);
 
       if (runLog.sharedHead) {
         const [a, b] = runLog.sharedHead;

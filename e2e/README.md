@@ -95,8 +95,11 @@ re-checks a gate that still reads "CI running".
 - none was an event the table had no rule for
 - the shared-head `check_suite` fanned out
 - a redelivered label is deduped
-- the D1 log agrees: every row for the run's issues and PRs is enforced
-  and applied, and every delivery the Worker applied has its row
+- the D1 log agrees, delivery by delivery:
+  - every row for the run's issues and PRs is enforced and applied
+  - every delivery the Worker applied has exactly one row, carrying its
+    delivery id and event
+  - the only rows no delivery caused are the watchdog's expiries
 
 **The D1 log.** The driver reads it through the Worker's `GET /transitions`
 route, which tofu turns on for the sandbox alone, with its own secret. The
@@ -115,7 +118,5 @@ driver gets that secret from `tofu output -raw e2e_log_read_secret` unless
 - **Shadow mode:** `MODE` is per Worker, and the sandbox runs on the
   enforcing one. A shadow scenario needs a second sandbox on a shadow
   Worker. It's unit-tested, and was validated live in Phase 3.
-- **`delivery_id` in the log:** it's still written as null (a known gap in
-  `worker/README.md`), so rows are matched to deliveries by issue and event.
 - **`mergeable` still null after the Worker's re-reads:** that's GitHub's
   timing, which can't be set up on demand. It's unit-tested.

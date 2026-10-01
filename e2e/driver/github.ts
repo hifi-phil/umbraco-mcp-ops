@@ -254,6 +254,7 @@ export async function deliveriesSince(hookId: number, since: string): Promise<De
 }
 
 export type DeliveryDetail = {
+  guid: string;
   event: string;
   action: string | null;
   statusCode: number;
@@ -264,6 +265,7 @@ export type DeliveryDetail = {
 export async function deliveryDetail(hookId: number, id: string): Promise<DeliveryDetail> {
   const { text } = await ghText(`${R}/hooks/${hookId}/deliveries/${id}`);
   const d = JSON.parse(bigIds(text)) as {
+    guid: string;
     event: string;
     action: string | null;
     status_code: number;
@@ -277,7 +279,7 @@ export async function deliveryDetail(hookId: number, id: string): Promise<Delive
       : p.pull_request?.number !== undefined
         ? [p.pull_request.number]
         : (p.check_suite?.pull_requests ?? []).map((x: { number: number }) => x.number);
-  return { event: d.event, action: d.action, statusCode: d.status_code, numbers, response: d.response.payload ?? "" };
+  return { guid: d.guid, event: d.event, action: d.action, statusCode: d.status_code, numbers, response: d.response.payload ?? "" };
 }
 
 export async function redeliver(hookId: number, id: string): Promise<void> {
@@ -288,6 +290,7 @@ export async function redeliver(hookId: number, id: string): Promise<void> {
 
 export type LogRow = {
   id: number;
+  delivery_id: string | null;
   from_state: string;
   event: string;
   to_effect: string | null;

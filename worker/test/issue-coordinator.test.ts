@@ -159,7 +159,7 @@ describe("IssueCoordinator.fetch()", () => {
     expect(result.outcome).toBe("applied");
     expect(inserted).toHaveLength(1);
     expect(inserted[0]).toEqual([
-      null,
+      "d-1", // the delivery that caused it
       "hifi-phil",
       "umbraco-mcp-ops",
       412,
@@ -250,6 +250,7 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
     expect(JSON.parse((addCall![1] as RequestInit).body as string)).toEqual({ labels: ["ai-stuck"] });
     expect(inserted).toHaveLength(1);
     expect(inserted[0]).toEqual(expect.arrayContaining(["ready-for-ai", "watchdog_expired"]));
+    expect(inserted[0]![0], "no delivery caused a watchdog row").toBeNull();
     expect(await storage.get("pendingFire")).toBeUndefined();
   });
 

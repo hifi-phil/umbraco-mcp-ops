@@ -190,7 +190,7 @@ export class IssueCoordinator {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
-        null, // delivery_id isn't threaded through to the log row today — see README's known gaps
+        row.deliveryId,
         row.owner,
         row.repo,
         row.issueNumber,
