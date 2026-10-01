@@ -16,7 +16,18 @@ beforeAll(async () => {
   for (const b of der) bin += String.fromCharCode(b);
   privateKey = `-----BEGIN PRIVATE KEY-----\n${btoa(bin).replace(/(.{64})/g, "$1\n")}\n-----END PRIVATE KEY-----\n`;
 });
-const pkcs1 = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\n-----END RSA PRIVATE KEY-----\n";
+/** The same key as GitHub downloads it: the PKCS#1 key inside the PKCS#8 one's OCTET STRING. */
+function asPkcs1(pkcs8Pem: string): string {
+  const der = Uint8Array.from(atob(pkcs8Pem.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "")), (c) => c.charCodeAt(0));
+  const skipHeader = (at: number) => (der[at + 1]! & 0x80 ? at + 2 + (der[at + 1]! & 0x7f) : at + 2);
+  let at = skipHeader(0); // outer SEQUENCE
+  at += 3; // version INTEGER 0
+  at += 2 + der[at + 1]!; // AlgorithmIdentifier SEQUENCE
+  const inner = der.slice(skipHeader(at)); // OCTET STRING contents
+  let bin = "";
+  for (const b of inner) bin += String.fromCharCode(b);
+  return `-----BEGIN RSA PRIVATE KEY-----\n${btoa(bin).replace(/(.{64})/g, "$1\n")}\n-----END RSA PRIVATE KEY-----\n`;
+}
 const appEnv = () => ({ GITHUB_APP_ID: "123", GITHUB_APP_PRIVATE_KEY: privateKey, GITHUB_APP_TOKEN: "personal" });
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 const b64urlDecode = (s: string) => {
@@ -56,8 +67,13 @@ describe("appJwt", () => {
     expect(ok).toBe(true);
   });
 
-  it("a PKCS#1 key (GitHub's download, unconverted) -> an error saying how to convert it", async () => {
-    await expect(appJwt("123", pkcs1)).rejects.toThrow(/openssl pkcs8 -topk8/);
+  it("GitHub's download as-is (PKCS#1) works too: same key, valid signature", async () => {
+    const pkcs1 = asPkcs1(privateKey);
+    expect(pkcs1).toContain("BEGIN RSA PRIVATE KEY");
+    const jwt = await appJwt("123", pkcs1, 1_000_000);
+    const [header, payload, sig] = jwt.split(".");
+    const ok = await crypto.subtle.verify(alg, keys.publicKey, b64urlDecode(sig!), new TextEncoder().encode(`${header}.${payload}`));
+    expect(ok).toBe(true);
   });
 });
 

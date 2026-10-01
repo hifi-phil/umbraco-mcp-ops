@@ -69,7 +69,7 @@ variable "github_repo" {
 variable "github_read_token" {
   type        = string
   sensitive   = true
-  description = "A personal token, the Worker's fallback GITHUB_APP_TOKEN. Unused while the GitHub App (github_app_id + github_app_private_key_path) is configured, which it always is now; kept so a Worker without the App still has something to call GitHub with."
+  description = "A personal token, the Worker's fallback GITHUB_APP_TOKEN. Unused while the GitHub App (github_app_id + github_app_private_key) is configured, which it always is now; kept so a Worker without the App still has something to call GitHub with."
 }
 
 variable "github_app_id" {
@@ -77,13 +77,14 @@ variable "github_app_id" {
   description = "The Worker's GitHub App ID (the App's settings page). The Worker reads and writes GitHub as this App's bot. The App needs Issues and Pull requests read & write, Checks and Contents read, and must be installed on every repo the Worker serves (including e2e_repo)."
 }
 
-variable "github_app_private_key_path" {
+variable "github_app_private_key" {
   type        = string
-  description = "Path to the App's private key in PKCS#8 (\"BEGIN PRIVATE KEY\"), outside this repo. GitHub downloads PKCS#1; convert it once: openssl pkcs8 -topk8 -nocrypt -in <downloaded>.pem -out app.pkcs8.pem"
+  sensitive   = true
+  description = "The App's private key: the .pem GitHub downloads (App settings -> Private keys -> Generate), pasted as-is into terraform.tfvars as a heredoc, or set as TF_VAR_github_app_private_key. Either PKCS#1 (GitHub's format) or PKCS#8 works. Like every secret here, it ends up in tofu's state, so keep that file safe."
 
   validation {
-    condition     = fileexists(pathexpand(var.github_app_private_key_path)) && strcontains(file(pathexpand(var.github_app_private_key_path)), "BEGIN PRIVATE KEY")
-    error_message = "github_app_private_key_path must be an existing PKCS#8 key (\"BEGIN PRIVATE KEY\"). Convert GitHub's download: openssl pkcs8 -topk8 -nocrypt -in <downloaded>.pem -out app.pkcs8.pem"
+    condition     = strcontains(var.github_app_private_key, "PRIVATE KEY-----")
+    error_message = "github_app_private_key must be the key's PEM text (\"-----BEGIN RSA PRIVATE KEY-----…\"), not a path."
   }
 }
 

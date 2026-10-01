@@ -4,9 +4,9 @@
 // repo, for an installation token (an hour's life). Tokens are cached per
 // repo until five minutes before they expire, per Worker isolate.
 //
-// The key must be PKCS#8 ("BEGIN PRIVATE KEY"): Web Crypto can't import the
-// PKCS#1 ("BEGIN RSA PRIVATE KEY") file GitHub downloads. Convert it once:
-//   openssl pkcs8 -topk8 -nocrypt -in <downloaded>.pem -out app.pkcs8.pem
+// The key can be GitHub's download as-is (PKCS#1, "BEGIN RSA PRIVATE KEY"),
+// or PKCS#8 ("BEGIN PRIVATE KEY"); pkcs8Der wraps the first into the second,
+// which is all Web Crypto can import.
 
 export type GitHubAppEnv = {
   GITHUB_APP_ID?: string;
@@ -25,17 +25,33 @@ const b64url = (data: Uint8Array | string): string => {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 };
 
+/** A DER length: short form under 128, else 0x8n and n big-endian bytes. */
+function derLength(n: number): number[] {
+  if (n < 0x80) return [n];
+  const bytes: number[] = [];
+  for (let v = n; v > 0; v >>= 8) bytes.unshift(v & 0xff);
+  return [0x80 | bytes.length, ...bytes];
+}
+
+/**
+ * The key as PKCS#8 DER, which is all Web Crypto imports. GitHub's download
+ * is PKCS#1 ("BEGIN RSA PRIVATE KEY"), so that's wrapped here: PKCS#8 is the
+ * PKCS#1 key in an OCTET STRING after version 0 and the rsaEncryption
+ * algorithm identifier. A key already in PKCS#8 passes through.
+ */
 function pkcs8Der(pem: string): ArrayBuffer {
-  if (pem.includes("BEGIN RSA PRIVATE KEY")) {
-    throw new Error(
-      "GITHUB_APP_PRIVATE_KEY is PKCS#1; convert it to PKCS#8: openssl pkcs8 -topk8 -nocrypt -in <key>.pem -out app.pkcs8.pem",
-    );
-  }
-  const body = pem.replace(/-----(BEGIN|END) PRIVATE KEY-----/g, "").replace(/\s+/g, "");
+  const pkcs1 = pem.includes("BEGIN RSA PRIVATE KEY");
+  const body = pem.replace(/-----(BEGIN|END) (RSA )?PRIVATE KEY-----/g, "").replace(/\s+/g, "");
   const bin = atob(body);
-  const der = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) der[i] = bin.charCodeAt(i);
-  return der.buffer;
+  const der = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  if (!pkcs1) return der.buffer;
+
+  const version = [0x02, 0x01, 0x00];
+  const rsaEncryption = [0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00];
+  const octets = [0x04, ...derLength(der.length)];
+  const contentLength = version.length + rsaEncryption.length + octets.length + der.length;
+  const out = new Uint8Array([0x30, ...derLength(contentLength), ...version, ...rsaEncryption, ...octets, ...der]);
+  return out.buffer;
 }
 
 /** The App's own JWT: 10 minutes at most, iat a minute back for clock drift. */

@@ -102,7 +102,7 @@ resource "cloudflare_workers_script" "worker" {
     # CI-fix rules fire their loops directly, which only stays single-fire
     # while the echoes are dropped.
     { type = "plain_text", name = "GITHUB_APP_ID", text = var.github_app_id },
-    { type = "secret_text", name = "GITHUB_APP_PRIVATE_KEY", text = file(pathexpand(var.github_app_private_key_path)) },
+    { type = "secret_text", name = "GITHUB_APP_PRIVATE_KEY", text = var.github_app_private_key },
     { type = "secret_text", name = "GITHUB_WEBHOOK_SECRET", text = random_password.webhook_secret.result },
     { type = "secret_text", name = "ROUTINE_SIGNAL_SECRET", text = random_password.routine_signal_secret.result },
     {
