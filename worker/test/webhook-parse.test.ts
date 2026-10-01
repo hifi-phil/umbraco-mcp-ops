@@ -24,7 +24,7 @@ describe("extractRoutingInfo", () => {
         repository: { name: "umbraco-mcp-ops", owner: { login: "hifi-phil" } },
         issue: { number: 412 },
       }),
-    ).toEqual({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 });
+    ).toEqual({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumbers: [412] });
   });
 
   it("routes on pull_request.number when there's no issue field", () => {
@@ -33,7 +33,25 @@ describe("extractRoutingInfo", () => {
         repository: { name: "umbraco-mcp-ops", owner: { login: "hifi-phil" } },
         pull_request: { number: 97 },
       }),
-    ).toEqual({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 97 });
+    ).toEqual({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumbers: [97] });
+  });
+
+  it("routes a check_suite on its pull_requests (it has no issue or pull_request key)", () => {
+    expect(
+      extractRoutingInfo({
+        repository: { name: "umbraco-mcp-ops", owner: { login: "hifi-phil" } },
+        check_suite: { status: "completed", pull_requests: [{ number: 163 }, { number: 170 }] },
+      }),
+    ).toEqual({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumbers: [163, 170] });
+  });
+
+  it("a check_suite with no PRs (a push to dev) -> null", () => {
+    expect(
+      extractRoutingInfo({
+        repository: { name: "umbraco-mcp-ops", owner: { login: "hifi-phil" } },
+        check_suite: { status: "completed", pull_requests: [] },
+      }),
+    ).toBeNull();
   });
 
   it("returns null when there's nothing to route on", () => {

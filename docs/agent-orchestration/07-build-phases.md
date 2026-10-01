@@ -28,10 +28,10 @@ node is actually the problem.
 **Exit:** `graph.ts` and `github/from-github.ts` exist as reviewable files. No code
 runs against production yet.
 
-**Status:** started — see [09-phase-1-real-graph.md](09-phase-1-real-graph.md)
-for the real table audited against this repo's actual `loop-dispatch` and
-loop skills. Two loops (`auto-release-loop`, `issue-discuss-loop`) still need
-the same scrutiny before this phase is complete.
+**Status:** done. The real table is audited against this repo's actual
+`loop-dispatch` and loop skills; see
+[09-phase-1-real-graph.md](09-phase-1-real-graph.md). All five loops are
+covered, and the two shadow runs (Phase 3) folded their gaps back in.
 
 ## Phase 2 — Test it
 
@@ -111,9 +111,12 @@ watchdog, so that keeps its own switch until its timeouts are proven.
   other repos have moved, then go in one cleanup.
 
 The procedure and switch order are in `worker/README.md`'s "Enforcing".
-The self-trigger guard doesn't block this: the table never adds a trigger
-label, so the Worker's own writes (removals, `ai-stuck`) come back as
-no-ops. The GitHub App (a separate identity) is still wanted for Phase 5,
+The self-trigger guard didn't block this: at the time the table never added
+a trigger label, so the Worker's own writes (removals, `ai-stuck`) came back
+as no-ops. Phase 5's CI-fix cycle changed that: it adds `auto-rework` and
+`auto-merge`, and relies on those writes echoing back to fire the loops. So
+the guard (Phase 7) has to come with a `run` on those two rules; see
+`worker/README.md`'s known gaps. The GitHub App (a separate identity) is still wanted for Phase 5,
 multiple orgs, and the Checks permission.
 
 ## Phase 5 — Reducer owns labels

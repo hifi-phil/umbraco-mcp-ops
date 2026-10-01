@@ -1,0 +1,6 @@
+# Build config only: `npm run build` bundles the stub to stub/dist/index.js,
+# and worker/terraform/ deploys that file (with its secrets) when e2e_repo
+# is set. Never `wrangler deploy` this directly.
+name = "agent-orchestration-e2e-stub"
+main = "src/index.ts"
+compatibility_date = "2026-08-25"

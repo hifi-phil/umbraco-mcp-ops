@@ -1,0 +1,19 @@
+{
+  "name": "agent-orchestration-e2e",
+  "private": true,
+  "description": "End-to-end suite for the agent-orchestration Worker, run against the hifi-phil/mcp-ops-e2e-testing sandbox on real GitHub. stub/ is the stub-agent Worker behind the sandbox's Fire URL; driver/ runs the scenarios. See docs/agent-orchestration/14-e2e-testing.md.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --dir stub",
+    "e2e": "vitest run --config vitest.e2e.config.ts --reporter=verbose",
+    "build": "wrangler deploy --dry-run --outdir dist --config stub/wrangler.toml",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260825.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "wrangler": "^4.125.0"
+  }
+}

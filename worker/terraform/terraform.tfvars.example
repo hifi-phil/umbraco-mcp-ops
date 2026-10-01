@@ -21,3 +21,9 @@ github_read_token     = "github_pat_…"
 # repo_routines = {
 #   "hifi-phil/umbraco-mcp-ops" = { fire_url = "https://…", token = "…" }
 # }
+
+# The e2e sandbox (docs/agent-orchestration/14-e2e-testing.md). Build the
+# stub first: cd ../../e2e && npm install && npm run build. The sandbox's
+# Fire URL entry is added for you, pointing at the stub.
+# e2e_repo              = "mcp-ops-e2e-testing"
+# e2e_stub_github_token = "github_pat_…"  # sandbox only: Contents, Issues, Pull requests read/write

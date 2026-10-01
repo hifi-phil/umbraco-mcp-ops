@@ -12,7 +12,20 @@ export type GitHubEnv = {
   GITHUB_API_BASE_URL?: string;
 };
 
-async function gh(env: GitHubEnv, method: string, path: string, body?: unknown): Promise<Response> {
+/**
+ * A 404 throws like any other failure. GitHub also answers 404 for a repo
+ * the token can't see, so treating it as "nothing there" turned a missing
+ * token grant into empty labels and silently skipped writes (found by the
+ * first e2e run). Only removeLabel opts out, since there a 404 really does
+ * mean the label was already gone.
+ */
+async function gh(
+  env: GitHubEnv,
+  method: string,
+  path: string,
+  body?: unknown,
+  { allow404 = false }: { allow404?: boolean } = {},
+): Promise<Response> {
   const base = env.GITHUB_API_BASE_URL ?? "https://api.github.com";
   const res = await fetch(`${base}${path}`, {
     method,
@@ -25,7 +38,7 @@ async function gh(env: GitHubEnv, method: string, path: string, body?: unknown):
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok && res.status !== 404) {
+  if (!res.ok && !(allow404 && res.status === 404)) {
     throw new Error(`GitHub API ${method} ${path} failed: ${res.status} ${await res.text()}`);
   }
   return res;
@@ -38,7 +51,6 @@ export async function getLabels(
   issueNumber: number,
 ): Promise<string[]> {
   const res = await gh(env, "GET", `/repos/${owner}/${repo}/issues/${issueNumber}/labels`);
-  if (res.status === 404) return [];
   const labels = (await res.json()) as Array<{ name: string }>;
   return labels.map((l) => l.name);
 }
@@ -60,12 +72,13 @@ export async function removeLabel(
   issueNumber: number,
   label: string,
 ): Promise<void> {
-  // A 404 here means the label was already gone (e.g. a human beat us to
-  // it) -- gh() already tolerates 404 as non-fatal, so nothing extra here.
+  // A 404 here means the label was already gone (e.g. a human beat us to it).
   await gh(
     env,
     "DELETE",
     `/repos/${owner}/${repo}/issues/${issueNumber}/labels/${encodeURIComponent(label)}`,
+    undefined,
+    { allow404: true },
   );
 }
 

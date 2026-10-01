@@ -25,6 +25,7 @@ import {
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
   resolveEnforced,
+  watchdogOverrideFor,
   type CiFix,
   type CoordinateInput,
   type Deps,
@@ -48,6 +49,9 @@ export type IssueCoordinatorEnv = GitHubEnv &
     // The watchdog's own switch, only honoured under MODE=enforce: "enforce"
     // makes expiries move issues to ai-stuck and comment; else they only log.
     WATCHDOG?: string;
+    // {"owner/repo": {"mode"?, "minutes"?}}: a repo's own watchdog switch and
+    // timeout, over WATCHDOG and watchdogMinutesFor. See coordinate.ts.
+    WATCHDOG_OVERRIDES_JSON?: string;
   };
 
 /**
@@ -79,6 +83,22 @@ export class IssueCoordinator {
     private readonly env: IssueCoordinatorEnv,
   ) {}
 
+  /**
+   * One request at a time for this issue, start to finish. Cloudflare only
+   * holds back the next request while a DO awaits its own storage, not while
+   * it awaits GitHub or a routine, so two webhooks for one PR (say its
+   * auto-merge label and its CI finishing red) used to interleave mid-run:
+   * one read labels the other was halfway through swapping (found by e2e on
+   * sandbox PR #168). In memory is enough: a DO instance is the only one for
+   * its issue, and an evicted instance has nothing in flight.
+   */
+  private queue: Promise<unknown> = Promise.resolve();
+  private serial<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(work, work);
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
 
@@ -89,7 +109,7 @@ export class IssueCoordinator {
       } catch {
         return new Response("invalid JSON body", { status: 400 });
       }
-      return respond(() => coordinateRoutineSignal(this.deps(), input));
+      return this.serial(() => respond(() => coordinateRoutineSignal(this.deps(input), input)));
     }
 
     let input: CoordinateInput;
@@ -99,7 +119,7 @@ export class IssueCoordinator {
       return new Response("invalid JSON body", { status: 400 });
     }
 
-    return respond(() => coordinateWebhook(this.deps(), input));
+    return this.serial(() => respond(() => coordinateWebhook(this.deps(input), input)));
   }
 
   /** The watchdog: fires watchdogMinutesFor(run) after a watched routine was fired
@@ -108,14 +128,23 @@ export class IssueCoordinator {
    * reducer — see coordinate.ts's coordinateWatchdogExpired, which also
    * owns the retry-safe ordering (no pendingFire -> a harmless race). */
   async alarm(): Promise<void> {
-    await coordinateWatchdogExpired(this.deps());
+    // The repo comes from the pending fire; no pending fire, nothing to do
+    // (coordinateWatchdogExpired no-ops on that too).
+    await this.serial(async () => {
+      const pending = await this.ctx.storage.get<PendingFire>(PENDING_FIRE_KEY);
+      await coordinateWatchdogExpired(this.deps(pending ?? undefined));
+    });
   }
 
   /** Real I/O; coordinate.ts switches each event to shadow writes unless
-   * `enforced` says otherwise. */
-  private deps(): Deps {
+   * `enforced` says otherwise. `ref` is the issue's repo, for its watchdog
+   * override (a DO is one issue, so every call for it names the same repo). */
+  private deps(ref?: { owner: string; repo: string }): Deps {
+    const override = ref ? watchdogOverrideFor(this.env.WATCHDOG_OVERRIDES_JSON, ref.owner, ref.repo) : undefined;
+    const watchdogMinutes = (routine: string) => override?.minutes ?? watchdogMinutesFor(routine);
     return {
-      enforced: resolveEnforced(this.env.MODE, this.env.WATCHDOG),
+      enforced: resolveEnforced(this.env.MODE, override?.mode ?? this.env.WATCHDOG),
+      watchdogMinutes,
       getLabels: (owner: string, repo: string, issueNumber: number) =>
         githubClient.getLabels(this.env, owner, repo, issueNumber),
       addLabel: (owner: string, repo: string, issueNumber: number, label: string) =>
@@ -143,7 +172,7 @@ export class IssueCoordinator {
       },
       setPendingFire: async (info: PendingFire) => {
         await this.ctx.storage.put(PENDING_FIRE_KEY, info);
-        await this.ctx.storage.setAlarm(Date.now() + watchdogMinutesFor(info.run) * 60_000);
+        await this.ctx.storage.setAlarm(Date.now() + watchdogMinutes(info.run) * 60_000);
       },
       clearPendingFire: async () => {
         await this.ctx.storage.delete(PENDING_FIRE_KEY);
@@ -179,7 +208,7 @@ export class IssueCoordinator {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
-        null, // delivery_id isn't threaded through to the log row today — see README's known gaps
+        row.deliveryId,
         row.owner,
         row.repo,
         row.issueNumber,

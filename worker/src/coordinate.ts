@@ -38,6 +38,9 @@ export const LABEL_JUST_ADDED_BY: Partial<Record<Event, Label>> = {
 };
 
 export type TransitionRow = {
+  // The GitHub delivery (X-GitHub-Delivery) that caused this row; null for
+  // a row nothing delivered, i.e. the watchdog's own expiry.
+  deliveryId: string | null;
   owner: string;
   repo: string;
   issueNumber: number;
@@ -91,6 +94,9 @@ export type Deps = {
   // Phase 4: whether this event's writes and fire are real. Everything not
   // enforced runs in shadow (see resolveEnforced).
   enforced(event: Event): boolean;
+  // How long a fired routine has before the watchdog expires, for this
+  // issue's repo (watchdogMinutesFor, unless the repo overrides it).
+  watchdogMinutes(routine: string): number;
 };
 
 /**
@@ -156,6 +162,31 @@ const WATCHDOG_MINUTES_BY_ROUTINE: Partial<Record<string, number>> = {
 
 export function watchdogMinutesFor(routine: string): number {
   return WATCHDOG_MINUTES_BY_ROUTINE[routine] ?? WATCHDOG_MINUTES;
+}
+
+/**
+ * Per-repo watchdog settings, keyed "owner/repo" (any case), from
+ * WATCHDOG_OVERRIDES_JSON. Only the e2e sandbox uses it today: `mode` makes
+ * its watchdog real while every other repo's stays on WATCHDOG, and
+ * `minutes` shortens every routine's timeout so a scenario can watch an
+ * expiry happen. Unset or `{}` means no overrides.
+ */
+export type WatchdogOverride = { mode?: string; minutes?: number };
+
+export function watchdogOverrideFor(
+  raw: string | undefined,
+  owner: string,
+  repo: string,
+): WatchdogOverride | undefined {
+  if (!raw) return undefined;
+  let map: Record<string, WatchdogOverride>;
+  try {
+    map = JSON.parse(raw);
+  } catch {
+    throw new Error("WATCHDOG_OVERRIDES_JSON is not valid JSON");
+  }
+  const want = `${owner}/${repo}`.toLowerCase();
+  return Object.entries(map).find(([key]) => key.toLowerCase() === want)?.[1];
 }
 
 export type CoordinateInput = {
@@ -331,12 +362,17 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
   const currentLabels = await deps.getLabels(input.owner, input.repo, input.issueNumber);
   if (!currentLabels.includes(LABELS.AUTO_MERGING)) return { outcome: "no_event" };
 
-  const facts = await deps.getMergeGateFacts(input.owner, input.repo, input.issueNumber);
-  const gateOutcome = deriveMergeGateOutcome(facts);
-  if (gateOutcome === "still_pending" || gateOutcome === null) return { outcome: "no_event" };
+  // Same reading as when auto-merge is added. CI often fails within seconds
+  // of a push, before GitHub has computed `mergeable`; waiting on that here
+  // dropped the red CI for good (nothing else re-checks it), so an unknown
+  // `mergeable` counts as "no known conflict", as hardBlockReason reads it.
+  const facts = await settledGateFacts(deps, input);
+  if (facts.checkRuns.some((c) => c.status !== "completed")) return { outcome: "no_event" };
 
-  if (gateOutcome === "hard") return blockMerge(deps, input, currentLabels, hardBlockReason(facts) ?? "blocked");
-  return handToRework(deps, input, currentLabels, facts);
+  const reason = hardBlockReason(facts);
+  if (reason) return blockMerge(deps, input, currentLabels, reason);
+  if (failedCheckNames(facts).length > 0) return handToRework(deps, input, currentLabels, facts);
+  return { outcome: "no_event" };
 }
 
 /** The shared reduce() -> labelOps() -> fire/log tail, once an Event has
@@ -349,6 +385,8 @@ async function applyEvent(
   currentLabels: string[],
 ): Promise<CoordinateResult> {
   const { io: deps, mode } = depsFor(allDeps, event);
+  // Present when a webhook caused this; the watchdog passes its pending fire.
+  const deliveryId = (input as Partial<CoordinateInput>).deliveryId || null;
   const justAdded = LABEL_JUST_ADDED_BY[event];
   const labelsBeforeThisEvent = justAdded
     ? currentLabels.filter((l) => l !== justAdded)
@@ -356,6 +394,7 @@ async function applyEvent(
   const current = deriveState(labelsBeforeThisEvent);
   if (current === "ambiguous") {
     await deps.logTransition({
+      deliveryId,
       owner: input.owner,
       repo: input.repo,
       issueNumber: input.issueNumber,
@@ -373,6 +412,7 @@ async function applyEvent(
   if (!rule && CONTEXTUAL_EVENTS.has(event)) return { outcome: "ignored", from: current, event };
   if (!rule) {
     await deps.logTransition({
+      deliveryId,
       owner: input.owner,
       repo: input.repo,
       issueNumber: input.issueNumber,
@@ -416,6 +456,7 @@ async function applyEvent(
   }
 
   await deps.logTransition({
+    deliveryId,
     owner: input.owner,
     repo: input.repo,
     issueNumber: input.issueNumber,
@@ -503,7 +544,7 @@ export async function coordinateWatchdogExpired(deps: Deps): Promise<WatchdogRes
     pending.owner,
     pending.repo,
     pending.issueNumber,
-    `⚠️ The \`${pending.run}\` routine hasn't reported back within ${watchdogMinutesFor(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
+    `⚠️ The \`${pending.run}\` routine hasn't reported back within ${deps.watchdogMinutes(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
       `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
   );
 

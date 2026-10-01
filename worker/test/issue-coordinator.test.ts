@@ -159,7 +159,7 @@ describe("IssueCoordinator.fetch()", () => {
     expect(result.outcome).toBe("applied");
     expect(inserted).toHaveLength(1);
     expect(inserted[0]).toEqual([
-      null,
+      "d-1", // the delivery that caused it
       "hifi-phil",
       "umbraco-mcp-ops",
       412,
@@ -223,6 +223,59 @@ describe("IssueCoordinator.fetch()", () => {
   });
 });
 
+describe("IssueCoordinator — one request at a time per issue", () => {
+  it("a second webhook waits for the first to finish, even while the first awaits GitHub", async () => {
+    const order: string[] = [];
+    let releaseFirst!: () => void;
+    const firstHeld = new Promise<void>((r) => (releaseFirst = r));
+    let labelReads = 0;
+    const apiFetch = fakeApiFetch();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if ((init?.method ?? "GET") === "GET" && url.includes("/labels")) {
+          const n = ++labelReads;
+          order.push(`read ${n}`);
+          if (n === 1) await firstHeld; // the first request is mid-await on GitHub
+        }
+        return apiFetch(url, init);
+      }),
+    );
+    const { ctx } = fakeCtx();
+    const coordinator = new IssueCoordinator(ctx, fakeEnv());
+
+    const first = coordinator.fetch(fetchRequest(labeledInput({ deliveryId: "d-a" })));
+    const second = coordinator.fetch(fetchRequest(labeledInput({ deliveryId: "d-b" })));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(order, "the second hasn't started while the first is waiting").toEqual(["read 1"]);
+
+    releaseFirst();
+    await first;
+    await second;
+    expect(order).toEqual(["read 1", "read 2"]);
+  });
+
+  it("a failing request doesn't block the next one", async () => {
+    let calls = 0;
+    const apiFetch = fakeApiFetch();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes("/labels") && (init?.method ?? "GET") === "GET" && ++calls === 1) {
+          return new Response("bad gateway", { status: 502 });
+        }
+        return apiFetch(url, init);
+      }),
+    );
+    const { ctx } = fakeCtx();
+    const coordinator = new IssueCoordinator(ctx, fakeEnv());
+    const failed = await coordinator.fetch(fetchRequest(labeledInput({ deliveryId: "d-a" })));
+    const next = await coordinator.fetch(fetchRequest(labeledInput({ deliveryId: "d-b" })));
+    expect(failed.status).toBe(500);
+    expect(next.status).toBe(200);
+  });
+});
+
 describe("IssueCoordinator.alarm() — the watchdog", () => {
   const pendingBuild = {
     owner: "hifi-phil",
@@ -250,6 +303,7 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
     expect(JSON.parse((addCall![1] as RequestInit).body as string)).toEqual({ labels: ["ai-stuck"] });
     expect(inserted).toHaveLength(1);
     expect(inserted[0]).toEqual(expect.arrayContaining(["ready-for-ai", "watchdog_expired"]));
+    expect(inserted[0]![0], "no delivery caused a watchdog row").toBeNull();
     expect(await storage.get("pendingFire")).toBeUndefined();
   });
 
@@ -275,6 +329,48 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
     await coordinator.alarm();
 
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("IssueCoordinator — a repo's watchdog override (WATCHDOG_OVERRIDES_JSON)", () => {
+  const overrides = JSON.stringify({ "Hifi-Phil/MCP-Ops-E2E-Testing": { mode: "enforce", minutes: 1 } });
+  const sandboxBuild = { owner: "hifi-phil", repo: "mcp-ops-e2e-testing", issueNumber: 5, run: "issue-build-loop" };
+
+  it("the overridden repo's fire schedules its alarm at its own minutes", async () => {
+    vi.stubGlobal("fetch", fakeApiFetch());
+    const { ctx, setAlarm } = fakeCtx();
+    const env = fakeEnv({
+      WATCHDOG: undefined,
+      WATCHDOG_OVERRIDES_JSON: overrides,
+      REPO_ROUTINES_JSON: JSON.stringify({ "hifi-phil/mcp-ops-e2e-testing": { fireUrl: "https://routines.example/fire/e2e", token: "t" } }),
+    });
+    const before = Date.now();
+    await new IssueCoordinator(ctx, env).fetch(fetchRequest(labeledInput({ repo: "mcp-ops-e2e-testing", issueNumber: 5 })));
+    const [at] = setAlarm.mock.calls[0]! as unknown as [number];
+    expect(at - before).toBeGreaterThanOrEqual(60_000);
+    expect(at - before).toBeLessThan(61_000);
+  });
+
+  it("its expiry is real (comments, swaps to ai-stuck) though WATCHDOG is shadow, and quotes its own minutes", async () => {
+    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    vi.stubGlobal("fetch", apiFetch);
+    const { ctx, storage } = fakeCtx();
+    await storage.put("pendingFire", sandboxBuild);
+    await new IssueCoordinator(ctx, fakeEnv({ WATCHDOG: undefined, WATCHDOG_OVERRIDES_JSON: overrides })).alarm();
+    const comment = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).includes("/comments"));
+    expect(JSON.parse((comment![1] as RequestInit).body as string).body).toMatch(/within 1 minutes/);
+    const add = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).endsWith("/labels"));
+    expect(JSON.parse((add![1] as RequestInit).body as string)).toEqual({ labels: ["ai-stuck"] });
+  });
+
+  it("every other repo keeps WATCHDOG (shadow) and the default minutes", async () => {
+    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    vi.stubGlobal("fetch", apiFetch);
+    const { ctx, storage } = fakeCtx();
+    await storage.put("pendingFire", { ...sandboxBuild, repo: "umbraco-mcp-ops" });
+    await new IssueCoordinator(ctx, fakeEnv({ WATCHDOG: undefined, WATCHDOG_OVERRIDES_JSON: overrides })).alarm();
+    const writes = apiFetch.mock.calls.filter(([, init]) => ((init as RequestInit)?.method ?? "GET") !== "GET");
+    expect(writes).toEqual([]);
   });
 });
 

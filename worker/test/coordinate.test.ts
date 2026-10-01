@@ -8,6 +8,7 @@ import {
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
   deriveState,
+  MAX_CI_FIX_ATTEMPTS,
   resolveEnforced,
   resolveMode,
   shadowDeps,
@@ -63,6 +64,7 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     // These tests are about the write path; shadow and per-event
     // enforcement have their own describe blocks.
     enforced: () => true,
+    watchdogMinutes: watchdogMinutesFor,
     ...overrides,
   };
 }
@@ -606,13 +608,52 @@ describe("coordinateWebhook — check_suite.completed, the real merge-gate aggre
     expect(deps.getMergeGateFacts).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412);
   });
 
-  it("completed, in auto-merge, still_pending per the real facts (e.g. mergeable still computing) -> no_event", async () => {
+  it("completed, in auto-merge, CI green but mergeable still computing -> re-read, then no_event", async () => {
+    vi.useFakeTimers();
+    try {
+      const getMergeGateFacts = vi.fn(async () => gateFacts({ mergeable: null }));
+      const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]), getMergeGateFacts });
+      const done = coordinateWebhook(deps, checkSuiteInput());
+      await vi.runAllTimersAsync();
+      expect(await done).toEqual({ outcome: "no_event" });
+      expect(getMergeGateFacts).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("completed, in auto-merge, CI red while mergeable is still computing -> still handed to rework (found by e2e)", async () => {
+    vi.useFakeTimers();
+    try {
+      const deps = fakeDeps({
+        getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
+        getMergeGateFacts: vi.fn(async () =>
+          gateFacts({ mergeable: null, checkRuns: [{ name: "ci", status: "completed", conclusion: "failure" }] }),
+        ),
+      });
+      const done = coordinateWebhook(deps, checkSuiteInput());
+      await vi.runAllTimersAsync();
+      expect(await done).toMatchObject({ outcome: "applied", event: EVENTS.MERGE_GATE_FAILED_SOFT });
+      expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_REWORKING);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("completed, in auto-merge, another suite still running -> no_event", async () => {
     const deps = fakeDeps({
       getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
-      getMergeGateFacts: vi.fn(async () => gateFacts({ mergeable: null })),
+      getMergeGateFacts: vi.fn(async () =>
+        gateFacts({
+          checkRuns: [
+            { status: "completed", conclusion: "failure" },
+            { status: "in_progress", conclusion: null },
+          ],
+        }),
+      ),
     });
-    const result = await coordinateWebhook(deps, checkSuiteInput());
-    expect(result).toEqual({ outcome: "no_event" });
+    expect(await coordinateWebhook(deps, checkSuiteInput())).toEqual({ outcome: "no_event" });
+    expect(deps.addLabel).not.toHaveBeenCalled();
   });
 
   it("completed, in auto-merge, a required check genuinely failed -> auto-merge swapped for auto-rework, with a comment", async () => {
@@ -727,6 +768,10 @@ describe("coordinateWebhook — the merge gate when auto-merge is added", () => 
 });
 
 describe("coordinateWebhook — CI failing under auto-merge goes to rework, then back", () => {
+  it("the cap is three fix attempts, then merge-blocked", () => {
+    expect(MAX_CI_FIX_ATTEMPTS).toBe(3);
+  });
+
   const failing = [{ name: "test", status: "completed" as const, conclusion: "failure" as const }];
   const autoMergeAdded = input({
     payload: { action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING }, sender: { login: "phil", type: "User" } },

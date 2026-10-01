@@ -21,3 +21,14 @@ output "routine_signal_secret" {
   value     = random_password.routine_signal_secret.result
   sensitive = true
 }
+
+# The e2e driver's key to GET /transitions. It reads this itself (tofu
+# output -raw e2e_log_read_secret) unless E2E_LOG_SECRET is set.
+output "e2e_log_read_secret" {
+  value     = local.e2e ? random_password.e2e_log_read_secret[0].result : null
+  sensitive = true
+}
+
+output "e2e_stub_url" {
+  value = local.e2e ? local.e2e_url : null
+}

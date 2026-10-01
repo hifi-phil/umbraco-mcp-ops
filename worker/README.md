@@ -568,10 +568,6 @@ three steps.
 
 ## Known gaps in the coordinator itself
 
-- `delivery_id` isn't threaded into the D1 log row (`insertTransition`
-  hardcodes `null`) — the dedupe check uses DO storage, not the log, so
-  this doesn't affect correctness, just makes the log slightly less
-  useful for debugging a specific delivery.
 - `getLatestReviewState` is a deliberate simplification, not full parity
   with github-ops's real review-state operation — it takes the single most
   recent review's state across all reviewers, not each reviewer's own
@@ -590,3 +586,11 @@ three steps.
   those rules need a `run` instead. The attempt count (`ciFix`, capped at
   `MAX_CI_FIX_ATTEMPTS`) lives in DO storage and resets when a human
   re-adds `auto-merge` after `merge-blocked`.
+- **The merge gate only works on public repos today.** It reads CI through
+  the check-runs API, and fine-grained tokens have no Checks permission.
+  So on a private repo every gate read gets 403 "Resource not accessible by
+  personal access token", both when `auto-merge` is added and when CI
+  finishes. Found by the e2e suite while the sandbox was private (it's
+  public now, like `umbraco-mcp-ops`). A private repo needs the GitHub App
+  (Checks: read), or a gate that reads workflow runs (Actions: read) and
+  so sees only GitHub Actions checks.
