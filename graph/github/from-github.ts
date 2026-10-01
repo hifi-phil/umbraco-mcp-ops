@@ -28,7 +28,7 @@ import { EVENTS, type Event } from "../constants/events";
 import { LABELS } from "../constants/labels";
 import { parseOutcomeShape } from "../outcomes";
 
-export const BOT_LOGIN = "umbraco-mcp-ops[bot]"; // placeholder — set to the real GitHub App login
+export const BOT_LOGIN = "umbraco-mcp-ops[bot]"; // the default; the Worker passes its GitHub App's real login to translate()
 export const COMMENT_SIGNATURE = "<!-- issue-discuss-loop -->"; // real marker, from issue-discuss-loop's SKILL.md
 
 // Matches any loop's outcome marker (plugins/agent-outcomes's format),
@@ -64,8 +64,8 @@ export type WebhookPayload = {
   check_suite?: { conclusion: "success" | "failure" | null; status: "completed" | "in_progress" };
 };
 
-function isOwnBot(sender: WebhookPayload["sender"]): boolean {
-  return sender?.login === BOT_LOGIN;
+function isOwnBot(sender: WebhookPayload["sender"], botLogin: string): boolean {
+  return sender?.login === botLogin;
 }
 
 function hasOwnSignatureMarker(body: string | undefined): boolean {
@@ -89,7 +89,13 @@ function isDiscussionReply(payload: WebhookPayload): boolean {
   );
 }
 
-export function translate(payload: WebhookPayload): Event | null {
+/**
+ * `botLogin` is the orchestrator's own GitHub identity (its App's
+ * `<slug>[bot]`): label changes it made come back as webhooks and are
+ * dropped here, the self-trigger guard. The Worker passes its App's login;
+ * without one, BOT_LOGIN (a login no one has) means nothing is dropped.
+ */
+export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { botLogin?: string } = {}): Event | null {
   switch (payload.action) {
     case "issues.labeled":
       // Self-trigger guard, identity case — see 03-components.md §3.3.
@@ -99,7 +105,7 @@ export function translate(payload: WebhookPayload): Event | null {
       // swallow a loop's own outcome comments below, since loops post
       // under the same bot identity — that's not a self-trigger to guard
       // against, it's the fact we want to read.
-      if (isOwnBot(payload.sender)) return null;
+      if (isOwnBot(payload.sender, botLogin)) return null;
       switch (payload.label?.name) {
         case LABELS.AI_READY:
           return EVENTS.LABELLED_AI_READY;
@@ -119,7 +125,7 @@ export function translate(payload: WebhookPayload): Event | null {
       }
 
     case "issues.unlabeled":
-      if (isOwnBot(payload.sender)) return null;
+      if (isOwnBot(payload.sender, botLogin)) return null;
       switch (payload.label?.name) {
         case LABELS.AI_READY:
           return EVENTS.UNLABELLED_AI_READY;
@@ -165,7 +171,7 @@ export function translate(payload: WebhookPayload): Event | null {
 
     case "pull_request.labeled":
       // Self-trigger guard, identity case — see the issues.labeled case above.
-      if (isOwnBot(payload.sender)) return null;
+      if (isOwnBot(payload.sender, botLogin)) return null;
       switch (payload.label?.name) {
         case LABELS.AUTO_REWORKING:
           return EVENTS.LABELLED_AUTO_REWORKING;
@@ -176,7 +182,7 @@ export function translate(payload: WebhookPayload): Event | null {
       }
 
     case "pull_request.unlabeled":
-      if (isOwnBot(payload.sender)) return null;
+      if (isOwnBot(payload.sender, botLogin)) return null;
       switch (payload.label?.name) {
         case LABELS.AUTO_REWORKING:
           return EVENTS.UNLABELLED_AUTO_REWORKING;

@@ -583,14 +583,17 @@ three steps.
   deliberately excluded from `deriveMergeGateOutcome` — a static PR
   property `check_suite.completed` completing doesn't change or motivate
   re-checking, so it's out of scope for this specific event-triggered path.
-- The CI-fix cycle (`auto-merge` → `auto-rework` → `auto-merge`) relies on
-  the Worker's own label writes echoing back as webhooks: the
-  `auto-rework` echo fires rework-loop, and the `auto-merge` echo fires
-  merge-flow. That works while the Worker writes as the same user as
-  everyone else. Once it writes as a GitHub App that `isOwnBot` filters,
-  those rules need a `run` instead. The attempt count (`ciFix`, capped at
-  `MAX_CI_FIX_ATTEMPTS`) lives in DO storage and resets when a human
-  re-adds `auto-merge` after `merge-blocked`.
+- The Worker writes as its **GitHub App's bot** (`src/github-app.ts`:
+  an RS256 JWT, exchanged per repo for an installation token, cached until
+  shortly before it expires). The **self-trigger guard** is
+  `translate(payload, { botLogin })`: label changes the bot made come back
+  as webhooks and are dropped. The bot login is the App's `<slug>[bot]`,
+  looked up once per isolate. So the CI-fix cycle's rules (`auto-merge` →
+  `auto-rework` → `auto-merge`) fire rework-loop and merge-flow directly
+  instead of through their echo. Tofu requires the App, because those rules
+  would fire twice with an identity the guard can't recognise. The attempt
+  count (`ciFix`, capped at `MAX_CI_FIX_ATTEMPTS`) lives in DO storage and
+  resets when a human re-adds `auto-merge` after `merge-blocked`.
 - **The merge gate only works on public repos today.** It reads CI through
   the check-runs API, and fine-grained tokens have no Checks permission.
   So on a private repo every gate read gets 403 "Resource not accessible by

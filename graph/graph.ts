@@ -182,22 +182,22 @@ export const rules: Rule[] = [
     from: LABELS.AUTO_MERGING,
     on: EVENTS.MERGE_GATE_FAILED_SOFT,
     // CI failed under auto-merge (retryable, not a human block): hand the PR
-    // to rework-loop. No `run`: the Worker's own label add comes back as a
-    // label webhook and fires rework-loop through the normal rule, just as
-    // the CI_FIX_PUSHED rule below re-adds auto-merge and its echo fires
-    // merge-flow (after the label-time gate check). That relies on the
-    // Worker's writes not being filtered as self-triggers, true while it
-    // writes as the same account as everyone else; a GitHub App identity
-    // would need a `run` on both instead. coordinate.ts caps the cycle at
-    // MAX_CI_FIX_ATTEMPTS, then merge-blocked.
+    // to rework-loop. The rule fires it itself: the Worker writes as its
+    // GitHub App's bot, and translate() drops the bot's own label echoes
+    // (the self-trigger guard), so the echo no longer would. coordinate.ts
+    // caps the cycle at MAX_CI_FIX_ATTEMPTS, then merge-blocked.
     to: label(LABELS.AUTO_REWORKING),
+    run: ROUTINES.REWORK_LOOP,
     verifiedBy: "deterministic", // the Worker's own re-fetched check runs
   },
   {
-    // That CI-fix rework pushed: back to auto-merge.
+    // That CI-fix rework pushed: back to auto-merge, and merge-flow fired
+    // directly for the same reason. A conflict is still caught when its CI
+    // finishes (coordinate.ts's check_suite path).
     from: LABELS.AUTO_REWORKING,
     on: EVENTS.CI_FIX_PUSHED,
     to: label(LABELS.AUTO_MERGING),
+    run: ROUTINES.MERGE_FLOW,
     verifiedBy: "deterministic",
   },
   {

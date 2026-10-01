@@ -69,7 +69,22 @@ variable "github_repo" {
 variable "github_read_token" {
   type        = string
   sensitive   = true
-  description = "The Worker's GITHUB_APP_TOKEN. In shadow it only reads, so a fine-grained token with read access to Issues, Pull requests and Metadata is enough (fine-grained tokens have no Checks permission)."
+  description = "A personal token, the Worker's fallback GITHUB_APP_TOKEN. Unused while the GitHub App (github_app_id + github_app_private_key_path) is configured, which it always is now; kept so a Worker without the App still has something to call GitHub with."
+}
+
+variable "github_app_id" {
+  type        = string
+  description = "The Worker's GitHub App ID (the App's settings page). The Worker reads and writes GitHub as this App's bot. The App needs Issues and Pull requests read & write, Checks and Contents read, and must be installed on every repo the Worker serves (including e2e_repo)."
+}
+
+variable "github_app_private_key_path" {
+  type        = string
+  description = "Path to the App's private key in PKCS#8 (\"BEGIN PRIVATE KEY\"), outside this repo. GitHub downloads PKCS#1; convert it once: openssl pkcs8 -topk8 -nocrypt -in <downloaded>.pem -out app.pkcs8.pem"
+
+  validation {
+    condition     = fileexists(pathexpand(var.github_app_private_key_path)) && strcontains(file(pathexpand(var.github_app_private_key_path)), "BEGIN PRIVATE KEY")
+    error_message = "github_app_private_key_path must be an existing PKCS#8 key (\"BEGIN PRIVATE KEY\"). Convert GitHub's download: openssl pkcs8 -topk8 -nocrypt -in <downloaded>.pem -out app.pkcs8.pem"
+  }
 }
 
 variable "repo_routines" {
