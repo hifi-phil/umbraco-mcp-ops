@@ -152,11 +152,15 @@ function depsFor(deps: Deps, event: Event): { io: Deps; mode: Mode } {
  * which re-arms it) before the watchdog moves the issue to ai-stuck. */
 export const WATCHDOG_MINUTES = 30;
 
-// Per-routine overrides. Shadow run 1's release was still working at 36
-// minutes (13-shadow-results.md); builds on the MCP repos run full test
-// suites. First guesses from one run each; tune from the D1 log.
+// Per-routine overrides, from umbraco-mcp-ops's D1 log (01-10-2026, via
+// worker/queries/routine-durations.sql). Slowest real run per routine:
+// build 23 min (most under 3), release 7 (run 1's, before the release
+// loop's fixes, 36), rework 2.4, merge-flow 3.3. Each timeout keeps a wide
+// margin over that; builds on the MCP repos run full test suites, so they
+// may need more (per repo: WATCHDOG_OVERRIDES_JSON). Re-run the query as
+// more runs land.
 const WATCHDOG_MINUTES_BY_ROUTINE: Partial<Record<string, number>> = {
-  [ROUTINES.AUTO_RELEASE_LOOP]: 120,
+  [ROUTINES.AUTO_RELEASE_LOOP]: 60,
   [ROUTINES.ISSUE_BUILD_LOOP]: 60,
 };
 
