@@ -5,13 +5,21 @@ import {
   outcomeComment,
   parseFire,
   parseHint,
+  routineSignal,
   verifySignature,
   type Gh,
   type StubEnv,
 } from "../src/index";
 import { act, mergeIfGreen } from "../src/loops";
 
-const env: StubEnv = { GITHUB_TOKEN: "gh", FIRE_TOKEN: "fire", HOOK_SECRET: "hook", E2E_REPO: "hifi-phil/mcp-ops-e2e-testing" };
+const env: StubEnv = {
+  GITHUB_TOKEN: "gh",
+  FIRE_TOKEN: "fire",
+  HOOK_SECRET: "hook",
+  E2E_REPO: "hifi-phil/mcp-ops-e2e-testing",
+  ORCHESTRATOR: { fetch: async () => new Response("{}") },
+  ROUTINE_SIGNAL_SECRET: "sig",
+};
 const R = "/repos/hifi-phil/mcp-ops-e2e-testing";
 const fireFor = (route: string, number = 7) => ({ route, owner: "hifi-phil", repo: "mcp-ops-e2e-testing", number });
 const text = (repo = "hifi-phil/mcp-ops-e2e-testing") =>
@@ -149,6 +157,57 @@ describe("act — merge-flow (mergeIfGreen)", () => {
   });
 });
 
+describe("act — issue-discuss-loop", () => {
+  it("discuss -> one signed question, numbered by the rounds so far", async () => {
+    const gh = fakeGh({ [`GET ${R}/issues/7/comments`]: [{ body: "<!-- issue-discuss-loop -->\nround 1" }, { body: "a human reply" }] });
+    expect(await act(gh, fireFor("issue-discuss-loop"), "discuss")).toBe("discussed");
+    expect(gh).toHaveBeenLastCalledWith("POST", `${R}/issues/7/comments`, {
+      body: expect.stringMatching(/^<!-- issue-discuss-loop -->\n.*round 2/),
+    });
+  });
+});
+
+describe("routineSignal", () => {
+  it("posts {owner, repo, signal} to /routine-signal over the service binding, with the bearer secret", async () => {
+    const fetch = vi.fn(async (_input: string, _init?: RequestInit) => new Response('{"outcome":"heartbeat_extended"}'));
+    const signal = routineSignal({ ...env, ORCHESTRATOR: { fetch } }, "hifi-phil", "mcp-ops-e2e-testing");
+    expect(await signal({ kind: "process", routine: "issue-build-loop", issue: 7, step: "s" })).toContain("heartbeat_extended");
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(new URL(url).pathname).toBe("/routine-signal");
+    expect((init!.headers as Record<string, string>).Authorization).toBe("Bearer sig");
+    expect(JSON.parse(init!.body as string)).toEqual({
+      owner: "hifi-phil",
+      repo: "mcp-ops-e2e-testing",
+      signal: { kind: "process", routine: "issue-build-loop", issue: 7, step: "s" },
+    });
+  });
+
+  it("a refused signal throws, so the stub's log says so", async () => {
+    const signal = routineSignal({ ...env, ORCHESTRATOR: { fetch: async () => new Response("unauthorized", { status: 401 }) } }, "o", "r");
+    await expect(signal({})).rejects.toThrow(/401/);
+  });
+});
+
+describe("act — heartbeat and completion signals", () => {
+  it("heartbeat -> one process signal for this routine and issue, no GitHub writes", async () => {
+    const gh = fakeGh();
+    const signal = vi.fn(async () => '{"outcome":"heartbeat_extended"}');
+    expect(await act(gh, fireFor("issue-build-loop"), "heartbeat", signal)).toBe("heartbeat");
+    expect(signal).toHaveBeenCalledWith({ routine: "issue-build-loop", issue: 7, kind: "process", step: "e2e-heartbeat" });
+    expect(gh).not.toHaveBeenCalled();
+  });
+
+  it("complete -> one completion signal with a valid outcome, no GitHub writes", async () => {
+    const gh = fakeGh();
+    const signal = vi.fn(async () => '{"outcome":"completion_acknowledged"}');
+    expect(await act(gh, fireFor("issue-build-loop"), "complete", signal)).toBe("completion");
+    expect(signal).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "completion", outcome: expect.objectContaining({ outcome: "build_blocked" }) }),
+    );
+    expect(gh).not.toHaveBeenCalled();
+  });
+});
+
 describe("act — auto-release-loop, and silent", () => {
   it("published -> the release_published marker, then closes the issue (as the real loop does)", async () => {
     const gh = fakeGh();
@@ -230,6 +289,35 @@ describe("handleWebhook (the stub's own check_suite webhook)", () => {
     expect(await res.json()).toEqual({ prs: [7] });
     await work;
     expect(gh).toHaveBeenCalledWith("GET", `${R}/pulls/7`);
+  });
+
+  it("a suite GitHub sent with no pull_requests -> its PRs are found by head_sha", async () => {
+    const body = JSON.stringify({
+      action: "completed",
+      repository: { name: "mcp-ops-e2e-testing", owner: { login: "hifi-phil" } },
+      check_suite: { head_sha: "h", pull_requests: [] },
+    });
+    const gh = fakeGh({ [`GET ${R}/commits/h/pulls`]: [{ number: 7, state: "open" }, { number: 8, state: "closed" }] });
+    const res = await handleWebhook(await hook(body), env, vi.fn(), gh);
+    expect(await res.json()).toEqual({ prs: [7] });
+  });
+
+  it("the gate still reads 'CI running' -> re-checked, then merged once it's green", async () => {
+    let work: Promise<unknown> | undefined;
+    let checks = 0;
+    const gh = vi.fn<Gh>(async (method, path) => {
+      if (path.endsWith("/issues/7")) return { body: "<!-- e2e: merge -->" };
+      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merge" }] };
+      if (path.endsWith("/check-runs")) {
+        checks++;
+        return { check_runs: [{ name: "ci", status: checks < 2 ? "in_progress" : "completed", conclusion: checks < 2 ? null : "success" }] };
+      }
+      return {};
+    });
+    await handleWebhook(await hook(suite()), env, (w) => (work = w), gh, 0);
+    await work;
+    expect(checks).toBe(2);
+    expect(gh).toHaveBeenCalledWith("PUT", `${R}/pulls/7/merge`, { merge_method: "squash" });
   });
 
   it("another repo, or another event -> ignored", async () => {
