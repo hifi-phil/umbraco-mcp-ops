@@ -284,6 +284,57 @@ export async function redeliver(hookId: number, id: string): Promise<void> {
   await ghText(`${R}/hooks/${hookId}/deliveries/${id}/attempts`, { method: "POST" });
 }
 
+// --- The orchestrator's D1 log (GET /transitions, sandbox only) ------------
+
+export type LogRow = {
+  id: number;
+  from_state: string;
+  event: string;
+  to_effect: string | null;
+  run: string | null;
+  dropped_reason: string | null;
+  mode: string;
+  created_at: string;
+};
+
+let logSecret: string | undefined;
+/** E2E_LOG_SECRET, else read from tofu (never printed). */
+function logReadSecret(): string {
+  logSecret ??=
+    process.env.E2E_LOG_SECRET ??
+    execFileSync("tofu", [`-chdir=${new URL("../../worker/terraform", import.meta.url).pathname}`, "output", "-raw", "e2e_log_read_secret"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  return logSecret;
+}
+
+let workerUrl: string | undefined;
+async function orchestratorUrl(): Promise<string> {
+  if (!workerUrl) {
+    const hooks = await gh<{ config: { url: string } }[]>("GET", `${R}/hooks`);
+    workerUrl = hooks.map((h) => h.config.url).find((u) => !u.endsWith("/webhook"));
+    if (!workerUrl) throw new Error(`no orchestrator webhook on ${REPO}`);
+  }
+  return workerUrl.replace(/\/$/, "");
+}
+
+/** Every row the orchestrator logged for this issue/PR, oldest first. */
+export async function transitions(number: number): Promise<LogRow[]> {
+  const [owner, repo] = REPO.split("/");
+  const url = `${await orchestratorUrl()}/transitions?owner=${owner}&repo=${repo}&issue=${number}`;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${logReadSecret()}` } });
+      if (!res.ok) throw new Error(`GET /transitions for #${number} failed: ${res.status} ${await res.text()}`);
+      return ((await res.json()) as { rows: LogRow[] }).rows;
+    } catch (e) {
+      if (attempt >= ATTEMPTS || (e instanceof Error && / 4\d\d /.test(e.message))) throw e;
+      await sleep(2000 * attempt);
+    }
+  }
+}
+
 /** Close whatever a scenario left open, and delete an unmerged PR's branch. */
 export async function cleanUp(numbers: number[], branches: string[] = []): Promise<void> {
   for (const n of numbers) {

@@ -95,6 +95,18 @@ re-checks a gate that still reads "CI running".
 - none was an event the table had no rule for
 - the shared-head `check_suite` fanned out
 - a redelivered label is deduped
+- the D1 log agrees: every row for the run's issues and PRs is enforced
+  and applied, and every delivery the Worker applied has its row
+
+**The D1 log.** The driver reads it through the Worker's `GET /transitions`
+route, which tofu turns on for the sandbox alone, with its own secret. The
+driver gets that secret from `tofu output -raw e2e_log_read_secret` unless
+`E2E_LOG_SECRET` is set. Scenarios check their own rows as well:
+- the build, release, rework, discussion and merge events, each with its
+  effect
+- three soft fails and three CI-fix pushes before the hard block
+- a `watchdog_expired` row for every expiry, and none when a completion
+  signal cancels it
 
 **Not covered, and why:**
 - **Requested changes as a hard block:** it needs a second GitHub
@@ -103,7 +115,7 @@ re-checks a gate that still reads "CI running".
 - **Shadow mode:** `MODE` is per Worker, and the sandbox runs on the
   enforcing one. A shadow scenario needs a second sandbox on a shadow
   Worker. It's unit-tested, and was validated live in Phase 3.
-- **The D1 transition log:** the driver sees GitHub and the Worker's
-  answers, not D1.
+- **`delivery_id` in the log:** it's still written as null (a known gap in
+  `worker/README.md`), so rows are matched to deliveries by issue and event.
 - **`mergeable` still null after the Worker's re-reads:** that's GitHub's
   timing, which can't be set up on demand. It's unit-tested.

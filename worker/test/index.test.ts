@@ -224,6 +224,53 @@ describe("index.ts fetch() — DO routing and isolation", () => {
   });
 });
 
+describe("index.ts fetch() — GET /transitions (the sandbox's log read)", () => {
+  const rows = [{ id: 1, event: "labelled_ai_ready", mode: "enforce" }];
+  const logEnv = () => {
+    const bind = vi.fn(() => ({ all: vi.fn(async () => ({ results: rows })) }));
+    const prepare = vi.fn(() => ({ bind }));
+    const { env } = fakeEnv({
+      DB: { prepare } as unknown as Env["DB"],
+      LOG_READ_SECRET: "log",
+      LOG_READ_REPOS: "hifi-phil/mcp-ops-e2e-testing",
+    });
+    return { env, prepare, bind };
+  };
+  const get = (query: string, token = "log") =>
+    new Request(`https://worker.example/transitions?${query}`, { headers: { Authorization: `Bearer ${token}` } });
+
+  it("the sandbox's rows for one issue, with the secret", async () => {
+    const { env, bind } = logEnv();
+    const res = await worker.fetch(get("owner=Hifi-Phil&repo=mcp-ops-e2e-testing&issue=7"), env);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ rows });
+    expect(bind).toHaveBeenCalledWith("Hifi-Phil", "mcp-ops-e2e-testing", 7);
+  });
+
+  it("any repo not in LOG_READ_REPOS -> 403, the DB never read", async () => {
+    const { env, prepare } = logEnv();
+    const res = await worker.fetch(get("owner=hifi-phil&repo=umbraco-mcp-ops&issue=7"), env);
+    expect(res.status).toBe(403);
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it("wrong secret -> 401; missing params -> 400", async () => {
+    const { env } = logEnv();
+    expect((await worker.fetch(get("owner=hifi-phil&repo=mcp-ops-e2e-testing&issue=7", "nope"), env)).status).toBe(401);
+    expect((await worker.fetch(get("owner=hifi-phil&repo=mcp-ops-e2e-testing"), env)).status).toBe(400);
+  });
+
+  it("no LOG_READ_SECRET (every Worker but the e2e one) -> 404", async () => {
+    const { env } = fakeEnv();
+    expect((await worker.fetch(get("owner=hifi-phil&repo=mcp-ops-e2e-testing&issue=7"), env)).status).toBe(404);
+  });
+
+  it("other GETs are still refused", async () => {
+    const { env } = logEnv();
+    expect((await worker.fetch(new Request("https://worker.example/", { method: "GET" }), env)).status).toBe(405);
+  });
+});
+
 function routineSignalRequest(body: unknown, headers: Record<string, string> = {}) {
   return new Request("https://worker.example/routine-signal", {
     method: "POST",

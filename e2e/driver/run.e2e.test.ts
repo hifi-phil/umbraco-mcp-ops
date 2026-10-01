@@ -5,7 +5,7 @@
 // just the scenarios whose name contains one of them.
 
 import { describe, expect, it } from "vitest";
-import { deliveriesSince, deliveryDetail, redeliver, sleep, workerHookId, type DeliveryDetail } from "./github";
+import { deliveriesSince, deliveryDetail, redeliver, sleep, transitions, workerHookId, type DeliveryDetail } from "./github";
 import { inScenario, progress } from "./progress";
 import { runLog, scenarios } from "./scenarios";
 
@@ -67,6 +67,24 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       expect(failed.map(line), "deliveries the Worker failed").toEqual([]);
       const noRule = details.filter((d) => d.response.includes('"outcome":"dropped_no_rule"'));
       expect(noRule.map(line), "events the table had no rule for").toEqual([]);
+
+      // The D1 log agrees: every issue/PR in the run logged only enforced,
+      // applied rows (the sandbox Worker enforces, and nothing was dropped),
+      // and every delivery the Worker applied has its row.
+      const numbers = [...new Set(details.flatMap((d) => d.numbers))];
+      progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
+      const logs = new Map(await pool(numbers, 6, async (n) => [n, await transitions(n)] as const));
+      const badRows = [...logs].flatMap(([n, rows]) =>
+        rows.filter((r) => r.mode !== "enforce" || r.dropped_reason !== null).map((r) => `#${n} ${r.event}: ${r.mode} ${r.dropped_reason ?? ""}`),
+      );
+      expect(badRows, "log rows not enforced-and-applied").toEqual([]);
+      const unlogged = details
+        .filter((d) => d.response.includes('"outcome":"applied"') && d.numbers.length === 1)
+        .filter((d) => {
+          const event = d.response.match(/"event":"([a-z_]+)"/)?.[1];
+          return !logs.get(d.numbers[0]!)?.some((r) => r.event === event);
+        });
+      expect(unlogged.map(line), "applied deliveries with no log row").toEqual([]);
 
       if (runLog.sharedHead) {
         const [a, b] = runLog.sharedHead;

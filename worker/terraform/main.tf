@@ -81,7 +81,7 @@ resource "cloudflare_workers_script" "worker" {
     new_sqlite_classes = null
   }
 
-  bindings = [
+  bindings = concat([
     { type = "durable_object_namespace", name = "ISSUE_COORDINATOR", class_name = "IssueCoordinator" },
     { type = "d1", name = "DB", id = cloudflare_d1_database.log.id },
     { type = "plain_text", name = "MODE", text = var.mode },
@@ -106,7 +106,14 @@ resource "cloudflare_workers_script" "worker" {
         local.e2e_routines,
       )),
     },
-  ]
+    ],
+    # GET /transitions, the e2e suite's read of the D1 log, for the sandbox
+    # only. Without e2e_repo there's no LOG_READ_SECRET, so the route is off.
+    local.e2e ? [
+      { type = "plain_text", name = "LOG_READ_REPOS", text = "${var.github_owner}/${var.e2e_repo}" },
+      { type = "secret_text", name = "LOG_READ_SECRET", text = random_password.e2e_log_read_secret[0].result },
+    ] : [],
+  )
 
   # Don't take webhook traffic before the log table exists.
   depends_on = [terraform_data.d1_migrations]
@@ -163,6 +170,12 @@ resource "cloudflare_workers_script" "e2e_stub" {
     { type = "service", name = "ORCHESTRATOR", service = cloudflare_workers_script.worker.script_name },
     { type = "secret_text", name = "ROUTINE_SIGNAL_SECRET", text = random_password.routine_signal_secret.result },
   ]
+}
+
+resource "random_password" "e2e_log_read_secret" {
+  count   = local.e2e ? 1 : 0
+  length  = 40
+  special = false
 }
 
 resource "random_password" "e2e_hook_secret" {

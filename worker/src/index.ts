@@ -26,6 +26,12 @@ export type Env = {
   // doc comment). Same permissive-when-unset shape as GITHUB_WEBHOOK_SECRET —
   // easy local dev, a real secret required once actually deployed.
   ROUTINE_SIGNAL_SECRET?: string;
+  // GET /transitions: a read of the D1 log for one issue, so the e2e suite
+  // can check what the Worker logged. Off unless LOG_READ_SECRET is set, and
+  // only for the repos in LOG_READ_REPOS (comma-separated "owner/repo"):
+  // tofu sets both for the e2e sandbox alone.
+  LOG_READ_SECRET?: string;
+  LOG_READ_REPOS?: string;
 };
 
 /** One DO per issue/PR. Lowercased: GitHub treats owner/repo names
@@ -37,9 +43,10 @@ function doKey(owner: string, repo: string, issueNumber: number): string {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/transitions") return handleTransitions(request, env, url);
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
 
-    const url = new URL(request.url);
     if (url.pathname === "/routine-signal") {
       return handleRoutineSignal(request, env);
     }
@@ -92,6 +99,49 @@ export default {
     return Response.json({ routed: results }, { status: failed ? 500 : 200 });
   },
 };
+
+export type TransitionLogRow = {
+  id: number;
+  delivery_id: string | null;
+  from_state: string;
+  event: string;
+  to_effect: string | null;
+  run: string | null;
+  dropped_reason: string | null;
+  mode: string;
+  created_at: string;
+};
+
+/** One issue's transition rows, oldest first. Read-only, and refused for
+ * any repo not named in LOG_READ_REPOS. */
+async function handleTransitions(request: Request, env: Env, url: URL): Promise<Response> {
+  if (!env.LOG_READ_SECRET) return new Response("not found", { status: 404 });
+  if (request.headers.get("Authorization") !== `Bearer ${env.LOG_READ_SECRET}`) {
+    return new Response("unauthorized", { status: 401 });
+  }
+  const owner = url.searchParams.get("owner") ?? "";
+  const repo = url.searchParams.get("repo") ?? "";
+  const issue = Number(url.searchParams.get("issue"));
+  if (!owner || !repo || !Number.isInteger(issue) || issue <= 0) {
+    return new Response("owner, repo and issue are required", { status: 400 });
+  }
+  const allowed = (env.LOG_READ_REPOS ?? "")
+    .split(",")
+    .map((r) => r.trim().toLowerCase())
+    .filter(Boolean);
+  if (!allowed.includes(`${owner}/${repo}`.toLowerCase())) {
+    return new Response(`the log isn't readable for ${owner}/${repo}`, { status: 403 });
+  }
+  const { results } = await env.DB.prepare(
+    `SELECT id, delivery_id, from_state, event, to_effect, run, dropped_reason, mode, created_at
+       FROM transitions
+      WHERE LOWER(owner) = LOWER(?) AND LOWER(repo) = LOWER(?) AND issue_number = ?
+      ORDER BY id`,
+  )
+    .bind(owner, repo, issue)
+    .all<TransitionLogRow>();
+  return Response.json({ rows: results });
+}
 
 /**
  * The direct routine-to-DO heartbeat channel (see coordinate.ts's

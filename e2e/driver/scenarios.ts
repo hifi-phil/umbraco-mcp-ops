@@ -27,9 +27,11 @@ import {
   setHint,
   sleep,
   snapshot,
+  transitions,
   waitFor,
   waitForChecks,
   waitForMergeable,
+  type LogRow,
   type Snapshot,
 } from "./github";
 
@@ -73,7 +75,36 @@ async function expectStuck(n: number, trigger: string): Promise<Snapshot> {
   const s = await waitFor(n, labelsAre(LABELS.AI_STUCK), STUCK_WAIT);
   expectLabels(s, n, LABELS.AI_STUCK);
   expect(hasComment(s, "hasn't reported back within", `${WATCHDOG_MINUTES} minutes`), `#${n} watchdog comment`).toBe(true);
+  await expectLogged(n, { event: "watchdog_expired", effect: LABELS.AI_STUCK });
   return s;
+}
+
+/**
+ * The D1 log has these events for `n`, in this order (others may sit
+ * between), each enforced and actually applied. `effect` optionally names
+ * a label the row's effect must mention.
+ */
+async function expectLogged(n: number, ...want: (string | { event: string; effect?: string; run?: string })[]): Promise<LogRow[]> {
+  const rows = await transitions(n);
+  let i = 0;
+  for (const w of want) {
+    const spec = typeof w === "string" ? { event: w } : w;
+    while (
+      i < rows.length &&
+      !(
+        rows[i]!.event === spec.event &&
+        (!spec.effect || (rows[i]!.to_effect ?? "").includes(spec.effect)) &&
+        (!spec.run || rows[i]!.run === spec.run)
+      )
+    ) {
+      i++;
+    }
+    expect(i < rows.length, `#${n} log has ${JSON.stringify(spec)} (in order) — rows: ${rows.map((r) => r.event).join(", ")}`).toBe(true);
+    expect(rows[i]!.mode, `#${n} ${spec.event} row mode`).toBe("enforce");
+    expect(rows[i]!.dropped_reason, `#${n} ${spec.event} row applied`).toBeNull();
+    i++;
+  }
+  return rows;
 }
 
 /** A late loop's outcome, posted as the loop would (the marker isn't identity-guarded). */
@@ -102,6 +133,14 @@ export const scenarios: Scenario[] = [
         const published = await waitFor(release, (s) => s.state === "closed", 2 * MIN);
         expect(published.state, `#${release}`).toBe("closed");
         expect(hasMarker(published, "auto-release-loop", "release_published"), `#${release} marker`).toBe(true);
+
+        await expectLogged(
+          issue,
+          { event: "labelled_ai_ready", run: "issue-build-loop" },
+          { event: "build_succeeded", effect: LABELS.AI_GENERATED },
+        );
+        await expectLogged(pr, { event: "labelled_auto_merging", run: "merge-flow" }, { event: "merged", effect: "close" });
+        await expectLogged(release, { event: "labelled_auto_releasing", run: "auto-release-loop" }, { event: "release_published", effect: "close" });
       }),
   },
   {
@@ -122,6 +161,7 @@ export const scenarios: Scenario[] = [
         expectLabels(s, issue, LABELS.AI_BLOCKED);
         expect(s.state).toBe("open");
         expect(hasMarker(s, "issue-build-loop", "build_blocked"), `#${issue} marker`).toBe(true);
+        await expectLogged(issue, { event: "labelled_ai_ready", run: "issue-build-loop" }, { event: "build_blocked", effect: LABELS.AI_BLOCKED });
       }),
   },
   {
@@ -135,6 +175,7 @@ export const scenarios: Scenario[] = [
         expectLabels(s, issue);
         expect(s.state).toBe("open");
         expect(hasMarker(s, "auto-release-loop", "release_blocked"), `#${issue} marker`).toBe(true);
+        await expectLogged(issue, "labelled_auto_releasing", { event: "release_blocked", effect: "unlabel" });
       }),
   },
   {
@@ -148,6 +189,7 @@ export const scenarios: Scenario[] = [
         expectLabels(s, pr.number);
         const commits = await gh<unknown[]>("GET", `/repos/${REPO}/pulls/${pr.number}/commits`);
         expect(commits.length, "the stub's rework push").toBe(2);
+        await expectLogged(pr.number, { event: "labelled_auto_reworking", run: "rework-loop" }, { event: "rework_pushed", effect: "unlabel" });
       }),
   },
   {
@@ -168,6 +210,12 @@ export const scenarios: Scenario[] = [
         const s = await snapshot(issue);
         expect(rounds(s), "no round for a '//' comment").toBe(2);
         expectLabels(s, issue, LABELS.AI_DISCUSSING);
+        const rows = await expectLogged(
+          issue,
+          { event: "labelled_ai_discussing", run: "issue-discuss-loop" },
+          { event: "discussion_reply", run: "issue-discuss-loop" },
+        );
+        expect(rows.filter((r) => r.event === "discussion_reply"), "one logged reply, not two").toHaveLength(1);
       }),
   },
 
@@ -205,6 +253,13 @@ export const scenarios: Scenario[] = [
         );
         expect(labelled! < check_runs[0]!.completed_at, "label added before CI finished (else the setup raced)").toBe(true);
         expect(hasComment(s, "🔧 CI failing", "attempt 1 of 3")).toBe(true);
+        await expectLogged(
+          pr.number,
+          { event: "labelled_auto_merging", run: "merge-flow" },
+          { event: "merge_gate_failed_soft", effect: LABELS.AUTO_REWORKING },
+          { event: "ci_fix_pushed", effect: LABELS.AUTO_MERGING },
+          "merged",
+        );
       }),
   },
   {
@@ -220,6 +275,9 @@ export const scenarios: Scenario[] = [
         const reworks = (await labelHistory(pr.number)).filter((h) => h === `+${LABELS.AUTO_REWORKING}`);
         expect(reworks.length, "rework rounds").toBe(3);
         expect(hasComment(s, "after 3 fix attempts")).toBe(true);
+        const rows = await expectLogged(pr.number, { event: "merge_gate_failed_hard", effect: LABELS.MERGE_BLOCKED });
+        expect(rows.filter((r) => r.event === "merge_gate_failed_soft"), "three soft fails logged").toHaveLength(3);
+        expect(rows.filter((r) => r.event === "ci_fix_pushed"), "three CI-fix pushes logged").toHaveLength(3);
       }),
   },
   {
@@ -254,6 +312,12 @@ export const scenarios: Scenario[] = [
         const merged = await waitFor(pr.number, (x) => x.merged, 4 * MIN);
         expect(merged.merged, `PR #${pr.number} merged after the retry`).toBe(true);
         expect(await labelHistory(pr.number)).toContain(`-${LABELS.MERGE_BLOCKED}`);
+        await expectLogged(
+          pr.number,
+          { event: "merge_gate_failed_hard", effect: LABELS.MERGE_BLOCKED },
+          { event: "labelled_auto_merging", run: "merge-flow" },
+          "merged",
+        );
       }),
   },
   {
@@ -306,6 +370,8 @@ export const scenarios: Scenario[] = [
         const s = await snapshot(issue);
         expectLabels(s, issue, LABELS.AI_READY);
         expect(hasComment(s, "hasn't reported back"), "no watchdog comment").toBe(false);
+        const rows = await expectLogged(issue, { event: "labelled_ai_ready", run: "issue-build-loop" });
+        expect(rows.map((r) => r.event), "no watchdog_expired logged").not.toContain("watchdog_expired");
       }),
   },
   {
