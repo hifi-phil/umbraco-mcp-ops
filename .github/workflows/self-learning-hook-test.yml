@@ -21,3 +21,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run capture-hook tests
         run: bash plugins/self-learning/hooks/test/run.sh
+      - name: Run agent-outcomes hook tests (completion + heartbeat signals)
+        run: bash plugins/agent-outcomes/hooks/test/run.sh

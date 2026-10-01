@@ -9,6 +9,7 @@
 import { expect } from "vitest";
 import { LABELS } from "../../graph/constants/labels";
 import { outcomeComment } from "../stub/src/loops";
+import { runHook } from "./hook";
 import type { Outcome } from "../../graph/outcomes";
 import {
   addLabel,
@@ -372,6 +373,43 @@ export const scenarios: Scenario[] = [
         expect(hasComment(s, "hasn't reported back"), "no watchdog comment").toBe(false);
         const rows = await expectLogged(issue, { event: "labelled_ai_ready", run: "issue-build-loop" });
         expect(rows.map((r) => r.event), "no watchdog_expired logged").not.toContain("watchdog_expired");
+      }),
+  },
+  {
+    name: "real hook: a heartbeat from the agent-outcomes hook is quoted by the expiry",
+    timeoutMs: STUCK_WAIT + 2 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const issue = t.n(await openIssue("Hook heartbeat", "The real hook reports a step, then the run goes quiet.", "silent"));
+        await addLabel(issue, LABELS.AI_READY);
+        await sleep(10_000); // the fire, and its pending watchdog
+        const log = await runHook("issue-build-loop", issue, {
+          tool_name: "Bash",
+          tool_input: { command: "npm test", description: "e2e hook step" },
+        });
+        expect(log, "the hook sent its heartbeat").toContain("sent heartbeat");
+        const s = await waitFor(issue, labelsAre(LABELS.AI_STUCK), STUCK_WAIT);
+        expectLabels(s, issue, LABELS.AI_STUCK);
+        expect(hasComment(s, "Last reported step: `Bash: e2e hook step`"), `#${issue} expiry quotes the hook's step`).toBe(true);
+      }),
+  },
+  {
+    name: "real hook: an outcome comment's completion signal cancels the watchdog",
+    timeoutMs: STUCK_WAIT + MIN,
+    run: () =>
+      scoped(async (t) => {
+        const issue = t.n(await openIssue("Hook completion", "The real hook signals completion; nothing else reports.", "silent"));
+        await addLabel(issue, LABELS.AI_READY);
+        await sleep(10_000);
+        const log = await runHook("issue-build-loop", issue, {
+          tool_name: "mcp__github__add_issue_comment",
+          tool_input: { body: outcomeComment("issue-build-loop", { outcome: "build_blocked", reason: "e2e: hook completion" }) },
+        });
+        expect(log, "the hook sent its completion").toContain("sent completion");
+        await sleep((WATCHDOG_MINUTES + 1) * MIN);
+        const s = await snapshot(issue);
+        expectLabels(s, issue, LABELS.AI_READY);
+        expect(hasComment(s, "hasn't reported back"), "no watchdog comment").toBe(false);
       }),
   },
   {

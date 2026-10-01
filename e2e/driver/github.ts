@@ -300,20 +300,25 @@ export type LogRow = {
   created_at: string;
 };
 
-let logSecret: string | undefined;
-/** E2E_LOG_SECRET, else read from tofu (never printed). */
-function logReadSecret(): string {
-  logSecret ??=
-    process.env.E2E_LOG_SECRET ??
-    execFileSync("tofu", [`-chdir=${new URL("../../worker/terraform", import.meta.url).pathname}`, "output", "-raw", "e2e_log_read_secret"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  return logSecret;
+const secrets = new Map<string, string>();
+/** A sensitive tofu output, or its env override; read once, never printed. */
+export function tofuSecret(output: string, envName: string): string {
+  if (!secrets.has(output)) {
+    secrets.set(
+      output,
+      process.env[envName] ??
+        execFileSync("tofu", [`-chdir=${new URL("../../worker/terraform", import.meta.url).pathname}`, "output", "-raw", output], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        }).trim(),
+    );
+  }
+  return secrets.get(output)!;
 }
+const logReadSecret = () => tofuSecret("e2e_log_read_secret", "E2E_LOG_SECRET");
 
 let workerUrl: string | undefined;
-async function orchestratorUrl(): Promise<string> {
+export async function orchestratorUrl(): Promise<string> {
   if (!workerUrl) {
     const hooks = await gh<{ config: { url: string } }[]>("GET", `${R}/hooks`);
     workerUrl = hooks.map((h) => h.config.url).find((u) => !u.endsWith("/webhook"));

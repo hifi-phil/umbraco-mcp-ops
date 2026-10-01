@@ -1,5 +1,5 @@
 {
-  "description": "Fast-path completion signal, shared by every loop that writes an agent-outcomes artifact. PostToolUse fires after every tool call in the loop's session; the hook cheaply checks whether that call just posted a comment carrying an <!-- agent-outcome:<routine> --> marker, and if so forwards the raw JSON on a best-effort, non-authoritative path (AGENT_OUTCOMES_ENDPOINT, once one exists — logs only until then). Never the authoritative signal: the GitHub write the loop already made is. See docs/agent-orchestration/11-outcome-artifact.md in umbraco-mcp-ops.",
+  "description": "Fast-path signals to the agent-orchestration Worker, shared by every loop. PostToolUse fires after every tool call in the loop's session. In a session the Worker fired (its first prompt carries route=… repo=… number=…), the hook POSTs to AGENT_OUTCOMES_ENDPOINT (the Worker's /routine-signal, bearer AGENT_OUTCOMES_TOKEN): a completion when the call posted an <!-- agent-outcome:<routine> --> artifact, else a heartbeat naming the step at most once a minute. Never the authoritative signal: the GitHub write the loop already made is. See docs/agent-orchestration/11-outcome-artifact.md in umbraco-mcp-ops.",
   "hooks": {
     "PostToolUse": [
       {
