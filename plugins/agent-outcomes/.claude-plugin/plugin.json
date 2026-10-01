@@ -1,6 +1,6 @@
 {
   "name": "agent-outcomes",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Shared skill for writing the structured outcome artifact a loop appends to a comment it already posts, so the agent-orchestration reducer prototype (graph/github/from-github.ts in umbraco-mcp-ops) can eventually read what happened without relying on a self-swapped label as the only signal. One marker format, one growing catalog of outcome shapes; loop plugins point here instead of each inventing their own. Always additive — never a replacement for the loop's existing load-bearing action (a label swap, a merge, etc.) until something real is deployed to own that instead. Bundles a PostToolUse hook (report-completion.sh) that signals the agent-orchestration Worker automatically, with no extra step for the loop: a completion when a loop posts the artifact, and heartbeats naming the step while it works (AGENT_OUTCOMES_ENDPOINT + AGENT_OUTCOMES_TOKEN; logs only without them). The GitHub write stays the only authoritative signal.",
   "author": {
     "name": "Phil W",
