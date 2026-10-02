@@ -508,11 +508,17 @@ describe("the live-status row (recordStatus): what each step tells the dashboard
     expect(blocked.recordStatus).toHaveBeenCalledWith(expect.anything(), { kind: "gone" });
   });
 
-  it("an issue closed by anyone (a person, a PR's 'Closes #') -> gone, though no rule applies", async () => {
+  it("an issue closed by anyone (a person, a PR's 'Closes #') -> gone, last", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
+    await coordinateWebhook(deps, input({ payload: { action: "issues.closed" } }));
+    expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "gone" });
+  });
+
+  it("a closed release still labelled auto-release (issue_closed's noop rule applies) -> still gone (e2e #443)", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]) });
     const result = await coordinateWebhook(deps, input({ payload: { action: "issues.closed" } }));
-    expect(result.outcome).not.toBe("applied");
-    expect(deps.recordStatus).toHaveBeenCalledWith(expect.objectContaining(ref), { kind: "gone" });
+    expect(result).toMatchObject({ outcome: "applied" });
+    expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "gone" });
   });
 
   it("a watchdog expiry -> ai-stuck, no routine fired, not running", async () => {

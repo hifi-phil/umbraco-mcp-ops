@@ -164,6 +164,9 @@ export const scenarios: Scenario[] = [
           attempt: 1,
           running: 0,
         });
+        // After the close's own webhooks have all landed (issues.closed comes
+        // after the Worker's own close, and must not put the row back).
+        await sleep(20_000);
         expect(await statusOf(pr), `PR #${pr} status, closed`).toBeUndefined();
         expect(await statusOf(release), `#${release} status, closed`).toBeUndefined();
       }),

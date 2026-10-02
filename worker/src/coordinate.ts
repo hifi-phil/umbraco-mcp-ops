@@ -294,14 +294,19 @@ export async function coordinateWebhook(
 }
 
 async function processWebhook(deps: Deps, input: CoordinateInput): Promise<CoordinateResult> {
-  if (input.payload.action === "check_suite.completed") {
-    return handleCheckSuiteCompleted(deps, input);
-  }
-
+  const result = await processEvent(deps, input);
   // Closed by anyone (a merge, a person, a release): off the dashboard,
-  // which shows open issues. A merged PR's own rule still runs below.
+  // which shows open issues. Last, so the close's own rule (issue_closed is
+  // a noop that would otherwise re-write the row) can't put it back.
   if (input.payload.action === "issues.closed" || input.payload.action === "pull_request.closed") {
     await deps.recordStatus(input, { kind: "gone" });
+  }
+  return result;
+}
+
+async function processEvent(deps: Deps, input: CoordinateInput): Promise<CoordinateResult> {
+  if (input.payload.action === "check_suite.completed") {
+    return handleCheckSuiteCompleted(deps, input);
   }
 
   const botLogin = await deps.botLogin();
