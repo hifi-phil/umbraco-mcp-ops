@@ -31,9 +31,9 @@ as it goes, one tagged line per step and per label change
 The Worker and the stub must be deployed with `e2e_repo` set in
 `worker/terraform/`. That also makes the sandbox's watchdog real, with a
 2-minute timeout (`e2e_watchdog_minutes`), while every other repo's stays
-as configured. The sandbox has to stay **public**: the merge gate reads
-check-runs, which a fine-grained token can't read on a private repo (see
-`worker/README.md`'s known gaps).
+as configured. The sandbox can be private: the Worker reads CI through
+its GitHub App, and so does the stub (only for check-runs, which a
+fine-grained token can't read on a private repo).
 
 Latest full run (01-10-2026): all 21 scenarios and the audit pass in about
 8 minutes.
@@ -53,6 +53,7 @@ Latest full run (01-10-2026): all 21 scenarios and the audit pass in about
 | `issue-discuss-loop` | `discuss` | one signed question per round |
 | any | `heartbeat` | one `process` signal to the orchestrator's `/routine-signal`, then nothing |
 | any | `complete` | one `completion` signal, then nothing |
+| any | `fail_fire` | refuses the fire itself (500): a fire that never got out |
 | any | `silent` | nothing |
 
 A real merge-flow polls CI for minutes, which a Worker request can't. So
@@ -92,6 +93,12 @@ re-checks a gate that still reads "CI running".
   9. A stuck rework retried.
   10. A stuck merge-flow retried.
   11. A stuck merge-flow merged by hand.
+- Phase 7:
+  1. A person clears `ai-blocked` by hand → a `manual_override` row, and
+     nothing else done.
+  2. The sweep: a fire that never got out (the stub refuses it, hint
+     `fail_fire`) isn't touched while recent, and is re-fired once idle
+     for twice its timeout (`POST /sweep`).
 - The real `agent-outcomes` hook (`driver/hook.ts` runs it, as a routine
   session would, against the deployed Worker):
   1. Its heartbeat is quoted by the expiry.

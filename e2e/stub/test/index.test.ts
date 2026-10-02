@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   handleFire,
   handleWebhook,
@@ -6,6 +6,7 @@ import {
   parseFire,
   parseHint,
   handleReview,
+  stubGitHub,
   routineSignal,
   verifySignature,
   type Gh,
@@ -268,6 +269,13 @@ describe("handleFire", () => {
     expect(defer).not.toHaveBeenCalled();
   });
 
+  it("fail_fire -> the fire itself is refused (500), nothing deferred", async () => {
+    const defer = vi.fn();
+    const gh = fakeGh({ [`GET ${R}/issues/7`]: { body: "<!-- e2e: fail_fire -->" } });
+    expect((await handleFire(fireRequest({ text: text() }), env, defer, gh, 0)).status).toBe(500);
+    expect(defer).not.toHaveBeenCalled();
+  });
+
   it("no route line -> 400", async () => {
     expect((await handleFire(fireRequest({ text: "hello" }), env, vi.fn())).status).toBe(400);
   });
@@ -279,6 +287,34 @@ describe("handleFire", () => {
     expect(res.status).toBe(200);
     await work;
     expect(gh).toHaveBeenCalledWith("POST", `${R}/issues/7/comments`, expect.anything());
+  });
+});
+
+describe("stubGitHub", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const auth = async (gh: Gh, method: string, path: string) => {
+    const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      void init;
+      return new Response("{}", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetch);
+    await gh(method, path);
+    return (fetch.mock.calls[0]![1]!.headers as Record<string, string>).Authorization;
+  };
+  const withApp = () => stubGitHub(env, async () => "inst-token");
+
+  it("check-runs are read with the App's token (a fine-grained token can't, on a private sandbox)", async () => {
+    expect(await auth(withApp(), "GET", `${R}/commits/h/check-runs`)).toBe("Bearer inst-token");
+  });
+
+  it("everything else (branches, commits, merges) stays on the stub's own token: the App has no Contents: write", async () => {
+    expect(await auth(withApp(), "PUT", `${R}/contents/ci-state`)).toBe("Bearer gh");
+    expect(await auth(withApp(), "PUT", `${R}/pulls/7/merge`)).toBe("Bearer gh");
+    expect(await auth(withApp(), "GET", `${R}/issues/7`)).toBe("Bearer gh");
+  });
+
+  it("without the App -> the stub's own token for check-runs too", async () => {
+    expect(await auth(stubGitHub({ ...env, GITHUB_APP_ID: "" }), "GET", `${R}/commits/h/check-runs`)).toBe("Bearer gh");
   });
 });
 

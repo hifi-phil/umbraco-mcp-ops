@@ -39,7 +39,8 @@ export const LABEL_JUST_ADDED_BY: Partial<Record<Event, Label>> = {
 
 export type TransitionRow = {
   // The GitHub delivery (X-GitHub-Delivery) that caused this row; null for
-  // a row nothing delivered, i.e. the watchdog's own expiry.
+  // a row nothing delivered: the watchdog's own expiry, and the sweep's rows
+  // (`sweep`, `reconcile_refire`, and what a re-fire or its gate applies).
   deliveryId: string | null;
   owner: string;
   repo: string;
@@ -61,6 +62,10 @@ export type PendingFire = {
   // so a watchdog expiry can say where the run got to, not just "timed out".
   lastStep?: string;
   lastStepAt?: string; // ISO timestamp
+  // When its watchdog is due (epoch ms), set by the DO's setPendingFire. A
+  // watchdog alarm that started before a newer fire (or heartbeat) replaced
+  // this one finds it not yet due, and leaves it to that fire's own alarm.
+  dueAt?: number;
 };
 
 export type CiFix = { attempts: number; pending: boolean };
@@ -83,6 +88,10 @@ export type Deps = {
   setPendingFire(info: PendingFire): Promise<void>;
   clearPendingFire(): Promise<void>;
   getPendingFire(): Promise<PendingFire | null>;
+  // Whether the watchdog alarm behind a pending fire is still armed. A
+  // watchdog whose alarm gave up after its retries (GitHub down when it
+  // fired) leaves the pending fire with nothing behind it.
+  watchdogArmed(): Promise<boolean>;
   // The real, independently-fetched facts behind MERGE_GATE_FAILED_SOFT/
   // HARD — see graph/github/merge-gate.ts's header for why this needs to
   // be a Dep (I/O) rather than living in translate() (pure).
@@ -97,6 +106,20 @@ export type Deps = {
   // The Worker's own GitHub identity (its App's `<slug>[bot]`), so
   // translate() drops the label changes it made itself; null without an App.
   botLogin(): Promise<string | null>;
+  // When this issue last had a row in the D1 log (its created_at), or null
+  // if it never has: how long it's been idle, for the reconciliation sweep.
+  lastActivityAt(): Promise<string | null>;
+  // The last activity a shadow sweep already logged a "would re-fire" for
+  // (DO storage), so an issue that stays left behind is logged once, not
+  // every sweep.
+  getReconcileReported(): Promise<string | null>;
+  setReconcileReported(lastActivity: string): Promise<void>;
+  // When the running routine last reported completion (routine-signal); any
+  // new fire (setPendingFire) clears it. A run that reported its outcome but
+  // whose trigger label is still on (the outcome's label change lost) isn't
+  // left behind, as long as nothing happened since (coordinateReconcile).
+  markCompleted(at: string): Promise<void>;
+  completedAt(): Promise<string | null>;
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;
@@ -213,6 +236,7 @@ export type CoordinateResult =
   | { outcome: "dropped_no_rule"; from: State; event: Event }
   | { outcome: "ignored"; from: State; event: Event } // a CONTEXTUAL_EVENT outside its states; not logged
   | { outcome: "stale_label"; event: Event } // the label was already gone when its webhook ran; not logged
+  | { outcome: "manual_override"; change: string; by: string | null } // a person edited a tracked label; logged
   | { outcome: "applied"; from: State; event: Event; rule: Rule };
 
 /**
@@ -257,7 +281,8 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
 
   const botLogin = await deps.botLogin();
   let event = translate(input.payload, botLogin ? { botLogin } : {});
-  if (!event) return { outcome: "no_event" };
+  const human = humanLabelChange(input.payload, botLogin);
+  if (!event) return human ? logManualOverride(deps, input, human) : { outcome: "no_event" };
 
   // Fresh, per §3.4/to-github.ts's "never cache" principle -- and the one
   // set labelOps() below must see in full (including a label this event
@@ -293,7 +318,56 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
     if (deriveMergeGateOutcome(facts) === "soft") return handToRework(deps, input, currentLabels, facts);
   }
 
-  return applyEvent(deps, input, event, currentLabels);
+  const result = await applyEvent(deps, input, event, currentLabels);
+  // A contextual event the table ignores here (say auto-merge removed from
+  // a merge-blocked PR) is still a person's edit worth a row.
+  return result.outcome === "ignored" && human ? logManualOverride(deps, input, human, currentLabels) : result;
+}
+
+/** A person (anyone but the Worker's own App bot) adding or removing a label
+ * the table tracks. */
+type LabelChange = { sign: "+" | "-"; label: string };
+
+function humanLabelChange(payload: CoordinateInput["payload"], botLogin: string | null): LabelChange | null {
+  const m = payload.action.match(/^(issues|pull_request)\.(labeled|unlabeled)$/);
+  const label = payload.label?.name;
+  if (!m || !label || !(ALL_LABELS as readonly string[]).includes(label)) return null;
+  if (botLogin && payload.sender?.login === botLogin) return null;
+  return { sign: m[2] === "labeled" ? "+" : "-", label };
+}
+
+/**
+ * 03-components.md's human escape hatch: a person moved a tracked label in a
+ * way the table doesn't act on (cleared ai-blocked, added merge-blocked,
+ * removed ai-stuck, …). Nothing is decided or written to GitHub; a
+ * `manual_override` row records it, so the log stays the issue's whole
+ * history. The App is what makes this possible: the Worker's own label
+ * changes come from its bot, so any other one is a person's (or a loop
+ * acting outside the table).
+ */
+async function logManualOverride(
+  deps: Deps,
+  input: CoordinateInput,
+  change: LabelChange,
+  labels?: string[],
+): Promise<CoordinateResult> {
+  const now = labels ?? (await deps.getLabels(input.owner, input.repo, input.issueNumber));
+  const before = change.sign === "+" ? now.filter((l) => l !== change.label) : [...now, change.label];
+  const by = input.payload.sender?.login ?? null;
+  const summary = `${change.sign}${change.label}`;
+  await deps.logTransition({
+    deliveryId: input.deliveryId || null,
+    owner: input.owner,
+    repo: input.repo,
+    issueNumber: input.issueNumber,
+    fromState: deriveState(before),
+    event: "manual_override",
+    toEffect: JSON.stringify({ kind: "manual", change: summary, by, now: deriveState(now) }),
+    run: null,
+    droppedReason: null,
+    mode: depsFor(deps, "manual_override" as Event).mode,
+  });
+  return { outcome: "manual_override", change: summary, by };
 }
 
 /** CI failed under auto-merge: swap auto-merge -> auto-rework so
@@ -312,6 +386,12 @@ async function handToRework(
   }
   const result = await applyEvent(deps, input, EVENTS.MERGE_GATE_FAILED_SOFT, currentLabels);
   if (result.outcome === "applied") {
+    // A merge-blocked PR's retry (auto-merge re-added, read as auto-merge):
+    // the rule swaps only auto-merge, so merge-blocked comes off here, or
+    // merge-blocked + auto-rework would read as ambiguous from then on.
+    if (currentLabels.includes(LABELS.MERGE_BLOCKED)) {
+      await depsFor(deps, EVENTS.MERGE_GATE_FAILED_SOFT).io.removeLabel(input.owner, input.repo, input.issueNumber, LABELS.MERGE_BLOCKED);
+    }
     await deps.setCiFix({ attempts: attempts + 1, pending: true });
     await depsFor(deps, EVENTS.MERGE_GATE_FAILED_SOFT).io.commentOnIssue(
       input.owner,
@@ -523,10 +603,173 @@ export async function coordinateRoutineSignal(
   }
 
   await deps.clearPendingFire();
+  await deps.markCompleted(new Date().toISOString());
   return { outcome: "completion_acknowledged" };
 }
 
-export type WatchdogResult = { outcome: "no_pending_fire" } | CoordinateResult;
+export type WatchdogResult = { outcome: "no_pending_fire" } | { outcome: "not_due"; dueAt: number } | CoordinateResult;
+
+// An alarm can be invoked a little before its time is reached; a pending
+// fire due within this margin counts as due. Capped at half the timeout, so
+// a short (e2e) watchdog still tells a just-replaced fire from a due one.
+const WATCHDOG_DUE_MARGIN_MS = 60_000;
+
+// getAlarm() is null from the moment the watchdog alarm is invoked (even
+// while it waits its turn in serial()) and again once its retries are spent.
+// Only the second is a lost watchdog, so a pending fire counts as lost only
+// this long after it was due: well past Cloudflare's alarm retry budget.
+const WATCHDOG_LOST_AFTER_MS = 15 * 60_000;
+
+// --- Reconciliation (Phase 7): re-firing what was left behind --------------
+
+/** The trigger labels, and the event a person adding each one would be. */
+const TRIGGER_EVENTS: Partial<Record<Label, Event>> = {
+  [LABELS.AI_READY]: EVENTS.LABELLED_AI_READY,
+  [LABELS.AUTO_RELEASING]: EVENTS.LABELLED_AUTO_RELEASING,
+  [LABELS.AUTO_REWORKING]: EVENTS.LABELLED_AUTO_REWORKING,
+  [LABELS.AUTO_MERGING]: EVENTS.LABELLED_AUTO_MERGING,
+};
+export const TRIGGER_LABELS = Object.keys(TRIGGER_EVENTS) as Label[];
+
+export type ReconcileResult =
+  | { outcome: "watched" }
+  | { outcome: "completed" } // its last run reported done; it's waiting, not lost
+  | { outcome: "gated"; result: CoordinateResult } // a lost auto-merge fire, gated first like the webhook path
+  | { outcome: "not_triggered"; state: string }
+  | { outcome: "recent"; idleMinutes: number }
+  | {
+      outcome: "refired" | "would_refire";
+      run: string;
+      idleMinutes: number | null;
+      alreadyLogged?: boolean;
+      // Why a sweep asked to enforce only logged: the Worker (MODE) or this
+      // repo's watchdog isn't enforcing.
+      held?: "mode_shadow" | "watchdog_shadow";
+    };
+
+/** D1's created_at ("YYYY-MM-DD HH:MM:SS", UTC) as epoch ms. */
+const d1Time = (s: string) => Date.parse(`${s.replace(" ", "T")}Z`);
+
+/**
+ * The sweep's question for one issue (scheduler.ts asks every open issue
+ * with a trigger label): was it left behind? That's in a trigger state,
+ * with no watchdog running (so nothing will notice), and nothing logged for
+ * twice its routine's timeout: a fire that never got out, or a watchdog
+ * that was lost. Then fire its routine again and watch it, as if the
+ * trigger label had just been added. Bounded: if that run dies too, the
+ * watchdog moves the issue to ai-stuck, which isn't a trigger state. That
+ * bound only holds while this repo's watchdog enforces (a shadow one leaves
+ * the label on, so the issue would be re-fired every sweep), and a real
+ * fire needs MODE=enforce, so either one shadowed holds the re-fire to a
+ * log row. `enforced` false (the sweep's shadow mode) only logs too.
+ */
+export async function coordinateReconcile(
+  deps: Deps,
+  ref: IssueRef,
+  { enforced, now = Date.now(), updatedAt }: { enforced: boolean; now?: number; updatedAt?: string },
+): Promise<ReconcileResult> {
+  // A pending fire with no alarm behind it, well after it was due, is a lost
+  // watchdog: nothing will notice, so it's swept like any other (the idle
+  // check still applies). One only just due may be expiring right now.
+  const pending = await deps.getPendingFire();
+  if (pending) {
+    const expiring = pending.dueAt !== undefined && now < pending.dueAt + WATCHDOG_LOST_AFTER_MS;
+    if (expiring || (await deps.watchdogArmed())) return { outcome: "watched" };
+  }
+
+  const labels = await deps.getLabels(ref.owner, ref.repo, ref.issueNumber);
+  const state = deriveState(labels);
+  const event = state === "ambiguous" || state === "none" ? undefined : TRIGGER_EVENTS[state as Label];
+  const run = event ? reduce("none", event)?.run : undefined;
+  if (!run) return { outcome: "not_triggered", state };
+
+  // Activity is the later of its last real log row and GitHub's updated_at:
+  // a label added a moment ago (its webhook not handled yet) is recent, so
+  // the sweep doesn't fire alongside it.
+  const logged = await deps.lastActivityAt();
+  const times = [logged === null ? NaN : d1Time(logged), updatedAt ? Date.parse(updatedAt) : NaN].filter(Number.isFinite);
+  const lastMs = times.length > 0 ? Math.max(...times) : null;
+  const last = lastMs === null ? null : new Date(lastMs).toISOString();
+  const idleMinutes = lastMs === null ? null : Math.round((now - lastMs) / 6_000) / 10;
+  if (idleMinutes !== null && idleMinutes < 2 * deps.watchdogMinutes(run)) return { outcome: "recent", idleMinutes };
+
+  // Its last run reported its outcome and nothing has happened since (the
+  // outcome's label change was lost, say): the run isn't lost, and re-firing
+  // would only repeat finished work. Anything after the completion (a new label, a push, a comment:
+  // a log row or GitHub's updated_at) makes the mark stale, so a trigger
+  // whose webhook or fire was lost after an earlier run still gets swept.
+  const completed = await deps.completedAt();
+  if (completed !== null && (lastMs === null || Date.parse(completed) >= lastMs)) return { outcome: "completed" };
+
+  const held = !enforced
+    ? undefined
+    : !deps.enforced(event!)
+      ? ("mode_shadow" as const)
+      : !deps.enforced(EVENTS.WATCHDOG_EXPIRED)
+        ? ("watchdog_shadow" as const)
+        : undefined;
+  if (enforced && held) enforced = false;
+
+  // A lost auto-merge fire goes through the same gate as a fresh label: a
+  // conflict or requested changes -> merge-blocked, red CI -> rework, else
+  // merge-flow below.
+  if (enforced && state === LABELS.AUTO_MERGING) {
+    // A person's lost retry of a merge-blocked PR (auto-merge re-added, both
+    // labels on): a fresh CI-fix count, as the webhook path starts.
+    const retry = labels.includes(LABELS.MERGE_BLOCKED);
+    if (retry) await deps.setCiFix(null);
+    const facts = await settledGateFacts(deps, ref);
+    const reason = hardBlockReason(facts);
+    if (reason) return { outcome: "gated", result: await blockMerge(deps, ref, labels, reason) };
+    if (deriveMergeGateOutcome(facts) === "soft") return { outcome: "gated", result: await handToRework(deps, ref, labels, facts) };
+    // Gate passed: the retry's own rule (merge-blocked comes off, merge-flow
+    // fired and watched), not a bare re-fire that would leave merge-blocked on.
+    if (retry) {
+      const result = await applyEvent(deps, ref, EVENTS.LABELLED_AUTO_MERGING, labels);
+      if (result.outcome === "applied") {
+        await deps.logTransition({
+          deliveryId: null,
+          owner: ref.owner,
+          repo: ref.repo,
+          issueNumber: ref.issueNumber,
+          fromState: LABELS.MERGE_BLOCKED,
+          event: "reconcile_refire",
+          toEffect: JSON.stringify({ kind: "noop", idleMinutes, retry: true }),
+          run,
+          droppedReason: null,
+          mode: "enforce",
+        });
+      }
+      return { outcome: "gated", result };
+    }
+  }
+
+  if (enforced) {
+    await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
+    await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run });
+  } else {
+    // Shadow: one row per idle stretch. Until the issue sees new activity,
+    // a later sweep finds the same thing and has nothing new to say.
+    const stretch = last ?? "never";
+    if ((await deps.getReconcileReported()) === stretch) {
+      return { outcome: "would_refire", run, idleMinutes, alreadyLogged: true, ...(held ? { held } : {}) };
+    }
+    await deps.setReconcileReported(stretch);
+  }
+  await deps.logTransition({
+    deliveryId: null,
+    owner: ref.owner,
+    repo: ref.repo,
+    issueNumber: ref.issueNumber,
+    fromState: state,
+    event: "reconcile_refire",
+    toEffect: JSON.stringify({ kind: "noop", idleMinutes, ...(held ? { held } : {}) }),
+    run,
+    droppedReason: null,
+    mode: enforced ? "enforce" : "shadow",
+  });
+  return { outcome: enforced ? "refired" : "would_refire", run, idleMinutes, ...(held ? { held } : {}) };
+}
 
 /**
  * The watchdog's expiry, as a real event through the same reduce() ->
@@ -538,9 +781,16 @@ export type WatchdogResult = { outcome: "no_pending_fire" } | CoordinateResult;
  * anywhere before it leaves the retry something to act on. The cost is a
  * possible duplicate comment on a retry, never a silently lost alert.
  */
-export async function coordinateWatchdogExpired(deps: Deps): Promise<WatchdogResult> {
+export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): Promise<WatchdogResult> {
   const pending = await deps.getPendingFire();
   if (!pending) return { outcome: "no_pending_fire" };
+  // The alarm started, then something queued ahead of it (a heartbeat, or
+  // the sweep re-firing a run it took for lost) replaced the pending fire
+  // and armed a new alarm: this one isn't for it. Leave that alarm alone.
+  const margin = Math.min(WATCHDOG_DUE_MARGIN_MS, (deps.watchdogMinutes(pending.run) * 60_000) / 2);
+  if (pending.dueAt !== undefined && now < pending.dueAt - margin) {
+    return { outcome: "not_due", dueAt: pending.dueAt };
+  }
 
   const lastStep = pending.lastStep
     ? ` Last reported step: \`${pending.lastStep}\` (${pending.lastStepAt ?? "time unknown"}).`

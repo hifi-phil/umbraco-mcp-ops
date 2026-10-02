@@ -109,6 +109,19 @@ export async function addLabel(number: number, label: string): Promise<void> {
   progress(`#${number} +${label}`);
 }
 
+/** A human taking a label off by hand, as a maintainer would. */
+export async function removeLabel(number: number, label: string): Promise<void> {
+  await gh("DELETE", `${R}/issues/${number}/labels/${encodeURIComponent(label)}`);
+  progress(`#${number} -${label} (by hand)`);
+}
+
+let me: string | undefined;
+/** The driver's own login: who a scenario's human edits come from. */
+export async function driverLogin(): Promise<string> {
+  me ??= (await gh<{ login: string }>("GET", "/user")).login;
+  return me;
+}
+
 export async function devSha(): Promise<string> {
   return (await gh<{ object: { sha: string } }>("GET", `${R}/git/ref/heads/dev`)).object.sha;
 }
@@ -344,6 +357,20 @@ export const tofuOutput = (name: string) => tofuSecret(name, `E2E_${name.toUpper
 /** The orchestrator's URL (tofu's worker_url; E2E_WORKER_URL overrides). */
 export async function orchestratorUrl(): Promise<string> {
   return tofuOutput("worker_url").replace(/\/$/, "");
+}
+
+export type SweepSummary = { repos: string[]; checked: number; refired: string[]; wouldRefire: string[]; errors: string[] };
+
+/** An on-demand reconciliation sweep of the sandbox (the Worker's POST /sweep). */
+export async function sweep(): Promise<SweepSummary> {
+  const res = await fetch(`${await orchestratorUrl()}/sweep`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${logReadSecret()}` },
+  });
+  if (!res.ok) throw new Error(`POST /sweep failed: ${res.status} ${await res.text()}`);
+  const summary = (await res.json()) as SweepSummary;
+  progress(`sweep: checked ${summary.checked}, re-fired [${summary.refired.join(", ")}]`);
+  return summary;
 }
 
 /** Every row the orchestrator logged for this issue/PR, oldest first. */

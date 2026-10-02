@@ -79,6 +79,25 @@ export function github(token: string): Gh {
   };
 }
 
+/**
+ * The stub's GitHub access: its own token, except for reading check-runs,
+ * which a fine-grained token can't do on a private sandbox. Those go through
+ * the orchestrator's App (Checks: read) when it's configured. Only that read:
+ * the App has no Contents: write, and shouldn't get it for a test stub, so
+ * branches, commits and merges stay on the stub's token.
+ */
+export function stubGitHub(env: StubEnv, appToken: () => Promise<string> = () => installationTokenFor(env)): Gh {
+  const own = github(env.GITHUB_TOKEN);
+  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY) return own;
+  return async (method, path, body) =>
+    method === "GET" && /\/check-runs(\?|$)/.test(path) ? github(await appToken())(method, path, body) : own(method, path, body);
+}
+
+function installationTokenFor(env: StubEnv): Promise<string> {
+  const [owner, repo] = env.E2E_REPO.split("/") as [string, string];
+  return installationToken(env, owner, repo);
+}
+
 const isSandbox = (env: StubEnv, owner: string, repo: string) =>
   `${owner}/${repo}`.toLowerCase() === env.E2E_REPO.toLowerCase();
 
@@ -91,7 +110,7 @@ export async function handleFire(
   request: Request,
   env: StubEnv,
   defer: (work: Promise<unknown>) => void,
-  gh: Gh = github(env.GITHUB_TOKEN),
+  gh: Gh = stubGitHub(env),
   delayMs = STUB_DELAY_MS,
   signalFor: (owner: string, repo: string) => Signal = (o, r) => routineSignal(env, o, r),
 ): Promise<Response> {
@@ -109,6 +128,11 @@ export async function handleFire(
   if (!isSandbox(env, fire.owner, fire.repo)) {
     return new Response(`not the e2e repo: ${fire.owner}/${fire.repo}`, { status: 403 });
   }
+
+  // `fail_fire`: refuse the fire itself, a fire that never got out (no
+  // watchdog, no log row): what the reconciliation sweep is for.
+  const { body: now } = (await gh("GET", `/repos/${fire.owner}/${fire.repo}/issues/${fire.number}`)) as { body: string | null };
+  if (parseHint(now) === "fail_fire") return new Response("e2e stub: scripted fire failure", { status: 500 });
 
   defer(
     logged(`${fire.route} #${fire.number}`, async () => {
@@ -148,7 +172,7 @@ export async function handleWebhook(
   request: Request,
   env: StubEnv,
   defer: (work: Promise<unknown>) => void,
-  gh: Gh = github(env.GITHUB_TOKEN),
+  gh: Gh = stubGitHub(env),
   retryMs = WAIT_RETRY_MS,
 ): Promise<Response> {
   const raw = await request.text();

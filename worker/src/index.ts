@@ -12,10 +12,14 @@ import { extractRoutingInfo, toWebhookPayload, verifySignature, type RoutingInfo
 import { openPullsForCommit } from "./github-client";
 import type { CoordinateInput, RoutineSignalInput } from "./coordinate";
 
-export { IssueCoordinator };
+import { Scheduler } from "./scheduler";
+
+export { IssueCoordinator, Scheduler };
 
 export type Env = {
   ISSUE_COORDINATOR: DurableObjectNamespace;
+  // The one Scheduler DO (scheduler.ts): the reconciliation sweep's alarm.
+  SCHEDULER?: DurableObjectNamespace;
   DB: D1Database;
   GITHUB_APP_TOKEN: string;
   GITHUB_APP_ID?: string; // the Worker's GitHub App — see github-app.ts
@@ -47,6 +51,7 @@ function doKey(owner: string, repo: string, issueNumber: number): string {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/sweep") return handleSweep(request, env);
     if (request.method === "GET" && url.pathname === "/transitions") return handleTransitions(request, env, url);
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
 
@@ -74,6 +79,7 @@ export default {
       return new Response("invalid JSON body", { status: 400 });
     }
 
+    await ensureScheduler(env);
     const routing = extractRoutingInfo(body) ?? (eventType === "check_suite" ? await routeByCommit(env, body) : null);
     if (!routing) return Response.json({ ok: true, dropped: "no routable issue/PR number" });
 
@@ -144,6 +150,29 @@ async function handleTransitions(request: Request, env: Env, url: URL): Promise<
     .bind(owner, repo, issue)
     .all<TransitionLogRow>();
   return Response.json({ rows: results });
+}
+
+const scheduler = (env: Env) => env.SCHEDULER!.get(env.SCHEDULER!.idFromName("scheduler"));
+
+/** Every webhook re-arms the sweep's alarm if it's missing (scheduler.ts):
+ * a chain that somehow broke restarts with the next GitHub event. Never
+ * fails the webhook. */
+async function ensureScheduler(env: Env): Promise<void> {
+  if (!env.SCHEDULER) return;
+  try {
+    await scheduler(env).fetch("https://scheduler/ensure", { method: "POST" });
+  } catch (e) {
+    console.error("scheduler ensure failed:", e instanceof Error ? e.message : e);
+  }
+}
+
+/** POST /sweep: an on-demand sweep for the e2e sandbox. The same key and
+ * repo list as GET /transitions, so it's off for every other repo. */
+async function handleSweep(request: Request, env: Env): Promise<Response> {
+  if (!env.LOG_READ_SECRET || !env.SCHEDULER) return new Response("not found", { status: 404 });
+  if (request.headers.get("Authorization") !== `Bearer ${env.LOG_READ_SECRET}`) return new Response("unauthorized", { status: 401 });
+  const repos = (env.LOG_READ_REPOS ?? "").split(",").map((r) => r.trim()).filter(Boolean);
+  return scheduler(env).fetch("https://scheduler/sweep", { method: "POST", body: JSON.stringify({ repos }) });
 }
 
 /**

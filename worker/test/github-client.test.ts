@@ -7,6 +7,7 @@ import {
   getLabels,
   getLatestReviewState,
   getPull,
+  openWithLabel,
   removeLabel,
 } from "../src/github-client";
 
@@ -42,6 +43,20 @@ describe("getLabels", () => {
   it("a real error status throws with the response body included", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("rate limited", { status: 403 })));
     await expect(getLabels(env, "hifi-phil", "umbraco-mcp-ops", 412)).rejects.toThrow(/403/);
+  });
+});
+
+describe("openWithLabel", () => {
+  it("follows every page, not just the first 100", async () => {
+    const page = (n: number, count: number) => Array.from({ length: count }, (_, i) => ({ number: n * 1000 + i }));
+    const fetchMock = vi.fn(async (url: string) => {
+      const p = Number(new URL(url).searchParams.get("page"));
+      return new Response(JSON.stringify(p === 1 ? page(1, 100) : p === 2 ? page(2, 100) : page(3, 7)), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const numbers = await openWithLabel(env, "hifi-phil", "umbraco-mcp-ops", "ready-for-ai");
+    expect(numbers).toHaveLength(207);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
 

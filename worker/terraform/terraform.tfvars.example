@@ -22,8 +22,9 @@ EOT
 #                      # Then delete the repo's loop-dispatch caller workflow.
 # watchdog = "shadow"  # only honoured under mode = "enforce"
 
-# Leave commented for the first apply; uncomment once the Worker exists.
-# deployed_do_migration_tag = "v1"
+# Leave commented for the first apply; once the Worker exists, set it to
+# what `tofu output migration_tag` shows ("v2" for a fresh deploy).
+# deployed_do_migration_tag = "v2"
 
 # Needed for mode = "enforce" (shadow never fires). Same Fire URL + token as
 # the repo's LOOP_DISPATCH_FIRE_URL / LOOP_DISPATCH_TOKEN.

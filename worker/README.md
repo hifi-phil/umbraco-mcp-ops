@@ -56,8 +56,9 @@ webhook source:
   in `repo_routines` (its loop-dispatch routine). There's no per-repo hook to
   add, so the old caller workflow and its secrets aren't needed.
 
-- **After the first apply, set `deployed_do_migration_tag = "v1"`** in
-  `terraform.tfvars`. Every Worker upload re-sends the Durable Object
+- **After the first apply, set `deployed_do_migration_tag`** in
+  `terraform.tfvars` to the tag `tofu output migration_tag` shows (`"v2"`
+  for a fresh deploy). Every Worker upload re-sends the Durable Object
   migration, and Cloudflare rejects one whose `old_tag` doesn't match the
   deployed tag (412, "Actor migration tag precondition failed"; hit on the
   first code update, 29-09-2026). Leave it unset on a fresh deploy, since
@@ -417,6 +418,49 @@ Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
 `AGENT_OUTCOMES_TOKEN` on the routine environment: see `new-loop-routine`'s
 "Routine heartbeats" section.
 
+## The reconciliation sweep (Phase 7)
+
+`src/scheduler.ts`: one **Scheduler** Durable Object.
+
+- **What it catches:** an issue left in a trigger state (`ready-for-ai`,
+  `auto-release`, `auto-rework`, `auto-merge`) with no watchdog running and
+  nothing logged for twice its routine's timeout. That's a fire that never
+  got out, or a lost watchdog.
+- **How it works:** its alarm sweeps every `sweep_minutes` (default 15),
+  listing such issues per repo. Each issue's own DO decides
+  (`coordinateReconcile`). A left-behind issue gets its routine fired again
+  and watched, plus a `reconcile_refire` row. If that run dies too, the
+  watchdog moves the issue to `ai-stuck`, which the sweep doesn't touch.
+- **Why an alarm, not a Cron Trigger:** alarms are at-least-once and retried
+  with backoff. Cron triggers have no retries and have been seen to stop
+  silently.
+- **It slows down when there's nothing live to watch:**
+  - each alarm sets the next one before sweeping, so a failure keeps it
+    going
+  - a sweep with nothing live (no issue running, recently active, or newly
+    re-fired or reported) slows the next to hourly (`SWEEP_IDLE_MINUTES`).
+    It never stops: a lost webhook is exactly when nothing would restart it
+  - every webhook brings it back to `sweep_minutes` (`/ensure`)
+
+  A sweep with something new (a re-fire, a newly reported would-re-fire, an
+  error) writes a `sweep` row (`owner` = `_scheduler`); any other writes
+  nothing.
+- **Modes:** `sweep_mode = "shadow"` (the default) only logs what it would
+  re-fire, once per idle stretch. Run it that way first: a repo can have
+  issues labelled from before the Worker. Even when enforcing:
+  - a re-fire only happens when `MODE` **and that repo's watchdog** both
+    enforce. Otherwise it's logged with `held`, because a shadow watchdog
+    would leave the label on and the issue would be re-fired every sweep;
+  - at most `sweep_max_refires` (3) re-fires happen per sweep.
+
+  The e2e sandbox always enforces, and `POST /sweep` runs a sweep of the
+  sandbox on demand.
+- **Cost:** about 3,000 alarm runs a month at 15 minutes (fewer when it
+  slows to hourly), plus one DO request per candidate per sweep and one
+  `/ensure` per webhook. Ten open trigger-labelled issues is about 30,000
+  a month. That's well inside the Free plan,
+  and inside the $5 Paid allowance.
+
 ## The watchdog is a real event
 
 A watched routine that never reports back now moves the issue through the
@@ -610,11 +654,8 @@ three steps.
   would fire twice with an identity the guard can't recognise. The attempt
   count (`ciFix`, capped at `MAX_CI_FIX_ATTEMPTS`) lives in DO storage and
   resets when a human re-adds `auto-merge` after `merge-blocked`.
-- **The merge gate only works on public repos today.** It reads CI through
-  the check-runs API, and fine-grained tokens have no Checks permission.
-  So on a private repo every gate read gets 403 "Resource not accessible by
-  personal access token", both when `auto-merge` is added and when CI
-  finishes. Found by the e2e suite while the sandbox was private (it's
-  public now, like `umbraco-mcp-ops`). A private repo needs the GitHub App
-  (Checks: read), or a gate that reads workflow runs (Actions: read) and
-  so sees only GitHub Actions checks.
+- **Private repos work through the App.** The merge gate reads CI through
+  the check-runs API. A fine-grained personal token has no Checks
+  permission, so on a private repo it got 403. The GitHub App has
+  Checks: read. The full e2e suite passed 25/25 with the sandbox private
+  (02-10-2026). Only the fallback personal token is still public-only.
