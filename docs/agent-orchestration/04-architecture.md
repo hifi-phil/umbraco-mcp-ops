@@ -10,7 +10,7 @@ one run, the labels, the code, and how it's tested.
 ## The parts
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
+%%{init: {"themeVariables": {"fontSize": "20px"}, "flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
 flowchart TD
     GH["GitHub<br/>issues, PRs, CI"]
     APP["GitHub App<br/>umbraco-agent-orchestrator"]
@@ -41,6 +41,7 @@ flowchart TD
 ## One run
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "20px"}}}%%
 sequenceDiagram
     actor H as Human
     participant GH as GitHub
@@ -49,11 +50,8 @@ sequenceDiagram
 
     H->>GH: add label ready-for-ai
     GH->>W: webhook
-    W->>W: decide (graph.ts rules)
     W->>R: fire issue-build-loop
-    loop while working
-        R-->>W: heartbeat
-    end
+    R-->>W: heartbeats while working
     R->>GH: open PR, post outcome
     GH->>W: webhook
     W->>GH: swap label to generated-by-ai
@@ -65,7 +63,7 @@ moves the issue to `ai-stuck` and comments the last step it reported.
 ## The labels
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
+%%{init: {"themeVariables": {"fontSize": "20px"}, "flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
 flowchart TD
     A[ready-for-ai] --> B[generated-by-ai]
     A --> C[ai-blocked]
@@ -91,7 +89,7 @@ flowchart TD
 ## The code
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
+%%{init: {"themeVariables": {"fontSize": "20px"}, "flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
 flowchart TD
     G["graph/<br/>the rules (pure)"]
     W["worker/<br/>Worker + Durable Object + tofu"]
@@ -115,7 +113,7 @@ flowchart TD
 ## How it's tested
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
+%%{init: {"themeVariables": {"fontSize": "20px"}, "flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
 flowchart TD
     D["e2e driver"] -- "issues, PRs, labels" --> SB["sandbox repo"]
     SB -- "webhooks (App)" --> W["Worker"]
