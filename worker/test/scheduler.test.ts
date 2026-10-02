@@ -78,7 +78,26 @@ describe("Scheduler", () => {
     expect(inserted, "no sweep row for a quiet sweep").toEqual([]);
   });
 
-  it("/ensure waits for a running alarm, so a webhook landing as a quiet sweep stops the chain still re-arms it", async () => {
+  it("/ensure never waits on a running sweep (webhooks must stay fast)", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        await held;
+        return Response.json([]);
+      }),
+    );
+    const { ctx } = fakeCtx(Date.now() + 60_000);
+    const scheduler = new Scheduler(ctx, fakeEnv(() => ({})).env);
+    const sweeping = scheduler.alarm();
+    const res = await scheduler.fetch(new Request("https://s/ensure", { method: "POST" })); // resolves with the sweep still held
+    expect(res.status).toBe(200);
+    release();
+    await sweeping;
+  });
+
+  it("a webhook landing as a quiet sweep stops the chain still re-arms it", async () => {
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     vi.stubGlobal(

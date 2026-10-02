@@ -13,8 +13,9 @@
 //   An issue can only be left behind after a trigger label was added, and
 //   that label's own webhook arms the sweep first, so stopping is safe;
 // - a sweep that checked something writes a `sweep` row to D1.
-// /ensure and the alarm run one at a time, so a webhook landing between a
-// sweep finding nothing and it cancelling the alarm still re-arms.
+// /ensure never waits on a sweep (webhooks would queue behind it, past
+// GitHub's 10 s timeout). Instead a sweep only stops the chain if no
+// /ensure arrived while it ran, so a webhook landing then still re-arms.
 
 import { TRIGGER_LABELS, type ReconcileResult } from "./coordinate";
 import { openWithLabel, type GitHubEnv } from "./github-client";
@@ -55,20 +56,16 @@ export class Scheduler {
     return (Number.isFinite(m) && m > 0 ? m : DEFAULT_SWEEP_MINUTES) * 60_000;
   }
 
-  private queue: Promise<unknown> = Promise.resolve();
-  private serial<T>(work: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(work, work);
-    this.queue = run.catch(() => {});
-    return run;
-  }
+  // When /ensure last ran (this instance is the only one, so in memory is
+  // enough; an evicted instance has no sweep in flight).
+  private lastEnsure = 0;
 
   async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path === "/ensure") {
-      return this.serial(async () => {
-        if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + this.intervalMs());
-        return Response.json({ ok: true });
-      });
+      this.lastEnsure = Date.now();
+      if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + this.intervalMs());
+      return Response.json({ ok: true });
     }
     if (path === "/sweep" && request.method === "POST") {
       // An on-demand sweep (e2e), optionally just some repos.
@@ -79,17 +76,18 @@ export class Scheduler {
   }
 
   async alarm(): Promise<void> {
-    await this.serial(async () => {
-      // Next one first: a failure below keeps the chain going.
-      await this.ctx.storage.setAlarm(Date.now() + this.intervalMs());
-      try {
-        const summary = await this.sweep();
-        // Nothing to watch: stop until a webhook re-arms it.
-        if (summary.checked === 0 && summary.errors.length === 0) await this.ctx.storage.deleteAlarm();
-      } catch (e) {
-        console.error("sweep failed:", e instanceof Error ? e.message : e);
+    const started = Date.now();
+    // Next one first: a failure below keeps the chain going.
+    await this.ctx.storage.setAlarm(started + this.intervalMs());
+    try {
+      const summary = await this.sweep();
+      // Nothing to watch, and no webhook re-armed it meanwhile: stop.
+      if (summary.checked === 0 && summary.errors.length === 0 && this.lastEnsure < started) {
+        await this.ctx.storage.deleteAlarm();
       }
-    });
+    } catch (e) {
+      console.error("sweep failed:", e instanceof Error ? e.message : e);
+    }
   }
 
   private maxRefires(): number {

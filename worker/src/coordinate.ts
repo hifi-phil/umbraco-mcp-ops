@@ -612,7 +612,15 @@ export type ReconcileResult =
   | { outcome: "watched" }
   | { outcome: "not_triggered"; state: string }
   | { outcome: "recent"; idleMinutes: number }
-  | { outcome: "refired" | "would_refire"; run: string; idleMinutes: number | null; alreadyLogged?: boolean };
+  | {
+      outcome: "refired" | "would_refire";
+      run: string;
+      idleMinutes: number | null;
+      alreadyLogged?: boolean;
+      // Why a sweep asked to enforce only logged: the Worker (MODE) or this
+      // repo's watchdog isn't enforcing.
+      held?: "mode_shadow" | "watchdog_shadow";
+    };
 
 /** D1's created_at ("YYYY-MM-DD HH:MM:SS", UTC) as epoch ms. */
 const d1Time = (s: string) => Date.parse(`${s.replace(" ", "T")}Z`);
@@ -624,8 +632,11 @@ const d1Time = (s: string) => Date.parse(`${s.replace(" ", "T")}Z`);
  * twice its routine's timeout: a fire that never got out, or a watchdog
  * that was lost. Then fire its routine again and watch it, as if the
  * trigger label had just been added. Bounded: if that run dies too, the
- * watchdog moves the issue to ai-stuck, which isn't a trigger state.
- * `enforced` false (the sweep's shadow mode) only logs what it would do.
+ * watchdog moves the issue to ai-stuck, which isn't a trigger state. That
+ * bound only holds while this repo's watchdog enforces (a shadow one leaves
+ * the label on, so the issue would be re-fired every sweep), and a real
+ * fire needs MODE=enforce, so either one shadowed holds the re-fire to a
+ * log row. `enforced` false (the sweep's shadow mode) only logs too.
  */
 export async function coordinateReconcile(
   deps: Deps,
@@ -644,6 +655,15 @@ export async function coordinateReconcile(
   const idleMinutes = last === null ? null : Math.round((now - d1Time(last)) / 6_000) / 10;
   if (idleMinutes !== null && idleMinutes < 2 * deps.watchdogMinutes(run)) return { outcome: "recent", idleMinutes };
 
+  const held = !enforced
+    ? undefined
+    : !deps.enforced(event!)
+      ? ("mode_shadow" as const)
+      : !deps.enforced(EVENTS.WATCHDOG_EXPIRED)
+        ? ("watchdog_shadow" as const)
+        : undefined;
+  if (enforced && held) enforced = false;
+
   if (enforced) {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
     await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run });
@@ -651,7 +671,9 @@ export async function coordinateReconcile(
     // Shadow: one row per idle stretch. Until the issue sees new activity,
     // a later sweep finds the same thing and has nothing new to say.
     const stretch = last ?? "never";
-    if ((await deps.getReconcileReported()) === stretch) return { outcome: "would_refire", run, idleMinutes, alreadyLogged: true };
+    if ((await deps.getReconcileReported()) === stretch) {
+      return { outcome: "would_refire", run, idleMinutes, alreadyLogged: true, ...(held ? { held } : {}) };
+    }
     await deps.setReconcileReported(stretch);
   }
   await deps.logTransition({
@@ -661,12 +683,12 @@ export async function coordinateReconcile(
     issueNumber: ref.issueNumber,
     fromState: state,
     event: "reconcile_refire",
-    toEffect: JSON.stringify({ kind: "noop", idleMinutes }),
+    toEffect: JSON.stringify({ kind: "noop", idleMinutes, ...(held ? { held } : {}) }),
     run,
     droppedReason: null,
     mode: enforced ? "enforce" : "shadow",
   });
-  return { outcome: enforced ? "refired" : "would_refire", run, idleMinutes };
+  return { outcome: enforced ? "refired" : "would_refire", run, idleMinutes, ...(held ? { held } : {}) };
 }
 
 export async function coordinateWatchdogExpired(deps: Deps): Promise<WatchdogResult> {

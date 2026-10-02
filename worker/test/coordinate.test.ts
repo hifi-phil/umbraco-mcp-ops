@@ -1009,6 +1009,28 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
     expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: "reconcile_refire", mode: "shadow" }));
   });
 
+  it("a sweep asked to enforce, but this repo's watchdog is shadow -> held: logged, not fired (a second death wouldn't stop it)", async () => {
+    const deps = fakeDeps({
+      enforced: (e) => e !== EVENTS.WATCHDOG_EXPIRED,
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      lastActivityAt: async () => minutesAgo(200),
+    });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toMatchObject({ outcome: "would_refire", held: "watchdog_shadow" });
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+    expect(deps.setPendingFire).not.toHaveBeenCalled();
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: "reconcile_refire", mode: "shadow" }));
+  });
+
+  it("…and with MODE shadow (nothing fires for real) -> held too", async () => {
+    const deps = fakeDeps({
+      enforced: () => false,
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      lastActivityAt: async () => minutesAgo(200),
+    });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toMatchObject({ outcome: "would_refire", held: "mode_shadow" });
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
   it("shadow: the same idle stretch is logged once, not every sweep; new activity logs again", async () => {
     let last = minutesAgo(200);
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), lastActivityAt: async () => last });

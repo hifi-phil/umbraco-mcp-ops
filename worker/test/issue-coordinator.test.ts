@@ -276,6 +276,34 @@ describe("IssueCoordinator — one request at a time per issue", () => {
   });
 });
 
+describe("IssueCoordinator — /reconcile's idle clock", () => {
+  it("measures idle time from real activity: a shadow sweep row doesn't count", async () => {
+    const queries: string[] = [];
+    const db = {
+      prepare: vi.fn((sql: string) => {
+        queries.push(sql);
+        return {
+          bind: () => ({
+            first: async () => ({ at: "2026-10-01 00:00:00" }),
+            run: async () => ({ success: true }),
+          }),
+        };
+      }),
+    } as unknown as D1Database;
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    const { ctx } = fakeCtx();
+    const res = await new IssueCoordinator(ctx, fakeEnv({ DB: db })).fetch(
+      new Request("https://issue-coordinator/reconcile", {
+        method: "POST",
+        body: JSON.stringify({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, enforced: false }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const idle = queries.find((q) => q.includes("MAX(created_at)"));
+    expect(idle).toMatch(/NOT \(event = 'reconcile_refire' AND mode = 'shadow'\)/);
+  });
+});
+
 describe("IssueCoordinator.alarm() — the watchdog", () => {
   const pendingBuild = {
     owner: "hifi-phil",

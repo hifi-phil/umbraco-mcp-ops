@@ -443,9 +443,15 @@ Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
   label's webhook arms the sweep first. A sweep that checked something writes
   a `sweep` row (`owner` = `_scheduler`); a quiet one writes nothing.
 - **Modes:** `sweep_mode = "shadow"` (the default) only logs what it would
-  re-fire. Run it that way first: a repo can have issues labelled from before
-  the Worker, which would all be re-fired at once. The e2e sandbox always
-  enforces, and `POST /sweep` runs a sweep of the sandbox on demand.
+  re-fire, once per idle stretch. Run it that way first: a repo can have
+  issues labelled from before the Worker. Even when enforcing:
+  - a re-fire only happens when `MODE` **and that repo's watchdog** both
+    enforce. Otherwise it's logged with `held`, because a shadow watchdog
+    would leave the label on and the issue would be re-fired every sweep;
+  - at most `sweep_max_refires` (3) re-fires happen per sweep.
+
+  The e2e sandbox always enforces, and `POST /sweep` runs a sweep of the
+  sandbox on demand.
 - **Cost:** at most about 10,000 DO requests a month, and less when the
   repos are quiet, since the chain stops. That's well inside the Free plan,
   and inside the $5 Paid allowance.

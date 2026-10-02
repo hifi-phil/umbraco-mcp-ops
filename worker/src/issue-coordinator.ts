@@ -167,8 +167,11 @@ export class IssueCoordinator {
       lastActivityAt: async () => {
         if (!ref) return null;
         const row = await this.env.DB.prepare(
+          // A shadow reconcile row only records what a sweep saw; it isn't
+          // activity on the issue, so it mustn't reset its idle clock.
           `SELECT MAX(created_at) AS at FROM transitions
-            WHERE LOWER(owner) = LOWER(?) AND LOWER(repo) = LOWER(?) AND issue_number = ?`,
+            WHERE LOWER(owner) = LOWER(?) AND LOWER(repo) = LOWER(?) AND issue_number = ?
+              AND NOT (event = 'reconcile_refire' AND mode = 'shadow')`,
         )
           .bind(ref.owner, ref.repo, ref.issueNumber ?? -1)
           .first<{ at: string | null }>();
