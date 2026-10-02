@@ -10,7 +10,8 @@ one run, the labels, the code, and how it's tested.
 ## The parts
 
 ```mermaid
-flowchart LR
+%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
+flowchart TD
     GH["GitHub<br/>issues, PRs, CI"]
     APP["GitHub App<br/>umbraco-agent-orchestrator"]
     W["Worker<br/>(Cloudflare)"]
@@ -64,7 +65,8 @@ moves the issue to `ai-stuck` and comments the last step it reported.
 ## The labels
 
 ```mermaid
-flowchart LR
+%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
+flowchart TD
     A[ready-for-ai] --> B[generated-by-ai]
     A --> C[ai-blocked]
     M[auto-merge] --> MD((merged))
@@ -89,6 +91,7 @@ flowchart LR
 ## The code
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
 flowchart TD
     G["graph/<br/>the rules (pure)"]
     W["worker/<br/>Worker + Durable Object + tofu"]
@@ -112,7 +115,8 @@ flowchart TD
 ## How it's tested
 
 ```mermaid
-flowchart LR
+%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
+flowchart TD
     D["e2e driver"] -- "issues, PRs, labels" --> SB["sandbox repo"]
     SB -- "webhooks (App)" --> W["Worker"]
     W -- "fire" --> ST["stub agent"]
