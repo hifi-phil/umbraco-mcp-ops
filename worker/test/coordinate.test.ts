@@ -59,6 +59,7 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
       pendingFire = null;
     }),
     getPendingFire: vi.fn(async () => pendingFire),
+    watchdogArmed: vi.fn(async () => pendingFire !== null),
     getMergeGateFacts: vi.fn(async () => gateFacts()),
     getCiFix: vi.fn(async () => ciFix),
     setCiFix: vi.fn(async (state: CiFix | null) => {
@@ -1011,7 +1012,10 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
   });
 
   it("a watchdog is running -> watched, nothing done", async () => {
-    const deps = fakeDeps({ getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP })) });
+    const deps = fakeDeps({
+      getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP })),
+      watchdogArmed: vi.fn(async () => true),
+    });
     expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toEqual({ outcome: "watched" });
     expect(deps.getLabels).not.toHaveBeenCalled();
   });
@@ -1028,6 +1032,17 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), lastActivityAt: async () => minutesAgo(90) });
     expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toEqual({ outcome: "recent", idleMinutes: 90 });
     expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("a lost watchdog (pending fire, but its alarm gave up) -> swept like any other: re-fired once idle", async () => {
+    const deps = fakeDeps({
+      getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP })),
+      watchdogArmed: vi.fn(async () => false),
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      lastActivityAt: async () => minutesAgo(125),
+    });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toMatchObject({ outcome: "refired" });
+    expect(deps.setPendingFire).toHaveBeenCalledWith({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP }); // re-arms the watchdog
   });
 
   it("left behind (trigger state, no watchdog, idle past twice its timeout) -> re-fired, watched, logged", async () => {

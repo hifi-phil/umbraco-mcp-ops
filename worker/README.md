@@ -455,8 +455,10 @@ Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
 
   The e2e sandbox always enforces, and `POST /sweep` runs a sweep of the
   sandbox on demand.
-- **Cost:** at most about 10,000 DO requests a month, and less when the
-  repos are quiet, since the sweep slows to hourly. That's well inside the Free plan,
+- **Cost:** about 3,000 alarm runs a month at 15 minutes (fewer when it
+  slows to hourly), plus one DO request per candidate per sweep and one
+  `/ensure` per webhook. Ten open trigger-labelled issues is about 30,000
+  a month. That's well inside the Free plan,
   and inside the $5 Paid allowance.
 
 ## The watchdog is a real event

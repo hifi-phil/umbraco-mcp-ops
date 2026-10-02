@@ -83,6 +83,10 @@ export type Deps = {
   setPendingFire(info: PendingFire): Promise<void>;
   clearPendingFire(): Promise<void>;
   getPendingFire(): Promise<PendingFire | null>;
+  // Whether the watchdog alarm behind a pending fire is still armed. A
+  // watchdog whose alarm gave up after its retries (GitHub down when it
+  // fired) leaves the pending fire with nothing behind it.
+  watchdogArmed(): Promise<boolean>;
   // The real, independently-fetched facts behind MERGE_GATE_FAILED_SOFT/
   // HARD — see graph/github/merge-gate.ts's header for why this needs to
   // be a Dep (I/O) rather than living in translate() (pure).
@@ -652,7 +656,9 @@ export async function coordinateReconcile(
   ref: IssueRef,
   { enforced, now = Date.now(), updatedAt }: { enforced: boolean; now?: number; updatedAt?: string },
 ): Promise<ReconcileResult> {
-  if (await deps.getPendingFire()) return { outcome: "watched" };
+  // A pending fire with no alarm behind it is a lost watchdog: nothing will
+  // notice, so it's swept like any other (the idle check still applies).
+  if ((await deps.getPendingFire()) && (await deps.watchdogArmed())) return { outcome: "watched" };
 
   const labels = await deps.getLabels(ref.owner, ref.repo, ref.issueNumber);
   const state = deriveState(labels);

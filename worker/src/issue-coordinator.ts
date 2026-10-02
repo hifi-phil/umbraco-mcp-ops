@@ -221,6 +221,7 @@ export class IssueCoordinator {
         await this.ctx.storage.delete(PENDING_FIRE_KEY);
         await this.ctx.storage.deleteAlarm();
       },
+      watchdogArmed: async () => (await this.ctx.storage.getAlarm()) !== null,
       getPendingFire: async () => (await this.ctx.storage.get<PendingFire>(PENDING_FIRE_KEY)) ?? null,
       getCiFix: async () => (await this.ctx.storage.get<CiFix>(CI_FIX_KEY)) ?? null,
       setCiFix: async (state: CiFix | null) => {
