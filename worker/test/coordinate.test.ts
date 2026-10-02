@@ -35,6 +35,7 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   const seen = new Set<string>();
   let pendingFire: PendingFire | null = null;
   let ciFix: CiFix | null = null;
+  let reconcileReported: string | null = null;
   return {
     getLabels: vi.fn(async () => []),
     addLabel: vi.fn(async () => {}),
@@ -68,6 +69,10 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     watchdogMinutes: watchdogMinutesFor,
     botLogin: async () => null,
     lastActivityAt: async () => null,
+    getReconcileReported: vi.fn(async () => reconcileReported),
+    setReconcileReported: vi.fn(async (s: string) => {
+      reconcileReported = s;
+    }),
     ...overrides,
   };
 }
@@ -1002,6 +1007,17 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
     expect(deps.fireRoutine).not.toHaveBeenCalled();
     expect(deps.setPendingFire).not.toHaveBeenCalled();
     expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: "reconcile_refire", mode: "shadow" }));
+  });
+
+  it("shadow: the same idle stretch is logged once, not every sweep; new activity logs again", async () => {
+    let last = minutesAgo(200);
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), lastActivityAt: async () => last });
+    await coordinateReconcile(deps, ref, { enforced: false, now });
+    expect(await coordinateReconcile(deps, ref, { enforced: false, now: now + 15 * 60_000 })).toMatchObject({ alreadyLogged: true });
+    expect(deps.logTransition).toHaveBeenCalledTimes(1);
+    last = minutesAgo(130); // something happened, then it went quiet again
+    await coordinateReconcile(deps, ref, { enforced: false, now });
+    expect(deps.logTransition).toHaveBeenCalledTimes(2);
   });
 });
 

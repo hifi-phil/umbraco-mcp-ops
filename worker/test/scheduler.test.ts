@@ -128,6 +128,26 @@ describe("Scheduler", () => {
     expect(inserted[0]).toEqual(expect.arrayContaining(["_scheduler", "sweep", "shadow"]));
   });
 
+  it("at most SWEEP_MAX_REFIRES re-fires per sweep; the rest are asked in shadow for next time", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ready-for-ai")
+          ? Response.json([{ number: 1 }, { number: 2 }, { number: 3 }])
+          : Response.json([]),
+      ),
+    );
+    const { ctx } = fakeCtx();
+    const { env, asked } = fakeEnv((b) => ({ outcome: b.enforced ? "refired" : "would_refire" }), {
+      SWEEP_MODE: "enforce",
+      SWEEP_MAX_REFIRES: "2",
+    });
+    const summary = await new Scheduler(ctx, env).sweep();
+    expect(asked.map((a) => a.body.enforced)).toEqual([true, true, false]);
+    expect(summary.refired).toHaveLength(2);
+    expect(summary.wouldRefire).toEqual(["hifi-phil/umbraco-mcp-ops#3"]);
+  });
+
   it("SWEEP_ENFORCE_REPOS enforces for just that repo; a sweep can be limited to some repos", async () => {
     vi.stubGlobal("fetch", github());
     const { ctx } = fakeCtx();

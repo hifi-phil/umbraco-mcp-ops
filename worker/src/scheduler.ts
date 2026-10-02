@@ -30,11 +30,16 @@ export type SchedulerEnv = GitHubEnv & {
   // just those, e.g. the e2e sandbox.
   SWEEP_MODE?: string;
   SWEEP_ENFORCE_REPOS?: string;
+  // At most this many re-fires per sweep (default 3). The rest are asked in
+  // shadow and come round again next sweep, so a backlog (say when a repo
+  // first goes to enforce) drains a few at a time, not all at once.
+  SWEEP_MAX_REFIRES?: string;
 };
 
 export type SweepSummary = { repos: string[]; checked: number; refired: string[]; wouldRefire: string[]; errors: string[] };
 
 export const DEFAULT_SWEEP_MINUTES = 15;
+export const DEFAULT_SWEEP_MAX_REFIRES = 3;
 
 /** The issue DO's key, as index.ts builds it. */
 const doKey = (owner: string, repo: string, n: number) => `${owner}/${repo}`.toLowerCase() + `#${n}`;
@@ -87,6 +92,11 @@ export class Scheduler {
     });
   }
 
+  private maxRefires(): number {
+    const n = Number(this.env.SWEEP_MAX_REFIRES);
+    return Number.isInteger(n) && n >= 0 ? n : DEFAULT_SWEEP_MAX_REFIRES;
+  }
+
   private enforcedFor(repo: string): boolean {
     if (this.env.SWEEP_MODE === "enforce") return true;
     return (this.env.SWEEP_ENFORCE_REPOS ?? "")
@@ -114,7 +124,12 @@ export class Scheduler {
         const stub = this.env.ISSUE_COORDINATOR.get(this.env.ISSUE_COORDINATOR.idFromName(doKey(owner, repo, issueNumber)));
         const res = await stub.fetch("https://issue-coordinator/reconcile", {
           method: "POST",
-          body: JSON.stringify({ owner, repo, issueNumber, enforced: this.enforcedFor(full) }),
+          body: JSON.stringify({
+            owner,
+            repo,
+            issueNumber,
+            enforced: this.enforcedFor(full) && summary.refired.length < this.maxRefires(),
+          }),
         });
         const result = (await res.json().catch(() => null)) as ReconcileResult | { outcome: "error"; error: string } | null;
         if (result?.outcome === "refired") summary.refired.push(`${full}#${issueNumber}`);

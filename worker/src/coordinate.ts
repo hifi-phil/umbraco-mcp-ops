@@ -100,6 +100,11 @@ export type Deps = {
   // When this issue last had a row in the D1 log (its created_at), or null
   // if it never has: how long it's been idle, for the reconciliation sweep.
   lastActivityAt(): Promise<string | null>;
+  // The last activity a shadow sweep already logged a "would re-fire" for
+  // (DO storage), so an issue that stays left behind is logged once, not
+  // every sweep.
+  getReconcileReported(): Promise<string | null>;
+  setReconcileReported(lastActivity: string): Promise<void>;
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;
@@ -607,7 +612,7 @@ export type ReconcileResult =
   | { outcome: "watched" }
   | { outcome: "not_triggered"; state: string }
   | { outcome: "recent"; idleMinutes: number }
-  | { outcome: "refired" | "would_refire"; run: string; idleMinutes: number | null };
+  | { outcome: "refired" | "would_refire"; run: string; idleMinutes: number | null; alreadyLogged?: boolean };
 
 /** D1's created_at ("YYYY-MM-DD HH:MM:SS", UTC) as epoch ms. */
 const d1Time = (s: string) => Date.parse(`${s.replace(" ", "T")}Z`);
@@ -642,6 +647,12 @@ export async function coordinateReconcile(
   if (enforced) {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
     await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run });
+  } else {
+    // Shadow: one row per idle stretch. Until the issue sees new activity,
+    // a later sweep finds the same thing and has nothing new to say.
+    const stretch = last ?? "never";
+    if ((await deps.getReconcileReported()) === stretch) return { outcome: "would_refire", run, idleMinutes, alreadyLogged: true };
+    await deps.setReconcileReported(stretch);
   }
   await deps.logTransition({
     deliveryId: null,

@@ -40,6 +40,12 @@ variable "sweep_minutes" {
   description = "Minutes between reconciliation sweeps (src/scheduler.ts), which re-fire issues left in a trigger state with no watchdog."
 }
 
+variable "sweep_max_refires" {
+  type        = number
+  default     = 3
+  description = "At most this many re-fires per sweep; the rest wait for the next one, so a backlog drains a few at a time (each re-fire is an agent run)."
+}
+
 variable "sweep_mode" {
   type        = string
   default     = "shadow"

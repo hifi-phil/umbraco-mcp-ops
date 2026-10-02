@@ -77,6 +77,7 @@ async function respond(run: () => Promise<unknown>): Promise<Response> {
 
 const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
+const RECONCILE_REPORTED_KEY = "reconcileReported";
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
 
 export class IssueCoordinator {
@@ -159,6 +160,10 @@ export class IssueCoordinator {
       enforced: resolveEnforced(this.env.MODE, override?.mode ?? this.env.WATCHDOG),
       watchdogMinutes,
       botLogin: async () => (appConfigured(this.env) ? appBotLogin(this.env) : null),
+      getReconcileReported: async () => (await this.ctx.storage.get<string>(RECONCILE_REPORTED_KEY)) ?? null,
+      setReconcileReported: async (lastActivity: string) => {
+        await this.ctx.storage.put(RECONCILE_REPORTED_KEY, lastActivity);
+      },
       lastActivityAt: async () => {
         if (!ref) return null;
         const row = await this.env.DB.prepare(
