@@ -520,6 +520,22 @@ describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
     run: ROUTINES.ISSUE_BUILD_LOOP,
   };
 
+  it("a pending fire not yet due (a newer fire or heartbeat replaced it after this alarm started) -> not_due, nothing touched", async () => {
+    const now = Date.parse("2026-10-02T10:00:00Z");
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await deps.setPendingFire({ ...pending, dueAt: now + 60 * 60_000 });
+    expect(await coordinateWatchdogExpired(deps, now)).toEqual({ outcome: "not_due", dueAt: now + 60 * 60_000 });
+    expect(deps.commentOnIssue).not.toHaveBeenCalled();
+    expect(deps.clearPendingFire).not.toHaveBeenCalled();
+  });
+
+  it("a pending fire due now (or within a minute: an early alarm) -> expires as usual", async () => {
+    const now = Date.parse("2026-10-02T10:00:00Z");
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await deps.setPendingFire({ ...pending, dueAt: now + 30_000 });
+    expect(await coordinateWatchdogExpired(deps, now)).toMatchObject({ outcome: "applied", event: EVENTS.WATCHDOG_EXPIRED });
+  });
+
   it("nothing pending -> no_pending_fire, no GitHub calls (a harmless race, or a retry after a full success)", async () => {
     const deps = fakeDeps();
     expect(await coordinateWatchdogExpired(deps)).toEqual({ outcome: "no_pending_fire" });

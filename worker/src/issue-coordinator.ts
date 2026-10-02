@@ -214,8 +214,9 @@ export class IssueCoordinator {
       },
       setPendingFire: async (info: PendingFire) => {
         await this.ctx.storage.delete(COMPLETED_KEY); // a new fire (or heartbeat): not finished
-        await this.ctx.storage.put(PENDING_FIRE_KEY, info);
-        await this.ctx.storage.setAlarm(Date.now() + watchdogMinutes(info.run) * 60_000);
+        const dueAt = Date.now() + watchdogMinutes(info.run) * 60_000;
+        await this.ctx.storage.put(PENDING_FIRE_KEY, { ...info, dueAt });
+        await this.ctx.storage.setAlarm(dueAt);
       },
       clearPendingFire: async () => {
         await this.ctx.storage.delete(PENDING_FIRE_KEY);

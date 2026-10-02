@@ -21,8 +21,13 @@ afterEach(() => {
  * don't share storage" (see the isolation test below). */
 function fakeCtx() {
   const store = new Map<string, unknown>();
-  const setAlarm = vi.fn(async () => {});
-  const deleteAlarm = vi.fn(async () => {});
+  let alarm: number | null = null;
+  const setAlarm = vi.fn(async (at: number) => {
+    alarm = at;
+  });
+  const deleteAlarm = vi.fn(async () => {
+    alarm = null;
+  });
   const storage = {
     get: vi.fn(async (key: string) => store.get(key)),
     put: vi.fn(async (key: string, value: unknown) => {
@@ -33,6 +38,7 @@ function fakeCtx() {
     }),
     setAlarm,
     deleteAlarm,
+    getAlarm: vi.fn(async () => alarm),
   };
   return { ctx: { storage } as unknown as DurableObjectState, storage, store, setAlarm, deleteAlarm };
 }
@@ -302,6 +308,27 @@ describe("IssueCoordinator — /reconcile's idle clock", () => {
     const idle = queries.find((q) => q.includes("MAX(created_at)"));
     expect(idle).toMatch(/NOT \(event = 'reconcile_refire' AND mode = 'shadow'\)/);
   });
+
+  it("a pending fire counts as watched only while its alarm is armed (ctx.storage.getAlarm)", async () => {
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    const reconcile = (ctx: DurableObjectState) =>
+      new IssueCoordinator(ctx, fakeEnv()).fetch(
+        new Request("https://issue-coordinator/reconcile", {
+          method: "POST",
+          body: JSON.stringify({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, enforced: false }),
+        }),
+      );
+    const pending = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: "issue-build-loop" };
+
+    const armed = fakeCtx();
+    await armed.storage.put("pendingFire", pending);
+    await armed.storage.setAlarm(Date.now() + 60_000);
+    expect(await (await reconcile(armed.ctx)).json()).toEqual({ outcome: "watched" });
+
+    const lost = fakeCtx();
+    await lost.storage.put("pendingFire", pending);
+    expect(await (await reconcile(lost.ctx)).json()).not.toEqual({ outcome: "watched" });
+  });
 });
 
 describe("IssueCoordinator.alarm() — the watchdog", () => {
@@ -346,6 +373,16 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
 
     await expect(coordinator.alarm()).rejects.toThrow();
     expect(await storage.get("pendingFire")).toEqual(pendingBuild);
+  });
+
+  it("a newer fire armed while this alarm waited its turn -> left alone: no comment, its alarm kept", async () => {
+    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    vi.stubGlobal("fetch", apiFetch);
+    const { ctx, storage, deleteAlarm } = fakeCtx();
+    await storage.put("pendingFire", { ...pendingBuild, dueAt: Date.now() + 60 * 60_000 });
+    await new IssueCoordinator(ctx, fakeEnv()).alarm();
+    expect(apiFetch).not.toHaveBeenCalled();
+    expect(deleteAlarm).not.toHaveBeenCalled();
   });
 
   it("no-ops when no pendingFire is set — a harmless race, not a bug", async () => {

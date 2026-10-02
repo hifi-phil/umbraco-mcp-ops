@@ -61,6 +61,10 @@ export type PendingFire = {
   // so a watchdog expiry can say where the run got to, not just "timed out".
   lastStep?: string;
   lastStepAt?: string; // ISO timestamp
+  // When its watchdog is due (epoch ms), set by the DO's setPendingFire. A
+  // watchdog alarm that started before a newer fire (or heartbeat) replaced
+  // this one finds it not yet due, and leaves it to that fire's own alarm.
+  dueAt?: number;
 };
 
 export type CiFix = { attempts: number; pending: boolean };
@@ -596,7 +600,11 @@ export async function coordinateRoutineSignal(
   return { outcome: "completion_acknowledged" };
 }
 
-export type WatchdogResult = { outcome: "no_pending_fire" } | CoordinateResult;
+export type WatchdogResult = { outcome: "no_pending_fire" } | { outcome: "not_due"; dueAt: number } | CoordinateResult;
+
+// An alarm can be invoked a little before its time is reached; a pending
+// fire due within this margin counts as due.
+const WATCHDOG_DUE_MARGIN_MS = 60_000;
 
 /**
  * The watchdog's expiry, as a real event through the same reduce() ->
@@ -730,9 +738,15 @@ export async function coordinateReconcile(
   return { outcome: enforced ? "refired" : "would_refire", run, idleMinutes, ...(held ? { held } : {}) };
 }
 
-export async function coordinateWatchdogExpired(deps: Deps): Promise<WatchdogResult> {
+export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): Promise<WatchdogResult> {
   const pending = await deps.getPendingFire();
   if (!pending) return { outcome: "no_pending_fire" };
+  // The alarm started, then something queued ahead of it (a heartbeat, or
+  // the sweep re-firing a run it took for lost) replaced the pending fire
+  // and armed a new alarm: this one isn't for it. Leave that alarm alone.
+  if (pending.dueAt !== undefined && now < pending.dueAt - WATCHDOG_DUE_MARGIN_MS) {
+    return { outcome: "not_due", dueAt: pending.dueAt };
+  }
 
   const lastStep = pending.lastStep
     ? ` Last reported step: \`${pending.lastStep}\` (${pending.lastStepAt ?? "time unknown"}).`
