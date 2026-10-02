@@ -1069,6 +1069,27 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
     expect(deps.setPendingFire).toHaveBeenCalledWith({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP }); // re-arms the watchdog
   });
 
+  it("no alarm, but only just due (its watchdog may be expiring right now) -> watched, not re-fired", async () => {
+    const deps = fakeDeps({
+      getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP, dueAt: now - 2 * 60_000 })),
+      watchdogArmed: vi.fn(async () => false),
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      lastActivityAt: async () => minutesAgo(125),
+    });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toEqual({ outcome: "watched" });
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("no alarm, and long past due (its retries spent) -> lost, re-fired", async () => {
+    const deps = fakeDeps({
+      getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP, dueAt: now - 30 * 60_000 })),
+      watchdogArmed: vi.fn(async () => false),
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      lastActivityAt: async () => minutesAgo(125),
+    });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toMatchObject({ outcome: "refired" });
+  });
+
   it("left behind (trigger state, no watchdog, idle past twice its timeout) -> re-fired, watched, logged", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), lastActivityAt: async () => minutesAgo(125) });
     expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toEqual({

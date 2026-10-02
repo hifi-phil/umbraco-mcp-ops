@@ -607,16 +607,12 @@ export type WatchdogResult = { outcome: "no_pending_fire" } | { outcome: "not_du
 // a short (e2e) watchdog still tells a just-replaced fire from a due one.
 const WATCHDOG_DUE_MARGIN_MS = 60_000;
 
-/**
- * The watchdog's expiry, as a real event through the same reduce() ->
- * labelOps() -> log path as any webhook — so a dead routine moves the issue
- * to ai-stuck and leaves a D1 row, instead of only a comment.
- *
- * Ordering is for the DO's at-least-once alarm retries (a throwing alarm()
- * is retried with backoff): pendingFire is cleared LAST, so a failure
- * anywhere before it leaves the retry something to act on. The cost is a
- * possible duplicate comment on a retry, never a silently lost alert.
- */
+// getAlarm() is null from the moment the watchdog alarm is invoked (even
+// while it waits its turn in serial()) and again once its retries are spent.
+// Only the second is a lost watchdog, so a pending fire counts as lost only
+// this long after it was due: well past Cloudflare's alarm retry budget.
+const WATCHDOG_LOST_AFTER_MS = 15 * 60_000;
+
 // --- Reconciliation (Phase 7): re-firing what was left behind --------------
 
 /** The trigger labels, and the event a person adding each one would be. */
@@ -665,9 +661,14 @@ export async function coordinateReconcile(
   ref: IssueRef,
   { enforced, now = Date.now(), updatedAt }: { enforced: boolean; now?: number; updatedAt?: string },
 ): Promise<ReconcileResult> {
-  // A pending fire with no alarm behind it is a lost watchdog: nothing will
-  // notice, so it's swept like any other (the idle check still applies).
-  if ((await deps.getPendingFire()) && (await deps.watchdogArmed())) return { outcome: "watched" };
+  // A pending fire with no alarm behind it, well after it was due, is a lost
+  // watchdog: nothing will notice, so it's swept like any other (the idle
+  // check still applies). One only just due may be expiring right now.
+  const pending = await deps.getPendingFire();
+  if (pending) {
+    const expiring = pending.dueAt !== undefined && now < pending.dueAt + WATCHDOG_LOST_AFTER_MS;
+    if (expiring || (await deps.watchdogArmed())) return { outcome: "watched" };
+  }
 
   const labels = await deps.getLabels(ref.owner, ref.repo, ref.issueNumber);
   const state = deriveState(labels);
@@ -739,6 +740,16 @@ export async function coordinateReconcile(
   return { outcome: enforced ? "refired" : "would_refire", run, idleMinutes, ...(held ? { held } : {}) };
 }
 
+/**
+ * The watchdog's expiry, as a real event through the same reduce() ->
+ * labelOps() -> log path as any webhook — so a dead routine moves the issue
+ * to ai-stuck and leaves a D1 row, instead of only a comment.
+ *
+ * Ordering is for the DO's at-least-once alarm retries (a throwing alarm()
+ * is retried with backoff): pendingFire is cleared LAST, so a failure
+ * anywhere before it leaves the retry something to act on. The cost is a
+ * possible duplicate comment on a retry, never a silently lost alert.
+ */
 export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): Promise<WatchdogResult> {
   const pending = await deps.getPendingFire();
   if (!pending) return { outcome: "no_pending_fire" };
