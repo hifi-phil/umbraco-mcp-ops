@@ -20,9 +20,17 @@ MODE = "shadow"
 name = "ISSUE_COORDINATOR"
 class_name = "IssueCoordinator"
 
+[[durable_objects.bindings]]
+name = "SCHEDULER"
+class_name = "Scheduler"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["IssueCoordinator"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Scheduler"]
 
 [[d1_databases]]
 binding = "DB"

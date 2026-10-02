@@ -22,6 +22,7 @@
 
 import {
   coordinateWebhook,
+  coordinateReconcile,
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
   resolveEnforced,
@@ -76,6 +77,8 @@ async function respond(run: () => Promise<unknown>): Promise<Response> {
 
 const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
+const RECONCILE_REPORTED_KEY = "reconcileReported";
+const COMPLETED_KEY = "completed";
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
 
 export class IssueCoordinator {
@@ -102,6 +105,19 @@ export class IssueCoordinator {
 
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+
+    // The sweep (scheduler.ts) asking whether this issue was left behind.
+    if (new URL(request.url).pathname === "/reconcile") {
+      let input: { owner: string; repo: string; issueNumber: number; enforced: boolean; updatedAt?: string };
+      try {
+        input = await request.json();
+      } catch {
+        return new Response("invalid JSON body", { status: 400 });
+      }
+      return this.serial(() =>
+        respond(() => coordinateReconcile(this.deps(input), input, { enforced: input.enforced, updatedAt: input.updatedAt })),
+      );
+    }
 
     if (new URL(request.url).pathname === "/routine-signal") {
       let input: RoutineSignalInput;
@@ -140,13 +156,37 @@ export class IssueCoordinator {
   /** Real I/O; coordinate.ts switches each event to shadow writes unless
    * `enforced` says otherwise. `ref` is the issue's repo, for its watchdog
    * override (a DO is one issue, so every call for it names the same repo). */
-  private deps(ref?: { owner: string; repo: string }): Deps {
+  private deps(ref?: { owner: string; repo: string; issueNumber?: number }): Deps {
     const override = ref ? watchdogOverrideFor(this.env.WATCHDOG_OVERRIDES_JSON, ref.owner, ref.repo) : undefined;
     const watchdogMinutes = (routine: string) => override?.minutes ?? watchdogMinutesFor(routine);
     return {
       enforced: resolveEnforced(this.env.MODE, override?.mode ?? this.env.WATCHDOG),
       watchdogMinutes,
       botLogin: async () => (appConfigured(this.env) ? appBotLogin(this.env) : null),
+      markCompleted: async (at: string) => {
+        await this.ctx.storage.put(COMPLETED_KEY, at);
+      },
+      completedAt: async () => {
+        const at = await this.ctx.storage.get<unknown>(COMPLETED_KEY);
+        return typeof at === "string" ? at : null;
+      },
+      getReconcileReported: async () => (await this.ctx.storage.get<string>(RECONCILE_REPORTED_KEY)) ?? null,
+      setReconcileReported: async (lastActivity: string) => {
+        await this.ctx.storage.put(RECONCILE_REPORTED_KEY, lastActivity);
+      },
+      lastActivityAt: async () => {
+        if (!ref) return null;
+        const row = await this.env.DB.prepare(
+          // A shadow reconcile row only records what a sweep saw; it isn't
+          // activity on the issue, so it mustn't reset its idle clock.
+          `SELECT MAX(created_at) AS at FROM transitions
+            WHERE LOWER(owner) = LOWER(?) AND LOWER(repo) = LOWER(?) AND issue_number = ?
+              AND NOT (event = 'reconcile_refire' AND mode = 'shadow')`,
+        )
+          .bind(ref.owner, ref.repo, ref.issueNumber ?? -1)
+          .first<{ at: string | null }>();
+        return row?.at ?? null;
+      },
       getLabels: (owner: string, repo: string, issueNumber: number) =>
         githubClient.getLabels(this.env, owner, repo, issueNumber),
       addLabel: (owner: string, repo: string, issueNumber: number, label: string) =>
@@ -173,13 +213,16 @@ export class IssueCoordinator {
         await this.ctx.storage.delete(seenKeyFor(deliveryId));
       },
       setPendingFire: async (info: PendingFire) => {
-        await this.ctx.storage.put(PENDING_FIRE_KEY, info);
-        await this.ctx.storage.setAlarm(Date.now() + watchdogMinutes(info.run) * 60_000);
+        await this.ctx.storage.delete(COMPLETED_KEY); // a new fire (or heartbeat): not finished
+        const dueAt = Date.now() + watchdogMinutes(info.run) * 60_000;
+        await this.ctx.storage.put(PENDING_FIRE_KEY, { ...info, dueAt });
+        await this.ctx.storage.setAlarm(dueAt);
       },
       clearPendingFire: async () => {
         await this.ctx.storage.delete(PENDING_FIRE_KEY);
         await this.ctx.storage.deleteAlarm();
       },
+      watchdogArmed: async () => (await this.ctx.storage.getAlarm()) !== null,
       getPendingFire: async () => (await this.ctx.storage.get<PendingFire>(PENDING_FIRE_KEY)) ?? null,
       getCiFix: async () => (await this.ctx.storage.get<CiFix>(CI_FIX_KEY)) ?? null,
       setCiFix: async (state: CiFix | null) => {

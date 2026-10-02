@@ -26,6 +26,7 @@ import {
   putFile,
   removeLabel,
   driverLogin,
+  sweep,
   REPO,
   review,
   setHint,
@@ -47,7 +48,7 @@ const WATCHDOG_MINUTES = Number(process.env.E2E_WATCHDOG_MINUTES ?? 2);
 const STUCK_WAIT = (WATCHDOG_MINUTES + 2) * MIN;
 
 /** For the audit (run.e2e.test.ts): an issue whose label delivery to redeliver, and the two PRs sharing a head. */
-export const runLog: { redeliverIssue?: number; sharedHead?: number[]; manualOverrideIssue?: number } = {};
+export const runLog: { redeliverIssue?: number; sharedHead?: number[]; manualOverrideIssue?: number; sweepIssue?: number } = {};
 
 const labelsAre = (...want: string[]) => (s: Snapshot) => JSON.stringify(s.labels) === JSON.stringify([...want].sort());
 const expectLabels = (s: Snapshot, n: number, ...want: string[]) => expect(s.labels, `#${n} labels`).toEqual([...want].sort());
@@ -466,6 +467,35 @@ export const scenarios: Scenario[] = [
         const s = await snapshot(issue);
         expectLabels(s, issue, LABELS.AI_READY);
         expect(hasComment(s, "hasn't reported back"), "no watchdog comment").toBe(false);
+      }),
+  },
+  {
+    name: "sweep: a fire that never got out -> re-fired once idle twice its timeout",
+    timeoutMs: (2 * WATCHDOG_MINUTES + 4) * MIN,
+    run: () =>
+      scoped(async (t) => {
+        // The stub refuses the fire: no watchdog, no log row, the label left
+        // on. Nothing but the sweep will ever look at it again.
+        const issue = t.n(await openIssue("Left behind", "Its fire never gets out; the sweep finds it.", "fail_fire"));
+        runLog.sweepIssue = issue;
+        const key = `${REPO}#${issue}`.toLowerCase();
+        await addLabel(issue, LABELS.AI_READY);
+        await sleep(15_000); // the Worker's fire, and its retries, refused
+        await setHint(issue, "blocked"); // what the re-fire will find (and its last activity)
+
+        await sleep(45_000);
+        expect((await sweep()).refired.map((r) => r.toLowerCase()), "too recent to re-fire").not.toContain(key);
+
+        await sleep(2 * WATCHDOG_MINUTES * MIN - 45_000 + 30_000); // past twice the timeout since that edit
+        // The deployed alarm sweep may get there first; either way the log
+        // below must show exactly that re-fire.
+        await sweep();
+        expectLabels(await waitFor(issue, labelsAre(LABELS.AI_BLOCKED), MIN), issue, LABELS.AI_BLOCKED);
+        await expectLogged(
+          issue,
+          { event: "reconcile_refire", run: "issue-build-loop" },
+          { event: "build_blocked", effect: LABELS.AI_BLOCKED },
+        );
       }),
   },
   {

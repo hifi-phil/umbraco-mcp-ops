@@ -63,7 +63,9 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       ).filter((d) => d.repo.toLowerCase() === REPO.toLowerCase());
       const line = (d: DeliveryDetail) => `${d.event}.${d.action} #${d.numbers.join(",")} -> ${d.statusCode} ${d.response}`;
 
-      const failed = details.filter((d) => d.statusCode >= 400 || d.response.includes('"outcome":"error"'));
+      // The sweep scenario's refused fire is scripted; any other failure isn't.
+      const scripted = (d: DeliveryDetail) => d.numbers.includes(runLog.sweepIssue ?? -1) && d.response.includes("scripted fire failure");
+      const failed = details.filter((d) => (d.statusCode >= 400 || d.response.includes('"outcome":"error"')) && !scripted(d));
       expect(failed.map(line), "deliveries the Worker failed").toEqual([]);
       const noRule = details.filter((d) => d.response.includes('"outcome":"dropped_no_rule"'));
       expect(noRule.map(line), "events the table had no rule for").toEqual([]);
@@ -95,10 +97,18 @@ describe("audit: every answer the orchestrator gave during the run", () => {
         rows.filter((r) => r.event === "manual_override" && n !== runLog.manualOverrideIssue).map((r) => `#${n} ${r.to_effect}`),
       );
       expect(overrides, "manual_override rows outside the override scenario").toEqual([]);
+      // And only the sweep scenario's issue was left behind: the sweep
+      // re-firing anything else would mean it misread a live run.
+      const refires = [...logs].flatMap(([n, rows]) =>
+        rows.filter((r) => r.event === "reconcile_refire" && n !== runLog.sweepIssue).map((r) => `#${n} ${r.from_state} ${r.run}`),
+      );
+      expect(refires, "reconcile_refire rows outside the sweep scenario").toEqual([]);
       const guids = new Set(details.map((d) => d.guid));
       const orphans = [...logs].flatMap(([n, rows]) =>
         rows
-          .filter((r) => (r.delivery_id === null ? r.event !== "watchdog_expired" : !guids.has(r.delivery_id)))
+          .filter((r) =>
+            r.delivery_id === null ? r.event !== "watchdog_expired" && r.event !== "reconcile_refire" : !guids.has(r.delivery_id),
+          )
           .map((r) => `#${n} ${r.event} delivery=${r.delivery_id}`),
       );
       expect(orphans, "log rows no delivery in the run explains").toEqual([]);

@@ -165,3 +165,23 @@ export async function openPullsForCommit(env: GitHubEnv, owner: string, repo: st
   const pulls = (await res.json()) as Array<{ number: number; state: string }>;
   return pulls.filter((p) => p.state === "open").map((p) => p.number);
 }
+
+/** Open issues and PRs carrying `label` (the sweep's candidates). */
+export async function openWithLabel(
+  env: GitHubEnv,
+  owner: string,
+  repo: string,
+  label: string,
+): Promise<{ number: number; updatedAt: string }[]> {
+  const found: { number: number; updatedAt: string }[] = [];
+  for (let page = 1; ; page++) {
+    const res = await gh(
+      env,
+      "GET",
+      `/repos/${owner}/${repo}/issues?state=open&per_page=100&page=${page}&labels=${encodeURIComponent(label)}`,
+    );
+    const issues = (await res.json()) as Array<{ number: number; updated_at: string }>;
+    found.push(...issues.map((i) => ({ number: i.number, updatedAt: i.updated_at })));
+    if (issues.length < 100) return found;
+  }
+}

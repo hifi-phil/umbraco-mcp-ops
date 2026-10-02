@@ -298,6 +298,42 @@ describe("index.ts fetch() — GET /transitions (the sandbox's log read)", () =>
   });
 });
 
+describe("index.ts fetch() — the Scheduler", () => {
+  const schedulerNs = () => {
+    const calls: string[] = [];
+    const ns = {
+      idFromName: (name: string) => ({ toString: () => name }),
+      get: () => ({
+        fetch: vi.fn(async (url: string) => {
+          calls.push(new URL(url).pathname);
+          return Response.json({ checked: 0 });
+        }),
+      }),
+    } as unknown as Env["ISSUE_COORDINATOR"];
+    return { ns, calls };
+  };
+
+  it("every webhook re-arms the sweep's alarm (/ensure) before routing", async () => {
+    const { ns, calls } = schedulerNs();
+    const { env, stubFetch } = fakeEnv({ SCHEDULER: ns });
+    await worker.fetch(request(labeledIssuePayload()), env);
+    expect(calls).toEqual(["/ensure"]);
+    expect(stubFetch).toHaveBeenCalledOnce();
+  });
+
+  it("POST /sweep: the sandbox key runs a sweep for the sandbox repos only; anything else is refused", async () => {
+    const { ns, calls } = schedulerNs();
+    const { env } = fakeEnv({ SCHEDULER: ns, LOG_READ_SECRET: "log", LOG_READ_REPOS: "hifi-phil/mcp-ops-e2e-testing" });
+    const sweep = (token: string) =>
+      worker.fetch(new Request("https://worker.example/sweep", { method: "POST", headers: { Authorization: `Bearer ${token}` } }), env);
+    expect((await sweep("nope")).status).toBe(401);
+    expect((await sweep("log")).status).toBe(200);
+    expect(calls).toEqual(["/sweep"]);
+    const { env: noKey } = fakeEnv({ SCHEDULER: ns });
+    expect((await worker.fetch(new Request("https://worker.example/sweep", { method: "POST" }), noKey)).status).toBe(404);
+  });
+});
+
 function routineSignalRequest(body: unknown, headers: Record<string, string> = {}) {
   return new Request("https://worker.example/routine-signal", {
     method: "POST",

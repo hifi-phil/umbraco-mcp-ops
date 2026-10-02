@@ -359,6 +359,20 @@ export async function orchestratorUrl(): Promise<string> {
   return tofuOutput("worker_url").replace(/\/$/, "");
 }
 
+export type SweepSummary = { repos: string[]; checked: number; refired: string[]; wouldRefire: string[]; errors: string[] };
+
+/** An on-demand reconciliation sweep of the sandbox (the Worker's POST /sweep). */
+export async function sweep(): Promise<SweepSummary> {
+  const res = await fetch(`${await orchestratorUrl()}/sweep`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${logReadSecret()}` },
+  });
+  if (!res.ok) throw new Error(`POST /sweep failed: ${res.status} ${await res.text()}`);
+  const summary = (await res.json()) as SweepSummary;
+  progress(`sweep: checked ${summary.checked}, re-fired [${summary.refired.join(", ")}]`);
+  return summary;
+}
+
 /** Every row the orchestrator logged for this issue/PR, oldest first. */
 export async function transitions(number: number): Promise<LogRow[]> {
   const [owner, repo] = REPO.split("/");
