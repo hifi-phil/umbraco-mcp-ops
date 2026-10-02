@@ -1,6 +1,6 @@
 // GET /status: the live-status dashboard (03-components.md §3.6). A thin,
-// read-only render of the issue_status table (migrations/0004), current
-// when you load it, no push. Off unless STATUS_SECRET is set; the browser's
+// read-only render of the issue_status table (migrations/0004), reloading
+// itself every REFRESH_SECONDS, no push. Off unless STATUS_SECRET is set; the browser's
 // own Basic auth prompt asks for it (any user name), and a Bearer header
 // works too, for scripts. ?format=json returns the rows instead.
 
@@ -85,6 +85,9 @@ function tone(state: string): string {
 // Styled after the Umbraco Cloud portal, with Umbraco UI's own tokens
 // (Umbraco.UI's uui-css: palette, colors, shadow, fonts): the space-cadet
 // header bar, sand background, white boxes, Lato.
+/** How often the page reloads itself (a meta refresh: no script needed). */
+export const REFRESH_SECONDS = 30;
+
 export function renderStatus(rows: StatusRow[], now: number): string {
   const running = rows.filter((r) => r.running).length;
   const body = rows
@@ -110,6 +113,7 @@ export function renderStatus(rows: StatusRow[], now: number): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="${REFRESH_SECONDS}">
 <title>Orchestrator status</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -171,7 +175,7 @@ a:hover { color: var(--interactive-emphasis); text-decoration: underline; }
 <body>
 <header><span class="logo" aria-hidden="true">AO</span><h1>Agent orchestrator</h1><span class="crumb">/ Status</span></header>
 <main>
-<div class="title"><h2>Open issues</h2><p>Current as of this page load. Reload to refresh.</p></div>
+<div class="title"><h2>Open issues</h2><p>Refreshes every ${REFRESH_SECONDS} seconds.</p></div>
 <div class="box">
 <div class="box-head"><span class="stat"><b>${rows.length}</b> tracked</span><span class="stat"><b>${running}</b> running</span></div>
 <div class="wrap">

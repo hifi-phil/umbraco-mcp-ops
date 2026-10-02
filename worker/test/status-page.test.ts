@@ -95,6 +95,10 @@ describe("renderStatus", () => {
     expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
   });
 
+  it("reloads itself every 30 seconds", () => {
+    expect(renderStatus([], now)).toContain('<meta http-equiv="refresh" content="30">');
+  });
+
   it("nothing tracked -> says so", () => {
     expect(renderStatus([], now)).toContain("Nothing tracked right now.");
   });

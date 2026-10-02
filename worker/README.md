@@ -482,7 +482,7 @@ is out now, the run's last heartbeat step, and its CI-fix reworks.
 - **Side effect only:** nothing reads it to decide anything, and a failed
   write is logged, never failing the transition. Shadow events don't write
   it (their labels never moved), so a shadow repo has no rows.
-- **Current on load, no push:** reload to refresh. An issue the Worker
+- **Refreshes itself every 30 seconds** (a meta refresh), no push. An issue the Worker
   first sees after this deploy gets its row on its next transition.
 
 ## The watchdog is a real event
