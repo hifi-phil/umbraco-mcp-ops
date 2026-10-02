@@ -987,11 +987,11 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
   const now = Date.parse("2026-10-02T12:00:00Z");
   const minutesAgo = (m: number) => new Date(now - m * 60_000).toISOString().replace("T", " ").slice(0, 19);
 
-  it("its last run reported completion and nothing happened since (merge-flow waiting) -> completed, not re-fired", async () => {
+  it("its last run reported completion and nothing happened since (its label change lost) -> completed, not re-fired", async () => {
     const deps = fakeDeps({
       completedAt: vi.fn(async () => new Date(now - 100 * 60_000).toISOString()),
       lastActivityAt: async () => minutesAgo(120), // its last row, before the completion
-      getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
     });
     expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toEqual({ outcome: "completed" });
     expect(deps.fireRoutine).not.toHaveBeenCalled();
@@ -1007,11 +1007,11 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
   });
 
   it("a completion signal is what marks it", async () => {
-    const deps = fakeDeps({ getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.MERGE_FLOW })) });
+    const deps = fakeDeps({ getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP })) });
     await coordinateRoutineSignal(deps, {
       owner: "hifi-phil",
       repo: "umbraco-mcp-ops",
-      signal: { kind: "completion", routine: ROUTINES.MERGE_FLOW, issue: 412, outcome: { outcome: "build_blocked", reason: "x" } },
+      signal: { kind: "completion", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, outcome: { outcome: "build_blocked", reason: "x" } },
     });
     expect(deps.markCompleted).toHaveBeenCalledOnce();
   });

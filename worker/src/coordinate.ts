@@ -114,9 +114,9 @@ export type Deps = {
   getReconcileReported(): Promise<string | null>;
   setReconcileReported(lastActivity: string): Promise<void>;
   // When the running routine last reported completion (routine-signal); any
-  // new fire (setPendingFire) clears it. A run that finished but left its
-  // trigger label on (merge-flow waiting on a review) isn't left behind, as
-  // long as nothing happened since (coordinateReconcile).
+  // new fire (setPendingFire) clears it. A run that reported its outcome but
+  // whose trigger label is still on (the outcome's label change lost) isn't
+  // left behind, as long as nothing happened since (coordinateReconcile).
   markCompleted(at: string): Promise<void>;
   completedAt(): Promise<string | null>;
   // How long a fired routine has before the watchdog expires, for this
@@ -686,9 +686,9 @@ export async function coordinateReconcile(
   const idleMinutes = lastMs === null ? null : Math.round((now - lastMs) / 6_000) / 10;
   if (idleMinutes !== null && idleMinutes < 2 * deps.watchdogMinutes(run)) return { outcome: "recent", idleMinutes };
 
-  // Its last run finished and nothing has happened since (merge-flow waiting
-  // on a review, say): waiting isn't lost, and re-firing would only repeat
-  // the wait. Anything after the completion (a new label, a push, a comment:
+  // Its last run reported its outcome and nothing has happened since (the
+  // outcome's label change was lost, say): the run isn't lost, and re-firing
+  // would only repeat finished work. Anything after the completion (a new label, a push, a comment:
   // a log row or GitHub's updated_at) makes the mark stale, so a trigger
   // whose webhook or fire was lost after an earlier run still gets swept.
   const completed = await deps.completedAt();
