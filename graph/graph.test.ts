@@ -101,16 +101,16 @@ describe("reduce — PR lifecycle", () => {
     expect(reduce(LABELS.AUTO_REWORKING, EVENTS.REWORK_PUSHED)?.to).toEqual(unlabel);
   });
 
-  it("auto-merge + merge_gate_failed_soft (CI failed) -> auto-rework; the label's echo fires rework-loop", () => {
+  it("auto-merge + merge_gate_failed_soft (CI failed) -> auto-rework, and fires rework-loop itself (no echo)", () => {
     const rule = reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_FAILED_SOFT);
     expect(rule?.to).toEqual(label(LABELS.AUTO_REWORKING));
-    expect(rule?.run).toBeUndefined();
+    expect(rule?.run).toBe(ROUTINES.REWORK_LOOP);
   });
 
-  it("auto-rework + ci_fix_pushed -> back to auto-merge; its echo fires merge-flow", () => {
+  it("auto-rework + ci_fix_pushed -> back to auto-merge, and fires merge-flow itself (no echo)", () => {
     const rule = reduce(LABELS.AUTO_REWORKING, EVENTS.CI_FIX_PUSHED);
     expect(rule?.to).toEqual(label(LABELS.AUTO_MERGING));
-    expect(rule?.run).toBeUndefined();
+    expect(rule?.run).toBe(ROUTINES.MERGE_FLOW);
   });
 
   it("auto-merge + merge_gate_failed_hard -> merge-blocked, needs a human", () => {

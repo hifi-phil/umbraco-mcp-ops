@@ -7,7 +7,16 @@ github_owner          = "hifi-phil"
 github_repo           = "your-test-repo"   # where the real loops run (ready-for-ai, …)
 # Shadow: read-only Issues, Pull requests, Metadata (fine-grained tokens have
 # no Checks permission). Enforce: Issues + Pull requests read AND write.
-github_read_token     = "github_pat_…"
+github_read_token     = "github_pat_…"   # fallback only; the Worker uses the App below
+
+# The Worker's GitHub App (worker/README.md, known gaps): its ID, and the
+# private key GitHub downloads, pasted as-is.
+github_app_id          = "123456"
+github_app_private_key = <<-EOT
+  -----BEGIN RSA PRIVATE KEY-----
+  …
+  -----END RSA PRIVATE KEY-----
+EOT
 
 # mode = "shadow"      # the default; "enforce" = the Worker dispatches the repo.
 #                      # Then delete the repo's loop-dispatch caller workflow.

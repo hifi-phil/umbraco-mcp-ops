@@ -35,6 +35,7 @@ import {
   watchdogMinutesFor,
 } from "./coordinate";
 import * as githubClient from "./github-client";
+import { appBotLogin, appConfigured } from "./github-app";
 import { fireRoutine } from "./routines-client";
 import type { GitHubEnv } from "./github-client";
 import type { RoutinesEnv } from "./routines-client";
@@ -145,6 +146,7 @@ export class IssueCoordinator {
     return {
       enforced: resolveEnforced(this.env.MODE, override?.mode ?? this.env.WATCHDOG),
       watchdogMinutes,
+      botLogin: async () => (appConfigured(this.env) ? appBotLogin(this.env) : null),
       getLabels: (owner: string, repo: string, issueNumber: number) =>
         githubClient.getLabels(this.env, owner, repo, issueNumber),
       addLabel: (owner: string, repo: string, issueNumber: number, label: string) =>

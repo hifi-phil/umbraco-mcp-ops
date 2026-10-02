@@ -94,6 +94,9 @@ export type Deps = {
   // Phase 4: whether this event's writes and fire are real. Everything not
   // enforced runs in shadow (see resolveEnforced).
   enforced(event: Event): boolean;
+  // The Worker's own GitHub identity (its App's `<slug>[bot]`), so
+  // translate() drops the label changes it made itself; null without an App.
+  botLogin(): Promise<string | null>;
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;
@@ -251,7 +254,8 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
     return handleCheckSuiteCompleted(deps, input);
   }
 
-  let event = translate(input.payload);
+  const botLogin = await deps.botLogin();
+  let event = translate(input.payload, botLogin ? { botLogin } : {});
   if (!event) return { outcome: "no_event" };
 
   // Fresh, per §3.4/to-github.ts's "never cache" principle -- and the one

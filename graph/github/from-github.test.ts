@@ -263,6 +263,15 @@ describe("translate — a loop's own label swap (native completion signal)", () 
     expect(translate(payload({ action: "issues.unlabeled", label: { name: "bug" } }))).toBeNull();
   });
 
+  it("the guard uses the bot login it's given (the Worker's App), and only that one", () => {
+    const added = (login: string) =>
+      payload({ action: "pull_request.labeled", label: { name: LABELS.AUTO_REWORKING }, sender: { login, type: "Bot" } });
+    const app = { botLogin: "hifi-agent-orchestrator[bot]" };
+    expect(translate(added("hifi-agent-orchestrator[bot]"), app), "the App's own label add").toBeNull();
+    expect(translate(added("someone-else[bot]"), app)).toBe(EVENTS.LABELLED_AUTO_REWORKING);
+    expect(translate(added("hifi-agent-orchestrator[bot]")), "no login passed: not ours").toBe(EVENTS.LABELLED_AUTO_REWORKING);
+  });
+
   it("our own bot removing a label is not an event (self-trigger guard)", () => {
     expect(
       translate(

@@ -4,13 +4,26 @@
 // this client's; keeping this dumb makes it easy to reason about and easy
 // to fully replace with github-ops's actual dual-path mechanism later.
 
-export type GitHubEnv = {
+import { appConfigured, installationToken, type GitHubAppEnv } from "./github-app";
+
+export type GitHubEnv = GitHubAppEnv & {
+  // A personal token, used only while the GitHub App isn't configured
+  // (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY): with the App, every call goes
+  // as the App's bot on an installation token (github-app.ts).
   GITHUB_APP_TOKEN: string;
   // Overridable for local smoke-testing against a stub server instead of
   // the real API — see worker/README.md. Defaults to the real API in
   // every environment that doesn't set it, including production.
   GITHUB_API_BASE_URL?: string;
 };
+
+/** The token for a call on `path` (every call here is under /repos/{owner}/{repo}). */
+async function tokenFor(env: GitHubEnv, path: string): Promise<string> {
+  if (!appConfigured(env)) return env.GITHUB_APP_TOKEN;
+  const m = path.match(/^\/repos\/([^/]+)\/([^/]+)\//);
+  if (!m) throw new Error(`no repo in GitHub path ${path}`);
+  return installationToken(env, m[1]!, m[2]!);
+}
 
 /**
  * A 404 throws like any other failure. GitHub also answers 404 for a repo
@@ -30,7 +43,7 @@ async function gh(
   const res = await fetch(`${base}${path}`, {
     method,
     headers: {
-      Authorization: `Bearer ${env.GITHUB_APP_TOKEN}`,
+      Authorization: `Bearer ${await tokenFor(env, path)}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "agent-orchestration-worker",
