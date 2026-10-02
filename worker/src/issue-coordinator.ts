@@ -163,10 +163,13 @@ export class IssueCoordinator {
       enforced: resolveEnforced(this.env.MODE, override?.mode ?? this.env.WATCHDOG),
       watchdogMinutes,
       botLogin: async () => (appConfigured(this.env) ? appBotLogin(this.env) : null),
-      markCompleted: async () => {
-        await this.ctx.storage.put(COMPLETED_KEY, true);
+      markCompleted: async (at: string) => {
+        await this.ctx.storage.put(COMPLETED_KEY, at);
       },
-      wasCompleted: async () => (await this.ctx.storage.get<boolean>(COMPLETED_KEY)) === true,
+      completedAt: async () => {
+        const at = await this.ctx.storage.get<unknown>(COMPLETED_KEY);
+        return typeof at === "string" ? at : null;
+      },
       getReconcileReported: async () => (await this.ctx.storage.get<string>(RECONCILE_REPORTED_KEY)) ?? null,
       setReconcileReported: async (lastActivity: string) => {
         await this.ctx.storage.put(RECONCILE_REPORTED_KEY, lastActivity);

@@ -63,19 +63,25 @@ describe("Scheduler", () => {
     expect(await storage.getAlarm()).not.toBeNull();
   });
 
-  it("a sweep with candidates keeps the chain; one with nothing to watch stops it and logs nothing", async () => {
+  it("a sweep with candidates keeps the 15-minute pace; a quiet one slows to hourly (not a stop) and logs nothing", async () => {
     vi.stubGlobal("fetch", github());
+    const before = Date.now();
     const busy = fakeCtx();
     await new Scheduler(busy.ctx, fakeEnv(() => ({ outcome: "watched" })).env).alarm();
-    expect(await busy.storage.getAlarm()).not.toBeNull();
+    expect(Math.round(((await busy.storage.getAlarm())! - before) / 60_000)).toBe(15);
 
     vi.stubGlobal("fetch", vi.fn(async () => Response.json([])));
     const quiet = fakeCtx();
     const { env, inserted } = fakeEnv(() => ({}));
     await new Scheduler(quiet.ctx, env).alarm();
-    expect(quiet.order).toEqual(["setAlarm", "deleteAlarm"]);
-    expect(await quiet.storage.getAlarm()).toBeNull();
+    expect(Math.round(((await quiet.storage.getAlarm())! - before) / 60_000), "still armed, hourly").toBe(60);
     expect(inserted, "no sweep row for a quiet sweep").toEqual([]);
+  });
+
+  it("/ensure brings a slowed (hourly) alarm back to the normal interval", async () => {
+    const { ctx, storage } = fakeCtx(Date.now() + 60 * 60_000);
+    await new Scheduler(ctx, fakeEnv(() => ({})).env).fetch(new Request("https://s/ensure", { method: "POST" }));
+    expect(Math.round(((await storage.getAlarm())! - Date.now()) / 60_000)).toBe(15);
   });
 
   it("/ensure never waits on a running sweep (webhooks must stay fast)", async () => {
@@ -97,7 +103,7 @@ describe("Scheduler", () => {
     await sweeping;
   });
 
-  it("a webhook landing as a quiet sweep stops the chain still re-arms it", async () => {
+  it("a webhook landing during a quiet sweep keeps the normal pace", async () => {
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     vi.stubGlobal(
@@ -114,7 +120,7 @@ describe("Scheduler", () => {
     release();
     await sweeping;
     await ensuring;
-    expect(await storage.getAlarm(), "re-armed after the quiet sweep stopped the chain").not.toBeNull();
+    expect(Math.round(((await storage.getAlarm())! - Date.now()) / 60_000), "kept at the normal pace").toBe(15);
   });
 
   it("the next alarm is SWEEP_MINUTES out (default 15)", async () => {

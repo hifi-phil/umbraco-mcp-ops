@@ -8,14 +8,15 @@
 // - each alarm sets the next one before doing any work, so a sweep that
 //   fails (or throws) keeps the chain going;
 // - a sweep that finds no candidates (no open issue with a trigger label,
-//   and no errors) cancels that next alarm: the chain stops;
-// - every webhook calls /ensure (index.ts), which re-arms a missing alarm.
-//   An issue can only be left behind after a trigger label was added, and
-//   that label's own webhook arms the sweep first, so stopping is safe;
+//   and no errors) slows the next one to SWEEP_IDLE_MINUTES (60), not a
+//   stop: a lost webhook is exactly when no /ensure would come to restart
+//   it, so a quiet repo is still checked hourly;
+// - every webhook calls /ensure (index.ts), which arms a missing alarm and
+//   brings a slow one back to the normal interval;
 // - a sweep that checked something writes a `sweep` row to D1.
 // /ensure never waits on a sweep (webhooks would queue behind it, past
-// GitHub's 10 s timeout). Instead a sweep only stops the chain if no
-// /ensure arrived while it ran, so a webhook landing then still re-arms.
+// GitHub's 10 s timeout). Instead a sweep only slows the chain if no
+// /ensure arrived while it ran.
 
 import { TRIGGER_LABELS, type ReconcileResult } from "./coordinate";
 import { openWithLabel, type GitHubEnv } from "./github-client";
@@ -31,6 +32,8 @@ export type SchedulerEnv = GitHubEnv & {
   // just those, e.g. the e2e sandbox.
   SWEEP_MODE?: string;
   SWEEP_ENFORCE_REPOS?: string;
+  // Minutes to the next sweep after a quiet one (default 60).
+  SWEEP_IDLE_MINUTES?: string;
   // At most this many re-fires per sweep (default 3). The rest are asked in
   // shadow and come round again next sweep, so a backlog (say when a repo
   // first goes to enforce) drains a few at a time, not all at once.
@@ -40,6 +43,7 @@ export type SchedulerEnv = GitHubEnv & {
 export type SweepSummary = { repos: string[]; checked: number; refired: string[]; wouldRefire: string[]; errors: string[] };
 
 export const DEFAULT_SWEEP_MINUTES = 15;
+export const DEFAULT_SWEEP_IDLE_MINUTES = 60;
 export const DEFAULT_SWEEP_MAX_REFIRES = 3;
 
 /** The issue DO's key, as index.ts builds it. */
@@ -56,6 +60,11 @@ export class Scheduler {
     return (Number.isFinite(m) && m > 0 ? m : DEFAULT_SWEEP_MINUTES) * 60_000;
   }
 
+  private idleIntervalMs(): number {
+    const m = Number(this.env.SWEEP_IDLE_MINUTES);
+    return Math.max((Number.isFinite(m) && m > 0 ? m : DEFAULT_SWEEP_IDLE_MINUTES) * 60_000, this.intervalMs());
+  }
+
   // When /ensure last ran (this instance is the only one, so in memory is
   // enough; an evicted instance has no sweep in flight).
   private lastEnsure = 0;
@@ -64,7 +73,10 @@ export class Scheduler {
     const path = new URL(request.url).pathname;
     if (path === "/ensure") {
       this.lastEnsure = Date.now();
-      if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + this.intervalMs());
+      // Missing, or slowed for a quiet spell: back to the normal interval.
+      const next = Date.now() + this.intervalMs();
+      const alarm = await this.ctx.storage.getAlarm();
+      if (alarm === null || alarm > next) await this.ctx.storage.setAlarm(next);
       return Response.json({ ok: true });
     }
     if (path === "/sweep" && request.method === "POST") {
@@ -81,9 +93,9 @@ export class Scheduler {
     await this.ctx.storage.setAlarm(started + this.intervalMs());
     try {
       const summary = await this.sweep();
-      // Nothing to watch, and no webhook re-armed it meanwhile: stop.
+      // Nothing to watch, and no webhook arrived meanwhile: slow down.
       if (summary.checked === 0 && summary.errors.length === 0 && this.lastEnsure < started) {
-        await this.ctx.storage.deleteAlarm();
+        await this.ctx.storage.setAlarm(started + this.idleIntervalMs());
       }
     } catch (e) {
       console.error("sweep failed:", e instanceof Error ? e.message : e);
@@ -134,7 +146,8 @@ export class Scheduler {
             }),
           });
           const result = (await res.json().catch(() => null)) as ReconcileResult | { outcome: "error"; error: string } | null;
-          if (result?.outcome === "refired" || result?.outcome === "gated") summary.refired.push(`${full}#${issueNumber}`);
+          const acted = result?.outcome === "refired" || (result?.outcome === "gated" && result.result.outcome === "applied");
+          if (acted) summary.refired.push(`${full}#${issueNumber}`);
           else if (result?.outcome === "would_refire") summary.wouldRefire.push(`${full}#${issueNumber}`);
           else if (!res.ok) summary.errors.push(`${full}#${issueNumber}: ${(result as { error?: string } | null)?.error ?? res.status}`);
         } catch (e) {

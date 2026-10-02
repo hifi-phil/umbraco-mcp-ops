@@ -36,7 +36,7 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   let pendingFire: PendingFire | null = null;
   let ciFix: CiFix | null = null;
   let reconcileReported: string | null = null;
-  let completed = false;
+  let completed: string | null = null;
   return {
     getLabels: vi.fn(async () => []),
     addLabel: vi.fn(async () => {}),
@@ -70,10 +70,10 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     watchdogMinutes: watchdogMinutesFor,
     botLogin: async () => null,
     lastActivityAt: async () => null,
-    markCompleted: vi.fn(async () => {
-      completed = true;
+    markCompleted: vi.fn(async (at: string) => {
+      completed = at;
     }),
-    wasCompleted: vi.fn(async () => completed),
+    completedAt: vi.fn(async () => completed),
     getReconcileReported: vi.fn(async () => reconcileReported),
     setReconcileReported: vi.fn(async (s: string) => {
       reconcileReported = s;
@@ -962,10 +962,23 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
   const now = Date.parse("2026-10-02T12:00:00Z");
   const minutesAgo = (m: number) => new Date(now - m * 60_000).toISOString().replace("T", " ").slice(0, 19);
 
-  it("its last run reported completion (merge-flow waiting on a review) -> completed, not re-fired", async () => {
-    const deps = fakeDeps({ wasCompleted: vi.fn(async () => true), getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]) });
+  it("its last run reported completion and nothing happened since (merge-flow waiting) -> completed, not re-fired", async () => {
+    const deps = fakeDeps({
+      completedAt: vi.fn(async () => new Date(now - 100 * 60_000).toISOString()),
+      lastActivityAt: async () => minutesAgo(120), // its last row, before the completion
+      getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
+    });
     expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toEqual({ outcome: "completed" });
     expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("a stale completion (something happened after it: a later label whose webhook or fire was lost) -> swept as usual", async () => {
+    const deps = fakeDeps({
+      completedAt: vi.fn(async () => new Date(now - 300 * 60_000).toISOString()), // an earlier run, long done
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+    });
+    const updatedAt = new Date(now - 130 * 60_000).toISOString(); // the later label add
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now, updatedAt })).toMatchObject({ outcome: "refired" });
   });
 
   it("a completion signal is what marks it", async () => {

@@ -105,11 +105,12 @@ export type Deps = {
   // every sweep.
   getReconcileReported(): Promise<string | null>;
   setReconcileReported(lastActivity: string): Promise<void>;
-  // Set when the running routine reports completion (routine-signal); any
+  // When the running routine last reported completion (routine-signal); any
   // new fire (setPendingFire) clears it. A run that finished but left its
-  // trigger label on (merge-flow waiting on a review) isn't left behind.
-  markCompleted(): Promise<void>;
-  wasCompleted(): Promise<boolean>;
+  // trigger label on (merge-flow waiting on a review) isn't left behind, as
+  // long as nothing happened since (coordinateReconcile).
+  markCompleted(at: string): Promise<void>;
+  completedAt(): Promise<string | null>;
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;
@@ -587,7 +588,7 @@ export async function coordinateRoutineSignal(
   }
 
   await deps.clearPendingFire();
-  await deps.markCompleted();
+  await deps.markCompleted(new Date().toISOString());
   return { outcome: "completion_acknowledged" };
 }
 
@@ -652,9 +653,6 @@ export async function coordinateReconcile(
   { enforced, now = Date.now(), updatedAt }: { enforced: boolean; now?: number; updatedAt?: string },
 ): Promise<ReconcileResult> {
   if (await deps.getPendingFire()) return { outcome: "watched" };
-  // Its last run finished (merge-flow waiting on a review, say): waiting
-  // isn't lost, and re-firing it would only repeat the wait.
-  if (await deps.wasCompleted()) return { outcome: "completed" };
 
   const labels = await deps.getLabels(ref.owner, ref.repo, ref.issueNumber);
   const state = deriveState(labels);
@@ -671,6 +669,14 @@ export async function coordinateReconcile(
   const last = lastMs === null ? null : new Date(lastMs).toISOString();
   const idleMinutes = lastMs === null ? null : Math.round((now - lastMs) / 6_000) / 10;
   if (idleMinutes !== null && idleMinutes < 2 * deps.watchdogMinutes(run)) return { outcome: "recent", idleMinutes };
+
+  // Its last run finished and nothing has happened since (merge-flow waiting
+  // on a review, say): waiting isn't lost, and re-firing would only repeat
+  // the wait. Anything after the completion (a new label, a push, a comment:
+  // a log row or GitHub's updated_at) makes the mark stale, so a trigger
+  // whose webhook or fire was lost after an earlier run still gets swept.
+  const completed = await deps.completedAt();
+  if (completed !== null && (lastMs === null || Date.parse(completed) >= lastMs)) return { outcome: "completed" };
 
   const held = !enforced
     ? undefined
