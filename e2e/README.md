@@ -92,6 +92,12 @@ re-checks a gate that still reads "CI running".
   9. A stuck rework retried.
   10. A stuck merge-flow retried.
   11. A stuck merge-flow merged by hand.
+- Phase 7:
+  1. A person clears `ai-blocked` by hand → a `manual_override` row, and
+     nothing else done.
+  2. The sweep: a run left in `ready-for-ai` with no watchdog isn't touched
+     while recent, and is re-fired once idle for twice its timeout
+     (`POST /sweep`).
 - The real `agent-outcomes` hook (`driver/hook.ts` runs it, as a routine
   session would, against the deployed Worker):
   1. Its heartbeat is quoted by the expiry.

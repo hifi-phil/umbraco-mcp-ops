@@ -68,21 +68,35 @@ resource "cloudflare_workers_script" "worker" {
   compatibility_flags = ["nodejs_compat"]
 
   # Cloudflare rejects an upload whose old_tag doesn't match the tag already
-  # deployed (412, "Actor migration tag precondition failed"). First deploy:
-  # no old_tag, create the class. After that: old_tag = new_tag = v1 and no
-  # steps, a no-op. The provider can't read the deployed tag, hence the var.
-  migrations = var.deployed_do_migration_tag == null ? {
-    old_tag            = null
-    new_tag            = "v1"
-    new_sqlite_classes = ["IssueCoordinator"]
-    } : {
-    old_tag            = var.deployed_do_migration_tag
-    new_tag            = var.deployed_do_migration_tag
-    new_sqlite_classes = null
-  }
+  # deployed (412, "Actor migration tag precondition failed"). The provider
+  # can't read the deployed tag, hence the var. v1 created IssueCoordinator;
+  # v2 adds Scheduler (the sweep). A fresh deploy creates both at v2; one at
+  # v1 moves to v2 once; one at v2 re-sends v2 with no steps (a no-op).
+  migrations = (
+    var.deployed_do_migration_tag == null ? {
+      old_tag            = null
+      new_tag            = "v2"
+      new_sqlite_classes = ["IssueCoordinator", "Scheduler"]
+      } : var.deployed_do_migration_tag == "v1" ? {
+      old_tag            = "v1"
+      new_tag            = "v2"
+      new_sqlite_classes = ["Scheduler"]
+      } : {
+      old_tag            = "v2"
+      new_tag            = "v2"
+      new_sqlite_classes = null
+    }
+  )
 
   bindings = concat([
     { type = "durable_object_namespace", name = "ISSUE_COORDINATOR", class_name = "IssueCoordinator" },
+    # The reconciliation sweep (src/scheduler.ts): a DO alarm, not a Cron
+    # Trigger. Real repos sweep in shadow (log what would be re-fired) until
+    # sweep_mode = "enforce"; the e2e sandbox always enforces.
+    { type = "durable_object_namespace", name = "SCHEDULER", class_name = "Scheduler" },
+    { type = "plain_text", name = "SWEEP_MINUTES", text = tostring(var.sweep_minutes) },
+    { type = "plain_text", name = "SWEEP_MODE", text = var.sweep_mode },
+    { type = "plain_text", name = "SWEEP_ENFORCE_REPOS", text = local.e2e ? "${var.github_owner}/${var.e2e_repo}" : "" },
     { type = "d1", name = "DB", id = cloudflare_d1_database.log.id },
     { type = "plain_text", name = "MODE", text = var.mode },
     { type = "plain_text", name = "WATCHDOG", text = var.watchdog },

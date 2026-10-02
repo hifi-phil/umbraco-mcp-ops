@@ -97,6 +97,9 @@ export type Deps = {
   // The Worker's own GitHub identity (its App's `<slug>[bot]`), so
   // translate() drops the label changes it made itself; null without an App.
   botLogin(): Promise<string | null>;
+  // When this issue last had a row in the D1 log (its created_at), or null
+  // if it never has: how long it's been idle, for the reconciliation sweep.
+  lastActivityAt(): Promise<string | null>;
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;
@@ -589,6 +592,72 @@ export type WatchdogResult = { outcome: "no_pending_fire" } | CoordinateResult;
  * anywhere before it leaves the retry something to act on. The cost is a
  * possible duplicate comment on a retry, never a silently lost alert.
  */
+// --- Reconciliation (Phase 7): re-firing what was left behind --------------
+
+/** The trigger labels, and the event a person adding each one would be. */
+const TRIGGER_EVENTS: Partial<Record<Label, Event>> = {
+  [LABELS.AI_READY]: EVENTS.LABELLED_AI_READY,
+  [LABELS.AUTO_RELEASING]: EVENTS.LABELLED_AUTO_RELEASING,
+  [LABELS.AUTO_REWORKING]: EVENTS.LABELLED_AUTO_REWORKING,
+  [LABELS.AUTO_MERGING]: EVENTS.LABELLED_AUTO_MERGING,
+};
+export const TRIGGER_LABELS = Object.keys(TRIGGER_EVENTS) as Label[];
+
+export type ReconcileResult =
+  | { outcome: "watched" }
+  | { outcome: "not_triggered"; state: string }
+  | { outcome: "recent"; idleMinutes: number }
+  | { outcome: "refired" | "would_refire"; run: string; idleMinutes: number | null };
+
+/** D1's created_at ("YYYY-MM-DD HH:MM:SS", UTC) as epoch ms. */
+const d1Time = (s: string) => Date.parse(`${s.replace(" ", "T")}Z`);
+
+/**
+ * The sweep's question for one issue (scheduler.ts asks every open issue
+ * with a trigger label): was it left behind? That's in a trigger state,
+ * with no watchdog running (so nothing will notice), and nothing logged for
+ * twice its routine's timeout: a fire that never got out, or a watchdog
+ * that was lost. Then fire its routine again and watch it, as if the
+ * trigger label had just been added. Bounded: if that run dies too, the
+ * watchdog moves the issue to ai-stuck, which isn't a trigger state.
+ * `enforced` false (the sweep's shadow mode) only logs what it would do.
+ */
+export async function coordinateReconcile(
+  deps: Deps,
+  ref: IssueRef,
+  { enforced, now = Date.now() }: { enforced: boolean; now?: number },
+): Promise<ReconcileResult> {
+  if (await deps.getPendingFire()) return { outcome: "watched" };
+
+  const labels = await deps.getLabels(ref.owner, ref.repo, ref.issueNumber);
+  const state = deriveState(labels);
+  const event = state === "ambiguous" || state === "none" ? undefined : TRIGGER_EVENTS[state as Label];
+  const run = event ? reduce("none", event)?.run : undefined;
+  if (!run) return { outcome: "not_triggered", state };
+
+  const last = await deps.lastActivityAt();
+  const idleMinutes = last === null ? null : Math.round((now - d1Time(last)) / 6_000) / 10;
+  if (idleMinutes !== null && idleMinutes < 2 * deps.watchdogMinutes(run)) return { outcome: "recent", idleMinutes };
+
+  if (enforced) {
+    await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
+    await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run });
+  }
+  await deps.logTransition({
+    deliveryId: null,
+    owner: ref.owner,
+    repo: ref.repo,
+    issueNumber: ref.issueNumber,
+    fromState: state,
+    event: "reconcile_refire",
+    toEffect: JSON.stringify({ kind: "noop", idleMinutes }),
+    run,
+    droppedReason: null,
+    mode: enforced ? "enforce" : "shadow",
+  });
+  return { outcome: enforced ? "refired" : "would_refire", run, idleMinutes };
+}
+
 export async function coordinateWatchdogExpired(deps: Deps): Promise<WatchdogResult> {
   const pending = await deps.getPendingFire();
   if (!pending) return { outcome: "no_pending_fire" };

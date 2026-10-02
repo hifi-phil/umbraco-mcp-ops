@@ -5,6 +5,7 @@ import { ROUTINES } from "../../graph/constants/routines";
 import {
   LABEL_JUST_ADDED_BY,
   coordinateWebhook,
+  coordinateReconcile,
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
   deriveState,
@@ -66,6 +67,7 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     enforced: () => true,
     watchdogMinutes: watchdogMinutesFor,
     botLogin: async () => null,
+    lastActivityAt: async () => null,
     ...overrides,
   };
 }
@@ -942,6 +944,64 @@ describe("coordinateWebhook — manual_override (a person editing a tracked labe
     const deps = fakeDeps({ botLogin: async () => bot });
     expect(await coordinateWebhook(deps, change("issues.labeled", "dependencies"))).toEqual({ outcome: "no_event" });
     expect(deps.logTransition).not.toHaveBeenCalled();
+  });
+});
+
+describe("coordinateReconcile — the sweep's question: was this issue left behind?", () => {
+  const ref = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 };
+  const now = Date.parse("2026-10-02T12:00:00Z");
+  const minutesAgo = (m: number) => new Date(now - m * 60_000).toISOString().replace("T", " ").slice(0, 19);
+
+  it("a watchdog is running -> watched, nothing done", async () => {
+    const deps = fakeDeps({ getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP })) });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toEqual({ outcome: "watched" });
+    expect(deps.getLabels).not.toHaveBeenCalled();
+  });
+
+  it("not in a trigger state (ai-blocked, ai-stuck, merge-blocked) -> not_triggered", async () => {
+    for (const label of [LABELS.AI_BLOCKED, LABELS.AI_STUCK, LABELS.MERGE_BLOCKED]) {
+      const deps = fakeDeps({ getLabels: vi.fn(async () => [label]) });
+      expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toMatchObject({ outcome: "not_triggered" });
+      expect(deps.fireRoutine).not.toHaveBeenCalled();
+    }
+  });
+
+  it("a trigger state, but active within twice its timeout -> recent, nothing done", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), lastActivityAt: async () => minutesAgo(90) });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toEqual({ outcome: "recent", idleMinutes: 90 });
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("left behind (trigger state, no watchdog, idle past twice its timeout) -> re-fired, watched, logged", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), lastActivityAt: async () => minutesAgo(125) });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toEqual({
+      outcome: "refired",
+      run: ROUTINES.ISSUE_BUILD_LOOP,
+      idleMinutes: 125,
+    });
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.ISSUE_BUILD_LOOP);
+    expect(deps.setPendingFire).toHaveBeenCalledWith({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP });
+    expect(deps.logTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "reconcile_refire", fromState: LABELS.AI_READY, run: ROUTINES.ISSUE_BUILD_LOOP, mode: "enforce", deliveryId: null }),
+    );
+  });
+
+  it("each trigger re-fires its own loop (auto-merge -> merge-flow)", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]), lastActivityAt: async () => minutesAgo(61) });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toMatchObject({ outcome: "refired", run: ROUTINES.MERGE_FLOW });
+  });
+
+  it("never logged (labelled before the Worker existed) -> left behind too", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]) });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toMatchObject({ outcome: "refired", idleMinutes: null });
+  });
+
+  it("shadow sweep -> logs what it would re-fire, fires nothing", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), lastActivityAt: async () => minutesAgo(200) });
+    expect(await coordinateReconcile(deps, ref, { enforced: false, now })).toMatchObject({ outcome: "would_refire" });
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+    expect(deps.setPendingFire).not.toHaveBeenCalled();
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: "reconcile_refire", mode: "shadow" }));
   });
 });
 

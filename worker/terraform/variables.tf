@@ -26,11 +26,28 @@ variable "database_name" {
 variable "deployed_do_migration_tag" {
   type        = string
   default     = null
-  description = "The Durable Object migration tag already deployed. Leave unset for the first apply (it creates the class, tag v1); set to \"v1\" for every apply after that. Unset it again after a destroy. See `tofu output migration_tag`."
+  description = "The Durable Object migration tag already deployed: unset for a fresh deploy, \"v1\" or \"v2\" after. v2 adds the Scheduler class (the reconciliation sweep): an apply with \"v1\" moves to v2, after which set it to \"v2\". Unset it again after a destroy. See `tofu output migration_tag`."
 
   validation {
-    condition     = var.deployed_do_migration_tag == null || var.deployed_do_migration_tag == "v1"
-    error_message = "Only migration v1 exists. Use \"v1\" once deployed, or leave unset for a fresh deploy."
+    condition     = var.deployed_do_migration_tag == null || contains(["v1", "v2"], var.deployed_do_migration_tag)
+    error_message = "Migrations v1 and v2 exist. Use the deployed one (tofu output migration_tag), or leave unset for a fresh deploy."
+  }
+}
+
+variable "sweep_minutes" {
+  type        = number
+  default     = 15
+  description = "Minutes between reconciliation sweeps (src/scheduler.ts), which re-fire issues left in a trigger state with no watchdog."
+}
+
+variable "sweep_mode" {
+  type        = string
+  default     = "shadow"
+  description = "shadow = sweeps only log what they would re-fire (a reconcile_refire row with mode shadow); enforce = they re-fire. The e2e sandbox always enforces."
+
+  validation {
+    condition     = contains(["shadow", "enforce"], var.sweep_mode)
+    error_message = "sweep_mode must be \"shadow\" or \"enforce\"."
   }
 }
 

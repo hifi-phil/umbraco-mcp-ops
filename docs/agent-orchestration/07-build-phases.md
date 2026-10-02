@@ -240,6 +240,21 @@ this — check before building it twice).
 overrides), and a stale issue gets automatically re-fired instead of sitting
 forever.
 
+**Status (02-10-2026):**
+- **The self-trigger guard** shipped with the GitHub App (#181).
+- **`manual_override`** shipped in #193. It's logged straight away, when a
+  person's change arrives, not on the next webhook: the App makes the
+  Worker's own changes recognisable.
+- **The reconciliation sweep is built**, as a **Scheduler Durable Object
+  alarm**, not a Cron Trigger. Alarms are retried; cron triggers can stop
+  without anyone knowing.
+  - Every 15 minutes it asks each open issue with a trigger label whether
+    it was left behind: no watchdog, and idle for twice its routine's
+    timeout. If so, it re-fires the routine and logs `reconcile_refire`.
+  - Real repos sweep in **shadow**, logging only, until `sweep_mode` is set
+    to `enforce`. The sandbox enforces.
+  - It's the base for scheduled agents later.
+
 ## Phase 8 — Live-status view and dashboard
 
 **Entry:** Phase 6 live (heartbeat data exists) and Phase 7 live (the

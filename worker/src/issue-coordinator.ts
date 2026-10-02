@@ -22,6 +22,7 @@
 
 import {
   coordinateWebhook,
+  coordinateReconcile,
   coordinateRoutineSignal,
   coordinateWatchdogExpired,
   resolveEnforced,
@@ -103,6 +104,17 @@ export class IssueCoordinator {
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
 
+    // The sweep (scheduler.ts) asking whether this issue was left behind.
+    if (new URL(request.url).pathname === "/reconcile") {
+      let input: { owner: string; repo: string; issueNumber: number; enforced: boolean };
+      try {
+        input = await request.json();
+      } catch {
+        return new Response("invalid JSON body", { status: 400 });
+      }
+      return this.serial(() => respond(() => coordinateReconcile(this.deps(input), input, { enforced: input.enforced })));
+    }
+
     if (new URL(request.url).pathname === "/routine-signal") {
       let input: RoutineSignalInput;
       try {
@@ -140,13 +152,23 @@ export class IssueCoordinator {
   /** Real I/O; coordinate.ts switches each event to shadow writes unless
    * `enforced` says otherwise. `ref` is the issue's repo, for its watchdog
    * override (a DO is one issue, so every call for it names the same repo). */
-  private deps(ref?: { owner: string; repo: string }): Deps {
+  private deps(ref?: { owner: string; repo: string; issueNumber?: number }): Deps {
     const override = ref ? watchdogOverrideFor(this.env.WATCHDOG_OVERRIDES_JSON, ref.owner, ref.repo) : undefined;
     const watchdogMinutes = (routine: string) => override?.minutes ?? watchdogMinutesFor(routine);
     return {
       enforced: resolveEnforced(this.env.MODE, override?.mode ?? this.env.WATCHDOG),
       watchdogMinutes,
       botLogin: async () => (appConfigured(this.env) ? appBotLogin(this.env) : null),
+      lastActivityAt: async () => {
+        if (!ref) return null;
+        const row = await this.env.DB.prepare(
+          `SELECT MAX(created_at) AS at FROM transitions
+            WHERE LOWER(owner) = LOWER(?) AND LOWER(repo) = LOWER(?) AND issue_number = ?`,
+        )
+          .bind(ref.owner, ref.repo, ref.issueNumber ?? -1)
+          .first<{ at: string | null }>();
+        return row?.at ?? null;
+      },
       getLabels: (owner: string, repo: string, issueNumber: number) =>
         githubClient.getLabels(this.env, owner, repo, issueNumber),
       addLabel: (owner: string, repo: string, issueNumber: number, label: string) =>

@@ -26,6 +26,7 @@ import {
   putFile,
   removeLabel,
   driverLogin,
+  sweep,
   REPO,
   review,
   setHint,
@@ -47,7 +48,7 @@ const WATCHDOG_MINUTES = Number(process.env.E2E_WATCHDOG_MINUTES ?? 2);
 const STUCK_WAIT = (WATCHDOG_MINUTES + 2) * MIN;
 
 /** For the audit (run.e2e.test.ts): an issue whose label delivery to redeliver, and the two PRs sharing a head. */
-export const runLog: { redeliverIssue?: number; sharedHead?: number[]; manualOverrideIssue?: number } = {};
+export const runLog: { redeliverIssue?: number; sharedHead?: number[]; manualOverrideIssue?: number; sweepIssue?: number } = {};
 
 const labelsAre = (...want: string[]) => (s: Snapshot) => JSON.stringify(s.labels) === JSON.stringify([...want].sort());
 const expectLabels = (s: Snapshot, n: number, ...want: string[]) => expect(s.labels, `#${n} labels`).toEqual([...want].sort());
@@ -466,6 +467,32 @@ export const scenarios: Scenario[] = [
         const s = await snapshot(issue);
         expectLabels(s, issue, LABELS.AI_READY);
         expect(hasComment(s, "hasn't reported back"), "no watchdog comment").toBe(false);
+      }),
+  },
+  {
+    name: "sweep: a run left in ready-for-ai with no watchdog -> re-fired once idle twice its timeout",
+    timeoutMs: (2 * WATCHDOG_MINUTES + 3) * MIN,
+    run: () =>
+      scoped(async (t) => {
+        // A completion signal with no outcome: the watchdog is cancelled, the
+        // label stays, and nothing else will ever look at it again.
+        const issue = t.n(await openIssue("Left behind", "Reports done, posts nothing; the sweep finds it.", "complete"));
+        runLog.sweepIssue = issue;
+        const key = `${REPO}#${issue}`.toLowerCase();
+        await addLabel(issue, LABELS.AI_READY);
+        await sleep(MIN);
+        expect((await sweep()).refired.map((r) => r.toLowerCase()), "too recent to re-fire").not.toContain(key);
+
+        await setHint(issue, "blocked");
+        await sleep((2 * WATCHDOG_MINUTES - 1) * MIN + 20_000); // past twice the timeout since its last row
+        expect((await sweep()).refired.map((r) => r.toLowerCase()), "re-fired once left behind").toContain(key);
+        expectLabels(await waitFor(issue, labelsAre(LABELS.AI_BLOCKED), MIN), issue, LABELS.AI_BLOCKED);
+        await expectLogged(
+          issue,
+          { event: "labelled_ai_ready", run: "issue-build-loop" },
+          { event: "reconcile_refire", run: "issue-build-loop" },
+          { event: "build_blocked", effect: LABELS.AI_BLOCKED },
+        );
       }),
   },
   {

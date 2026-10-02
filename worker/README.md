@@ -417,6 +417,32 @@ Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
 `AGENT_OUTCOMES_TOKEN` on the routine environment: see `new-loop-routine`'s
 "Routine heartbeats" section.
 
+## The reconciliation sweep (Phase 7)
+
+`src/scheduler.ts`: one **Scheduler** Durable Object.
+
+- **What it catches:** an issue left in a trigger state (`ready-for-ai`,
+  `auto-release`, `auto-rework`, `auto-merge`) with no watchdog running and
+  nothing logged for twice its routine's timeout. That's a fire that never
+  got out, or a lost watchdog.
+- **How it works:** its alarm sweeps every `sweep_minutes` (default 15),
+  listing such issues per repo. Each issue's own DO decides
+  (`coordinateReconcile`). A left-behind issue gets its routine fired again
+  and watched, plus a `reconcile_refire` row. If that run dies too, the
+  watchdog moves the issue to `ai-stuck`, which the sweep doesn't touch.
+- **Why an alarm, not a Cron Trigger:** alarms are at-least-once and retried
+  with backoff. Cron triggers have no retries and have been seen to stop
+  silently. Three things keep it alive:
+  - each alarm sets the next one before sweeping
+  - every webhook re-arms a missing alarm (`/ensure`)
+  - each sweep writes a `sweep` row (`owner` = `_scheduler`)
+- **Modes:** `sweep_mode = "shadow"` (the default) only logs what it would
+  re-fire. Run it that way first: a repo can have issues labelled from before
+  the Worker, which would all be re-fired at once. The e2e sandbox always
+  enforces, and `POST /sweep` runs a sweep of the sandbox on demand.
+- **Cost:** under 10,000 DO requests a month. That's well inside the Free
+  plan, and inside the $5 Paid allowance.
+
 ## The watchdog is a real event
 
 A watched routine that never reports back now moves the issue through the
