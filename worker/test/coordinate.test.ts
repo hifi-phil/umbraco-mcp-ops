@@ -157,7 +157,7 @@ describe("coordinateWebhook — enforced events vs the shadowed watchdog", () =>
   const mergeLabel = { action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING }, sender: { login: "phil", type: "User" as const } };
 
   it("an enforced event fires for real and its row says enforce", async () => {
-    const deps = fakeDeps({ enforced });
+    const deps = fakeDeps({ enforced, getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]) });
     const result = await coordinateWebhook(deps, input({ payload: mergeLabel }));
     expect(result).toMatchObject({ outcome: "applied", event: EVENTS.LABELLED_AUTO_MERGING });
     expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.MERGE_FLOW);
@@ -809,6 +809,14 @@ describe("coordinateWebhook — CI failing under auto-merge goes to rework, then
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_MERGING);
     expect(deps.setCiFix).toHaveBeenCalledWith({ attempts: 1, pending: false });
     expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.MERGE_FLOW);
+  });
+
+  it("a label webhook whose label is already gone (CI swapped it a moment earlier) -> stale, nothing done", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_REWORKING]) });
+    expect(await coordinateWebhook(deps, autoMergeAdded)).toEqual({ outcome: "stale_label", event: EVENTS.LABELLED_AUTO_MERGING });
+    expect(deps.getMergeGateFacts).not.toHaveBeenCalled();
+    expect(deps.logTransition).not.toHaveBeenCalled();
+    expect(deps.addLabel).not.toHaveBeenCalled();
   });
 
   it("the self-trigger guard: the App's own label add comes back and is dropped, firing nothing", async () => {
