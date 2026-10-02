@@ -65,6 +65,7 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     // enforcement have their own describe blocks.
     enforced: () => true,
     watchdogMinutes: watchdogMinutesFor,
+    botLogin: async () => null,
     ...overrides,
   };
 }
@@ -669,7 +670,9 @@ describe("coordinateWebhook — check_suite.completed, the real merge-gate aggre
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_REWORKING);
     expect(deps.commentOnIssue).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, expect.stringContaining("CI failing: build"));
     expect(deps.setCiFix).toHaveBeenCalledWith({ attempts: 1, pending: true });
-    expect(deps.clearPendingFire).toHaveBeenCalledOnce();
+    // The rule fires rework-loop itself (no echo), so the watchdog moves to it.
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.REWORK_LOOP);
+    expect(deps.setPendingFire).toHaveBeenCalledWith(expect.objectContaining({ run: ROUTINES.REWORK_LOOP }));
   });
 
   it("completed, in auto-merge, unresolvable conflicts -> auto-merge swapped for merge-blocked, with a comment", async () => {
@@ -782,7 +785,7 @@ describe("coordinateWebhook — CI failing under auto-merge goes to rework, then
     payload: { action: "pull_request.unlabeled", label: { name: LABELS.AUTO_REWORKING }, sender: { login: "phil", type: "User" } },
   });
 
-  it("auto-merge added after CI already failed -> auto-rework and a comment, merge-flow NOT fired", async () => {
+  it("auto-merge added after CI already failed -> auto-rework, a comment, and rework-loop fired (not merge-flow)", async () => {
     const deps = fakeDeps({
       getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
       getMergeGateFacts: vi.fn(async () => gateFacts({ checkRuns: failing })),
@@ -791,7 +794,8 @@ describe("coordinateWebhook — CI failing under auto-merge goes to rework, then
     expect(result).toMatchObject({ outcome: "applied", from: LABELS.AUTO_MERGING, event: EVENTS.MERGE_GATE_FAILED_SOFT });
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_REWORKING);
     expect(deps.commentOnIssue).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, expect.stringContaining("attempt 1 of 3"));
-    expect(deps.fireRoutine).not.toHaveBeenCalled();
+    expect(deps.fireRoutine).toHaveBeenCalledTimes(1);
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.REWORK_LOOP);
   });
 
   it("the fix push -> auto-rework swapped back to auto-merge", async () => {
@@ -804,6 +808,35 @@ describe("coordinateWebhook — CI failing under auto-merge goes to rework, then
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_REWORKING);
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_MERGING);
     expect(deps.setCiFix).toHaveBeenCalledWith({ attempts: 1, pending: false });
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.MERGE_FLOW);
+  });
+
+  it("the self-trigger guard: the App's own label add comes back and is dropped, firing nothing", async () => {
+    const deps = fakeDeps({
+      botLogin: async () => "hifi-agent-orchestrator[bot]",
+      getLabels: vi.fn(async () => [LABELS.AUTO_REWORKING]),
+    });
+    const echo = input({
+      payload: {
+        action: "pull_request.labeled",
+        label: { name: LABELS.AUTO_REWORKING },
+        sender: { login: "hifi-agent-orchestrator[bot]", type: "Bot" },
+      },
+    });
+    expect(await coordinateWebhook(deps, echo)).toEqual({ outcome: "no_event" });
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("…while a human adding the same label still fires the loop", async () => {
+    const deps = fakeDeps({
+      botLogin: async () => "hifi-agent-orchestrator[bot]",
+      getLabels: vi.fn(async () => [LABELS.AUTO_REWORKING]),
+    });
+    const human = input({
+      payload: { action: "pull_request.labeled", label: { name: LABELS.AUTO_REWORKING }, sender: { login: "phil", type: "User" } },
+    });
+    expect(await coordinateWebhook(deps, human)).toMatchObject({ outcome: "applied", event: EVENTS.LABELLED_AUTO_REWORKING });
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.REWORK_LOOP);
   });
 
   it("a review rework's push (no CI-fix pending) -> auto-rework just cleared, as before", async () => {

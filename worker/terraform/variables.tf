@@ -69,7 +69,23 @@ variable "github_repo" {
 variable "github_read_token" {
   type        = string
   sensitive   = true
-  description = "The Worker's GITHUB_APP_TOKEN. In shadow it only reads, so a fine-grained token with read access to Issues, Pull requests and Metadata is enough (fine-grained tokens have no Checks permission)."
+  description = "A personal token, the Worker's fallback GITHUB_APP_TOKEN. Unused while the GitHub App (github_app_id + github_app_private_key) is configured, which it always is now; kept so a Worker without the App still has something to call GitHub with."
+}
+
+variable "github_app_id" {
+  type        = string
+  description = "The Worker's GitHub App ID (the App's settings page). The Worker reads and writes GitHub as this App's bot. The App needs Issues and Pull requests read & write, Checks and Contents read, and must be installed on every repo the Worker serves (including e2e_repo)."
+}
+
+variable "github_app_private_key" {
+  type        = string
+  sensitive   = true
+  description = "The App's private key: the .pem GitHub downloads (App settings -> Private keys -> Generate), pasted as-is into terraform.tfvars as a heredoc, or set as TF_VAR_github_app_private_key. Either PKCS#1 (GitHub's format) or PKCS#8 works. Like every secret here, it ends up in tofu's state, so keep that file safe."
+
+  validation {
+    condition     = strcontains(var.github_app_private_key, "PRIVATE KEY-----")
+    error_message = "github_app_private_key must be the key's PEM text (\"-----BEGIN RSA PRIVATE KEY-----…\"), not a path."
+  }
 }
 
 variable "repo_routines" {
