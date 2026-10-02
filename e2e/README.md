@@ -31,9 +31,9 @@ as it goes, one tagged line per step and per label change
 The Worker and the stub must be deployed with `e2e_repo` set in
 `worker/terraform/`. That also makes the sandbox's watchdog real, with a
 2-minute timeout (`e2e_watchdog_minutes`), while every other repo's stays
-as configured. The sandbox has to stay **public**: the merge gate reads
-check-runs, which a fine-grained token can't read on a private repo (see
-`worker/README.md`'s known gaps).
+as configured. The sandbox can be private: the Worker reads CI through
+its GitHub App, and so does the stub (only for check-runs, which a
+fine-grained token can't read on a private repo).
 
 Latest full run (01-10-2026): all 21 scenarios and the audit pass in about
 8 minutes.
