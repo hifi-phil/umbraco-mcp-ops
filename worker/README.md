@@ -432,16 +432,23 @@ Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
   watchdog moves the issue to `ai-stuck`, which the sweep doesn't touch.
 - **Why an alarm, not a Cron Trigger:** alarms are at-least-once and retried
   with backoff. Cron triggers have no retries and have been seen to stop
-  silently. Three things keep it alive:
-  - each alarm sets the next one before sweeping
-  - every webhook re-arms a missing alarm (`/ensure`)
-  - each sweep writes a `sweep` row (`owner` = `_scheduler`)
+  silently.
+- **It only runs while there's something to watch:**
+  - each alarm sets the next one before sweeping, so a failure keeps it
+    going
+  - a sweep that finds no candidates stops the chain
+  - every webhook re-arms it (`/ensure`)
+
+  An issue can only be left behind after a trigger label was added, and that
+  label's webhook arms the sweep first. A sweep that checked something writes
+  a `sweep` row (`owner` = `_scheduler`); a quiet one writes nothing.
 - **Modes:** `sweep_mode = "shadow"` (the default) only logs what it would
   re-fire. Run it that way first: a repo can have issues labelled from before
   the Worker, which would all be re-fired at once. The e2e sandbox always
   enforces, and `POST /sweep` runs a sweep of the sandbox on demand.
-- **Cost:** under 10,000 DO requests a month. That's well inside the Free
-  plan, and inside the $5 Paid allowance.
+- **Cost:** at most about 10,000 DO requests a month, and less when the
+  repos are quiet, since the chain stops. That's well inside the Free plan,
+  and inside the $5 Paid allowance.
 
 ## The watchdog is a real event
 

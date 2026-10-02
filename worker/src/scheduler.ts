@@ -2,12 +2,19 @@
 // runs the reconciliation sweep (Phase 7), and later scheduled agents. A DO
 // alarm rather than a Cron Trigger: alarms are guaranteed at-least-once and
 // retried on failure, while Cron Triggers have no retries or alerts and have
-// been seen to stop silently. Three things keep it running:
+// been seen to stop silently.
+//
+// It only runs while there's something to watch:
 // - each alarm sets the next one before doing any work, so a sweep that
-//   fails can't end the chain;
-// - every webhook calls /ensure (index.ts), which re-arms a missing alarm,
-//   so even a chain that did break restarts with the next GitHub event;
-// - each sweep writes a `sweep` row to D1, so a gap is visible.
+//   fails (or throws) keeps the chain going;
+// - a sweep that finds no candidates (no open issue with a trigger label,
+//   and no errors) cancels that next alarm: the chain stops;
+// - every webhook calls /ensure (index.ts), which re-arms a missing alarm.
+//   An issue can only be left behind after a trigger label was added, and
+//   that label's own webhook arms the sweep first, so stopping is safe;
+// - a sweep that checked something writes a `sweep` row to D1.
+// /ensure and the alarm run one at a time, so a webhook landing between a
+// sweep finding nothing and it cancelling the alarm still re-arms.
 
 import { TRIGGER_LABELS, type ReconcileResult } from "./coordinate";
 import { openWithLabel, type GitHubEnv } from "./github-client";
@@ -43,11 +50,20 @@ export class Scheduler {
     return (Number.isFinite(m) && m > 0 ? m : DEFAULT_SWEEP_MINUTES) * 60_000;
   }
 
+  private queue: Promise<unknown> = Promise.resolve();
+  private serial<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(work, work);
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
   async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path === "/ensure") {
-      if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + this.intervalMs());
-      return Response.json({ ok: true });
+      return this.serial(async () => {
+        if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + this.intervalMs());
+        return Response.json({ ok: true });
+      });
     }
     if (path === "/sweep" && request.method === "POST") {
       // An on-demand sweep (e2e), optionally just some repos.
@@ -58,13 +74,17 @@ export class Scheduler {
   }
 
   async alarm(): Promise<void> {
-    // Next one first: nothing below can end the chain.
-    await this.ctx.storage.setAlarm(Date.now() + this.intervalMs());
-    try {
-      await this.sweep();
-    } catch (e) {
-      console.error("sweep failed:", e instanceof Error ? e.message : e);
-    }
+    await this.serial(async () => {
+      // Next one first: a failure below keeps the chain going.
+      await this.ctx.storage.setAlarm(Date.now() + this.intervalMs());
+      try {
+        const summary = await this.sweep();
+        // Nothing to watch: stop until a webhook re-arms it.
+        if (summary.checked === 0 && summary.errors.length === 0) await this.ctx.storage.deleteAlarm();
+      } catch (e) {
+        console.error("sweep failed:", e instanceof Error ? e.message : e);
+      }
+    });
   }
 
   private enforcedFor(repo: string): boolean {
@@ -103,6 +123,8 @@ export class Scheduler {
       }
     }
 
+    // A quiet sweep isn't worth a row: log only one that checked something.
+    if (summary.checked === 0 && summary.errors.length === 0) return summary;
     await this.env.DB.prepare(
       `INSERT INTO transitions (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

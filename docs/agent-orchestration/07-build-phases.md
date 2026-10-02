@@ -248,9 +248,12 @@ forever.
 - **The reconciliation sweep is built**, as a **Scheduler Durable Object
   alarm**, not a Cron Trigger. Alarms are retried; cron triggers can stop
   without anyone knowing.
-  - Every 15 minutes it asks each open issue with a trigger label whether
-    it was left behind: no watchdog, and idle for twice its routine's
-    timeout. If so, it re-fires the routine and logs `reconcile_refire`.
+  - Every 15 minutes, while anything is in a trigger state, it asks each
+    such issue whether it was left behind: no watchdog, and idle for twice
+    its routine's timeout. If so, it re-fires the routine and logs
+    `reconcile_refire`.
+  - When nothing's in a trigger state the chain stops, and the next webhook
+    restarts it.
   - Real repos sweep in **shadow**, logging only, until `sweep_mode` is set
     to `enforce`. The sandbox enforces.
   - It's the base for scheduled agents later.

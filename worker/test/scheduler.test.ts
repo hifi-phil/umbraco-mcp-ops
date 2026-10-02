@@ -12,6 +12,10 @@ function fakeCtx(alarmAt: number | null = null) {
       order.push("setAlarm");
       alarm = at;
     }),
+    deleteAlarm: vi.fn(async () => {
+      order.push("deleteAlarm");
+      alarm = null;
+    }),
   };
   return { ctx: { storage } as unknown as DurableObjectState, storage, order };
 }
@@ -50,13 +54,48 @@ const github = () =>
   });
 
 describe("Scheduler", () => {
-  it("each alarm sets the next one before sweeping, so a failed sweep can't end the chain", async () => {
+  it("each alarm sets the next one before sweeping, so a failed sweep keeps the chain going", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
     const { ctx, storage, order } = fakeCtx();
     const { env } = fakeEnv(() => ({}));
     await new Scheduler(ctx, env).alarm(); // the sweep's GitHub calls fail; alarm() mustn't throw
-    expect(order[0]).toBe("setAlarm");
-    expect(storage.setAlarm).toHaveBeenCalledWith(expect.any(Number));
+    expect(order).toEqual(["setAlarm"]);
+    expect(await storage.getAlarm()).not.toBeNull();
+  });
+
+  it("a sweep with candidates keeps the chain; one with nothing to watch stops it and logs nothing", async () => {
+    vi.stubGlobal("fetch", github());
+    const busy = fakeCtx();
+    await new Scheduler(busy.ctx, fakeEnv(() => ({ outcome: "watched" })).env).alarm();
+    expect(await busy.storage.getAlarm()).not.toBeNull();
+
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json([])));
+    const quiet = fakeCtx();
+    const { env, inserted } = fakeEnv(() => ({}));
+    await new Scheduler(quiet.ctx, env).alarm();
+    expect(quiet.order).toEqual(["setAlarm", "deleteAlarm"]);
+    expect(await quiet.storage.getAlarm()).toBeNull();
+    expect(inserted, "no sweep row for a quiet sweep").toEqual([]);
+  });
+
+  it("/ensure waits for a running alarm, so a webhook landing as a quiet sweep stops the chain still re-arms it", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        await held; // the sweep is mid-listing when the webhook's /ensure arrives
+        return Response.json([]);
+      }),
+    );
+    const { ctx, storage } = fakeCtx();
+    const scheduler = new Scheduler(ctx, fakeEnv(() => ({})).env);
+    const sweeping = scheduler.alarm();
+    const ensuring = scheduler.fetch(new Request("https://s/ensure", { method: "POST" }));
+    release();
+    await sweeping;
+    await ensuring;
+    expect(await storage.getAlarm(), "re-armed after the quiet sweep stopped the chain").not.toBeNull();
   });
 
   it("the next alarm is SWEEP_MINUTES out (default 15)", async () => {
