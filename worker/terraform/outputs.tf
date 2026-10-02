@@ -29,6 +29,12 @@ output "e2e_log_read_secret" {
   sensitive = true
 }
 
+# The e2e driver's key to the stub's POST /review (the same bearer as a fire).
+output "e2e_fire_token" {
+  value     = local.e2e ? random_password.e2e_fire_token[0].result : null
+  sensitive = true
+}
+
 output "e2e_stub_url" {
   value = local.e2e ? local.e2e_url : null
 }

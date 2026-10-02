@@ -343,6 +343,22 @@ export async function transitions(number: number): Promise<LogRow[]> {
   }
 }
 
+/** A review on a sandbox PR, submitted by the stub as the orchestrator's App bot. */
+export async function review(number: number, event: "REQUEST_CHANGES" | "APPROVE"): Promise<{ state: string; by: string }> {
+  const hooks = await gh<{ config: { url: string } }[]>("GET", `${R}/hooks`);
+  const stubHook = hooks.map((h) => h.config.url).find((u) => u.endsWith("/webhook"));
+  if (!stubHook) throw new Error(`no stub webhook on ${REPO}`);
+  const res = await fetch(stubHook.replace(/\/webhook$/, "/review"), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${tofuSecret("e2e_fire_token", "E2E_FIRE_TOKEN")}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ number, event }),
+  });
+  if (!res.ok) throw new Error(`stub /review for #${number} failed: ${res.status} ${await res.text()}`);
+  const out = (await res.json()) as { state: string; by: string };
+  progress(`PR #${number} ${out.state.toLowerCase().replace(/_/g, " ")} by ${out.by}`);
+  return out;
+}
+
 /** Close whatever a scenario left open, and delete an unmerged PR's branch. */
 export async function cleanUp(numbers: number[], branches: string[] = []): Promise<void> {
   for (const n of numbers) {
