@@ -176,6 +176,10 @@ resource "cloudflare_workers_script" "e2e_stub" {
     # same account's workers.dev URL (Cloudflare error 1042).
     { type = "service", name = "ORCHESTRATOR", service = cloudflare_workers_script.worker.script_name },
     { type = "secret_text", name = "ROUTINE_SIGNAL_SECRET", text = random_password.routine_signal_secret.result },
+    # The orchestrator's App, so the stub can review a sandbox PR as a
+    # different identity from its author (POST /review).
+    { type = "plain_text", name = "GITHUB_APP_ID", text = var.github_app_id },
+    { type = "secret_text", name = "GITHUB_APP_PRIVATE_KEY", text = var.github_app_private_key },
   ]
 }
 

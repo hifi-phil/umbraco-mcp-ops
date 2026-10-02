@@ -5,6 +5,7 @@ import {
   outcomeComment,
   parseFire,
   parseHint,
+  handleReview,
   routineSignal,
   verifySignature,
   type Gh,
@@ -19,6 +20,8 @@ const env: StubEnv = {
   E2E_REPO: "hifi-phil/mcp-ops-e2e-testing",
   ORCHESTRATOR: { fetch: async () => new Response("{}") },
   ROUTINE_SIGNAL_SECRET: "sig",
+  GITHUB_APP_ID: "1",
+  GITHUB_APP_PRIVATE_KEY: "unused in tests",
 };
 const R = "/repos/hifi-phil/mcp-ops-e2e-testing";
 const fireFor = (route: string, number = 7) => ({ route, owner: "hifi-phil", repo: "mcp-ops-e2e-testing", number });
@@ -276,6 +279,35 @@ describe("handleFire", () => {
     expect(res.status).toBe(200);
     await work;
     expect(gh).toHaveBeenCalledWith("POST", `${R}/issues/7/comments`, expect.anything());
+  });
+});
+
+describe("handleReview (POST /review, as the App's bot)", () => {
+  const review = (body: unknown, token = "fire") =>
+    new Request("https://stub.example/review", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  it("submits the review on the sandbox PR with the App's installation token", async () => {
+    const calls: [string, string, string, unknown][] = [];
+    const gh = (token: string): Gh => async (method, path, body) => {
+      calls.push([token, method, path, body]);
+      return { id: 9, state: "CHANGES_REQUESTED", user: { login: "umbraco-agent-orchestrator[bot]" } };
+    };
+    const res = await handleReview(review({ number: 7, event: "REQUEST_CHANGES" }), env, gh, async () => "inst-token");
+    expect(await res.json()).toEqual({ id: 9, state: "CHANGES_REQUESTED", by: "umbraco-agent-orchestrator[bot]" });
+    expect(calls).toEqual([
+      ["inst-token", "POST", `${R}/pulls/7/reviews`, { event: "REQUEST_CHANGES", body: "e2e stub: changes requested." }],
+    ]);
+  });
+
+  it("wrong token -> 401; a bad event -> 400; never reviews", async () => {
+    const appToken = vi.fn(async () => "t");
+    expect((await handleReview(review({ number: 7, event: "REQUEST_CHANGES" }, "nope"), env, undefined, appToken)).status).toBe(401);
+    expect((await handleReview(review({ number: 7, event: "COMMENT" }), env, undefined, appToken)).status).toBe(400);
+    expect(appToken).not.toHaveBeenCalled();
   });
 });
 
