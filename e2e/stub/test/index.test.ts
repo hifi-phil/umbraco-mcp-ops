@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   handleFire,
   handleWebhook,
@@ -6,6 +6,7 @@ import {
   parseFire,
   parseHint,
   handleReview,
+  stubGitHub,
   routineSignal,
   verifySignature,
   type Gh,
@@ -279,6 +280,27 @@ describe("handleFire", () => {
     expect(res.status).toBe(200);
     await work;
     expect(gh).toHaveBeenCalledWith("POST", `${R}/issues/7/comments`, expect.anything());
+  });
+});
+
+describe("stubGitHub", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const auth = async (gh: Gh) => {
+    const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      void init;
+      return new Response("{}", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetch);
+    await gh("GET", `${R}/issues/7`);
+    return (fetch.mock.calls[0]![1]!.headers as Record<string, string>).Authorization;
+  };
+
+  it("with the App configured -> the App's installation token (works on a private sandbox)", async () => {
+    expect(await auth(stubGitHub(env, async () => "inst-token"))).toBe("Bearer inst-token");
+  });
+
+  it("without the App -> the stub's own token", async () => {
+    expect(await auth(stubGitHub({ ...env, GITHUB_APP_ID: "" }))).toBe("Bearer gh");
   });
 });
 

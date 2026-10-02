@@ -79,6 +79,23 @@ export function github(token: string): Gh {
   };
 }
 
+/**
+ * The stub's GitHub access: the orchestrator's App on the sandbox when it's
+ * configured, so the stub can read check-runs on a private sandbox (a
+ * fine-grained token can't), else its own token. Acting as the App's bot is
+ * fine here: the stub never changes labels, the only writes the
+ * self-trigger guard drops.
+ */
+export function stubGitHub(env: StubEnv, appToken: () => Promise<string> = () => installationTokenFor(env)): Gh {
+  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY) return github(env.GITHUB_TOKEN);
+  return async (method, path, body) => github(await appToken())(method, path, body);
+}
+
+function installationTokenFor(env: StubEnv): Promise<string> {
+  const [owner, repo] = env.E2E_REPO.split("/") as [string, string];
+  return installationToken(env, owner, repo);
+}
+
 const isSandbox = (env: StubEnv, owner: string, repo: string) =>
   `${owner}/${repo}`.toLowerCase() === env.E2E_REPO.toLowerCase();
 
@@ -91,7 +108,7 @@ export async function handleFire(
   request: Request,
   env: StubEnv,
   defer: (work: Promise<unknown>) => void,
-  gh: Gh = github(env.GITHUB_TOKEN),
+  gh: Gh = stubGitHub(env),
   delayMs = STUB_DELAY_MS,
   signalFor: (owner: string, repo: string) => Signal = (o, r) => routineSignal(env, o, r),
 ): Promise<Response> {
@@ -148,7 +165,7 @@ export async function handleWebhook(
   request: Request,
   env: StubEnv,
   defer: (work: Promise<unknown>) => void,
-  gh: Gh = github(env.GITHUB_TOKEN),
+  gh: Gh = stubGitHub(env),
   retryMs = WAIT_RETRY_MS,
 ): Promise<Response> {
   const raw = await request.text();
