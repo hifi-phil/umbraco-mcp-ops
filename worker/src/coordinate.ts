@@ -213,6 +213,7 @@ export type CoordinateResult =
   | { outcome: "dropped_no_rule"; from: State; event: Event }
   | { outcome: "ignored"; from: State; event: Event } // a CONTEXTUAL_EVENT outside its states; not logged
   | { outcome: "stale_label"; event: Event } // the label was already gone when its webhook ran; not logged
+  | { outcome: "manual_override"; change: string; by: string | null } // a person edited a tracked label; logged
   | { outcome: "applied"; from: State; event: Event; rule: Rule };
 
 /**
@@ -257,7 +258,8 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
 
   const botLogin = await deps.botLogin();
   let event = translate(input.payload, botLogin ? { botLogin } : {});
-  if (!event) return { outcome: "no_event" };
+  const human = humanLabelChange(input.payload, botLogin);
+  if (!event) return human ? logManualOverride(deps, input, human) : { outcome: "no_event" };
 
   // Fresh, per §3.4/to-github.ts's "never cache" principle -- and the one
   // set labelOps() below must see in full (including a label this event
@@ -293,7 +295,56 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
     if (deriveMergeGateOutcome(facts) === "soft") return handToRework(deps, input, currentLabels, facts);
   }
 
-  return applyEvent(deps, input, event, currentLabels);
+  const result = await applyEvent(deps, input, event, currentLabels);
+  // A contextual event the table ignores here (say auto-merge removed from
+  // a merge-blocked PR) is still a person's edit worth a row.
+  return result.outcome === "ignored" && human ? logManualOverride(deps, input, human, currentLabels) : result;
+}
+
+/** A person (anyone but the Worker's own App bot) adding or removing a label
+ * the table tracks. */
+type LabelChange = { sign: "+" | "-"; label: string };
+
+function humanLabelChange(payload: CoordinateInput["payload"], botLogin: string | null): LabelChange | null {
+  const m = payload.action.match(/^(issues|pull_request)\.(labeled|unlabeled)$/);
+  const label = payload.label?.name;
+  if (!m || !label || !(ALL_LABELS as readonly string[]).includes(label)) return null;
+  if (botLogin && payload.sender?.login === botLogin) return null;
+  return { sign: m[2] === "labeled" ? "+" : "-", label };
+}
+
+/**
+ * 03-components.md's human escape hatch: a person moved a tracked label in a
+ * way the table doesn't act on (cleared ai-blocked, added merge-blocked,
+ * removed ai-stuck, …). Nothing is decided or written to GitHub; a
+ * `manual_override` row records it, so the log stays the issue's whole
+ * history. The App is what makes this possible: the Worker's own label
+ * changes come from its bot, so any other one is a person's (or a loop
+ * acting outside the table).
+ */
+async function logManualOverride(
+  deps: Deps,
+  input: CoordinateInput,
+  change: LabelChange,
+  labels?: string[],
+): Promise<CoordinateResult> {
+  const now = labels ?? (await deps.getLabels(input.owner, input.repo, input.issueNumber));
+  const before = change.sign === "+" ? now.filter((l) => l !== change.label) : [...now, change.label];
+  const by = input.payload.sender?.login ?? null;
+  const summary = `${change.sign}${change.label}`;
+  await deps.logTransition({
+    deliveryId: input.deliveryId || null,
+    owner: input.owner,
+    repo: input.repo,
+    issueNumber: input.issueNumber,
+    fromState: deriveState(before),
+    event: "manual_override",
+    toEffect: JSON.stringify({ kind: "manual", change: summary, by, now: deriveState(now) }),
+    run: null,
+    droppedReason: null,
+    mode: depsFor(deps, "manual_override" as Event).mode,
+  });
+  return { outcome: "manual_override", change: summary, by };
 }
 
 /** CI failed under auto-merge: swap auto-merge -> auto-rework so

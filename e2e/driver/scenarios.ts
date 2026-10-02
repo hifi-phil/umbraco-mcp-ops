@@ -24,6 +24,8 @@ import {
   openIssue,
   openPr,
   putFile,
+  removeLabel,
+  driverLogin,
   REPO,
   review,
   setHint,
@@ -45,7 +47,7 @@ const WATCHDOG_MINUTES = Number(process.env.E2E_WATCHDOG_MINUTES ?? 2);
 const STUCK_WAIT = (WATCHDOG_MINUTES + 2) * MIN;
 
 /** For the audit (run.e2e.test.ts): an issue whose label delivery to redeliver, and the two PRs sharing a head. */
-export const runLog: { redeliverIssue?: number; sharedHead?: number[] } = {};
+export const runLog: { redeliverIssue?: number; sharedHead?: number[]; manualOverrideIssue?: number } = {};
 
 const labelsAre = (...want: string[]) => (s: Snapshot) => JSON.stringify(s.labels) === JSON.stringify([...want].sort());
 const expectLabels = (s: Snapshot, n: number, ...want: string[]) => expect(s.labels, `#${n} labels`).toEqual([...want].sort());
@@ -172,6 +174,25 @@ export const scenarios: Scenario[] = [
         expect(s.state).toBe("open");
         expect(hasMarker(s, "issue-build-loop", "build_blocked"), `#${issue} marker`).toBe(true);
         await expectLogged(issue, { event: "labelled_ai_ready", run: "issue-build-loop" }, { event: "build_blocked", effect: LABELS.AI_BLOCKED });
+      }),
+  },
+  {
+    name: "manual override: a human clears ai-blocked -> logged as manual_override, nothing else done",
+    timeoutMs: 3 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const issue = t.n(await openIssue("Clear a block by hand", "Blocks, then a maintainer clears it.", "blocked"));
+        runLog.manualOverrideIssue = issue;
+        await addLabel(issue, LABELS.AI_READY);
+        expectLabels(await waitFor(issue, labelsAre(LABELS.AI_BLOCKED), 2 * MIN), issue, LABELS.AI_BLOCKED);
+
+        await removeLabel(issue, LABELS.AI_BLOCKED);
+        const rows = await expectLogged(issue, "build_blocked", "manual_override");
+        const override = rows.find((r) => r.event === "manual_override")!;
+        expect(override.from_state).toBe(LABELS.AI_BLOCKED);
+        expect(JSON.parse(override.to_effect!)).toEqual({ kind: "manual", change: `-${LABELS.AI_BLOCKED}`, by: await driverLogin(), now: "none" });
+        await sleep(10_000); // and the Worker did nothing about it
+        expectLabels(await snapshot(issue), issue);
       }),
   },
   {
