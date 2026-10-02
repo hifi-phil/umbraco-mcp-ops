@@ -80,15 +80,17 @@ export function github(token: string): Gh {
 }
 
 /**
- * The stub's GitHub access: the orchestrator's App on the sandbox when it's
- * configured, so the stub can read check-runs on a private sandbox (a
- * fine-grained token can't), else its own token. Acting as the App's bot is
- * fine here: the stub never changes labels, the only writes the
- * self-trigger guard drops.
+ * The stub's GitHub access: its own token, except for reading check-runs,
+ * which a fine-grained token can't do on a private sandbox. Those go through
+ * the orchestrator's App (Checks: read) when it's configured. Only that read:
+ * the App has no Contents: write, and shouldn't get it for a test stub, so
+ * branches, commits and merges stay on the stub's token.
  */
 export function stubGitHub(env: StubEnv, appToken: () => Promise<string> = () => installationTokenFor(env)): Gh {
-  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY) return github(env.GITHUB_TOKEN);
-  return async (method, path, body) => github(await appToken())(method, path, body);
+  const own = github(env.GITHUB_TOKEN);
+  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY) return own;
+  return async (method, path, body) =>
+    method === "GET" && /\/check-runs(\?|$)/.test(path) ? github(await appToken())(method, path, body) : own(method, path, body);
 }
 
 function installationTokenFor(env: StubEnv): Promise<string> {
