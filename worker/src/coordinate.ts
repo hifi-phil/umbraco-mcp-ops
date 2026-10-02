@@ -707,10 +707,34 @@ export async function coordinateReconcile(
   // conflict or requested changes -> merge-blocked, red CI -> rework, else
   // merge-flow below.
   if (enforced && state === LABELS.AUTO_MERGING) {
+    // A person's lost retry of a merge-blocked PR (auto-merge re-added, both
+    // labels on): a fresh CI-fix count, as the webhook path starts.
+    const retry = labels.includes(LABELS.MERGE_BLOCKED);
+    if (retry) await deps.setCiFix(null);
     const facts = await settledGateFacts(deps, ref);
     const reason = hardBlockReason(facts);
     if (reason) return { outcome: "gated", result: await blockMerge(deps, ref, labels, reason) };
     if (deriveMergeGateOutcome(facts) === "soft") return { outcome: "gated", result: await handToRework(deps, ref, labels, facts) };
+    // Gate passed: the retry's own rule (merge-blocked comes off, merge-flow
+    // fired and watched), not a bare re-fire that would leave merge-blocked on.
+    if (retry) {
+      const result = await applyEvent(deps, ref, EVENTS.LABELLED_AUTO_MERGING, labels);
+      if (result.outcome === "applied") {
+        await deps.logTransition({
+          deliveryId: null,
+          owner: ref.owner,
+          repo: ref.repo,
+          issueNumber: ref.issueNumber,
+          fromState: LABELS.MERGE_BLOCKED,
+          event: "reconcile_refire",
+          toEffect: JSON.stringify({ kind: "noop", idleMinutes, retry: true }),
+          run,
+          droppedReason: null,
+          mode: "enforce",
+        });
+      }
+      return { outcome: "gated", result };
+    }
   }
 
   if (enforced) {

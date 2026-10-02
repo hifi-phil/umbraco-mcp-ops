@@ -1104,6 +1104,19 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
     );
   });
 
+  it("a lost retry of a merge-blocked PR (both labels on), gate passing -> the retry's rule: fresh CI count, merge-blocked off, merge-flow fired", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.MERGE_BLOCKED, LABELS.AUTO_MERGING]),
+      lastActivityAt: async () => minutesAgo(90),
+    });
+    const result = await coordinateReconcile(deps, ref, { enforced: true, now });
+    expect(result).toMatchObject({ outcome: "gated", result: { outcome: "applied", event: EVENTS.LABELLED_AUTO_MERGING } });
+    expect(deps.setCiFix).toHaveBeenCalledWith(null);
+    expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.MERGE_BLOCKED);
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.MERGE_FLOW);
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: "reconcile_refire", mode: "enforce" }));
+  });
+
   it("each trigger re-fires its own loop (auto-merge -> merge-flow)", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]), lastActivityAt: async () => minutesAgo(61) });
     expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toMatchObject({ outcome: "refired", run: ROUTINES.MERGE_FLOW });
