@@ -157,3 +157,11 @@ export async function getLatestReviewState(
   if (state === "approved" || state === "changes_requested" || state === "commented") return state;
   return "none"; // e.g. "pending" or "dismissed" — not a live blocking or approving state
 }
+
+/** The open PRs whose head is `sha`: how a check_suite GitHub sent without
+ * its pull_requests is routed (index.ts). */
+export async function openPullsForCommit(env: GitHubEnv, owner: string, repo: string, sha: string): Promise<number[]> {
+  const res = await gh(env, "GET", `/repos/${owner}/${repo}/commits/${sha}/pulls`);
+  const pulls = (await res.json()) as Array<{ number: number; state: string }>;
+  return pulls.filter((p) => p.state === "open").map((p) => p.number);
+}

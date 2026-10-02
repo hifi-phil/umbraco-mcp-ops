@@ -14,6 +14,7 @@
 // Only the sandbox repo (E2E_REPO) is ever acted on, whatever a request says.
 
 import { act, mergeIfGreen, type Fire, type Gh, type Signal } from "./loops";
+import { installationToken } from "../../../worker/src/github-app";
 
 export { outcomeComment, type Action, type Fire, type Gh, type Signal } from "./loops";
 
@@ -26,6 +27,10 @@ export type StubEnv = {
   // binding, since a Worker can't fetch another on the same workers.dev.
   ORCHESTRATOR: { fetch: (input: string, init?: RequestInit) => Promise<Response> };
   ROUTINE_SIGNAL_SECRET: string;
+  // The orchestrator's GitHub App, so the stub can review a PR as a
+  // different identity from its author (POST /review).
+  GITHUB_APP_ID: string;
+  GITHUB_APP_PRIVATE_KEY: string;
 };
 
 export function routineSignal(env: StubEnv, owner: string, repo: string): Signal {
@@ -188,11 +193,48 @@ export async function handleWebhook(
   return Response.json({ prs });
 }
 
+export type ReviewEvent = "REQUEST_CHANGES" | "APPROVE";
+
+/**
+ * POST /review {number, event}: the e2e driver asks for a review on a
+ * sandbox PR, submitted as the orchestrator's App bot. GitHub won't let a
+ * PR's author request changes on it, and every sandbox PR is opened by the
+ * driver's own account, so a requested-changes scenario needs a second
+ * identity; the App is one. Same bearer as a fire.
+ */
+export async function handleReview(
+  request: Request,
+  env: StubEnv,
+  gh: (token: string) => Gh = github,
+  appToken: (owner: string, repo: string) => Promise<string> = (o, r) => installationToken(env, o, r),
+): Promise<Response> {
+  if (request.headers.get("Authorization") !== `Bearer ${env.FIRE_TOKEN}`) return new Response("unauthorized", { status: 401 });
+  let body: { number?: unknown; event?: unknown };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return new Response("invalid JSON body", { status: 400 });
+  }
+  const number = body.number;
+  const event = body.event;
+  if (typeof number !== "number" || (event !== "REQUEST_CHANGES" && event !== "APPROVE")) {
+    return new Response("number and event (REQUEST_CHANGES | APPROVE) are required", { status: 400 });
+  }
+  const [owner, repo] = env.E2E_REPO.split("/") as [string, string];
+  const review = (await gh(await appToken(owner, repo))("POST", `/repos/${owner}/${repo}/pulls/${number}/reviews`, {
+    event,
+    body: event === "REQUEST_CHANGES" ? "e2e stub: changes requested." : "e2e stub: approved.",
+  })) as { id: number; state: string; user?: { login: string } };
+  return Response.json({ id: review.id, state: review.state, by: review.user?.login });
+}
+
 export default {
   fetch(request: Request, env: StubEnv, ctx: ExecutionContext): Promise<Response> | Response {
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
     const defer = (work: Promise<unknown>) => ctx.waitUntil(work);
-    if (new URL(request.url).pathname === "/webhook") return handleWebhook(request, env, defer);
+    const path = new URL(request.url).pathname;
+    if (path === "/webhook") return handleWebhook(request, env, defer);
+    if (path === "/review") return handleReview(request, env);
     return handleFire(request, env, defer);
   },
 };

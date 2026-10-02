@@ -25,6 +25,7 @@ import {
   openPr,
   putFile,
   REPO,
+  review,
   setHint,
   sleep,
   snapshot,
@@ -86,7 +87,15 @@ async function expectStuck(n: number, trigger: string): Promise<Snapshot> {
  * a label the row's effect must mention.
  */
 async function expectLogged(n: number, ...want: (string | { event: string; effect?: string; run?: string })[]): Promise<LogRow[]> {
-  const rows = await transitions(n);
+  // GitHub can show the outcome a moment before the webhook that logs it has
+  // run (found on #251: merged on GitHub, its row a second behind), so give
+  // the log a few seconds to catch up before checking it.
+  const last = typeof want.at(-1) === "string" ? (want.at(-1) as string) : (want.at(-1) as { event: string }).event;
+  let rows = await transitions(n);
+  for (let tries = 0; tries < 6 && !rows.some((r) => r.event === last); tries++) {
+    await sleep(5000);
+    rows = await transitions(n);
+  }
   let i = 0;
   for (const w of want) {
     const spec = typeof w === "string" ? { event: w } : w;
@@ -313,6 +322,32 @@ export const scenarios: Scenario[] = [
         const merged = await waitFor(pr.number, (x) => x.merged, 4 * MIN);
         expect(merged.merged, `PR #${pr.number} merged after the retry`).toBe(true);
         expect(await labelHistory(pr.number)).toContain(`-${LABELS.MERGE_BLOCKED}`);
+        await expectLogged(
+          pr.number,
+          { event: "merge_gate_failed_hard", effect: LABELS.MERGE_BLOCKED },
+          { event: "labelled_auto_merging", run: "merge-flow" },
+          "merged",
+        );
+      }),
+  },
+  {
+    name: "requested changes -> merge-blocked; approved and auto-merge re-added -> merged",
+    timeoutMs: 6 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const pr = await trackedPr(t, { title: "changes requested", hint: "merge", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
+        const asked = await review(pr.number, "REQUEST_CHANGES");
+        expect(asked.by, "reviewed as the App's bot, not the PR's author").toMatch(/\[bot\]$/);
+
+        await addLabel(pr.number, LABELS.AUTO_MERGING);
+        const blocked = await waitFor(pr.number, labelsAre(LABELS.MERGE_BLOCKED), 2 * MIN);
+        expectLabels(blocked, pr.number, LABELS.MERGE_BLOCKED);
+        expect(hasComment(blocked, "changes requested"), `#${pr.number} block reason`).toBe(true);
+
+        await review(pr.number, "APPROVE");
+        await addLabel(pr.number, LABELS.AUTO_MERGING);
+        const merged = await waitFor(pr.number, (x) => x.merged, 4 * MIN);
+        expect(merged.merged, `PR #${pr.number} merged after approval`).toBe(true);
         await expectLogged(
           pr.number,
           { event: "merge_gate_failed_hard", effect: LABELS.MERGE_BLOCKED },

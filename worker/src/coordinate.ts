@@ -212,6 +212,7 @@ export type CoordinateResult =
   | { outcome: "ambiguous_state" }
   | { outcome: "dropped_no_rule"; from: State; event: Event }
   | { outcome: "ignored"; from: State; event: Event } // a CONTEXTUAL_EVENT outside its states; not logged
+  | { outcome: "stale_label"; event: Event } // the label was already gone when its webhook ran; not logged
   | { outcome: "applied"; from: State; event: Event; rule: Rule };
 
 /**
@@ -281,6 +282,9 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
   // (handleCheckSuiteCompleted). CI that has already failed goes straight
   // to rework.
   if (event === EVENTS.LABELLED_AUTO_MERGING) {
+    // Run after auto-merge has already gone (swapped out by CI finishing red
+    // a moment earlier, found by e2e on PR #246), there's no gate left to check.
+    if (!currentLabels.includes(LABELS.AUTO_MERGING)) return { outcome: "stale_label", event };
     // A human re-adding auto-merge after merge-blocked starts a fresh count.
     if (currentLabels.includes(LABELS.MERGE_BLOCKED)) await deps.setCiFix(null);
     const facts = await settledGateFacts(deps, input);

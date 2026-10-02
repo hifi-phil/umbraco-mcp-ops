@@ -216,6 +216,33 @@ describe("index.ts fetch() — DO routing and isolation", () => {
     expect(await res.json()).toMatchObject({ routed: [{ issueNumber: 7, status: 200 }, { issueNumber: 8, status: 500 }] });
   });
 
+  it("a check_suite GitHub sent without pull_requests -> routed to the open PRs on its commit", async () => {
+    const { env, idFromName } = fakeEnv();
+    const fetchMock = vi.fn(async (url: string) =>
+      url.endsWith("/repos/hifi-phil/umbraco-mcp-ops/commits/abc123/pulls")
+        ? new Response(JSON.stringify([{ number: 7, state: "open" }, { number: 8, state: "closed" }]), { status: 200 })
+        : new Response("unexpected", { status: 500 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await worker.fetch(
+        request(
+          {
+            action: "completed",
+            repository: { name: "umbraco-mcp-ops", owner: { login: "hifi-phil" } },
+            check_suite: { status: "completed", conclusion: "failure", head_sha: "abc123", pull_requests: [] },
+          },
+          { "X-GitHub-Event": "check_suite" },
+        ),
+        env,
+      );
+      expect(idFromName).toHaveBeenCalledTimes(1);
+      expect(idFromName).toHaveBeenCalledWith("hifi-phil/umbraco-mcp-ops#7");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("passes through the DO's response verbatim", async () => {
     const { env, stubFetch } = fakeEnv();
     stubFetch.mockResolvedValueOnce(new Response(JSON.stringify({ outcome: "applied" }), { status: 200 }));

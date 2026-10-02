@@ -77,6 +77,9 @@ re-checks a gate that still reads "CI running".
   3. The CI-fix limit → `merge-blocked`.
   4. A merge conflict → `merge-blocked`, fixed and retried → merged.
   5. A `check_suite` two PRs share, fanned out to both.
+  6. Requested changes → `merge-blocked`; approved and retried → merged. The
+     stub reviews as the orchestrator's App bot (`POST /review`), since the
+     PR's author can't review their own PR.
 - The watchdog and `ai-stuck`, one scenario each:
   1. Silent build, then a late `build_succeeded`.
   2. A heartbeat quoted by the expiry, then a late `build_blocked`.
@@ -116,9 +119,6 @@ driver gets that secret from `tofu output -raw e2e_log_read_secret` unless
   signal cancels it
 
 **Not covered, and why:**
-- **Requested changes as a hard block:** it needs a second GitHub
-  identity, since an account can't review its own PR. That waits for the
-  GitHub App.
 - **Shadow mode:** `MODE` is per Worker, and the sandbox runs on the
   enforcing one. A shadow scenario needs a second sandbox on a shadow
   Worker. It's unit-tested, and was validated live in Phase 3.
