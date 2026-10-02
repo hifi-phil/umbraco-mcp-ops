@@ -193,6 +193,28 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
+    name: "live status: a release closed by hand with auto-release still on -> its row goes",
+    timeoutMs: 2 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        // issue_closed from auto-release is a noop rule that applies; the
+        // row must still go, whatever order the close's webhooks land in.
+        const issue = t.n(await openIssue("Close me mid-release", "A person closes this while it's releasing.", "silent"));
+        await addLabel(issue, LABELS.AUTO_RELEASING);
+        let row = await statusOf(issue);
+        for (let tries = 0; tries < 10 && !row; tries++) {
+          await sleep(3000);
+          row = await statusOf(issue);
+        }
+        expect(row, `#${issue} status, releasing`).toMatchObject({ state: LABELS.AUTO_RELEASING, routine: "auto-release-loop", running: 1 });
+
+        await gh("PATCH", `/repos/${REPO}/issues/${issue}`, { state: "closed" });
+        await expectLogged(issue, { event: "labelled_auto_releasing", run: "auto-release-loop" }, { event: "issue_closed", effect: "noop" });
+        await sleep(10_000);
+        expect(await statusOf(issue), `#${issue} status, closed`).toBeUndefined();
+      }),
+  },
+  {
     name: "manual override: a human clears ai-blocked -> logged as manual_override, nothing else done",
     timeoutMs: 3 * MIN,
     run: () =>

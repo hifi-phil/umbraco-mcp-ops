@@ -132,6 +132,9 @@ the Worker's `GET /status` (key: `tofu output -raw status_secret`, or
   have no row
 - a stuck issue keeps its dead run's last step, and moves to `ai-blocked`
   when the late outcome lands
+- a release a person closes with `auto-release` still on loses its row,
+  though `issue_closed`'s no-op rule applies (the order that left #443
+  behind)
 
 **Not covered, and why:**
 - **Shadow mode:** `MODE` is per Worker, and the sandbox runs on the
