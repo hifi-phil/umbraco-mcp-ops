@@ -109,6 +109,19 @@ export async function addLabel(number: number, label: string): Promise<void> {
   progress(`#${number} +${label}`);
 }
 
+/** A human taking a label off by hand, as a maintainer would. */
+export async function removeLabel(number: number, label: string): Promise<void> {
+  await gh("DELETE", `${R}/issues/${number}/labels/${encodeURIComponent(label)}`);
+  progress(`#${number} -${label} (by hand)`);
+}
+
+let me: string | undefined;
+/** The driver's own login: who a scenario's human edits come from. */
+export async function driverLogin(): Promise<string> {
+  me ??= (await gh<{ login: string }>("GET", "/user")).login;
+  return me;
+}
+
 export async function devSha(): Promise<string> {
   return (await gh<{ object: { sha: string } }>("GET", `${R}/git/ref/heads/dev`)).object.sha;
 }

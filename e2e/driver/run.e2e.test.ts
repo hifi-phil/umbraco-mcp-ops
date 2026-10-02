@@ -88,6 +88,13 @@ describe("audit: every answer the orchestrator gave during the run", () => {
           return rows.length !== 1 || rows[0]!.event !== event;
         });
       expect(unmatched.map(line), "applied deliveries without exactly one matching row").toEqual([]);
+      // Nothing but the manual-override scenario's own edit may log one: the
+      // Worker's label changes (its App bot), the stub's actions and the
+      // driver's trigger labels must never be mistaken for a person's edit.
+      const overrides = [...logs].flatMap(([n, rows]) =>
+        rows.filter((r) => r.event === "manual_override" && n !== runLog.manualOverrideIssue).map((r) => `#${n} ${r.to_effect}`),
+      );
+      expect(overrides, "manual_override rows outside the override scenario").toEqual([]);
       const guids = new Set(details.map((d) => d.guid));
       const orphans = [...logs].flatMap(([n, rows]) =>
         rows

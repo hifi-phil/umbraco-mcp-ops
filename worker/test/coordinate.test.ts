@@ -893,6 +893,58 @@ describe("coordinateWebhook — CI failing under auto-merge goes to rework, then
   });
 });
 
+describe("coordinateWebhook — manual_override (a person editing a tracked label)", () => {
+  const bot = "umbraco-agent-orchestrator[bot]";
+  const change = (action: string, label: string, login = "phil", type: "User" | "Bot" = "User") =>
+    input({ deliveryId: "d-manual", payload: { action, label: { name: label }, sender: { login, type } } });
+  const row = (deps: Deps) => (deps.logTransition as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+
+  it("a person clears ai-blocked -> a manual_override row: before, the change, who, after; nothing written to GitHub", async () => {
+    const deps = fakeDeps({ botLogin: async () => bot, getLabels: vi.fn(async () => []) });
+    const result = await coordinateWebhook(deps, change("issues.unlabeled", LABELS.AI_BLOCKED));
+    expect(result).toEqual({ outcome: "manual_override", change: "-ai-blocked", by: "phil" });
+    expect(row(deps)).toMatchObject({ deliveryId: "d-manual", event: "manual_override", fromState: LABELS.AI_BLOCKED, droppedReason: null });
+    expect(JSON.parse(row(deps).toEffect)).toEqual({ kind: "manual", change: "-ai-blocked", by: "phil", now: "none" });
+    expect(deps.addLabel).not.toHaveBeenCalled();
+    expect(deps.removeLabel).not.toHaveBeenCalled();
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("a person adds merge-blocked by hand -> logged, from auto-merge", async () => {
+    const deps = fakeDeps({ botLogin: async () => bot, getLabels: vi.fn(async () => [LABELS.AUTO_MERGING, LABELS.MERGE_BLOCKED]) });
+    const result = await coordinateWebhook(deps, change("pull_request.labeled", LABELS.MERGE_BLOCKED));
+    expect(result).toMatchObject({ outcome: "manual_override", change: "+merge-blocked" });
+    expect(row(deps).fromState).toBe(LABELS.AUTO_MERGING);
+  });
+
+  it("a person removes auto-merge from a merge-blocked PR (contextual there, normally unlogged) -> logged", async () => {
+    const deps = fakeDeps({ botLogin: async () => bot, getLabels: vi.fn(async () => [LABELS.MERGE_BLOCKED]) });
+    const result = await coordinateWebhook(deps, change("pull_request.unlabeled", LABELS.AUTO_MERGING));
+    expect(result).toMatchObject({ outcome: "manual_override", change: "-auto-merge" });
+  });
+
+  it("the Worker's own bot changing a label -> not an override, nothing logged", async () => {
+    const deps = fakeDeps({ botLogin: async () => bot, getLabels: vi.fn(async () => []) });
+    expect(await coordinateWebhook(deps, change("issues.unlabeled", LABELS.AI_BLOCKED, bot, "Bot"))).toEqual({ outcome: "no_event" });
+    expect(deps.logTransition).not.toHaveBeenCalled();
+  });
+
+  it("a person adding a trigger label is a command, not an override: its own rule's row", async () => {
+    const deps = fakeDeps({ botLogin: async () => bot, getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    expect(await coordinateWebhook(deps, change("issues.labeled", LABELS.AI_READY))).toMatchObject({
+      outcome: "applied",
+      event: EVENTS.LABELLED_AI_READY,
+    });
+    expect(row(deps).event).toBe(EVENTS.LABELLED_AI_READY);
+  });
+
+  it("an untracked label (dependencies) -> nothing logged", async () => {
+    const deps = fakeDeps({ botLogin: async () => bot });
+    expect(await coordinateWebhook(deps, change("issues.labeled", "dependencies"))).toEqual({ outcome: "no_event" });
+    expect(deps.logTransition).not.toHaveBeenCalled();
+  });
+});
+
 describe("coordinateRoutineSignal — the direct routine-to-DO heartbeat channel", () => {
   const signalInput = (signal: RoutineSignal) => ({
     owner: "hifi-phil",
