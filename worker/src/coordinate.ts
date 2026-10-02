@@ -39,7 +39,8 @@ export const LABEL_JUST_ADDED_BY: Partial<Record<Event, Label>> = {
 
 export type TransitionRow = {
   // The GitHub delivery (X-GitHub-Delivery) that caused this row; null for
-  // a row nothing delivered, i.e. the watchdog's own expiry.
+  // a row nothing delivered: the watchdog's own expiry, and the sweep's rows
+  // (`sweep`, `reconcile_refire`, and what a re-fire or its gate applies).
   deliveryId: string | null;
   owner: string;
   repo: string;
@@ -385,6 +386,12 @@ async function handToRework(
   }
   const result = await applyEvent(deps, input, EVENTS.MERGE_GATE_FAILED_SOFT, currentLabels);
   if (result.outcome === "applied") {
+    // A merge-blocked PR's retry (auto-merge re-added, read as auto-merge):
+    // the rule swaps only auto-merge, so merge-blocked comes off here, or
+    // merge-blocked + auto-rework would read as ambiguous from then on.
+    if (currentLabels.includes(LABELS.MERGE_BLOCKED)) {
+      await depsFor(deps, EVENTS.MERGE_GATE_FAILED_SOFT).io.removeLabel(input.owner, input.repo, input.issueNumber, LABELS.MERGE_BLOCKED);
+    }
     await deps.setCiFix({ attempts: attempts + 1, pending: true });
     await depsFor(deps, EVENTS.MERGE_GATE_FAILED_SOFT).io.commentOnIssue(
       input.owner,
