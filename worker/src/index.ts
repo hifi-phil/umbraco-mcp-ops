@@ -8,7 +8,8 @@
 // DO key, and that distinct issues/repos always produce distinct keys.
 
 import { IssueCoordinator } from "./issue-coordinator";
-import { extractRoutingInfo, toWebhookPayload, verifySignature } from "./webhook-parse";
+import { extractRoutingInfo, toWebhookPayload, verifySignature, type RoutingInfo } from "./webhook-parse";
+import { openPullsForCommit } from "./github-client";
 import type { CoordinateInput, RoutineSignalInput } from "./coordinate";
 
 export { IssueCoordinator };
@@ -17,6 +18,8 @@ export type Env = {
   ISSUE_COORDINATOR: DurableObjectNamespace;
   DB: D1Database;
   GITHUB_APP_TOKEN: string;
+  GITHUB_APP_ID?: string; // the Worker's GitHub App — see github-app.ts
+  GITHUB_APP_PRIVATE_KEY?: string;
   GITHUB_API_BASE_URL?: string; // local smoke-testing seam — see github-client.ts
   GITHUB_WEBHOOK_SECRET?: string;
   // {"owner/repo": {"fireUrl", "token"}} — each repo's loop-dispatch routine.
@@ -71,7 +74,7 @@ export default {
       return new Response("invalid JSON body", { status: 400 });
     }
 
-    const routing = extractRoutingInfo(body);
+    const routing = extractRoutingInfo(body) ?? (eventType === "check_suite" ? await routeByCommit(env, body) : null);
     if (!routing) return Response.json({ ok: true, dropped: "no routable issue/PR number" });
 
     const payload = toWebhookPayload(body, eventType);
@@ -141,6 +144,22 @@ async function handleTransitions(request: Request, env: Env, url: URL): Promise<
     .bind(owner, repo, issue)
     .all<TransitionLogRow>();
   return Response.json({ rows: results });
+}
+
+/**
+ * GitHub sometimes sends a check_suite with an empty pull_requests (found by
+ * e2e: with two CI runs per commit, the second suite's webhook came without
+ * its PR, so the final red result never reached the PR and the watchdog
+ * fired instead). Route it to the open PRs on its commit.
+ */
+async function routeByCommit(env: Env, body: Record<string, unknown>): Promise<RoutingInfo> {
+  const repository = body.repository as { name?: string; owner?: { login?: string } } | undefined;
+  const sha = (body.check_suite as { head_sha?: string } | undefined)?.head_sha;
+  const owner = repository?.owner?.login;
+  const repo = repository?.name;
+  if (!owner || !repo || !sha) return null;
+  const issueNumbers = await openPullsForCommit(env, owner, repo, sha);
+  return issueNumbers.length > 0 ? { owner, repo, issueNumbers } : null;
 }
 
 /**

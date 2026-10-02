@@ -386,7 +386,7 @@ describe("IssueCoordinator — MODE=enforce with the watchdog shadowed (Phase 4)
     apiFetch.mock.calls.filter(([url]) => (url as string).startsWith("https://routines.example/fire/"));
 
   it("auto-merge fires the repo's loop-dispatch routine for real, logged as enforce", async () => {
-    const apiFetch = fakeApiFetch();
+    const apiFetch = fakeApiFetch({ labels: ["auto-merge"] });
     vi.stubGlobal("fetch", apiFetch);
     const { ctx } = fakeCtx();
     const { db, inserted } = fakeDb();
