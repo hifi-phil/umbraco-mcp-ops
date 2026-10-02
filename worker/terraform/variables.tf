@@ -58,13 +58,9 @@ variable "watchdog" {
 
 variable "github_owner" {
   type        = string
-  description = "Owner of the repo whose webhooks feed the Worker."
+  description = "The GitHub account the Worker's repos belong to (the e2e sandbox's owner, and the GitHub provider's)."
 }
 
-variable "github_repo" {
-  type        = string
-  description = "Repo name (no owner) to install the webhook on. Use a test repo where the real loops run, with the usual labels (ready-for-ai, …)."
-}
 
 variable "github_read_token" {
   type        = string

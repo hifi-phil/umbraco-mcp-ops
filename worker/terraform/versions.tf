@@ -19,8 +19,9 @@ terraform {
 # Reads CLOUDFLARE_API_TOKEN from the environment.
 provider "cloudflare" {}
 
-# Reads GITHUB_TOKEN from the environment. Needs admin:repo_hook (or a
-# fine-grained token with Webhooks: write) on var.github_repo only.
+# Reads GITHUB_TOKEN from the environment. Only the e2e stub's own
+# check_suite webhook is a repo hook now (the orchestrator's come from its
+# GitHub App), so it needs Webhooks: write on var.e2e_repo only.
 provider "github" {
   owner = var.github_owner
 }

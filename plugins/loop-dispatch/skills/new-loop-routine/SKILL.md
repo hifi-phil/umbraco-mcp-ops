@@ -102,8 +102,10 @@ step: …`) instead of "No progress step was ever reported".
    Fire URL) and `LOOP_DISPATCH_TOKEN` (the token) — `gh secret set …`.
 4. **Commit the caller workflow** — copy [`references/caller-workflow.yml`](references/caller-workflow.yml)
    **verbatim** to the repo as `.github/workflows/loop-dispatch.yml` (open a PR).
-   (`umbraco-mcp-ops` itself has no caller: it's dispatched by the agent-orchestration
-   Worker, see `worker/README.md`.)
+   **Skip this for a repo the agent-orchestration Worker dispatches**
+   (`umbraco-mcp-ops` today): instead, install the Worker's GitHub App on the repo and add
+   the repo's Fire URL + token to the Worker's `repo_routines` (`worker/README.md`,
+   "Deploying"). The App's webhook then routes its events; there's no caller or secrets.
 5. **Smoke-test** — label a throwaway issue `ready-for-ai` (Action fires → routine builds
    a PR), and label a PR `dependencies` (Action computes `route=none` → routine never fires).
 

@@ -8,9 +8,9 @@ with OpenTofu from `terraform/`; see "Deploying" below.
 ## Deploying
 
 `terraform/` owns every real resource: the D1 database (with
-`migrations/` applied), the Worker and its Durable Object, its secrets,
-its workers.dev route, and the GitHub webhook on one test repo.
-`tofu destroy` removes all of it.
+`migrations/` applied), the Worker and its Durable Object, its secrets, and
+its workers.dev route. `tofu destroy` removes all of it. GitHub reaches the
+Worker through its **GitHub App**, which tofu can't manage (see below).
 
 ```bash
 cd worker
@@ -18,7 +18,7 @@ npm ci && npm run build                     # wrangler bundles to dist/index.js
 cd terraform
 cp terraform.tfvars.example terraform.tfvars   # fill in; gitignored
 export CLOUDFLARE_API_TOKEN=…   # account token: Workers Scripts: Edit, D1: Edit
-export GITHUB_TOKEN=…           # webhook admin on the test repo only
+export GITHUB_TOKEN=…           # Webhooks: write on the e2e sandbox only (the stub's own hook)
 mkdir -p -m 700 ~/.local/state/umbraco-mcp-ops
 tofu init -backend-config="path=$HOME/.local/state/umbraco-mcp-ops/agent-orchestration-worker.tfstate"
 tofu apply
@@ -39,6 +39,22 @@ tofu destroy
   drives and never commit it.
 - The migrations step shells out to wrangler
   (`terraform/apply-d1-migrations.sh`) because tofu can't run SQL.
+
+**The GitHub App** (set up by hand, once) is the Worker's identity and its
+webhook source:
+- **Permissions:**
+  - Issues, Pull requests: read & write
+  - Checks, Contents: read
+- **Webhook:**
+  - Active
+  - URL: `tofu output -raw worker_url`
+  - Secret: `tofu output -raw webhook_secret`
+  - Events: Issues, Issue comment, Pull request, Check suite
+- **Tofu variables:** its ID and private key go in `github_app_id` and
+  `github_app_private_key`.
+- **Connecting a repo** is installing the App on it, plus the repo's entry
+  in `repo_routines` (its loop-dispatch routine). There's no per-repo hook to
+  add, so the old caller workflow and its secrets aren't needed.
 
 - **After the first apply, set `deployed_do_migration_tag = "v1"`** in
   `terraform.tfvars`. Every Worker upload re-sends the Durable Object

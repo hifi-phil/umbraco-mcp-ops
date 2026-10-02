@@ -132,21 +132,11 @@ resource "cloudflare_workers_script_subdomain" "worker" {
   enabled     = true
 }
 
-resource "github_repository_webhook" "worker" {
-  repository = var.github_repo
-  active     = true
-  # Exactly what graph/github/from-github.ts and coordinate.ts translate.
-  events = ["issues", "issue_comment", "pull_request", "check_suite"]
-
-  configuration {
-    url          = local.worker_url
-    content_type = "json"
-    secret       = random_password.webhook_secret.result
-    insecure_ssl = false
-  }
-
-  depends_on = [cloudflare_workers_script_subdomain.worker]
-}
+# Webhooks come from the GitHub App, not a hook per repo: the App's webhook
+# (its settings page) points at worker_url with this webhook_secret and the
+# events issues, issue_comment, pull_request and check_suite, so a repo is
+# connected by installing the App on it. Tofu can't manage an App's
+# settings; see worker/README.md's "Deploying".
 
 # --- The e2e sandbox: the stub agent and the sandbox's webhook -------------
 # Build the stub first: `cd ../../e2e && npm run build` (→ e2e/stub/dist/index.js).
@@ -200,23 +190,6 @@ resource "cloudflare_workers_script_subdomain" "e2e_stub" {
   account_id  = var.cloudflare_account_id
   script_name = cloudflare_workers_script.e2e_stub[0].script_name
   enabled     = true
-}
-
-resource "github_repository_webhook" "e2e" {
-  count      = local.e2e ? 1 : 0
-  repository = var.e2e_repo
-  active     = true
-  events     = ["issues", "issue_comment", "pull_request", "check_suite"]
-
-  configuration {
-    url          = local.worker_url
-    content_type = "json"
-    secret       = random_password.webhook_secret.result
-    insecure_ssl = false
-  }
-
-  # The stub has to be answering before the sandbox can fire it.
-  depends_on = [cloudflare_workers_script_subdomain.worker, cloudflare_workers_script_subdomain.e2e_stub]
 }
 
 # The stub's own webhook: CI finishing, so its merge-flow can merge on green
