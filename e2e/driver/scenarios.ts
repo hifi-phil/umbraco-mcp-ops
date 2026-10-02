@@ -487,7 +487,9 @@ export const scenarios: Scenario[] = [
         expect((await sweep()).refired.map((r) => r.toLowerCase()), "too recent to re-fire").not.toContain(key);
 
         await sleep(2 * WATCHDOG_MINUTES * MIN - 45_000 + 30_000); // past twice the timeout since that edit
-        expect((await sweep()).refired.map((r) => r.toLowerCase()), "re-fired once left behind").toContain(key);
+        // The deployed alarm sweep may get there first; either way the log
+        // below must show exactly that re-fire.
+        await sweep();
         expectLabels(await waitFor(issue, labelsAre(LABELS.AI_BLOCKED), MIN), issue, LABELS.AI_BLOCKED);
         await expectLogged(
           issue,

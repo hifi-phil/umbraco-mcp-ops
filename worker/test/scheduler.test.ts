@@ -78,6 +78,40 @@ describe("Scheduler", () => {
     expect(inserted, "no sweep row for a quiet sweep").toEqual([]);
   });
 
+  it("only settled candidates (completed, already reported) -> not news: no row, nothing counted, and it slows to hourly", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ready-for-ai")
+          ? Response.json([{ number: 1 }, { number: 2 }, { number: 3 }])
+          : Response.json([]),
+      ),
+    );
+    const before = Date.now();
+    const { ctx, storage } = fakeCtx();
+    const { env, inserted } = fakeEnv((b) =>
+      b.issueNumber === 1
+        ? { outcome: "completed" }
+        : b.issueNumber === 2
+          ? { outcome: "would_refire", run: "issue-build-loop", idleMinutes: 90, alreadyLogged: true }
+          : { outcome: "not_triggered", state: "ai-stuck" },
+    );
+    await new Scheduler(ctx, env).alarm();
+    expect(Math.round(((await storage.getAlarm())! - before) / 60_000)).toBe(60);
+    expect(inserted, "no sweep row for repeats").toEqual([]);
+    expect(await new Scheduler(ctx, env).sweep()).toMatchObject({ checked: 3, live: 0, wouldRefire: [] });
+  });
+
+  it("a recently active candidate keeps the 15-minute pace (it could be left behind soon)", async () => {
+    vi.stubGlobal("fetch", github());
+    const before = Date.now();
+    const { ctx, storage } = fakeCtx();
+    const { env, inserted } = fakeEnv(() => ({ outcome: "recent", idleMinutes: 3 }));
+    await new Scheduler(ctx, env).alarm();
+    expect(Math.round(((await storage.getAlarm())! - before) / 60_000)).toBe(15);
+    expect(inserted).toEqual([]);
+  });
+
   it("/ensure brings a slowed (hourly) alarm back to the normal interval", async () => {
     const { ctx, storage } = fakeCtx(Date.now() + 60 * 60_000);
     await new Scheduler(ctx, fakeEnv(() => ({})).env).fetch(new Request("https://s/ensure", { method: "POST" }));

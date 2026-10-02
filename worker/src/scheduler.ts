@@ -40,7 +40,18 @@ export type SchedulerEnv = GitHubEnv & {
   SWEEP_MAX_REFIRES?: string;
 };
 
-export type SweepSummary = { repos: string[]; checked: number; refired: string[]; wouldRefire: string[]; errors: string[] };
+// checked: every candidate asked. live: those that could still need the
+// sweep soon (running, recently active, or acted on / newly reported now);
+// a settled one (completed, not triggered, already reported) isn't.
+// wouldRefire: only newly reported ones, not every sweep's repeat.
+export type SweepSummary = {
+  repos: string[];
+  checked: number;
+  live: number;
+  refired: string[];
+  wouldRefire: string[];
+  errors: string[];
+};
 
 export const DEFAULT_SWEEP_MINUTES = 15;
 export const DEFAULT_SWEEP_IDLE_MINUTES = 60;
@@ -93,8 +104,8 @@ export class Scheduler {
     await this.ctx.storage.setAlarm(started + this.intervalMs());
     try {
       const summary = await this.sweep();
-      // Nothing to watch, and no webhook arrived meanwhile: slow down.
-      if (summary.checked === 0 && summary.errors.length === 0 && this.lastEnsure < started) {
+      // Nothing live to watch, and no webhook arrived meanwhile: slow down.
+      if (summary.live === 0 && summary.errors.length === 0 && this.lastEnsure < started) {
         await this.ctx.storage.setAlarm(started + this.idleIntervalMs());
       }
     } catch (e) {
@@ -118,7 +129,7 @@ export class Scheduler {
   async sweep(only?: string[]): Promise<SweepSummary> {
     const all = Object.keys(JSON.parse(this.env.REPO_ROUTINES_JSON) as Record<string, unknown>);
     const repos = only ? all.filter((r) => only.some((o) => o.toLowerCase() === r.toLowerCase())) : all;
-    const summary: SweepSummary = { repos, checked: 0, refired: [], wouldRefire: [], errors: [] };
+    const summary: SweepSummary = { repos, checked: 0, live: 0, refired: [], wouldRefire: [], errors: [] };
 
     for (const full of repos) {
       const [owner, repo] = full.split("/") as [string, string];
@@ -147,17 +158,20 @@ export class Scheduler {
           });
           const result = (await res.json().catch(() => null)) as ReconcileResult | { outcome: "error"; error: string } | null;
           const acted = result?.outcome === "refired" || (result?.outcome === "gated" && result.result.outcome === "applied");
+          const fresh = result?.outcome === "would_refire" && !result.alreadyLogged;
           if (acted) summary.refired.push(`${full}#${issueNumber}`);
-          else if (result?.outcome === "would_refire") summary.wouldRefire.push(`${full}#${issueNumber}`);
+          else if (fresh) summary.wouldRefire.push(`${full}#${issueNumber}`);
           else if (!res.ok) summary.errors.push(`${full}#${issueNumber}: ${(result as { error?: string } | null)?.error ?? res.status}`);
+          if (acted || fresh || result?.outcome === "watched" || result?.outcome === "recent") summary.live++;
         } catch (e) {
           summary.errors.push(`${full}#${issueNumber}: ${e instanceof Error ? e.message : e}`);
         }
       }
     }
 
-    // A quiet sweep isn't worth a row: log only one that checked something.
-    if (summary.checked === 0 && summary.errors.length === 0) return summary;
+    // Log only a sweep with something new: a re-fire, a newly reported
+    // would-re-fire, or an error. Repeats of a settled issue aren't news.
+    if (summary.refired.length === 0 && summary.wouldRefire.length === 0 && summary.errors.length === 0) return summary;
     await this.env.DB.prepare(
       `INSERT INTO transitions (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

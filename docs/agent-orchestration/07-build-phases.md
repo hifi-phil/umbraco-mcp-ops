@@ -252,8 +252,8 @@ forever.
     such issue whether it was left behind: no watchdog, and idle for twice
     its routine's timeout. If so, it re-fires the routine and logs
     `reconcile_refire`.
-  - When nothing's in a trigger state the chain stops, and the next webhook
-    restarts it.
+  - When nothing live is left to watch it slows to hourly (never stops, so
+    a lost webhook is still caught), and the next webhook speeds it up.
   - Real repos sweep in **shadow**, logging only, until `sweep_mode` is set
     to `enforce`. The sandbox enforces.
   - It's the base for scheduled agents later.

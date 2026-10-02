@@ -56,8 +56,9 @@ webhook source:
   in `repo_routines` (its loop-dispatch routine). There's no per-repo hook to
   add, so the old caller workflow and its secrets aren't needed.
 
-- **After the first apply, set `deployed_do_migration_tag = "v1"`** in
-  `terraform.tfvars`. Every Worker upload re-sends the Durable Object
+- **After the first apply, set `deployed_do_migration_tag`** in
+  `terraform.tfvars` to the tag `tofu output migration_tag` shows (`"v2"`
+  for a fresh deploy). Every Worker upload re-sends the Durable Object
   migration, and Cloudflare rejects one whose `old_tag` doesn't match the
   deployed tag (412, "Actor migration tag precondition failed"; hit on the
   first code update, 29-09-2026). Leave it unset on a fresh deploy, since
@@ -433,15 +434,17 @@ Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
 - **Why an alarm, not a Cron Trigger:** alarms are at-least-once and retried
   with backoff. Cron triggers have no retries and have been seen to stop
   silently.
-- **It only runs while there's something to watch:**
+- **It slows down when there's nothing live to watch:**
   - each alarm sets the next one before sweeping, so a failure keeps it
     going
-  - a sweep that finds no candidates stops the chain
-  - every webhook re-arms it (`/ensure`)
+  - a sweep with nothing live (no issue running, recently active, or newly
+    re-fired or reported) slows the next to hourly (`SWEEP_IDLE_MINUTES`).
+    It never stops: a lost webhook is exactly when nothing would restart it
+  - every webhook brings it back to `sweep_minutes` (`/ensure`)
 
-  An issue can only be left behind after a trigger label was added, and that
-  label's webhook arms the sweep first. A sweep that checked something writes
-  a `sweep` row (`owner` = `_scheduler`); a quiet one writes nothing.
+  A sweep with something new (a re-fire, a newly reported would-re-fire, an
+  error) writes a `sweep` row (`owner` = `_scheduler`); any other writes
+  nothing.
 - **Modes:** `sweep_mode = "shadow"` (the default) only logs what it would
   re-fire, once per idle stretch. Run it that way first: a repo can have
   issues labelled from before the Worker. Even when enforcing:
@@ -453,7 +456,7 @@ Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
   The e2e sandbox always enforces, and `POST /sweep` runs a sweep of the
   sandbox on demand.
 - **Cost:** at most about 10,000 DO requests a month, and less when the
-  repos are quiet, since the chain stops. That's well inside the Free plan,
+  repos are quiet, since the sweep slows to hourly. That's well inside the Free plan,
   and inside the $5 Paid allowance.
 
 ## The watchdog is a real event
