@@ -385,6 +385,15 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
     expect(deleteAlarm).not.toHaveBeenCalled();
   });
 
+  it("a pending fire stamped with a dueAt that has passed -> expires as usual", async () => {
+    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    vi.stubGlobal("fetch", apiFetch);
+    const { ctx, storage } = fakeCtx();
+    await storage.put("pendingFire", { ...pendingBuild, dueAt: Date.now() - 1_000 });
+    await new IssueCoordinator(ctx, fakeEnv()).alarm();
+    expect(await storage.get("pendingFire")).toBeUndefined();
+  });
+
   it("no-ops when no pendingFire is set — a harmless race, not a bug", async () => {
     const apiFetch = fakeApiFetch();
     vi.stubGlobal("fetch", apiFetch);

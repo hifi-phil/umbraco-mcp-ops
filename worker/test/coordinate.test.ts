@@ -529,6 +529,14 @@ describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
     expect(deps.clearPendingFire).not.toHaveBeenCalled();
   });
 
+  it("a 1-minute watchdog still tells a just-replaced fire (due in a minute) from a due one", async () => {
+    const now = Date.parse("2026-10-02T10:00:00Z");
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), watchdogMinutes: () => 1 });
+    await deps.setPendingFire({ ...pending, dueAt: now + 60_000 });
+    expect(await coordinateWatchdogExpired(deps, now)).toMatchObject({ outcome: "not_due" });
+    expect(await coordinateWatchdogExpired(deps, now + 59_000)).toMatchObject({ outcome: "applied" });
+  });
+
   it("a pending fire due now (or within a minute: an early alarm) -> expires as usual", async () => {
     const now = Date.parse("2026-10-02T10:00:00Z");
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });

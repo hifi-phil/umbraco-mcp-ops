@@ -603,7 +603,8 @@ export async function coordinateRoutineSignal(
 export type WatchdogResult = { outcome: "no_pending_fire" } | { outcome: "not_due"; dueAt: number } | CoordinateResult;
 
 // An alarm can be invoked a little before its time is reached; a pending
-// fire due within this margin counts as due.
+// fire due within this margin counts as due. Capped at half the timeout, so
+// a short (e2e) watchdog still tells a just-replaced fire from a due one.
 const WATCHDOG_DUE_MARGIN_MS = 60_000;
 
 /**
@@ -744,7 +745,8 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   // The alarm started, then something queued ahead of it (a heartbeat, or
   // the sweep re-firing a run it took for lost) replaced the pending fire
   // and armed a new alarm: this one isn't for it. Leave that alarm alone.
-  if (pending.dueAt !== undefined && now < pending.dueAt - WATCHDOG_DUE_MARGIN_MS) {
+  const margin = Math.min(WATCHDOG_DUE_MARGIN_MS, (deps.watchdogMinutes(pending.run) * 60_000) / 2);
+  if (pending.dueAt !== undefined && now < pending.dueAt - margin) {
     return { outcome: "not_due", dueAt: pending.dueAt };
   }
 
