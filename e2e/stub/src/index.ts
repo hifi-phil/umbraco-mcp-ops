@@ -129,6 +129,11 @@ export async function handleFire(
     return new Response(`not the e2e repo: ${fire.owner}/${fire.repo}`, { status: 403 });
   }
 
+  // `fail_fire`: refuse the fire itself, a fire that never got out (no
+  // watchdog, no log row): what the reconciliation sweep is for.
+  const { body: now } = (await gh("GET", `/repos/${fire.owner}/${fire.repo}/issues/${fire.number}`)) as { body: string | null };
+  if (parseHint(now) === "fail_fire") return new Response("e2e stub: scripted fire failure", { status: 500 });
+
   defer(
     logged(`${fire.route} #${fire.number}`, async () => {
       await new Promise((r) => setTimeout(r, delayMs));

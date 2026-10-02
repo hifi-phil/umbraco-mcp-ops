@@ -78,6 +78,7 @@ async function respond(run: () => Promise<unknown>): Promise<Response> {
 const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
 const RECONCILE_REPORTED_KEY = "reconcileReported";
+const COMPLETED_KEY = "completed";
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
 
 export class IssueCoordinator {
@@ -107,13 +108,15 @@ export class IssueCoordinator {
 
     // The sweep (scheduler.ts) asking whether this issue was left behind.
     if (new URL(request.url).pathname === "/reconcile") {
-      let input: { owner: string; repo: string; issueNumber: number; enforced: boolean };
+      let input: { owner: string; repo: string; issueNumber: number; enforced: boolean; updatedAt?: string };
       try {
         input = await request.json();
       } catch {
         return new Response("invalid JSON body", { status: 400 });
       }
-      return this.serial(() => respond(() => coordinateReconcile(this.deps(input), input, { enforced: input.enforced })));
+      return this.serial(() =>
+        respond(() => coordinateReconcile(this.deps(input), input, { enforced: input.enforced, updatedAt: input.updatedAt })),
+      );
     }
 
     if (new URL(request.url).pathname === "/routine-signal") {
@@ -160,6 +163,10 @@ export class IssueCoordinator {
       enforced: resolveEnforced(this.env.MODE, override?.mode ?? this.env.WATCHDOG),
       watchdogMinutes,
       botLogin: async () => (appConfigured(this.env) ? appBotLogin(this.env) : null),
+      markCompleted: async () => {
+        await this.ctx.storage.put(COMPLETED_KEY, true);
+      },
+      wasCompleted: async () => (await this.ctx.storage.get<boolean>(COMPLETED_KEY)) === true,
       getReconcileReported: async () => (await this.ctx.storage.get<string>(RECONCILE_REPORTED_KEY)) ?? null,
       setReconcileReported: async (lastActivity: string) => {
         await this.ctx.storage.put(RECONCILE_REPORTED_KEY, lastActivity);
@@ -203,6 +210,7 @@ export class IssueCoordinator {
         await this.ctx.storage.delete(seenKeyFor(deliveryId));
       },
       setPendingFire: async (info: PendingFire) => {
+        await this.ctx.storage.delete(COMPLETED_KEY); // a new fire (or heartbeat): not finished
         await this.ctx.storage.put(PENDING_FIRE_KEY, info);
         await this.ctx.storage.setAlarm(Date.now() + watchdogMinutes(info.run) * 60_000);
       },

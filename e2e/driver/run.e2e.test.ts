@@ -63,7 +63,9 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       ).filter((d) => d.repo.toLowerCase() === REPO.toLowerCase());
       const line = (d: DeliveryDetail) => `${d.event}.${d.action} #${d.numbers.join(",")} -> ${d.statusCode} ${d.response}`;
 
-      const failed = details.filter((d) => d.statusCode >= 400 || d.response.includes('"outcome":"error"'));
+      // The sweep scenario's refused fire is scripted; any other failure isn't.
+      const scripted = (d: DeliveryDetail) => d.numbers.includes(runLog.sweepIssue ?? -1) && d.response.includes("scripted fire failure");
+      const failed = details.filter((d) => (d.statusCode >= 400 || d.response.includes('"outcome":"error"')) && !scripted(d));
       expect(failed.map(line), "deliveries the Worker failed").toEqual([]);
       const noRule = details.filter((d) => d.response.includes('"outcome":"dropped_no_rule"'));
       expect(noRule.map(line), "events the table had no rule for").toEqual([]);

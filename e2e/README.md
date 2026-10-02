@@ -53,6 +53,7 @@ Latest full run (01-10-2026): all 21 scenarios and the audit pass in about
 | `issue-discuss-loop` | `discuss` | one signed question per round |
 | any | `heartbeat` | one `process` signal to the orchestrator's `/routine-signal`, then nothing |
 | any | `complete` | one `completion` signal, then nothing |
+| any | `fail_fire` | refuses the fire itself (500): a fire that never got out |
 | any | `silent` | nothing |
 
 A real merge-flow polls CI for minutes, which a Worker request can't. So
@@ -95,9 +96,9 @@ re-checks a gate that still reads "CI running".
 - Phase 7:
   1. A person clears `ai-blocked` by hand → a `manual_override` row, and
      nothing else done.
-  2. The sweep: a run left in `ready-for-ai` with no watchdog isn't touched
-     while recent, and is re-fired once idle for twice its timeout
-     (`POST /sweep`).
+  2. The sweep: a fire that never got out (the stub refuses it, hint
+     `fail_fire`) isn't touched while recent, and is re-fired once idle
+     for twice its timeout (`POST /sweep`).
 - The real `agent-outcomes` hook (`driver/hook.ts` runs it, as a routine
   session would, against the deployed Worker):
   1. Its heartbeat is quoted by the expiry.

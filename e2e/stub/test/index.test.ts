@@ -269,6 +269,13 @@ describe("handleFire", () => {
     expect(defer).not.toHaveBeenCalled();
   });
 
+  it("fail_fire -> the fire itself is refused (500), nothing deferred", async () => {
+    const defer = vi.fn();
+    const gh = fakeGh({ [`GET ${R}/issues/7`]: { body: "<!-- e2e: fail_fire -->" } });
+    expect((await handleFire(fireRequest({ text: text() }), env, defer, gh, 0)).status).toBe(500);
+    expect(defer).not.toHaveBeenCalled();
+  });
+
   it("no route line -> 400", async () => {
     expect((await handleFire(fireRequest({ text: "hello" }), env, vi.fn())).status).toBe(400);
   });

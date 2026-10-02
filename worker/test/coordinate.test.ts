@@ -36,6 +36,7 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   let pendingFire: PendingFire | null = null;
   let ciFix: CiFix | null = null;
   let reconcileReported: string | null = null;
+  let completed = false;
   return {
     getLabels: vi.fn(async () => []),
     addLabel: vi.fn(async () => {}),
@@ -69,6 +70,10 @@ function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     watchdogMinutes: watchdogMinutesFor,
     botLogin: async () => null,
     lastActivityAt: async () => null,
+    markCompleted: vi.fn(async () => {
+      completed = true;
+    }),
+    wasCompleted: vi.fn(async () => completed),
     getReconcileReported: vi.fn(async () => reconcileReported),
     setReconcileReported: vi.fn(async (s: string) => {
       reconcileReported = s;
@@ -956,6 +961,41 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
   const ref = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 };
   const now = Date.parse("2026-10-02T12:00:00Z");
   const minutesAgo = (m: number) => new Date(now - m * 60_000).toISOString().replace("T", " ").slice(0, 19);
+
+  it("its last run reported completion (merge-flow waiting on a review) -> completed, not re-fired", async () => {
+    const deps = fakeDeps({ wasCompleted: vi.fn(async () => true), getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]) });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toEqual({ outcome: "completed" });
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("a completion signal is what marks it", async () => {
+    const deps = fakeDeps({ getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.MERGE_FLOW })) });
+    await coordinateRoutineSignal(deps, {
+      owner: "hifi-phil",
+      repo: "umbraco-mcp-ops",
+      signal: { kind: "completion", routine: ROUTINES.MERGE_FLOW, issue: 412, outcome: { outcome: "build_blocked", reason: "x" } },
+    });
+    expect(deps.markCompleted).toHaveBeenCalledOnce();
+  });
+
+  it("GitHub updated it a moment ago (a label whose webhook hasn't landed) -> recent, even with no log rows", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    const updatedAt = new Date(now - 30_000).toISOString();
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now, updatedAt })).toMatchObject({ outcome: "recent" });
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("a lost auto-merge fire is gated like a fresh label: a conflict -> merge-blocked, merge-flow not fired", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
+      lastActivityAt: async () => minutesAgo(90),
+      getMergeGateFacts: vi.fn(async () => gateFacts({ mergeable: false })),
+    });
+    const result = await coordinateReconcile(deps, ref, { enforced: true, now });
+    expect(result).toMatchObject({ outcome: "gated", result: { outcome: "applied", event: EVENTS.MERGE_GATE_FAILED_HARD } });
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.MERGE_BLOCKED);
+    expect(deps.fireRoutine).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), 412, ROUTINES.MERGE_FLOW);
+  });
 
   it("a watchdog is running -> watched, nothing done", async () => {
     const deps = fakeDeps({ getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP })) });

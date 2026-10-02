@@ -110,29 +110,36 @@ export class Scheduler {
 
     for (const full of repos) {
       const [owner, repo] = full.split("/") as [string, string];
-      let numbers: number[];
+      let candidates: Map<number, string>;
       try {
-        numbers = [...new Set((await Promise.all(TRIGGER_LABELS.map((l) => openWithLabel(this.env, owner, repo, l)))).flat())];
+        const found = (await Promise.all(TRIGGER_LABELS.map((l) => openWithLabel(this.env, owner, repo, l)))).flat();
+        candidates = new Map(found.map((c) => [c.number, c.updatedAt]));
       } catch (e) {
         summary.errors.push(`${full}: ${e instanceof Error ? e.message : e}`);
         continue;
       }
-      for (const issueNumber of numbers) {
+      for (const [issueNumber, updatedAt] of candidates) {
         summary.checked++;
-        const stub = this.env.ISSUE_COORDINATOR.get(this.env.ISSUE_COORDINATOR.idFromName(doKey(owner, repo, issueNumber)));
-        const res = await stub.fetch("https://issue-coordinator/reconcile", {
-          method: "POST",
-          body: JSON.stringify({
-            owner,
-            repo,
-            issueNumber,
-            enforced: this.enforcedFor(full) && summary.refired.length < this.maxRefires(),
-          }),
-        });
-        const result = (await res.json().catch(() => null)) as ReconcileResult | { outcome: "error"; error: string } | null;
-        if (result?.outcome === "refired") summary.refired.push(`${full}#${issueNumber}`);
-        else if (result?.outcome === "would_refire") summary.wouldRefire.push(`${full}#${issueNumber}`);
-        else if (!res.ok) summary.errors.push(`${full}#${issueNumber}: ${(result as { error?: string } | null)?.error ?? res.status}`);
+        // One failing issue is recorded and skipped, not the end of the sweep.
+        try {
+          const stub = this.env.ISSUE_COORDINATOR.get(this.env.ISSUE_COORDINATOR.idFromName(doKey(owner, repo, issueNumber)));
+          const res = await stub.fetch("https://issue-coordinator/reconcile", {
+            method: "POST",
+            body: JSON.stringify({
+              owner,
+              repo,
+              issueNumber,
+              updatedAt,
+              enforced: this.enforcedFor(full) && summary.refired.length < this.maxRefires(),
+            }),
+          });
+          const result = (await res.json().catch(() => null)) as ReconcileResult | { outcome: "error"; error: string } | null;
+          if (result?.outcome === "refired" || result?.outcome === "gated") summary.refired.push(`${full}#${issueNumber}`);
+          else if (result?.outcome === "would_refire") summary.wouldRefire.push(`${full}#${issueNumber}`);
+          else if (!res.ok) summary.errors.push(`${full}#${issueNumber}: ${(result as { error?: string } | null)?.error ?? res.status}`);
+        } catch (e) {
+          summary.errors.push(`${full}#${issueNumber}: ${e instanceof Error ? e.message : e}`);
+        }
       }
     }
 
@@ -142,7 +149,9 @@ export class Scheduler {
       `INSERT INTO transitions (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(null, "_scheduler", "_", 0, "-", "sweep", JSON.stringify(summary), null, null, this.env.SWEEP_MODE === "enforce" ? "enforce" : "shadow")
+      // enforce when anything was really re-fired (SWEEP_ENFORCE_REPOS too),
+      // so real re-fires never count in the shadow numbers.
+      .bind(null, "_scheduler", "_", 0, "-", "sweep", JSON.stringify(summary), null, null, summary.refired.length > 0 || this.env.SWEEP_MODE === "enforce" ? "enforce" : "shadow")
       .run();
     return summary;
   }

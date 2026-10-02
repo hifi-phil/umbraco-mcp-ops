@@ -470,26 +470,27 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "sweep: a run left in ready-for-ai with no watchdog -> re-fired once idle twice its timeout",
-    timeoutMs: (2 * WATCHDOG_MINUTES + 3) * MIN,
+    name: "sweep: a fire that never got out -> re-fired once idle twice its timeout",
+    timeoutMs: (2 * WATCHDOG_MINUTES + 4) * MIN,
     run: () =>
       scoped(async (t) => {
-        // A completion signal with no outcome: the watchdog is cancelled, the
-        // label stays, and nothing else will ever look at it again.
-        const issue = t.n(await openIssue("Left behind", "Reports done, posts nothing; the sweep finds it.", "complete"));
+        // The stub refuses the fire: no watchdog, no log row, the label left
+        // on. Nothing but the sweep will ever look at it again.
+        const issue = t.n(await openIssue("Left behind", "Its fire never gets out; the sweep finds it.", "fail_fire"));
         runLog.sweepIssue = issue;
         const key = `${REPO}#${issue}`.toLowerCase();
         await addLabel(issue, LABELS.AI_READY);
-        await sleep(MIN);
+        await sleep(15_000); // the Worker's fire, and its retries, refused
+        await setHint(issue, "blocked"); // what the re-fire will find (and its last activity)
+
+        await sleep(45_000);
         expect((await sweep()).refired.map((r) => r.toLowerCase()), "too recent to re-fire").not.toContain(key);
 
-        await setHint(issue, "blocked");
-        await sleep((2 * WATCHDOG_MINUTES - 1) * MIN + 20_000); // past twice the timeout since its last row
+        await sleep(2 * WATCHDOG_MINUTES * MIN - 45_000 + 30_000); // past twice the timeout since that edit
         expect((await sweep()).refired.map((r) => r.toLowerCase()), "re-fired once left behind").toContain(key);
         expectLabels(await waitFor(issue, labelsAre(LABELS.AI_BLOCKED), MIN), issue, LABELS.AI_BLOCKED);
         await expectLogged(
           issue,
-          { event: "labelled_ai_ready", run: "issue-build-loop" },
           { event: "reconcile_refire", run: "issue-build-loop" },
           { event: "build_blocked", effect: LABELS.AI_BLOCKED },
         );

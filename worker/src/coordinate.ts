@@ -105,6 +105,11 @@ export type Deps = {
   // every sweep.
   getReconcileReported(): Promise<string | null>;
   setReconcileReported(lastActivity: string): Promise<void>;
+  // Set when the running routine reports completion (routine-signal); any
+  // new fire (setPendingFire) clears it. A run that finished but left its
+  // trigger label on (merge-flow waiting on a review) isn't left behind.
+  markCompleted(): Promise<void>;
+  wasCompleted(): Promise<boolean>;
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;
@@ -582,6 +587,7 @@ export async function coordinateRoutineSignal(
   }
 
   await deps.clearPendingFire();
+  await deps.markCompleted();
   return { outcome: "completion_acknowledged" };
 }
 
@@ -610,6 +616,8 @@ export const TRIGGER_LABELS = Object.keys(TRIGGER_EVENTS) as Label[];
 
 export type ReconcileResult =
   | { outcome: "watched" }
+  | { outcome: "completed" } // its last run reported done; it's waiting, not lost
+  | { outcome: "gated"; result: CoordinateResult } // a lost auto-merge fire, gated first like the webhook path
   | { outcome: "not_triggered"; state: string }
   | { outcome: "recent"; idleMinutes: number }
   | {
@@ -641,9 +649,12 @@ const d1Time = (s: string) => Date.parse(`${s.replace(" ", "T")}Z`);
 export async function coordinateReconcile(
   deps: Deps,
   ref: IssueRef,
-  { enforced, now = Date.now() }: { enforced: boolean; now?: number },
+  { enforced, now = Date.now(), updatedAt }: { enforced: boolean; now?: number; updatedAt?: string },
 ): Promise<ReconcileResult> {
   if (await deps.getPendingFire()) return { outcome: "watched" };
+  // Its last run finished (merge-flow waiting on a review, say): waiting
+  // isn't lost, and re-firing it would only repeat the wait.
+  if (await deps.wasCompleted()) return { outcome: "completed" };
 
   const labels = await deps.getLabels(ref.owner, ref.repo, ref.issueNumber);
   const state = deriveState(labels);
@@ -651,8 +662,14 @@ export async function coordinateReconcile(
   const run = event ? reduce("none", event)?.run : undefined;
   if (!run) return { outcome: "not_triggered", state };
 
-  const last = await deps.lastActivityAt();
-  const idleMinutes = last === null ? null : Math.round((now - d1Time(last)) / 6_000) / 10;
+  // Activity is the later of its last real log row and GitHub's updated_at:
+  // a label added a moment ago (its webhook not handled yet) is recent, so
+  // the sweep doesn't fire alongside it.
+  const logged = await deps.lastActivityAt();
+  const times = [logged === null ? NaN : d1Time(logged), updatedAt ? Date.parse(updatedAt) : NaN].filter(Number.isFinite);
+  const lastMs = times.length > 0 ? Math.max(...times) : null;
+  const last = lastMs === null ? null : new Date(lastMs).toISOString();
+  const idleMinutes = lastMs === null ? null : Math.round((now - lastMs) / 6_000) / 10;
   if (idleMinutes !== null && idleMinutes < 2 * deps.watchdogMinutes(run)) return { outcome: "recent", idleMinutes };
 
   const held = !enforced
@@ -663,6 +680,16 @@ export async function coordinateReconcile(
         ? ("watchdog_shadow" as const)
         : undefined;
   if (enforced && held) enforced = false;
+
+  // A lost auto-merge fire goes through the same gate as a fresh label: a
+  // conflict or requested changes -> merge-blocked, red CI -> rework, else
+  // merge-flow below.
+  if (enforced && state === LABELS.AUTO_MERGING) {
+    const facts = await settledGateFacts(deps, ref);
+    const reason = hardBlockReason(facts);
+    if (reason) return { outcome: "gated", result: await blockMerge(deps, ref, labels, reason) };
+    if (deriveMergeGateOutcome(facts) === "soft") return { outcome: "gated", result: await handToRework(deps, ref, labels, facts) };
+  }
 
   if (enforced) {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);

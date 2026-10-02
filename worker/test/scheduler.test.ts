@@ -167,6 +167,34 @@ describe("Scheduler", () => {
     expect(summary.wouldRefire).toEqual(["hifi-phil/umbraco-mcp-ops#3"]);
   });
 
+  it("one issue's DO failing is recorded, and the rest of the sweep still runs and logs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ready-for-ai")
+          ? Response.json([{ number: 1 }, { number: 2 }])
+          : Response.json([]),
+      ),
+    );
+    const { ctx } = fakeCtx();
+    const { env, inserted } = fakeEnv((b) => {
+      if (b.issueNumber === 1) throw new Error("DO reset");
+      return { outcome: "watched" };
+    });
+    const summary = await new Scheduler(ctx, env).sweep();
+    expect(summary.checked).toBe(2);
+    expect(summary.errors).toEqual([expect.stringContaining("#1: DO reset")]);
+    expect(inserted).toHaveLength(1);
+  });
+
+  it("a sweep that really re-fired (via SWEEP_ENFORCE_REPOS) logs its row as enforce, never shadow", async () => {
+    vi.stubGlobal("fetch", github());
+    const { ctx } = fakeCtx();
+    const { env, inserted } = fakeEnv(() => ({ outcome: "refired" }), { SWEEP_ENFORCE_REPOS: "hifi-phil/umbraco-mcp-ops" });
+    await new Scheduler(ctx, env).sweep();
+    expect(inserted[0]).toEqual(expect.arrayContaining(["sweep", "enforce"]));
+  });
+
   it("SWEEP_ENFORCE_REPOS enforces for just that repo; a sweep can be limited to some repos", async () => {
     vi.stubGlobal("fetch", github());
     const { ctx } = fakeCtx();
