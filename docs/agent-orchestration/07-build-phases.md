@@ -275,6 +275,15 @@ transition log is the historical complement to it).
 **Exit:** One place shows every open issue's current state, current routine
 and attempt, and last-known step, without querying GitHub or a DO directly.
 
+**Status (02-10-2026):**
+- **Built:** the `issue_status` table and `GET /status`, a read-only page
+  behind a tofu-generated password. Each issue's DO upserts its row on
+  enforced transitions, sweep re-fires, heartbeats and completions, and
+  deletes it when the issue closes. The worker README's "The live-status
+  dashboard" has the detail.
+- **Shadow repos show nothing:** only enforced events write it, since a
+  shadow event's labels never moved.
+
 ## Phase 9 — Harden against loss and loops
 
 **Entry:** Phase 8 live.

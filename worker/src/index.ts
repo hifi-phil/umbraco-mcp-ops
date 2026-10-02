@@ -13,6 +13,7 @@ import { openPullsForCommit } from "./github-client";
 import type { CoordinateInput, RoutineSignalInput } from "./coordinate";
 
 import { Scheduler } from "./scheduler";
+import { handleStatus } from "./status-page";
 
 export { IssueCoordinator, Scheduler };
 
@@ -39,6 +40,8 @@ export type Env = {
   // tofu sets both for the e2e sandbox alone.
   LOG_READ_SECRET?: string;
   LOG_READ_REPOS?: string;
+  // GET /status, the live-status dashboard (status-page.ts). Off unless set.
+  STATUS_SECRET?: string;
 };
 
 /** One DO per issue/PR. Lowercased: GitHub treats owner/repo names
@@ -53,6 +56,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/sweep") return handleSweep(request, env);
     if (request.method === "GET" && url.pathname === "/transitions") return handleTransitions(request, env, url);
+    if (request.method === "GET" && url.pathname === "/status") return handleStatus(request, env, url);
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
 
     if (url.pathname === "/routine-signal") {

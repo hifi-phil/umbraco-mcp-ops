@@ -30,7 +30,9 @@ import {
   type CiFix,
   type CoordinateInput,
   type Deps,
+  type IssueRef,
   type PendingFire,
+  type StatusUpdate,
   type RoutineSignalInput,
   type TransitionRow,
   watchdogMinutesFor,
@@ -202,6 +204,14 @@ export class IssueCoordinator {
       logTransition: async (row: TransitionRow) => {
         await this.insertTransition(row);
       },
+      recordStatus: async (ref: IssueRef, update: StatusUpdate) => {
+        // The dashboard's table is a side effect: never fail a transition on it.
+        try {
+          await this.writeStatus(ref, update);
+        } catch (e) {
+          console.error("status write failed:", e instanceof Error ? e.message : e);
+        }
+      },
       hasSeenDelivery: async (deliveryId: string) => {
         const seen = await this.ctx.storage.get<boolean>(seenKeyFor(deliveryId));
         return seen === true;
@@ -244,6 +254,56 @@ export class IssueCoordinator {
         };
       },
     };
+  }
+
+  /** The issue's live-status row (migrations/0004_issue_status.sql). */
+  private async writeStatus(ref: IssueRef, update: StatusUpdate): Promise<void> {
+    const key = [ref.owner.toLowerCase(), ref.repo.toLowerCase(), ref.issueNumber] as const;
+    const where = "WHERE owner = ? AND repo = ? AND issue_number = ?";
+    const db = this.env.DB;
+    switch (update.kind) {
+      case "gone":
+        await db.prepare(`DELETE FROM issue_status ${where}`).bind(...key).run();
+        return;
+      case "step":
+        await db
+          .prepare(`UPDATE issue_status SET last_step = ?, last_step_at = ?, updated_at = datetime('now') ${where}`)
+          .bind(update.step, update.at, ...key)
+          .run();
+        return;
+      case "done":
+        await db.prepare(`UPDATE issue_status SET running = 0, updated_at = datetime('now') ${where}`).bind(...key).run();
+        return;
+      case "rework":
+        await db
+          .prepare(`UPDATE issue_status SET rework_count = ?, updated_at = datetime('now') ${where}`)
+          .bind(update.count, ...key)
+          .run();
+        return;
+      case "transition": {
+        const rework = (await this.ctx.storage.get<CiFix>(CI_FIX_KEY))?.attempts ?? 0;
+        // A fire starts a new run: a fresh step, and the attempt counts on
+        // while it's the same routine as last time (a retry or re-fire).
+        // No fire: the state moves, and the last run's routine, attempt and
+        // step stay, so an ai-stuck row still shows where it got to.
+        const onConflict = update.run
+          ? `routine = excluded.routine,
+             attempt = CASE WHEN issue_status.routine = excluded.routine THEN issue_status.attempt + 1 ELSE 1 END,
+             running = excluded.running, last_step = NULL, last_step_at = NULL,`
+          : `running = 0,`;
+        await db
+          .prepare(
+            `INSERT INTO issue_status (owner, repo, issue_number, state, routine, attempt, running, rework_count)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (owner, repo, issue_number) DO UPDATE SET
+               state = excluded.state, ${onConflict}
+               rework_count = excluded.rework_count, updated_at = datetime('now')`,
+          )
+          .bind(...key, update.state, update.run, update.run ? 1 : 0, update.running ? 1 : 0, rework)
+          .run();
+        return;
+      }
+    }
   }
 
   private async insertTransition(row: TransitionRow): Promise<void> {

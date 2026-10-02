@@ -373,6 +373,29 @@ export async function sweep(): Promise<SweepSummary> {
   return summary;
 }
 
+export type StatusRow = {
+  owner: string;
+  repo: string;
+  issue_number: number;
+  state: string;
+  routine: string | null;
+  attempt: number;
+  running: number;
+  last_step: string | null;
+  rework_count: number;
+};
+
+/** This sandbox issue's live-status row (the Worker's GET /status), or
+ * undefined if it has none (closed, or never tracked). */
+export async function statusOf(number: number): Promise<StatusRow | undefined> {
+  const res = await fetch(`${await orchestratorUrl()}/status?format=json`, {
+    headers: { Authorization: `Bearer ${tofuSecret("status_secret", "E2E_STATUS_SECRET")}` },
+  });
+  if (!res.ok) throw new Error(`GET /status failed: ${res.status} ${await res.text()}`);
+  const { rows } = (await res.json()) as { rows: StatusRow[] };
+  return rows.find((r) => `${r.owner}/${r.repo}` === REPO.toLowerCase() && r.issue_number === number);
+}
+
 /** Every row the orchestrator logged for this issue/PR, oldest first. */
 export async function transitions(number: number): Promise<LogRow[]> {
   const [owner, repo] = REPO.split("/");

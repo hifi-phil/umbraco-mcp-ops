@@ -22,6 +22,13 @@ output "routine_signal_secret" {
   sensitive = true
 }
 
+# The live-status dashboard: open <worker_url>/status and give this as the
+# password (any user name). Read with `tofu output -raw status_secret`.
+output "status_secret" {
+  value     = random_password.status_secret.result
+  sensitive = true
+}
+
 # The e2e driver's key to GET /transitions. It reads this itself (tofu
 # output -raw e2e_log_read_secret) unless E2E_LOG_SECRET is set.
 output "e2e_log_read_secret" {

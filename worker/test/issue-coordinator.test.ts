@@ -44,17 +44,21 @@ function fakeCtx() {
 }
 
 /** A fake D1Database recording every bound INSERT. */
+/** A fake D1: `inserted` is the transition log's rows, `status` the
+ * live-status table's writes (each its SQL and bound values). */
 function fakeDb() {
   const inserted: unknown[][] = [];
+  const status: { sql: string; args: unknown[] }[] = [];
   const db = {
-    prepare: vi.fn(() => ({
+    prepare: vi.fn((sql: string) => ({
       bind: vi.fn((...args: unknown[]) => {
-        inserted.push(args);
+        if (sql.includes("issue_status")) status.push({ sql, args });
+        else inserted.push(args);
         return { run: vi.fn(async () => ({ success: true })) };
       }),
     })),
   };
-  return { db: db as unknown as D1Database, inserted };
+  return { db: db as unknown as D1Database, inserted, status };
 }
 
 function fakeEnv(overrides: Partial<IssueCoordinatorEnv> = {}): IssueCoordinatorEnv {
@@ -279,6 +283,55 @@ describe("IssueCoordinator — one request at a time per issue", () => {
     const next = await coordinator.fetch(fetchRequest(labeledInput({ deliveryId: "d-b" })));
     expect(failed.status).toBe(500);
     expect(next.status).toBe(200);
+  });
+});
+
+describe("IssueCoordinator — the live-status row (issue_status)", () => {
+  it("a fire upserts the row, keyed lowercased; the same routine again counts its attempt on", async () => {
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    const { ctx } = fakeCtx();
+    const { db, status } = fakeDb();
+    await new IssueCoordinator(ctx, fakeEnv({ DB: db })).fetch(
+      fetchRequest({
+          deliveryId: "d-9",
+          owner: "Hifi-Phil",
+          repo: "umbraco-mcp-ops",
+          issueNumber: 412,
+          payload: { action: "issues.labeled", label: { name: "ready-for-ai" } },
+        }),
+    );
+    expect(status).toHaveLength(1);
+    expect(status[0]!.sql).toMatch(/ON CONFLICT \(owner, repo, issue_number\) DO UPDATE/);
+    expect(status[0]!.sql).toMatch(/attempt = CASE WHEN issue_status.routine = excluded.routine THEN issue_status.attempt \+ 1 ELSE 1 END/);
+    expect(status[0]!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", 412, "ready-for-ai", "issue-build-loop", 1, 1, 0]);
+  });
+
+  it("a failing status write never fails the transition", async () => {
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    const { ctx } = fakeCtx();
+    const inserted: unknown[][] = [];
+    const db = {
+      prepare: (sql: string) => ({
+        bind: (...args: unknown[]) => ({
+          run: async () => {
+            if (sql.includes("issue_status")) throw new Error("no such table: issue_status");
+            inserted.push(args);
+            return { success: true };
+          },
+        }),
+      }),
+    } as unknown as D1Database;
+    const res = await new IssueCoordinator(ctx, fakeEnv({ DB: db })).fetch(
+      fetchRequest({
+          deliveryId: "d-10",
+          owner: "hifi-phil",
+          repo: "umbraco-mcp-ops",
+          issueNumber: 412,
+          payload: { action: "issues.labeled", label: { name: "ready-for-ai" } },
+        }),
+    );
+    expect(((await res.json()) as { outcome: string }).outcome).toBe("applied");
+    expect(inserted).toHaveLength(1);
   });
 });
 

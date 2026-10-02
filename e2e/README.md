@@ -125,6 +125,14 @@ driver gets that secret from `tofu output -raw e2e_log_read_secret` unless
 - a `watchdog_expired` row for every expiry, and none when a completion
   signal cancels it
 
+**The live-status view.** The full lane and the heartbeat scenarios read
+the Worker's `GET /status` (key: `tofu output -raw status_secret`, or
+`E2E_STATUS_SECRET`):
+- a built issue shows its last run; a merged PR and a published release
+  have no row
+- a stuck issue keeps its dead run's last step, and moves to `ai-blocked`
+  when the late outcome lands
+
 **Not covered, and why:**
 - **Shadow mode:** `MODE` is per Worker, and the sandbox runs on the
   enforcing one. A shadow scenario needs a second sandbox on a shadow

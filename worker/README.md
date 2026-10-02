@@ -461,6 +461,30 @@ Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
   a month. That's well inside the Free plan,
   and inside the $5 Paid allowance.
 
+## The live-status dashboard (Phase 8)
+
+`GET /status` shows every open issue the Worker is tracking: its state, the
+routine last fired for it and which attempt that is, whether a watched run
+is out now, the run's last heartbeat step, and its CI-fix reworks.
+
+- **Open it:** `<worker_url>/status`. The browser asks for a password: it's
+  `tofu output -raw status_secret`, with any user name. A
+  `Bearer <secret>` header works too, and `?format=json` gives the rows.
+- **The table:** `issue_status` in D1 (`migrations/0004_issue_status.sql`),
+  one row per open issue, written by each issue's DO:
+  - an enforced rule that applies, or a sweep re-fire, upserts it. A fire
+    starts a new run (step cleared), and the attempt counts on while it's
+    the same routine as last time
+  - a heartbeat sets the step; a completion signal marks it not running
+  - a CI-fix rework sets the count
+  - a close (the Worker's, a person's, a PR's `Closes #`) deletes it, as
+    does a rule that leaves no tracked label and fires nothing
+- **Side effect only:** nothing reads it to decide anything, and a failed
+  write is logged, never failing the transition. Shadow events don't write
+  it (their labels never moved), so a shadow repo has no rows.
+- **Current on load, no push:** reload to refresh. An issue the Worker
+  first sees after this deploy gets its row on its next transition.
+
 ## The watchdog is a real event
 
 A watched routine that never reports back now moves the issue through the

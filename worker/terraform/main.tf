@@ -58,6 +58,12 @@ resource "random_password" "routine_signal_secret" {
   special = false
 }
 
+# The live-status dashboard's password (GET /status, any user name).
+resource "random_password" "status_secret" {
+  length  = 40
+  special = false
+}
+
 resource "cloudflare_workers_script" "worker" {
   account_id          = var.cloudflare_account_id
   script_name         = var.script_name
@@ -128,6 +134,8 @@ resource "cloudflare_workers_script" "worker" {
         local.e2e_routines,
       )),
     },
+    # GET /status, the live-status dashboard (src/status-page.ts).
+    { type = "secret_text", name = "STATUS_SECRET", text = random_password.status_secret.result },
     ],
     # GET /transitions, the e2e suite's read of the D1 log, for the sandbox
     # only. Without e2e_repo there's no LOG_READ_SECRET, so the route is off.
