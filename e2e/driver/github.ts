@@ -3,6 +3,7 @@
 
 import { execFileSync } from "node:child_process";
 import { progress } from "./progress";
+import { appJwt } from "../../worker/src/github-app";
 
 export const REPO = process.env.E2E_REPO ?? "hifi-phil/mcp-ops-e2e-testing";
 const R = `/repos/${REPO}`;
@@ -212,12 +213,12 @@ export async function labelledAt(number: number, label: string): Promise<string 
 // that nothing errored and the table had a rule for everything it saw.
 // Delivery ids overflow a JS number, so they're kept as strings.
 
-async function ghText(path: string, init: RequestInit = {}): Promise<{ text: string; link: string | null }> {
+async function ghText(path: string, init: RequestInit = {}, token?: string): Promise<{ text: string; link: string | null }> {
   for (let attempt = 1; ; attempt++) {
     try {
       const res = await fetch(`https://api.github.com${path}`, {
         ...init,
-        headers: { Authorization: `Bearer ${authToken()}`, Accept: "application/vnd.github+json", ...init.headers },
+        headers: { Authorization: `Bearer ${token ?? authToken()}`, Accept: "application/vnd.github+json", ...init.headers },
       });
       if (res.status >= 500 && attempt < ATTEMPTS) throw new Error(`${res.status}`);
       if (!res.ok) throw new Error(`GitHub ${init.method ?? "GET"} ${path} failed: ${res.status} ${await res.text()}`);
@@ -230,21 +231,32 @@ async function ghText(path: string, init: RequestInit = {}): Promise<{ text: str
 }
 const bigIds = (text: string) => text.replace(/"id":(\d{15,})/g, '"id":"$1"');
 
-export async function workerHookId(): Promise<number> {
+/**
+ * Where the orchestrator's deliveries are listed. They come from its
+ * GitHub App's webhook, readable only as the App (a JWT from its key, which
+ * the driver reads from tofu and never prints). A repo hook pointing at the
+ * Worker, if one is still there, is used instead.
+ */
+export type Hook = { base: string; token: () => Promise<string | undefined> };
+
+export async function workerHook(): Promise<Hook> {
   const hooks = await gh<{ id: number; config: { url: string } }[]>("GET", `${R}/hooks`);
-  const hook = hooks.find((h) => !h.config.url.endsWith("/webhook"));
-  if (!hook) throw new Error(`no orchestrator webhook on ${REPO}`);
-  return hook.id;
+  const repoHook = hooks.find((h) => !h.config.url.endsWith("/webhook"));
+  if (repoHook) return { base: `${R}/hooks/${repoHook.id}`, token: async () => undefined };
+  return {
+    base: "/app/hook",
+    token: () => appJwt(tofuOutput("github_app_id"), tofuSecret("github_app_private_key", "E2E_APP_PRIVATE_KEY")),
+  };
 }
 
 export type Delivery = { id: string; guid: string; event: string; action: string | null; redelivery: boolean; delivered_at: string };
 
 /** Deliveries since `since` (ISO), newest first, following GitHub's cursor pages. */
-export async function deliveriesSince(hookId: number, since: string): Promise<Delivery[]> {
+export async function deliveriesSince(hook: Hook, since: string): Promise<Delivery[]> {
   const out: Delivery[] = [];
-  let path: string | null = `${R}/hooks/${hookId}/deliveries?per_page=100`;
+  let path: string | null = `${hook.base}/deliveries?per_page=100`;
   while (path) {
-    const { text, link } = await ghText(path);
+    const { text, link } = await ghText(path, {}, await hook.token());
     const page = JSON.parse(bigIds(text)) as Delivery[];
     out.push(...page.filter((d) => d.delivered_at >= since));
     const next = link?.match(/<https:\/\/api\.github\.com([^>]+)>;\s*rel="next"/)?.[1] ?? null;
@@ -255,6 +267,8 @@ export async function deliveriesSince(hookId: number, since: string): Promise<De
 
 export type DeliveryDetail = {
   guid: string;
+  /** owner/repo: the App's hook delivers for every repo it's installed on. */
+  repo: string;
   event: string;
   action: string | null;
   statusCode: number;
@@ -262,8 +276,8 @@ export type DeliveryDetail = {
   response: string;
 };
 
-export async function deliveryDetail(hookId: number, id: string): Promise<DeliveryDetail> {
-  const { text } = await ghText(`${R}/hooks/${hookId}/deliveries/${id}`);
+export async function deliveryDetail(hook: Hook, id: string): Promise<DeliveryDetail> {
+  const { text } = await ghText(`${hook.base}/deliveries/${id}`, {}, await hook.token());
   const d = JSON.parse(bigIds(text)) as {
     guid: string;
     event: string;
@@ -279,11 +293,19 @@ export async function deliveryDetail(hookId: number, id: string): Promise<Delive
       : p.pull_request?.number !== undefined
         ? [p.pull_request.number]
         : (p.check_suite?.pull_requests ?? []).map((x: { number: number }) => x.number);
-  return { guid: d.guid, event: d.event, action: d.action, statusCode: d.status_code, numbers, response: d.response.payload ?? "" };
+  return {
+    guid: d.guid,
+    repo: p.repository?.full_name ?? "",
+    event: d.event,
+    action: d.action,
+    statusCode: d.status_code,
+    numbers,
+    response: d.response.payload ?? "",
+  };
 }
 
-export async function redeliver(hookId: number, id: string): Promise<void> {
-  await ghText(`${R}/hooks/${hookId}/deliveries/${id}/attempts`, { method: "POST" });
+export async function redeliver(hook: Hook, id: string): Promise<void> {
+  await ghText(`${hook.base}/deliveries/${id}/attempts`, { method: "POST" }, await hook.token());
 }
 
 // --- The orchestrator's D1 log (GET /transitions, sandbox only) ------------
@@ -316,15 +338,12 @@ export function tofuSecret(output: string, envName: string): string {
   return secrets.get(output)!;
 }
 const logReadSecret = () => tofuSecret("e2e_log_read_secret", "E2E_LOG_SECRET");
+/** A plain (not sensitive) tofu output, e.g. worker_url. */
+export const tofuOutput = (name: string) => tofuSecret(name, `E2E_${name.toUpperCase()}`);
 
-let workerUrl: string | undefined;
+/** The orchestrator's URL (tofu's worker_url; E2E_WORKER_URL overrides). */
 export async function orchestratorUrl(): Promise<string> {
-  if (!workerUrl) {
-    const hooks = await gh<{ config: { url: string } }[]>("GET", `${R}/hooks`);
-    workerUrl = hooks.map((h) => h.config.url).find((u) => !u.endsWith("/webhook"));
-    if (!workerUrl) throw new Error(`no orchestrator webhook on ${REPO}`);
-  }
-  return workerUrl.replace(/\/$/, "");
+  return tofuOutput("worker_url").replace(/\/$/, "");
 }
 
 /** Every row the orchestrator logged for this issue/PR, oldest first. */

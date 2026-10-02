@@ -35,6 +35,23 @@ output "e2e_fire_token" {
   sensitive = true
 }
 
+# For the GitHub App's webhook settings (Webhook secret). Read with
+# `tofu output -raw webhook_secret`.
+output "webhook_secret" {
+  value     = random_password.webhook_secret.result
+  sensitive = true
+}
+
+# The e2e driver reads the App's webhook deliveries as the App.
+output "github_app_id" {
+  value = var.github_app_id
+}
+
+output "github_app_private_key" {
+  value     = var.github_app_private_key
+  sensitive = true
+}
+
 output "e2e_stub_url" {
   value = local.e2e ? local.e2e_url : null
 }
