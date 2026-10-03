@@ -1,17 +1,17 @@
 // The Durable Object: one instance per issue/PR (addressed by
 // `${owner}/${repo}#${number}` — see index.ts), serializing every webhook
 // for that entity and owning its watchdog alarm. Thin on purpose — all the
-// actual decision logic lives in coordinate.ts (dependency-injected, unit
+// actual decision logic lives in coordinate/ (dependency-injected, unit
 // tested); this class only wires that logic to real ctx.storage, D1, and
 // the GitHub/routines API clients. Two request shapes reach fetch(): the
 // default path is a GitHub webhook (coordinateWebhook, authoritative);
 // POST .../routine-signal is the direct routine-to-DO heartbeat channel
 // (coordinateRoutineSignal, never authoritative — see
-// graph/routines/from-routine.ts and coordinate.ts's doc comment on it).
+// graph/routines/from-routine.ts and coordinate/routine-signal.ts's doc comment on it).
 //
 // This class's own wiring is covered by test/issue-coordinator.test.ts —
 // a fake ctx.storage/D1 plus a stubbed global fetch, same fake-deps shape
-// as coordinate.test.ts, deliberately not @cloudflare/vitest-pool-workers
+// as coordinate/*.test.ts, deliberately not @cloudflare/vitest-pool-workers
 // (see README.md for why). Covers: dedup, a real rule applying + logging
 // to D1 + scheduling the alarm, the alarm actually *firing* (not just
 // being set), and that two instances (standing in for two issues' real
@@ -51,13 +51,13 @@ export type IssueCoordinatorEnv = GitHubEnv &
   RoutinesEnv & {
     DB: D1Database;
     // "enforce" to write labels / fire routines for real; anything else
-    // (including unset) is shadow — see coordinate.ts's resolveEnforced.
+    // (including unset) is shadow — see coordinate/types.ts's resolveEnforced.
     MODE?: string;
     // The watchdog's own switch, only honoured under MODE=enforce: "enforce"
     // makes expiries move issues to ai-stuck and comment; else they only log.
     WATCHDOG?: string;
     // {"owner/repo": {"mode"?, "minutes"?}}: a repo's own watchdog switch and
-    // timeout, over WATCHDOG and watchdogMinutesFor. See coordinate.ts.
+    // timeout, over WATCHDOG and watchdogMinutesFor. See coordinate/.
     WATCHDOG_OVERRIDES_JSON?: string;
   };
 
@@ -148,7 +148,7 @@ export class IssueCoordinator {
   /** The watchdog: fires watchdogMinutesFor(run) after a watched routine was fired
    * (or after its last heartbeat), unless a later event for the same issue
    * cancelled it first. The expiry itself is a real event through the
-   * reducer — see coordinate.ts's coordinateWatchdogExpired, which also
+   * reducer — see coordinate/watchdog.ts's coordinateWatchdogExpired, which also
    * owns the retry-safe ordering (no pendingFire -> a harmless race). */
   async alarm(): Promise<void> {
     // The repo comes from the pending fire; no pending fire, nothing to do
@@ -159,7 +159,7 @@ export class IssueCoordinator {
     });
   }
 
-  /** Real I/O; coordinate.ts switches each event to shadow writes unless
+  /** Real I/O; coordinate/ switches each event to shadow writes unless
    * `enforced` says otherwise. `ref` is the issue's repo, for its watchdog
    * override (a DO is one issue, so every call for it names the same repo). */
   private deps(ref?: { owner: string; repo: string; issueNumber?: number }): Deps {

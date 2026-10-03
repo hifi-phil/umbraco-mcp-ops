@@ -1,7 +1,7 @@
 // Two projects, one framework — see CLAUDE.md's Releases section and
 // worker/README.md for why these run at different cadences:
 //
-// - "unit": the normal suite (coordinate.ts, issue-coordinator.ts,
+// - "unit": the normal suite (coordinate/, issue-coordinator.ts,
 //   index.ts, github-client.ts, webhook-parse.ts, routines-client.ts, +
 //   graph/'s own). Fast, free, deterministic — `npm test`, CI-blocking
 //   on every PR via worker-tests.yml.

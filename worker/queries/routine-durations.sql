@@ -1,5 +1,5 @@
 -- Phase 6: how long each watched routine takes on a real repo, to set
--- watchdogMinutesFor (worker/src/coordinate.ts) from data instead of
+-- watchdogMinutesFor (worker/src/coordinate/) from data instead of
 -- guesses. One row per fire: when the Worker fired the routine, the first
 -- outcome after it on the same issue/PR, and the minutes between.
 -- `outcome` is NULL when nothing came back (a real stall, or still running);

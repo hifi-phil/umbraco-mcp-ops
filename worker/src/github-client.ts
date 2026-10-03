@@ -1,4 +1,4 @@
-// Thin wrapper over the GitHub REST API for the operations coordinate.ts's
+// Thin wrapper over the GitHub REST API for the operations coordinate/types.ts's
 // Deps interface needs. No retry/backoff logic here on purpose — that's
 // the DO's job (via the watchdog alarm noticing a stuck attempt), not
 // this client's; keeping this dumb makes it easy to reason about and easy

@@ -73,14 +73,15 @@ namespace removed first.
 
 ```
 src/
-  coordinate.ts        the actual dispatch logic — dependency-injected,
-                        no ctx.storage/fetch/D1 — tested with plain vitest
+  coordinate/          the actual dispatch logic — dependency-injected,
+                        no ctx.storage/fetch/D1 — tested with plain vitest;
+                        one file per job (index.ts lists them)
   webhook-parse.ts      raw GitHub webhook -> routing info + WebhookPayload
                         — pure, tested with plain vitest
   github-client.ts      real fetch-based GitHub REST calls
   routines-client.ts    real fetch-based Claude Code routines API call
   issue-coordinator.ts  the Durable Object class — thin, wires
-                        coordinate.ts's Deps to real storage/D1/clients
+                        coordinate/types.ts's Deps to real storage/D1/clients
   index.ts              the Worker fetch handler — thin, wires
                         webhook-parse.ts to the right DO instance
   scheduler.ts          the Scheduler DO: the reconciliation sweep's alarm
@@ -112,7 +113,7 @@ a schedule or a page load is how that ran out on 03-10-2026).
 ## What's actually verified, and how
 
 **135 unit tests** (`npm test` — the `"unit"` vitest workspace project;
-see `vitest.workspace.ts`) cover `coordinate.ts` (the decision logic,
+see `vitest.workspace.ts`) cover `coordinate/` (the decision logic,
 against fake in-memory deps), `webhook-parse.ts` (payload mapping +
 signature verification), `github-client.ts` and `routines-client.ts`
 (against mocked `fetch`, including the `GITHUB_API_BASE_URL` override seam
@@ -130,7 +131,7 @@ logs a `watchdog_expired` row to D1 and clears state; a failing GitHub call
 leaves the pending fire for the platform's alarm retry; the no-pending case
 is a harmless no-op — see "The watchdog is a real event" below), and that two `IssueCoordinator` instances (standing in
 for two different issues' real DOs) never share dedup/pending-fire state.
-All of this via the same fake-deps pattern `coordinate.test.ts` already
+All of this via the same fake-deps pattern `coordinate/*.test.ts` already
 used — no `@cloudflare/vitest-pool-workers` (that package needs vitest
 ^4, and this repo pins vitest ^2; pulling it in would mean an unprompted
 major-version bump of an existing dependency, not just adding a new one —
@@ -325,7 +326,7 @@ that event directly is the *more* faithful stand-in, not a shortcut.
 a native single-fact webhook nor a self-report — it's the Worker
 independently re-deriving a judgment from several live facts**, matching
 option (b) from the discussion that led here: rather than trust a
-self-reported artifact, `worker/src/coordinate.ts`'s
+self-reported artifact, `worker/src/coordinate/`'s
 `handleCheckSuiteCompleted` re-fetches the full check-run list for the
 head SHA, the latest review state, and mergeability — real GitHub-shaped
 calls (`getPull`/`getCheckRuns`/`getLatestReviewState` in
@@ -412,7 +413,7 @@ its DO, bypassing GitHub entirely — now has a real receiving endpoint:
 what that file's own design already specified: neither kind ever calls
 `reduce()` or writes a label/close. `"process"` records the step on the
 pending fire (`lastStep`/`lastStepAt`, quoted by the watchdog's comment if
-the run then dies) and re-schedules the watchdog alarm (`coordinate.ts`'s
+the run then dies) and re-schedules the watchdog alarm (`coordinate/`'s
 `coordinateRoutineSignal` → `setPendingFire`); `"completion"` cancels it early
 (`clearPendingFire`) — the real state transition still only ever comes
 from `github/from-github.ts` reading the actual GitHub comment, later.
@@ -428,7 +429,7 @@ signal for a routine that isn't the one currently pending on that issue
 rather than silently accepted — a light guard against a stale/misrouted
 signal touching the wrong run's watchdog.
 
-Unit tested end to end — `coordinate.test.ts` (the parse/mismatch/extend/
+Unit tested end to end — `coordinate/*.test.ts` (the parse/mismatch/extend/
 cancel logic against fake deps), `issue-coordinator.test.ts` (the DO's
 `/routine-signal` branch, real `ctx.storage.setAlarm`/`deleteAlarm` calls),
 `index.test.ts` (auth, routing, validation).
@@ -571,7 +572,7 @@ is out now, the run's last heartbeat step, and its CI-fix reworks.
 
 A watched routine that never reports back now moves the issue through the
 reducer like any other fact, rather than only leaving a comment. When the
-alarm fires, `coordinate.ts`'s `coordinateWatchdogExpired` raises
+alarm fires, `coordinate/watchdog.ts`'s `coordinateWatchdogExpired` raises
 `watchdog_expired` against the live labels, and `graph.ts`'s table moves
 the issue to **`ai-stuck`** from any state a watched routine can leave it
 in (`ready-for-ai`, `auto-release`, `auto-rework`, `auto-merge`, plus
@@ -600,7 +601,7 @@ step if there was one) and logs the transition to D1.
 
 `MODE` (a `wrangler.toml` var, `"shadow"` by default) decides whether the
 Worker writes anything. Only the exact string `"enforce"` does; unset or a
-typo is shadow (`coordinate.ts`'s `resolveMode`), so the Worker can't start
+typo is shadow (`coordinate/types.ts`'s `resolveMode`), so the Worker can't start
 writing labels next to loops that still swap their own.
 
 In shadow, `shadowDeps()` makes `addLabel`/`removeLabel`/`closeIssue`/
@@ -639,7 +640,7 @@ Webhooks `translate()` doesn't recognise at all leave no row. Neither do
 comments, closes and trigger-label removals) outside the states where they
 mean something. A push to a PR that isn't in `auto-rework` is ordinary
 activity, not a gap. The watchdog's timeout is per routine
-(`coordinate.ts`'s `watchdogMinutesFor`: release 60 min, build 60,
+(`coordinate/types.ts`'s `watchdogMinutesFor`: release 60 min, build 60,
 others 30, set from real run times by `queries/routine-durations.sql`). Run 1's numbers and the fixes they led to are in
 [13-shadow-results.md](../docs/agent-orchestration/13-shadow-results.md).
 
@@ -649,7 +650,7 @@ others 30, set from real run times by `queries/routine-durations.sql`). Run 1's 
 repo's loop-dispatch routine (`REPO_ROUTINES_JSON`) and applies its label
 writes. The one exception is the watchdog, which has its own `WATCHDOG`
 switch (tofu `watchdog`, default shadow) because its timeouts are still
-guesses (`coordinate.ts`'s `resolveEnforced`). Each D1 row records its own
+guesses (`coordinate/types.ts`'s `resolveEnforced`). Each D1 row records its own
 `mode`, so watchdog rows stay `shadow` until it's switched on.
 
 A repo moved to the Worker is a clean break: its old edge (the loop-dispatch

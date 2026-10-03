@@ -3,7 +3,7 @@
 // actually touches: env.ISSUE_COORDINATOR (idFromName + get().fetch()).
 // Avoids @cloudflare/vitest-pool-workers (which would force a vitest 2->4
 // major bump — see worker/README.md) in favor of the same fake-deps
-// pattern coordinate.test.ts already established for this codebase.
+// pattern coordinate/*.test.ts already established for this codebase.
 
 import { describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
