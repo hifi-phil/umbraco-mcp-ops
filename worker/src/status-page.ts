@@ -17,7 +17,7 @@
 // REFRESH_SECONDS.
 
 import { readSession, signInConfigured, type AuthEnv } from "./auth";
-import { CONTROLS, controlsFor, isControl, setControl } from "./controls";
+import { CONTROLS, controlsFor, isControl, reposWithControlOff, setControl } from "./controls";
 import { BACKFILL_MAX, backfillItems } from "./items";
 import type { GitHubEnv } from "./github-client";
 
@@ -291,12 +291,24 @@ export async function handleStatus(request: Request, env: StatusEnv, url: URL, d
   ]);
   const all = buildItems(activity.results, status.results, items.results, repos);
 
-  // Items whose webhooks all came before the items table: look the ones on
-  // this page up on GitHub after responding, so the next refresh shows them.
+  // Find with exactly one match: open its log straight away.
+  if (filters.n && !filters.open) {
+    const hits = visible(all, filters);
+    if (hits.length === 1) filters.open = { repo: hits[0]!.repo, n: hits[0]!.n };
+  }
+
+  // Items whose webhooks all came before the items table: look up the open
+  // one first, then the rest on this page, on GitHub after responding, so
+  // the next refresh shows them.
   if (env.GITHUB_APP_TOKEN !== undefined) {
-    const missing = visible(all, filters).filter((i) => !i.known).slice(0, BACKFILL_MAX);
+    const isOpenOne = (i: Item) => !!filters.open && i.repo === filters.open.repo && i.n === filters.open.n;
+    const page = visible(all, filters).slice(0, filters.limit);
+    const missing = [...all.filter(isOpenOne), ...page.filter((i) => !isOpenOne(i))].filter((i) => !i.known).slice(0, BACKFILL_MAX);
     if (missing.length > 0) defer(backfillItems(env as GitHubEnv & { DB: D1Database }, missing));
   }
+
+  // Repos whose sweep is switched off are flagged on their pill.
+  const sweepOff = await reposWithControlOff(env.DB, "sweep").catch(() => new Set<string>());
 
   let selected: { item: Item | null; log: LogRow[] } | null = null;
   if (filters.open) {
@@ -310,7 +322,7 @@ export async function handleStatus(request: Request, env: StatusEnv, url: URL, d
       .all<LogRow>();
     selected = { item: all.find((i) => i.repo === filters.open!.repo && i.n === filters.open!.n) ?? null, log: log.results };
   }
-  return html(renderDashboard({ items: all, filters, repos, sandbox, selected, now: Date.now(), user }));
+  return html(renderDashboard({ items: all, filters, repos, sandbox, sweepOff: [...sweepOff], selected, now: Date.now(), user }));
 }
 
 // --- the repository page and its controls ------------------------------------
@@ -330,7 +342,9 @@ async function repoPage(env: StatusEnv, url: URL, user: string | undefined, repo
       .all<LogRow>(),
   ]);
   const enforced = env.SWEEP_MODE === "enforce" || (env.SWEEP_ENFORCE_REPOS ?? "").split(",").map((r) => r.trim().toLowerCase()).includes(full);
-  return html(renderRepo(owner, repo, controls, enforced, Date.now(), user, url.searchParams.get("saved") === "1", activity.results));
+  const saved = /^([a-z]+)-(on|off)$/.exec(url.searchParams.get("saved") ?? "");
+  const savedText = saved && isControl(saved[1]!) ? `${CONTROLS[saved[1]!].name} is now ${saved[2]}.` : null;
+  return html(renderRepo(owner, repo, controls, enforced, Date.now(), user, savedText, activity.results));
 }
 
 async function handleSetControl(request: Request, env: StatusEnv, url: URL, who: string, script: boolean, repos: string[]): Promise<Response> {
@@ -347,7 +361,7 @@ async function handleSetControl(request: Request, env: StatusEnv, url: URL, who:
   await setControl(env.DB, owner, repo, control, enabled === "1", who);
   const back = new URL("/status/repo", url);
   back.searchParams.set("repo", full);
-  back.searchParams.set("saved", "1");
+  back.searchParams.set("saved", `${control}-${enabled === "1" ? "on" : "off"}`);
   return new Response(null, { status: 303, headers: { Location: back.pathname + back.search, "Cache-Control": "no-store" } });
 }
 
@@ -449,12 +463,14 @@ export function renderDashboard(p: {
   filters: Filters;
   repos: string[];
   sandbox?: string[];
+  sweepOff?: string[];
   selected: { item: Item | null; log: LogRow[] } | null;
   now: number;
   user?: string;
 }): string {
   const { items, filters: f, repos, selected, now, user } = p;
   const sandbox = p.sandbox ?? [];
+  const sweepOff = p.sweepOff ?? [];
   const shown = visible(items, f);
   const byType = items.filter((i) => matches(i, f, "type"));
   const byStatus = items.filter((i) => matches(i, f, "status"));
@@ -474,7 +490,11 @@ export function renderDashboard(p: {
     pill("Closed", byStatus.filter((i) => i.closed).length, listHref(f, { status: "closed", open: null }), f.status === "closed"),
   ].join("");
   const repoPills = [pill("All repositories", inRepo(null), listHref(f, { repo: null, open: null }), !f.repo)]
-    .concat(repos.map((r) => pill(r, inRepo(r), listHref(f, { repo: r, open: null }), f.repo === r, sandbox.includes(r) ? e2eTag : "")))
+    .concat(
+      repos.map((r) =>
+        pill(r, inRepo(r), listHref(f, { repo: r, open: null }), f.repo === r, `${sandbox.includes(r) ? e2eTag : ""}${sweepOff.includes(r) ? ' <span class="paused" title="Its reconciliation sweep is switched off">sweep off</span>' : ""}`),
+      ),
+    )
     .join("");
   const hidden = (name: string, value: string | null) => (value ? `<input type="hidden" name="${name}" value="${escape(value)}">` : "");
 
@@ -490,7 +510,8 @@ export function renderDashboard(p: {
         ? `${escape(i.status.routine)}${i.status.attempt > 1 ? ` <span class="muted">· try ${i.status.attempt}</span>` : ""}`
         : "";
       // The link lands back on this row (#id), so the list keeps its place.
-      const href = `${listHref(f, { open: isSel ? null : { repo: i.repo, n: i.n } })}#${rowId(i)}`;
+      // Closing also drops a Find, which would open its one match again.
+      const href = `${listHref(f, isSel ? { open: null, n: null } : { open: { repo: i.repo, n: i.n } })}#${rowId(i)}`;
       const row = `<a class="row${isSel ? " selected" : ""}" id="${rowId(i)}" href="${escape(href)}"${isSel ? ' aria-current="true" title="Close its log"' : ""}>
   <span class="row-main"><span class="num">#${i.n}</span> ${kindTag(i)} <span class="title">${titleText(i)}</span></span>
   <span class="row-meta">${stateTag(i)}${i.status?.running ? ' <span class="tag running"><span class="dot"></span>Running</span>' : ""}${routine ? ` <span class="routine">${routine}</span>` : ""}</span>
@@ -501,7 +522,7 @@ export function renderDashboard(p: {
     })
     .join("\n");
   const more = shown.length > f.limit
-    ? `<a class="more" href="${escape(listHref(f, { limit: Math.min(f.limit + PAGE, MAX_SHOWN) }))}">Show ${Math.min(PAGE, shown.length - f.limit)} more of ${shown.length - f.limit}</a>`
+    ? `<a class="more" href="${escape(`${listHref(f, { limit: Math.min(f.limit + PAGE, MAX_SHOWN) })}#${rowId(shown[f.limit]!)}`)}">Show ${Math.min(PAGE, shown.length - f.limit)} more of ${shown.length - f.limit}</a>`
     : "";
 
   return layout({
@@ -562,7 +583,7 @@ function renderPanel(item: Item | null, open: { repo: string; n: number }, log: 
     </div>
     <div class="panel-actions">
       <a class="button secondary" href="${escape(githubHref(open.repo, open.n))}">GitHub</a>
-      <a class="button secondary" href="${escape(`${listHref(f, { open: null })}#${rowId(open)}`)}" aria-label="Close the log">Close</a>
+      <a class="button secondary" href="${escape(`${listHref(f, { open: null, n: null })}#${rowId(open)}`)}" aria-label="Close the log">Close</a>
     </div>
   </div>
   <div class="panel-facts">${facts}</div>
@@ -585,7 +606,7 @@ export function renderRepo(
   sweepEnforced: boolean,
   now: number,
   signedInAs?: string,
-  saved = false,
+  saved: string | null = null,
   activity: LogRow[] = [],
 ): string {
   const full = `${owner}/${repo}`;
@@ -622,7 +643,7 @@ export function renderRepo(
   <div><div class="eyebrow">Repository settings</div><h1>${escape(full)}</h1></div>
   <a class="button secondary" href="/status?repo=${encodeURIComponent(full)}">View its issues and PRs</a>
 </div>
-${saved ? '<div class="banner" role="status">Saved. The change is logged under repository activity.</div>' : ""}
+${saved ? `<div class="banner" role="status">${escape(saved)} The change is logged under repository activity.</div>` : ""}
 <div class="box">${items}</div>
 <p class="sub below-small">More controls arrive here as agents and routines get their own switches.</p>
 <h2>Repository activity</h2>
@@ -749,6 +770,8 @@ a.quiet { font-weight: 400; color: var(--ucp-color-text-alt); }
 .detail { position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow-y: auto; border-radius: var(--ucp-border-radius-large); }
 .inline-log { display: none; }
 .e2e { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #8a7516; background: #fef5d6; border-radius: var(--ucp-border-radius-small); padding: 0 5px; margin-left: 4px; }
+.paused { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #a82547; background: #fbe4eb; border-radius: var(--ucp-border-radius-small); padding: 0 5px; margin-left: 4px; }
+.pill[aria-current] .paused, .pill[aria-current] .e2e { background: rgba(255, 255, 255, 0.85); }
 .more { display: block; padding: 14px 18px; text-align: center; border-top: 1px solid var(--ucp-color-row-divider); }
 .row { scroll-margin-top: 12px; }
 .panel { overflow: hidden; }

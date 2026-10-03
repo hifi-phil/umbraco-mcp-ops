@@ -174,8 +174,13 @@ describe("renderDashboard — one list, pills, and the log beside it", () => {
     );
     const html = renderDashboard({ items: many, filters: NO_FILTERS, repos: REPOS, selected: null, now });
     expect(html.match(/class="row"/g)).toHaveLength(100);
-    expect(html).toContain(`<a class="more" href="/status?limit=200">Show 30 more of 30</a>`);
+    expect(html).toMatch(/<a class="more" href="\/status\?limit=200#i-hifi-phil-umbraco-mcp-ops-\d+">Show 30 more of 30<\/a>/);
     expect(html).toContain('>All types <span class="count">130</span>');
+  });
+
+  it("a repo whose sweep is off is flagged on its pill", () => {
+    const html = renderDashboard({ items, filters: NO_FILTERS, repos: [OPS], sweepOff: [OPS], selected: null, now });
+    expect(html).toContain('<span class="paused" title="Its reconciliation sweep is switched off">sweep off</span>');
   });
 
   it("the e2e sandbox is tagged, in its pill and its rows", () => {
@@ -262,6 +267,16 @@ describe("GET /status — the handler", () => {
     expect(html).toContain('<div class="panel-log-title">Transitions <span class="muted">(1, newest first)');
   });
 
+  it("Find with exactly one match opens its log", async () => {
+    const { db } = fakeDb({ activity: [activity({ issue_number: 7 }), activity({ issue_number: 8 })], log: [] });
+    const { req, url } = get("/status?n=7");
+    const html = await (await handleStatus(req, env(db), url)).text();
+    expect(html).toContain('<div class="panel-log-title">');
+    expect(html).toContain("<h2>#7");
+    // Close drops the Find too, or the one match would open again
+    expect(html).toContain('href="/status#i-hifi-phil-umbraco-mcp-ops-7" aria-label="Close the log"');
+  });
+
   it("the old /status/issue link redirects to the list with that one open", async () => {
     const { db } = fakeDb();
     const { req, url } = get(`/status/issue?repo=${OPS}&n=412`);
@@ -307,7 +322,9 @@ describe("GET /status/repo and POST /status/controls — a repo's switches", () 
     const { req, url } = post({ repo: "Hifi-Phil/umbraco-mcp-ops", control: "sweep", enabled: "0" }, { ...KEY });
     const res = await handleStatus(req, env(db), url);
     expect(res.status).toBe(303);
-    expect(res.headers.get("Location")).toBe(`/status/repo?repo=${encodeURIComponent(OPS)}&saved=1`);
+    expect(res.headers.get("Location")).toBe(`/status/repo?repo=${encodeURIComponent(OPS)}&saved=sweep-off`);
+    const back = get(res.headers.get("Location")!);
+    expect(await (await handleStatus(back.req, env(db), back.url)).text()).toContain("Reconciliation sweep is now off.");
     expect(writes.find((w) => w.sql.includes("INSERT INTO repo_controls"))!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", "sweep", 0, "script"]);
     expect(writes.find((w) => w.sql.includes("control_changed"))!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", '{"control":"sweep","enabled":false,"by":"script"}']);
   });
