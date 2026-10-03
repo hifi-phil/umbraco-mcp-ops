@@ -788,6 +788,19 @@ input { width: 180px; }
   .control { flex-direction: column; }
   th, td { padding: 10px 14px; }
   input { width: 100%; }
+  /* The log as compact cards: event and mode, then the effect, then when and the routine. */
+  table.log { min-width: 0; }
+  table.log thead { display: none; }
+  table.log tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "event mode" "effect effect" "when routine"; gap: 3px 12px; padding: 12px 16px; border-bottom: 1px solid var(--ucp-color-row-divider); }
+  table.log td { display: block; padding: 0; border: 0; overflow-wrap: anywhere; }
+  table.log td:nth-child(1) { grid-area: when; font-size: 12px; color: var(--ucp-color-text-alt); }
+  table.log td:nth-child(1) .sub { display: none; }
+  table.log td:nth-child(2) { grid-area: event; }
+  table.log td:nth-child(3) { grid-area: effect; }
+  table.log td:nth-child(4) { grid-area: routine; font-size: 12px; color: var(--ucp-color-text-alt); text-align: right; }
+  table.log td:nth-child(5) { grid-area: mode; text-align: right; }
+  table.log td.empty { grid-column: 1 / -1; }
+  .panel-head { flex-direction: column; }
 }
 </style>
 </head>
