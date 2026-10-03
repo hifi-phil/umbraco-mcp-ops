@@ -271,7 +271,7 @@ describe("index.ts fetch() — GET /transitions (the sandbox's log read)", () =>
     const res = await worker.fetch(get("owner=Hifi-Phil&repo=mcp-ops-e2e-testing&issue=7"), env);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ rows });
-    expect(bind).toHaveBeenCalledWith("Hifi-Phil", "mcp-ops-e2e-testing", 7);
+    expect(bind).toHaveBeenCalledWith("Hifi-Phil", "mcp-ops-e2e-testing", 7, 1000);
   });
 
   it("any repo not in LOG_READ_REPOS -> 403, the DB never read", async () => {

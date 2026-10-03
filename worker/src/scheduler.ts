@@ -21,6 +21,7 @@
 import { TRIGGER_LABELS, type ReconcileResult } from "./coordinate";
 import { openWithLabel, type GitHubEnv } from "./github-client";
 import { reposWithControlOff } from "./controls";
+import * as transitions from "./db/transitions";
 
 export type SchedulerEnv = GitHubEnv & {
   ISSUE_COORDINATOR: DurableObjectNamespace;
@@ -190,14 +191,21 @@ export class Scheduler {
     // Log only a sweep with something new: a re-fire, a newly reported
     // would-re-fire, or an error. Repeats of a settled issue aren't news.
     if (summary.refired.length === 0 && summary.wouldRefire.length === 0 && summary.errors.length === 0) return summary;
-    await this.env.DB.prepare(
-      `INSERT INTO transitions (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode, actor)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sweep')`,
-    )
+    await transitions.insert(this.env.DB, {
+      deliveryId: null,
+      owner: "_scheduler",
+      repo: "_",
+      issueNumber: 0,
+      fromState: "-",
+      event: "sweep",
+      toEffect: JSON.stringify(summary),
+      run: null,
+      droppedReason: null,
       // enforce when anything was really re-fired (SWEEP_ENFORCE_REPOS too),
       // so real re-fires never count in the shadow numbers.
-      .bind(null, "_scheduler", "_", 0, "-", "sweep", JSON.stringify(summary), null, null, summary.refired.length > 0 || this.env.SWEEP_MODE === "enforce" ? "enforce" : "shadow")
-      .run();
+      mode: summary.refired.length > 0 || this.env.SWEEP_MODE === "enforce" ? "enforce" : "shadow",
+      actor: "sweep",
+    });
     return summary;
   }
 }

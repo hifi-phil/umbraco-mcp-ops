@@ -83,7 +83,31 @@ src/
                         coordinate.ts's Deps to real storage/D1/clients
   index.ts              the Worker fetch handler — thin, wires
                         webhook-parse.ts to the right DO instance
+  scheduler.ts          the Scheduler DO: the reconciliation sweep's alarm
+  status-page.ts, auth.ts, controls.ts, items.ts
+                        the dashboard, its GitHub sign-in, per-repo
+                        controls, and filling item titles from GitHub
+  db/                   every D1 read and write, one module per table:
+    transitions.ts        the log (reads by issue only, via its index)
+    issue-status.ts       the live-status row per open issue
+    items.ts              kind, title, state, and each item's log summary
+    controls.ts           per-repo switches
 ```
+
+**All SQL lives in `src/db/`.** Nothing else calls `prepare()`: callers use
+the repository functions, so every D1 read is in one place to review (the
+free plan allows 5M rows read a day, and a read that scans the whole log on
+a schedule or a page load is how that ran out on 03-10-2026).
+
+**Two test suites, both in `npm test`:**
+- `unit` (`test/*.test.ts`): the logic, against fakes.
+- `db` (`test/db/`, `npm run test:db`): the repositories against a real
+  SQLite database (Node's built-in `node:sqlite`, Node 22.5+, D1 being
+  SQLite) with the real migrations applied, through a small D1 adapter
+  (`test/db/sqlite-d1.ts`). The SQL itself runs, migrations included, and
+  `queryPlan()` checks a query uses its index rather than scanning a table.
+  Typechecked under its own `test/db/tsconfig.json` (Node's types, kept
+  apart from the Worker's).
 
 ## What's actually verified, and how
 

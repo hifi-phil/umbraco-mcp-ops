@@ -9,5 +9,7 @@
     "skipLibCheck": true,
     "types": ["@cloudflare/workers-types", "vitest/globals"]
   },
-  "include": ["**/*.ts", "../graph/**/*.ts"]
+  "include": ["**/*.ts", "../graph/**/*.ts"],
+  // The db tests run in Node: test/db/tsconfig.json checks them.
+  "exclude": ["test/db/**", "node_modules", "dist"]
 }

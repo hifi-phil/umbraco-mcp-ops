@@ -38,7 +38,9 @@ import {
   watchdogMinutesFor,
 } from "./coordinate";
 import * as githubClient from "./github-client";
-import { recordLogged } from "./items";
+import { recordLogged } from "./db/items";
+import * as issueStatus from "./db/issue-status";
+import * as transitions from "./db/transitions";
 import { appBotLogin, appConfigured } from "./github-app";
 import { fireRoutine } from "./routines-client";
 import type { GitHubEnv } from "./github-client";
@@ -178,19 +180,7 @@ export class IssueCoordinator {
       setReconcileReported: async (lastActivity: string) => {
         await this.ctx.storage.put(RECONCILE_REPORTED_KEY, lastActivity);
       },
-      lastActivityAt: async () => {
-        if (!ref) return null;
-        const row = await this.env.DB.prepare(
-          // A shadow reconcile row only records what a sweep saw; it isn't
-          // activity on the issue, so it mustn't reset its idle clock.
-          `SELECT MAX(created_at) AS at FROM transitions
-            WHERE LOWER(owner) = LOWER(?) AND LOWER(repo) = LOWER(?) AND issue_number = ?
-              AND NOT (event = 'reconcile_refire' AND mode = 'shadow')`,
-        )
-          .bind(ref.owner, ref.repo, ref.issueNumber ?? -1)
-          .first<{ at: string | null }>();
-        return row?.at ?? null;
-      },
+      lastActivityAt: async () => (ref ? transitions.lastActivityAt(this.env.DB, ref.owner, ref.repo, ref.issueNumber ?? -1) : null),
       getLabels: (owner: string, repo: string, issueNumber: number) =>
         githubClient.getLabels(this.env, owner, repo, issueNumber),
       addLabel: (owner: string, repo: string, issueNumber: number, label: string) =>
@@ -258,81 +248,34 @@ export class IssueCoordinator {
     };
   }
 
-  /** The issue's live-status row (migrations/0004_issue_status.sql). */
+  /** The issue's live-status row (db/issue-status.ts). */
   private async writeStatus(ref: IssueRef, update: StatusUpdate): Promise<void> {
-    const key = [ref.owner.toLowerCase(), ref.repo.toLowerCase(), ref.issueNumber] as const;
-    const where = "WHERE owner = ? AND repo = ? AND issue_number = ?";
     const db = this.env.DB;
     switch (update.kind) {
       case "gone":
         if (update.closed) await this.ctx.storage.put(CLOSED_KEY, true);
-        await db.prepare(`DELETE FROM issue_status ${where}`).bind(...key).run();
-        return;
+        return issueStatus.remove(db, ref);
       case "reopened":
         await this.ctx.storage.delete(CLOSED_KEY);
         return;
       case "step":
-        await db
-          .prepare(`UPDATE issue_status SET last_step = ?, last_step_at = ?, updated_at = datetime('now') ${where}`)
-          .bind(update.step, update.at, ...key)
-          .run();
-        return;
+        return issueStatus.setStep(db, ref, update.step, update.at);
       case "done":
-        await db.prepare(`UPDATE issue_status SET running = 0, updated_at = datetime('now') ${where}`).bind(...key).run();
-        return;
+        return issueStatus.setDone(db, ref);
       case "rework":
-        await db
-          .prepare(`UPDATE issue_status SET rework_count = ?, updated_at = datetime('now') ${where}`)
-          .bind(update.count, ...key)
-          .run();
-        return;
+        return issueStatus.setRework(db, ref, update.count);
       case "transition": {
         if (await this.ctx.storage.get<boolean>(CLOSED_KEY)) return;
-        const rework = (await this.ctx.storage.get<CiFix>(CI_FIX_KEY))?.attempts ?? 0;
-        // A fire starts a new run: a fresh step, and the attempt counts on
-        // while it's the same routine as last time (a retry or re-fire).
-        // No fire: the state moves, and the last run's routine, attempt and
-        // step stay, so an ai-stuck row still shows where it got to.
-        const onConflict = update.run
-          ? `routine = excluded.routine,
-             attempt = CASE WHEN issue_status.routine = excluded.routine THEN issue_status.attempt + 1 ELSE 1 END,
-             running = excluded.running, last_step = NULL, last_step_at = NULL,`
-          : `running = 0,`;
-        await db
-          .prepare(
-            `INSERT INTO issue_status (owner, repo, issue_number, state, routine, attempt, running, rework_count)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT (owner, repo, issue_number) DO UPDATE SET
-               state = excluded.state, ${onConflict}
-               rework_count = excluded.rework_count, updated_at = datetime('now')`,
-          )
-          .bind(...key, update.state, update.run, update.run ? 1 : 0, update.running ? 1 : 0, rework)
-          .run();
-        return;
+        const reworkCount = (await this.ctx.storage.get<CiFix>(CI_FIX_KEY))?.attempts ?? 0;
+        return issueStatus.upsertTransition(db, ref, { state: update.state, run: update.run, running: update.running, reworkCount });
       }
     }
   }
 
+  /** A log row, and its item's summary (what the dashboard reads instead of
+   * the log). The summary is display only: never fails the transition. */
   private async insertTransition(row: TransitionRow): Promise<void> {
-    await this.env.DB.prepare(
-      `INSERT INTO transitions
-         (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode, actor)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(
-        row.deliveryId,
-        row.owner,
-        row.repo,
-        row.issueNumber,
-        row.fromState,
-        row.event,
-        row.toEffect,
-        row.run,
-        row.droppedReason,
-        row.mode, // per event since Phase 4, not per Worker
-        row.actor ?? null,
-      )
-      .run();
+    await transitions.insert(this.env.DB, row);
     if (row.issueNumber > 0) {
       try {
         await recordLogged(this.env.DB, row.owner, row.repo, row.issueNumber, row.event);
