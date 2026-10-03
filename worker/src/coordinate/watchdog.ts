@@ -1,9 +1,9 @@
 // The watchdog's expiry, as a real event through the same path as a
 // webhook.
 
-import { LABELS } from "../../../graph/constants/labels";
-import { reduce } from "../../../graph/graph";
-import { EVENTS } from "../../../graph/constants/events";
+import { LABELS } from "@orchestrator/graph/constants/labels";
+import { reduce } from "@orchestrator/graph/graph";
+import { EVENTS } from "@orchestrator/graph/constants/events";
 import {
 depsFor,type CoordinateResult,
 type Deps

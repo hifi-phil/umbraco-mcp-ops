@@ -14,7 +14,7 @@ Worker through its **GitHub App**, which tofu can't manage (see below).
 
 ```bash
 cd worker
-npm ci && npm run build                     # wrangler bundles to dist/index.js
+npm ci && npm run build                     # npm ci installs every workspace; wrangler bundles to dist/index.js
 cd terraform
 cp terraform.tfvars.example terraform.tfvars   # fill in; gitignored
 export CLOUDFLARE_API_TOKEN=…   # account token: Workers Scripts: Edit, D1: Edit

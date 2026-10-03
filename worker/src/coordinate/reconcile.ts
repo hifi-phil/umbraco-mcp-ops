@@ -1,9 +1,9 @@
 // The reconciliation sweep's question for one issue: was it left behind?
 
-import { LABELS,type Label } from "../../../graph/constants/labels";
-import { reduce } from "../../../graph/graph";
-import { deriveMergeGateOutcome,hardBlockReason } from "../../../graph/github/merge-gate";
-import { EVENTS,type Event } from "../../../graph/constants/events";
+import { LABELS,type Label } from "@orchestrator/graph/constants/labels";
+import { reduce } from "@orchestrator/graph/graph";
+import { deriveMergeGateOutcome,hardBlockReason } from "@orchestrator/graph/github/merge-gate";
+import { EVENTS,type Event } from "@orchestrator/graph/constants/events";
 import {
 type CoordinateResult,
 type Deps,

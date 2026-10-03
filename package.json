@@ -1,0 +1,14 @@
+{
+  "name": "umbraco-mcp-ops",
+  "private": true,
+  "description": "npm workspaces for the repo's TypeScript packages: graph/ (@orchestrator/graph, the orchestrator's domain), worker/ (the Cloudflare Worker), e2e/ (the end-to-end suite). One install and one lockfile at the root; each package keeps its own scripts. plugins/ isn't npm: Claude plugins, versioned on their own.",
+  "workspaces": [
+    "graph",
+    "worker",
+    "e2e"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

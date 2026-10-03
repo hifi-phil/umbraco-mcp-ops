@@ -1,6 +1,6 @@
 import { describe,expect,it } from "vitest";
-import { LABELS } from "../../../graph/constants/labels";
-import { EVENTS } from "../../../graph/constants/events";
+import { LABELS } from "@orchestrator/graph/constants/labels";
+import { EVENTS } from "@orchestrator/graph/constants/events";
 import {
 LABEL_JUST_ADDED_BY,
 coordinateWebhook,deriveState,resolveEnforced,
