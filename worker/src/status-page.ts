@@ -74,7 +74,7 @@ export function ago(at: string | null, now: number): string {
   return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
 }
 
-/** The Umbraco UI tag colour for a state: trouble, waiting on a person, or done. */
+/** The portal's tag colour for a state: trouble, waiting on a person, or done. */
 function tone(state: string): string {
   if (state === "ai-stuck" || state === "merge-blocked") return "danger";
   if (state === "ai-blocked") return "warning";
@@ -82,14 +82,20 @@ function tone(state: string): string {
   return "default";
 }
 
-// Styled after the Umbraco Cloud portal, with Umbraco UI's own tokens
-// (Umbraco.UI's uui-css: palette, colors, shadow, fonts): the space-cadet
-// header bar, sand background, white boxes, Lato.
 /** How often the page reloads itself (a meta refresh: no script needed). */
 export const REFRESH_SECONDS = 30;
 
+// The Umbraco logo mark, from the Cloud Portal design system's assets.
+const LOGO_MARK =
+  '<svg viewBox="0 0 40 40" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M0,20C0,8.9,9,0,20,0s20,9,20,20s-9,20-20,20C8.9,40,0,31,0,20L0,20z M19.6,26.8c-1.6,0-3.1-0.1-4.6-0.4c-1.1-0.2-2.1-1-2.5-2c-0.5-1-0.7-2.6-0.7-4.8c0-1.1,0.1-2.3,0.2-3.4c0.1-1.1,0.3-2,0.4-2.7l0.1-0.7c0,0,0,0,0-0.1c0-0.2-0.1-0.4-0.3-0.4l-2.6-0.4H9.6c-0.2,0-0.4,0.1-0.4,0.3c0,0.2-0.1,0.3-0.1,0.7c-0.1,0.8-0.3,1.5-0.4,2.6c-0.2,1.2-0.3,2.4-0.3,3.5c-0.1,0.8-0.1,1.6,0,2.5c0.1,2.2,0.4,3.9,1.1,5.2c0.7,1.3,1.9,2.2,3.5,2.8c1.6,0.6,3.9,0.9,6.9,0.8h0.4c2.9,0,5.2-0.3,6.9-0.8c1.6-0.6,2.8-1.5,3.5-2.8c0.7-1.3,1.1-3.1,1.1-5.2c0.1-0.8,0.1-1.6,0-2.5c0-1.2-0.1-2.4-0.3-3.5c-0.1-1.1-0.3-1.8-0.4-2.6c-0.1-0.4-0.1-0.5-0.1-0.7c0-0.2-0.2-0.3-0.4-0.3h-0.1l-2.6,0.4c-0.2,0-0.3,0.2-0.3,0.4c0,0,0,0,0,0.1l0.1,0.7c0.1,0.7,0.3,1.6,0.4,2.7c0.1,1.1,0.2,2.3,0.2,3.4c0,2.2-0.2,3.8-0.7,4.8c-0.5,1-1.4,1.8-2.5,2c-1.5,0.3-3.1,0.5-4.6,0.4L19.6,26.8z"/></svg>';
+
+// Styled to the Umbraco Cloud Portal design system (its colors_and_type.css
+// tokens and component previews): the navy top bar, white-lilac page, 12px
+// bordered boxes, the portal's table and tinted tags, Lato. Light only, as
+// the portal is.
 export function renderStatus(rows: StatusRow[], now: number): string {
   const running = rows.filter((r) => r.running).length;
+  const stuck = rows.filter((r) => tone(r.state) === "danger").length;
   const body = rows
     .map((r) => {
       const repo = `${r.owner}/${r.repo}`;
@@ -100,7 +106,7 @@ export function renderStatus(rows: StatusRow[], now: number): string {
       return `<tr>
   <td><a href="${escape(href)}">#${r.issue_number}</a><div class="sub">${escape(repo)}</div></td>
   <td><span class="tag ${tone(r.state)}">${escape(r.state)}</span></td>
-  <td>${r.routine ? escape(r.routine) : '<span class="muted">—</span>'}${r.running ? ' <span class="tag positive solid">Running</span>' : ""}</td>
+  <td>${r.routine ? escape(r.routine) : '<span class="muted">—</span>'}${r.running ? ' <span class="tag running"><span class="dot"></span>Running</span>' : ""}</td>
   <td class="num">${r.attempt || ""}</td>
   <td>${step}</td>
   <td class="num">${r.rework_count || ""}</td>
@@ -117,67 +123,79 @@ export function renderStatus(rows: StatusRow[], now: number): string {
 <title>Orchestrator status</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap">
 <style>
 :root {
-  --header: #1b264f; --header-contrast: rgba(255, 255, 255, 0.8); --header-emphasis: #fff;
-  --bg: #f3f3f5; --surface: #fff; --text: #060606; --text-alt: #68676b;
-  --border: #d8d7d9; --divider: #e9e9eb; --interactive: #1b264f; --interactive-emphasis: #3544b1;
-  --positive: #0b8152; --warning: #fbd142; --warning-standalone: #a17700; --danger: #c31d4c;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --header: #14171b; --bg: #22272e; --surface: #2d333b; --text: #cdd9e5; --text-alt: #8b97a5;
-    --border: #4d5661; --divider: #383d44; --interactive: #cdd9e5; --interactive-emphasis: #8fa0ff;
-    --positive: #2fae7a; --warning-standalone: #ffd82c; --danger: #f0567f;
-  }
-}
-:root[data-theme="dark"] {
-  --header: #14171b; --bg: #22272e; --surface: #2d333b; --text: #cdd9e5; --text-alt: #8b97a5;
-  --border: #4d5661; --divider: #383d44; --interactive: #cdd9e5; --interactive-emphasis: #8fa0ff;
-  --positive: #2fae7a; --warning-standalone: #ffd82c; --danger: #f0567f;
+  --ucp-color-header-surface: #1b264f; --ucp-color-background: #f7f8fc; --ucp-color-surface: #ffffff;
+  --ucp-color-text: #030229; --ucp-color-text-alt: #707b81;
+  --ucp-color-divider: #e9edf7; --ucp-color-row-divider: #f0f2f8; --ucp-palette-soft-blue: #cdd7ee;
+  --ucp-color-interactive: #1b264f; --ucp-color-interactive-emphasis: #1e2e7a; --ucp-color-focus: #4f64ff;
+  --ucp-palette-dawn-pink: #fae9e8; --ucp-palette-primary-pink: #f5c1bc;
+  --ucp-color-positive: #25aa60; --ucp-color-warning: #fad634; --ucp-color-danger: #d22d56;
+  --ucp-border-radius-small: 3px; --ucp-border-radius-large: 12px;
+  --ucp-shadow-depth-1: 0 6px 5px -4px rgba(0, 0, 0, 0.05);
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 Lato, "Helvetica Neue", Helvetica, Arial, sans-serif; }
-header { background: var(--header); color: var(--header-contrast); height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 24px; }
-header .logo { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--header-emphasis); display: grid; place-items: center; color: var(--header-emphasis); font-weight: 700; font-size: 13px; }
-header h1 { margin: 0; font-size: 16px; font-weight: 700; color: var(--header-emphasis); }
-header .crumb { font-size: 14px; }
-main { max-width: 1200px; margin: 0 auto; padding: 24px; }
-.title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-.title h2 { margin: 0; font-size: 24px; font-weight: 700; }
-.title p { margin: 0; color: var(--text-alt); }
-.box { background: var(--surface); border-radius: 3px; box-shadow: var(--shadow); }
-.box-head { padding: 12px 18px; border-bottom: 1px solid var(--divider); font-weight: 700; display: flex; gap: 18px; }
-.box-head .stat { font-weight: 400; color: var(--text-alt); }
-.box-head .stat b { color: var(--text); }
+body { margin: 0; background: var(--ucp-color-background); color: var(--ucp-color-text); font: 15px/1.6 Lato, "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+.top-bar { height: 62px; background: var(--ucp-color-header-surface); color: #fff; display: flex; align-items: center; gap: 12px; padding: 0 24px; }
+.top-bar .product { font-size: 15px; font-weight: 700; }
+.top-bar .product span { font-weight: 400; color: rgba(255, 255, 255, 0.7); }
+main { width: min(100%, 1600px); margin: 0 auto; padding: 36px 50px 50px; }
+.section-title { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.eyebrow { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ucp-color-text-alt); margin-bottom: 4px; }
+h1 { margin: 0; font-size: 30px; font-weight: 700; line-height: 1.25; letter-spacing: -.005em; }
+.refresh { font-size: 12px; color: var(--ucp-color-text-alt); }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 220px)); gap: 18px; margin-bottom: 24px; }
+.box { background: var(--ucp-color-surface); border: 1px solid var(--ucp-color-divider); border-radius: var(--ucp-border-radius-large); box-shadow: var(--ucp-shadow-depth-1); }
+.stat { padding: 18px 20px; }
+.stat-title { font-size: 13px; font-weight: 700; color: var(--ucp-color-interactive); }
+.stat-value { font-size: 28px; font-weight: 900; color: var(--ucp-color-interactive); letter-spacing: -.01em; line-height: 1.2; margin-top: 6px; }
+.table-box { overflow: hidden; }
 .wrap { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; min-width: 760px; }
-th, td { text-align: left; padding: 12px 18px; border-bottom: 1px solid var(--divider); vertical-align: top; }
-th { font-weight: 700; font-size: 12px; color: var(--text-alt); }
-tr:last-child td { border-bottom: 0; }
-tbody tr:hover td { background: color-mix(in srgb, var(--interactive-emphasis) 4%, transparent); }
-td.num { text-align: right; font-variant-numeric: tabular-nums; }
-a { color: var(--interactive); font-weight: 700; text-decoration: none; }
-a:hover { color: var(--interactive-emphasis); text-decoration: underline; }
-.sub { font-size: 12px; color: var(--text-alt); }
-.muted { color: var(--text-alt); }
-.tag { display: inline-block; border: 1px solid var(--border); border-radius: 12px; padding: 0 9px; font-size: 12px; line-height: 20px; white-space: nowrap; }
-.tag.positive { color: var(--positive); border-color: var(--positive); }
-.tag.warning { color: var(--warning-standalone); border-color: var(--warning-standalone); }
-.tag.danger { color: var(--danger); border-color: var(--danger); }
-.tag.solid.positive { background: var(--positive); color: #fff; margin-left: 6px; }
-.empty { padding: 36px; text-align: center; color: var(--text-alt); }
-@media (max-width: 600px) { header, main { padding-left: 16px; padding-right: 16px; } th, td { padding: 9px 12px; } }
+table { border-collapse: collapse; width: 100%; min-width: 820px; font-size: 14px; }
+thead tr { background: var(--ucp-color-background); }
+th { text-align: left; padding: 14px 22px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ucp-color-text-alt); border-bottom: 1px solid var(--ucp-color-divider); }
+td { padding: 12px 22px; border-bottom: 1px solid var(--ucp-color-row-divider); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr { transition: background-color .15s; }
+tbody tr:hover { background: var(--ucp-palette-dawn-pink); }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+a { color: var(--ucp-color-interactive); font-weight: 700; text-decoration: none; transition: color .15s; }
+a:hover { color: var(--ucp-color-interactive-emphasis); text-decoration: underline; }
+a:focus-visible { outline: 2px solid var(--ucp-color-focus); outline-offset: 2px; border-radius: var(--ucp-border-radius-small); }
+.sub { font-size: 12px; color: var(--ucp-color-text-alt); }
+.muted { color: var(--ucp-color-text-alt); }
+.tag { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .01em; padding: 3px 8px; border-radius: var(--ucp-border-radius-small); border: 1px solid transparent; white-space: nowrap; }
+.tag .dot { width: 6px; height: 6px; border-radius: 50%; }
+.tag.default { background: var(--ucp-color-background); color: var(--ucp-color-interactive); border-color: var(--ucp-palette-soft-blue); }
+.tag.positive { background: #e3f6ec; color: #1e8a50; }
+.tag.warning { background: #fef5d6; color: #8a7516; }
+.tag.danger { background: #fbe4eb; color: #a82547; }
+.tag.running { background: var(--ucp-color-positive); color: #fff; margin-left: 6px; }
+.tag.running .dot { background: #fff; }
+.empty { padding: 36px 22px; text-align: center; color: var(--ucp-color-text-alt); }
+@media (max-width: 700px) {
+  main { padding: 24px 16px 36px; }
+  .top-bar { padding: 0 16px; }
+  .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+  .stat { padding: 12px; }
+  th, td { padding: 10px 14px; }
+}
 </style>
 </head>
 <body>
-<header><span class="logo" aria-hidden="true">AO</span><h1>Agent orchestrator</h1><span class="crumb">/ Status</span></header>
+<header class="top-bar">${LOGO_MARK}<div class="product">Agent orchestrator <span>/ Live status</span></div></header>
 <main>
-<div class="title"><h2>Open issues</h2><p>Refreshes every ${REFRESH_SECONDS} seconds.</p></div>
-<div class="box">
-<div class="box-head"><span class="stat"><b>${rows.length}</b> tracked</span><span class="stat"><b>${running}</b> running</span></div>
+<div class="section-title">
+  <div><div class="eyebrow">Orchestrator · Live status</div><h1>Open issues</h1></div>
+  <div class="refresh">Refreshes every ${REFRESH_SECONDS} seconds</div>
+</div>
+<div class="stats">
+  <div class="box stat"><div class="stat-title">Tracked</div><div class="stat-value">${rows.length}</div></div>
+  <div class="box stat"><div class="stat-title">Running</div><div class="stat-value">${running}</div></div>
+  <div class="box stat"><div class="stat-title">Stuck or blocked</div><div class="stat-value">${stuck}</div></div>
+</div>
+<div class="box table-box">
 <div class="wrap">
 <table>
 <thead><tr><th>Issue</th><th>State</th><th>Routine</th><th class="num">Attempt</th><th>Last step</th><th class="num">Reworks</th><th>Updated</th></tr></thead>

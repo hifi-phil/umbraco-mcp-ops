@@ -73,13 +73,13 @@ describe("renderStatus", () => {
 
   it("shows each row's state, routine, attempt, step and age; a running row is marked", () => {
     const html = renderStatus([row({ attempt: 2, rework_count: 1 })], now);
-    expect(html).toContain('<span class="tag positive solid">Running</span>');
+    expect(html).toContain('<span class="tag running"><span class="dot"></span>Running</span>');
     expect(html).toContain("issue-build-loop");
     expect(html).toContain("running tests");
     expect(html).toContain("12 min ago");
     expect(html).toContain('href="https://github.com/hifi-phil/umbraco-mcp-ops/issues/412"');
-    expect(html).toContain("<b>1</b> tracked");
-    expect(html).toContain("<b>1</b> running");
+    expect(html).toContain('<div class="stat-title">Tracked</div><div class="stat-value">1</div>');
+    expect(html).toContain('<div class="stat-title">Running</div><div class="stat-value">1</div>');
   });
 
   it("tags trouble red, waiting-on-a-person amber, done green", () => {
