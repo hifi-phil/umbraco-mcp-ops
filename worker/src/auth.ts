@@ -102,9 +102,20 @@ export async function readSession(request: Request, env: AuthEnv): Promise<Sessi
   return token ? verifySession(token, env.SESSION_SECRET) : null;
 }
 
-/** Only a same-origin path, never an attacker's `next` off-site. */
+/** Only a same-origin path, never an attacker's `next` off-site. Browsers
+ * drop tabs and newlines from a URL and treat `\` as `/`, so "/\t/evil.io"
+ * would read as "//evil.io": anything with those is refused, and what's
+ * left must resolve to this origin. */
 export function safeNext(raw: string | null): string {
-  return raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\") ? raw : "/status";
+  const fallback = "/status";
+  if (!raw || !raw.startsWith("/") || /[\u0000-\u0020\u007f\\]/.test(raw)) return fallback;
+  try {
+    const base = "https://same-origin.invalid";
+    const resolved = new URL(raw, base);
+    return resolved.origin === base ? resolved.pathname + resolved.search : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 // --- routes ----------------------------------------------------------------

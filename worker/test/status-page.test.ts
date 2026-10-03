@@ -102,6 +102,11 @@ describe("renderStatus", () => {
     expect(html).toContain('<div class="stat-title">Running</div><div class="stat-value">1</div>');
   });
 
+  it("'Stuck or blocked' counts ai-stuck, merge-blocked and ai-blocked", () => {
+    const html = renderStatus([row({ state: "ai-stuck" }), row({ state: "ai-blocked" }), row({ state: "merge-blocked" }), row({ state: "ready-for-ai" })], now);
+    expect(html).toContain('<div class="stat-title">Stuck or blocked</div><div class="stat-value">3</div>');
+  });
+
   it("tags trouble red, waiting-on-a-person amber, done green", () => {
     const html = renderStatus([row({ state: "ai-stuck" }), row({ state: "ai-blocked" }), row({ state: "generated-by-ai" })], now);
     expect(html).toContain('<span class="tag danger">ai-stuck</span>');

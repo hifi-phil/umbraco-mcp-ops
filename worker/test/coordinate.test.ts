@@ -511,14 +511,32 @@ describe("the live-status row (recordStatus): what each step tells the dashboard
   it("an issue closed by anyone (a person, a PR's 'Closes #') -> gone, last", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
     await coordinateWebhook(deps, input({ payload: { action: "issues.closed" } }));
-    expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "gone" });
+    expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "gone", closed: true });
   });
 
   it("a closed release still labelled auto-release (issue_closed's noop rule applies) -> still gone (e2e #443)", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]) });
     const result = await coordinateWebhook(deps, input({ payload: { action: "issues.closed" } }));
     expect(result).toMatchObject({ outcome: "applied" });
-    expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "gone" });
+    expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "gone", closed: true });
+  });
+
+  it("a shadow watchdog's expiry (the row isn't moved) still ends the run on it -> done", async () => {
+    const deps = fakeDeps({
+      enforced: (e) => e !== EVENTS.WATCHDOG_EXPIRED,
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+    });
+    await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP });
+    await coordinateWatchdogExpired(deps);
+    expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "done" });
+  });
+
+  it("closed -> gone and remembered as closed; reopened -> it can show again", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await coordinateWebhook(deps, input({ payload: { action: "issues.closed" } }));
+    expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "gone", closed: true });
+    await coordinateWebhook(deps, input({ deliveryId: "d-2", payload: { action: "issues.reopened" } }));
+    expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "reopened" });
   });
 
   it("a watchdog expiry -> ai-stuck, no routine fired, not running", async () => {

@@ -91,7 +91,7 @@ const LOGO_MARK =
 // the portal is.
 export function renderStatus(rows: StatusRow[], now: number, signedInAs?: string): string {
   const running = rows.filter((r) => r.running).length;
-  const stuck = rows.filter((r) => tone(r.state) === "danger").length;
+  const stuck = rows.filter((r) => tone(r.state) === "danger" || tone(r.state) === "warning").length;
   const body = rows
     .map((r) => {
       const repo = `${r.owner}/${r.repo}`;

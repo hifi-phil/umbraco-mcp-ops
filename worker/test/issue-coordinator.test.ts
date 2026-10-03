@@ -306,6 +306,25 @@ describe("IssueCoordinator — the live-status row (issue_status)", () => {
     expect(status[0]!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", 412, "ready-for-ai", "issue-build-loop", 1, 1, 0]);
   });
 
+  it("once closed on GitHub, a later transition (a late outcome, an expiry) doesn't re-create the row; reopening allows it", async () => {
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    const { ctx } = fakeCtx();
+    const { db, status } = fakeDb();
+    const coordinator = new IssueCoordinator(ctx, fakeEnv({ DB: db }));
+    const ready = (id: string) =>
+      fetchRequest({ deliveryId: id, owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, payload: { action: "issues.labeled", label: { name: "ready-for-ai" } } });
+    const action = (id: string, a: string) => fetchRequest({ deliveryId: id, owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, payload: { action: a } });
+
+    await coordinator.fetch(action("c-1", "issues.closed"));
+    status.length = 0;
+    await coordinator.fetch(ready("c-2"));
+    expect(status, "no upsert while closed").toEqual([]);
+
+    await coordinator.fetch(action("c-3", "issues.reopened"));
+    await coordinator.fetch(ready("c-4"));
+    expect(status.some((w) => w.sql.includes("INSERT INTO issue_status"))).toBe(true);
+  });
+
   it("a failing status write never fails the transition", async () => {
     vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
     const { ctx } = fakeCtx();

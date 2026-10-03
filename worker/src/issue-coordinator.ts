@@ -81,6 +81,7 @@ const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
+const CLOSED_KEY = "closedOnGitHub"; // its status row stays gone until reopened
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
 
 export class IssueCoordinator {
@@ -263,7 +264,11 @@ export class IssueCoordinator {
     const db = this.env.DB;
     switch (update.kind) {
       case "gone":
+        if (update.closed) await this.ctx.storage.put(CLOSED_KEY, true);
         await db.prepare(`DELETE FROM issue_status ${where}`).bind(...key).run();
+        return;
+      case "reopened":
+        await this.ctx.storage.delete(CLOSED_KEY);
         return;
       case "step":
         await db
@@ -281,6 +286,7 @@ export class IssueCoordinator {
           .run();
         return;
       case "transition": {
+        if (await this.ctx.storage.get<boolean>(CLOSED_KEY)) return;
         const rework = (await this.ctx.storage.get<CiFix>(CI_FIX_KEY))?.attempts ?? 0;
         // A fire starts a new run: a fresh step, and the attempt counts on
         // while it's the same routine as last time (a retry or re-fire).

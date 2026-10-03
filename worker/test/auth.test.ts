@@ -40,7 +40,11 @@ describe("allowedEmail — Umbraco domains only, verified, exact match", () => {
 describe("safeNext — never off-site", () => {
   it("keeps a same-origin path, else /status", () => {
     expect(safeNext("/status?format=json")).toBe("/status?format=json");
-    for (const bad of [null, "", "https://evil.io", "//evil.io", "/\\evil.io", "status"]) expect(safeNext(bad), String(bad)).toBe("/status");
+    for (const bad of [null, "", "https://evil.io", "//evil.io", "/\\evil.io", "status", "/\t/evil.io", "/\n/evil.io", "/ /evil.io", "/%09/evil.io/../x"]) {
+      const next = safeNext(bad);
+      expect(new URL(next, "https://w.dev").origin, JSON.stringify(bad)).toBe("https://w.dev");
+    }
+    expect(safeNext("/\t/evil.io")).toBe("/status");
   });
 });
 

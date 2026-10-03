@@ -77,14 +77,18 @@ export type CiFix = { attempts: number; pending: boolean };
  *   routine it fired, if any, and `running` whether that run is watched
  * - step: a heartbeat; done: the run reported completion
  * - rework: a CI-fix rework was handed out (its new count)
- * - gone: the issue closed, or has nothing left to show
+ * - gone: the issue closed, or has nothing left to show; reopened: it can
+ *   show again
  */
 export type StatusUpdate =
   | { kind: "transition"; state: string; run: string | null; running: boolean }
   | { kind: "step"; step: string; at: string }
   | { kind: "done" }
   | { kind: "rework"; count: number }
-  | { kind: "gone" };
+  // closed: it was closed on GitHub, so nothing re-creates its row until a
+  // reopened clears that
+  | { kind: "gone"; closed?: boolean }
+  | { kind: "reopened" };
 
 /** After this many CI-fix reworks on one PR, stop and ask a human. */
 export const MAX_CI_FIX_ATTEMPTS = 3;
@@ -298,8 +302,13 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
   // Closed by anyone (a merge, a person, a release): off the dashboard,
   // which shows open issues. Last, so the close's own rule (issue_closed is
   // a noop that would otherwise re-write the row) can't put it back.
+  // It stays gone: a late outcome or a watchdog expiry on the closed issue
+  // doesn't put it back (the DO remembers the close until it's reopened).
   if (input.payload.action === "issues.closed" || input.payload.action === "pull_request.closed") {
-    await deps.recordStatus(input, { kind: "gone" });
+    await deps.recordStatus(input, { kind: "gone", closed: true });
+  }
+  if (input.payload.action === "issues.reopened" || input.payload.action === "pull_request.reopened") {
+    await deps.recordStatus(input, { kind: "reopened" });
   }
   return result;
 }
@@ -860,6 +869,10 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
 
   const result = await applyEvent(deps, pending, EVENTS.WATCHDOG_EXPIRED, currentLabels);
   await deps.clearPendingFire();
+  // The watch is over either way: a shadow watchdog or labels with no expiry
+  // rule leave the row alone above, and nothing else would stop it reading
+  // "running" (a late completion finds no pending fire).
+  await deps.recordStatus(pending, { kind: "done" });
   return result;
 }
 
