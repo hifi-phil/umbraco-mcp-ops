@@ -14,6 +14,7 @@ import type { CoordinateInput, RoutineSignalInput } from "./coordinate";
 
 import { Scheduler } from "./scheduler";
 import { handleStatus } from "./status-page";
+import { upsertItem } from "./items";
 import { handleCallback, handleLogin, handleLogout, signedOut } from "./auth";
 
 export { IssueCoordinator, Scheduler };
@@ -63,12 +64,14 @@ function doKey(owner: string, repo: string, issueNumber: number): string {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/sweep") return handleSweep(request, env);
     if (request.method === "GET" && url.pathname === "/transitions") return handleTransitions(request, env, url);
     // The dashboard: its pages, and the form that switches a repo's controls.
-    if (url.pathname === "/status" || url.pathname.startsWith("/status/")) return handleStatus(request, env, url);
+    if (url.pathname === "/status" || url.pathname.startsWith("/status/")) {
+      return handleStatus(request, env, url, (work) => ctx?.waitUntil(work));
+    }
     if (request.method === "GET" && url.pathname === "/auth/login") return handleLogin(env, url);
     if (request.method === "GET" && url.pathname === "/auth/callback") return handleCallback(request, env, url);
     if (request.method === "GET" && url.pathname === "/auth/logout") return handleLogout();
@@ -180,14 +183,7 @@ async function recordItem(env: Env, routing: NonNullable<RoutingInfo>, body: Rec
   const meta = routing.issueNumbers.length === 1 ? extractItemMeta(body) : null;
   if (!meta) return;
   try {
-    await env.DB.prepare(
-      `INSERT INTO items (owner, repo, issue_number, kind, title, gh_state) VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (owner, repo, issue_number) DO UPDATE SET
-         kind = excluded.kind, title = COALESCE(excluded.title, items.title),
-         gh_state = COALESCE(excluded.gh_state, items.gh_state), updated_at = datetime('now')`,
-    )
-      .bind(routing.owner.toLowerCase(), routing.repo.toLowerCase(), routing.issueNumbers[0], meta.kind, meta.title, meta.state)
-      .run();
+    await upsertItem(env.DB, routing.owner, routing.repo, routing.issueNumbers[0]!, meta);
   } catch (e) {
     console.error("item write failed:", e instanceof Error ? e.message : e);
   }

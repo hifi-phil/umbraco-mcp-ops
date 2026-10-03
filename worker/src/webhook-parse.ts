@@ -43,14 +43,18 @@ export type ItemMeta = { kind: "issue" | "pr"; title: string | null; state: "ope
  * with a `pull_request` key) or a PR event's `pull_request`. Null when it
  * names neither (a check_suite). */
 export function extractItemMeta(body: Record<string, unknown>): ItemMeta | null {
-  type Thing = { title?: unknown; state?: unknown; pull_request?: unknown; merged?: unknown; merged_at?: unknown };
+  type Thing = { title?: unknown; state?: unknown; pull_request?: { merged_at?: unknown } | unknown; merged?: unknown; merged_at?: unknown };
   const pr = body.pull_request as Thing | undefined;
   const issue = body.issue as Thing | undefined;
   const thing = pr ?? issue;
   if (!thing || typeof thing !== "object") return null;
   const kind = pr || issue?.pull_request ? "pr" : "issue";
   const title = typeof thing.title === "string" ? thing.title.slice(0, 300) : null;
-  const merged = thing.merged === true || (typeof thing.merged_at === "string" && thing.merged_at !== "");
+  // A PR event says `merged`; a PR seen through the issues API (a comment,
+  // or a lookup) carries it as pull_request.merged_at.
+  const prMergedAt = issue?.pull_request && typeof issue.pull_request === "object" ? (issue.pull_request as { merged_at?: unknown }).merged_at : undefined;
+  const merged =
+    thing.merged === true || (typeof thing.merged_at === "string" && thing.merged_at !== "") || (typeof prMergedAt === "string" && prMergedAt !== "");
   const state = merged ? "merged" : thing.state === "open" || thing.state === "closed" ? thing.state : null;
   return { kind, title, state };
 }

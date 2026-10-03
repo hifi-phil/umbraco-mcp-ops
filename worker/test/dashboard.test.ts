@@ -47,7 +47,7 @@ const activity = (o: Partial<ActivityRow> = {}): ActivityRow => ({
   ...o,
 });
 const meta = (o: Partial<ItemRow> = {}): ItemRow => ({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issue_number: 412, kind: "issue", title: "Add a thing", gh_state: "open", ...o });
-const NO_FILTERS: Filters = { repo: null, type: "all", status: "all", n: null, open: null };
+const NO_FILTERS: Filters = { repo: null, type: "all", status: "all", n: null, open: null, limit: 100 };
 
 describe("attachedRepos — the repos the pills list", () => {
   it("REPO_ROUTINES_JSON's keys, lowercased and sorted (never its values: they hold fire tokens)", () => {
@@ -83,7 +83,9 @@ describe("buildItems — the log's issues and PRs, with what's live and known", 
 describe("filters in the URL", () => {
   it("reads them, dropping anything unknown to its default", () => {
     const f = readFilters(new URL(`https://w/status?type=pr&status=attention&repo=${encodeURIComponent(OPS.toUpperCase())}&n=7&open=${OPS}/7`), REPOS);
-    expect(f).toEqual({ repo: OPS, type: "pr", status: "attention", n: 7, open: { repo: OPS, n: 7 } });
+    expect(f).toEqual({ repo: OPS, type: "pr", status: "attention", n: 7, open: { repo: OPS, n: 7 }, limit: 100 });
+    expect(readFilters(new URL("https://w/status?limit=300"), REPOS).limit).toBe(300);
+    expect(readFilters(new URL("https://w/status?limit=99999"), REPOS).limit).toBe(1000);
     expect(readFilters(new URL("https://w/status?type=x&status=y&repo=evil/repo&n=-1&open=evil/repo/3"), REPOS)).toEqual(NO_FILTERS);
   });
 
@@ -139,9 +141,10 @@ describe("renderDashboard — one list, pills, and the log beside it", () => {
 
   it("each row opens its log in the panel; titles are escaped; unknown kinds say so", () => {
     const html = render();
-    expect(html).toContain(`href="/status?open=${encodeURIComponent(`${OPS}/1`)}"`);
+    expect(html).toContain(`id="i-hifi-phil-umbraco-mcp-ops-1" href="/status?open=${encodeURIComponent(`${OPS}/1`)}#i-hifi-phil-umbraco-mcp-ops-1"`);
     expect(html).toContain("Build &lt;the&gt; thing");
     expect(html).toContain('<span class="kind unknown">Issue or PR</span>');
+    expect(html).toContain("Title on its way");
     expect(html).toContain("Pick an issue or pull request to see its log.");
   });
 
@@ -156,7 +159,42 @@ describe("renderDashboard — one list, pills, and the log beside it", () => {
     expect(html).toContain("03-10-2026 10:00:00 UTC");
     expect(html).toContain("→ ai-stuck");
     expect(html).toContain("delivery d0c1e2f3");
-    expect(html).toContain(`href="/status" aria-label="Close the log"`);
+    expect(html).toContain(`href="/status#i-hifi-phil-umbraco-mcp-ops-3" aria-label="Close the log"`);
+    // the selected row's own link closes it again, and its log is also under it for narrow screens
+    expect(html).toContain(`id="i-hifi-phil-umbraco-mcp-ops-3" href="/status#i-hifi-phil-umbraco-mcp-ops-3"`);
+    expect(html).toContain('<div class="inline-log"><div class="box panel">');
+  });
+
+  it("pages the list: the first 100, then Show more", () => {
+    const many: Item[] = buildItems(
+      Array.from({ length: 130 }, (_, k) => activity({ issue_number: k + 1, last_at: `2026-10-03 0${Math.floor(k / 60)}:${String(k % 60).padStart(2, "0")}:00` })),
+      [],
+      [],
+      REPOS,
+    );
+    const html = renderDashboard({ items: many, filters: NO_FILTERS, repos: REPOS, selected: null, now });
+    expect(html.match(/class="row"/g)).toHaveLength(100);
+    expect(html).toContain(`<a class="more" href="/status?limit=200">Show 30 more of 30</a>`);
+    expect(html).toContain('>All types <span class="count">130</span>');
+  });
+
+  it("the e2e sandbox is tagged, in its pill and its rows", () => {
+    const html = renderDashboard({ items, filters: NO_FILTERS, repos: [OPS, SANDBOX], sandbox: [SANDBOX], selected: null, now });
+    expect(html).toContain(`${SANDBOX} <span class="e2e">e2e</span> <span class="count">1</span>`);
+    expect(html).toContain(`${SANDBOX} <span class="e2e">e2e</span> · <code>`);
+  });
+
+  it("an item GitHub no longer has says so; one open on GitHub counts as open though untracked", () => {
+    const [gone, open] = buildItems(
+      [activity({ issue_number: 8 }), activity({ issue_number: 9, event: "build_blocked" })],
+      [],
+      [meta({ issue_number: 8, title: "", gh_state: null }), meta({ issue_number: 9, gh_state: "open" })],
+      REPOS,
+    );
+    const html = renderDashboard({ items: [gone!, open!], filters: { ...NO_FILTERS, status: "open" }, repos: REPOS, selected: null, now });
+    expect(html).toContain('<span class="num">#9</span>');
+    expect(html).not.toContain('<span class="num">#8</span>');
+    expect(renderDashboard({ items: [gone!], filters: NO_FILTERS, repos: REPOS, selected: null, now })).toContain("Not on GitHub any more");
   });
 });
 
@@ -194,6 +232,25 @@ const get = (path: string, headers: Record<string, string> = KEY) => {
 };
 
 describe("GET /status — the handler", () => {
+  it("items with no title yet on this page are looked up on GitHub after responding; known ones aren't", async () => {
+    const { db } = fakeDb({ activity: [activity({ issue_number: 1 }), activity({ issue_number: 2 })], items: [meta({ issue_number: 2 })] });
+    const deferred: Promise<unknown>[] = [];
+    const looked: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => {
+      looked.push(String(url));
+      return Response.json({ number: 1, title: "Looked up", state: "closed" });
+    }) as typeof fetch;
+    try {
+      const { req, url } = get("/status");
+      await handleStatus(req, { ...env(db), GITHUB_APP_TOKEN: "t" }, url, (w) => deferred.push(w));
+      await Promise.all(deferred);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(looked).toEqual(["https://api.github.com/repos/hifi-phil/umbraco-mcp-ops/issues/1"]);
+  });
+
   it("?open= reads that item's log and shows it", async () => {
     const { db } = fakeDb({
       activity: [activity()],

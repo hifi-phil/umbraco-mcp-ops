@@ -179,6 +179,11 @@ describe("extractItemMeta — what the dashboard's items table keeps", () => {
     expect(extractItemMeta({ pull_request: { number: 8, title: "Fix", state: "closed", merged_at: null } })).toEqual({ kind: "pr", title: "Fix", state: "closed" });
   });
 
+  it("a merged PR seen through the issues API (a lookup, a comment): merged", () => {
+    expect(extractItemMeta({ issue: { number: 7, title: "Fix", state: "closed", pull_request: { merged_at: "2026-10-03T10:00:00Z" } } })).toEqual({ kind: "pr", title: "Fix", state: "merged" });
+    expect(extractItemMeta({ issue: { number: 7, title: "Fix", state: "closed", pull_request: { merged_at: null } } })).toEqual({ kind: "pr", title: "Fix", state: "closed" });
+  });
+
   it("a check_suite names neither: nothing; an odd title or state is left out", () => {
     expect(extractItemMeta({ check_suite: { pull_requests: [{ number: 1 }] } })).toBeNull();
     expect(extractItemMeta({ issue: { number: 7, title: 42, state: "weird" } })).toEqual({ kind: "issue", title: null, state: null });

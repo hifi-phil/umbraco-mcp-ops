@@ -18,15 +18,23 @@
 
 import { readSession, signInConfigured, type AuthEnv } from "./auth";
 import { CONTROLS, controlsFor, isControl, setControl } from "./controls";
+import { BACKFILL_MAX, backfillItems } from "./items";
+import type { GitHubEnv } from "./github-client";
 
-export type StatusEnv = AuthEnv & {
-  DB: D1Database;
-  STATUS_SECRET?: string;
-  // Only its keys are read here: the attached repos.
-  REPO_ROUTINES_JSON?: string;
-  SWEEP_MODE?: string;
-  SWEEP_ENFORCE_REPOS?: string;
-};
+export type StatusEnv = AuthEnv &
+  Partial<GitHubEnv> & {
+    DB: D1Database;
+    STATUS_SECRET?: string;
+    // Only its keys are read here: the attached repos.
+    REPO_ROUTINES_JSON?: string;
+    // The e2e sandbox repos, which the dashboard tags and lists last.
+    LOG_READ_REPOS?: string;
+    SWEEP_MODE?: string;
+    SWEEP_ENFORCE_REPOS?: string;
+  };
+
+/** Runs work after the response is sent (the Worker's ctx.waitUntil). */
+export type Defer = (work: Promise<unknown>) => void;
 
 export type StatusRow = {
   owner: string;
@@ -74,6 +82,8 @@ export type Item = {
   title: string | null;
   closed: boolean;
   merged: boolean;
+  ghOpen: boolean; // GitHub says it's open
+  known: boolean; // the items table has it (else its title is to be looked up)
   status: StatusRow | null;
   lastEvent: string;
   lastAt: string;
@@ -86,13 +96,16 @@ export type Filters = {
   status: "all" | "open" | "running" | "attention" | "closed";
   n: number | null;
   open: { repo: string; n: number } | null;
+  limit: number; // how many of the list to show
 };
 
 /** How often the list page reloads itself (a meta refresh: no script needed). */
 export const REFRESH_SECONDS = 30;
 
 const STATUS_COLUMNS = "owner, repo, issue_number, state, routine, attempt, running, last_step, last_step_at, rework_count, updated_at";
-const LIST_LIMIT = 300;
+const PAGE = 100; // the list shows this many more per "Show more"
+const MAX_SHOWN = 1000;
+const MAX_ITEMS = 5000; // a safety cap on the grouped log; counts are exact below it
 
 // Events that only happen on a pull request, to guess the kind of an item
 // whose webhooks predate the items table.
@@ -121,6 +134,17 @@ export function attachedRepos(env: StatusEnv): string[] {
   }
 }
 
+/** The e2e sandbox repos (LOG_READ_REPOS), lowercased. */
+export function sandboxRepos(env: StatusEnv): string[] {
+  return (env.LOG_READ_REPOS ?? "")
+    .split(",")
+    .map((r) => r.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/** Real repos first, then the sandbox, each alphabetical. */
+const orderRepos = (repos: string[], sandbox: string[]) => [...repos.filter((r) => !sandbox.includes(r)), ...repos.filter((r) => sandbox.includes(r))];
+
 const pickRepo = (repos: string[], raw: string | null) => {
   const want = (raw ?? "").toLowerCase();
   return repos.includes(want) ? want : null;
@@ -134,12 +158,14 @@ export function readFilters(url: URL, repos: string[]): Filters {
   const n = Number(p.get("n"));
   const open = /^([^/]+\/[^/]+)\/(\d+)$/.exec(p.get("open") ?? "");
   const openRepo = open ? pickRepo(repos, open[1]!) : null;
+  const limit = Number(p.get("limit"));
   return {
     repo: pickRepo(repos, p.get("repo")),
     type: type === "issue" || type === "pr" ? type : "all",
     status: status === "open" || status === "running" || status === "attention" || status === "closed" ? status : "all",
     n: Number.isInteger(n) && n > 0 ? n : null,
     open: open && openRepo ? { repo: openRepo, n: Number(open[2]) } : null,
+    limit: Number.isInteger(limit) && limit > PAGE ? Math.min(limit, MAX_SHOWN) : PAGE,
   };
 }
 
@@ -151,6 +177,7 @@ export function listHref(f: Filters, change: Partial<Filters> = {}): string {
   if (g.type !== "all") p.set("type", g.type);
   if (g.status !== "all") p.set("status", g.status);
   if (g.n) p.set("n", String(g.n));
+  if (g.limit > PAGE) p.set("limit", String(g.limit));
   if (g.open) p.set("open", `${g.open.repo}/${g.open.n}`);
   const q = p.toString();
   return q ? `/status?${q}` : "/status";
@@ -169,6 +196,7 @@ export function buildItems(activity: ActivityRow[], status: StatusRow[], items: 
       const s = live.get(k) ?? null;
       const merged = meta?.gh_state === "merged" || (!meta?.gh_state && a.event === "merged");
       const closed = meta?.gh_state ? meta.gh_state !== "open" : !s && CLOSING_EVENTS.includes(a.event);
+      const ghOpen = meta?.gh_state === "open";
       return {
         repo: `${a.owner}/${a.repo}`.toLowerCase(),
         n: a.issue_number,
@@ -176,6 +204,8 @@ export function buildItems(activity: ActivityRow[], status: StatusRow[], items: 
         title: meta?.title ?? null,
         closed,
         merged,
+        ghOpen,
+        known: !!meta,
         status: closed ? null : s,
         lastEvent: a.event,
         lastAt: a.last_at,
@@ -185,7 +215,7 @@ export function buildItems(activity: ActivityRow[], status: StatusRow[], items: 
 }
 
 const needsAttention = (i: Item) => !!i.status && (tone(i.status.state) === "danger" || tone(i.status.state) === "warning");
-const isOpen = (i: Item) => !i.closed && !!i.status;
+const isOpen = (i: Item) => !i.closed && (!!i.status || i.ghOpen);
 
 function matches(i: Item, f: Filters, skip?: "type" | "status"): boolean {
   if (f.repo && i.repo !== f.repo) return false;
@@ -208,7 +238,7 @@ function rank(i: Item): number {
   return 3;
 }
 
-export async function handleStatus(request: Request, env: StatusEnv, url: URL): Promise<Response> {
+export async function handleStatus(request: Request, env: StatusEnv, url: URL, defer: Defer = () => {}): Promise<Response> {
   if (!env.STATUS_SECRET) return new Response("not found", { status: 404 });
   const script = request.headers.get("Authorization") === `Bearer ${env.STATUS_SECRET}`;
   const session = script ? null : await readSession(request, env);
@@ -220,7 +250,8 @@ export async function handleStatus(request: Request, env: StatusEnv, url: URL): 
   }
   const who = session?.login ?? "script";
   const user = session?.login;
-  const repos = attachedRepos(env);
+  const sandbox = sandboxRepos(env);
+  const repos = orderRepos(attachedRepos(env), sandbox);
 
   if (request.method === "POST" && url.pathname === "/status/controls") return handleSetControl(request, env, url, who, script, repos);
   if (request.method !== "GET") return new Response("method not allowed", { status: 405 });
@@ -251,14 +282,21 @@ export async function handleStatus(request: Request, env: StatusEnv, url: URL): 
           WHERE issue_number > 0
          WINDOW p AS (PARTITION BY LOWER(owner), LOWER(repo), issue_number),
                 w AS (PARTITION BY LOWER(owner), LOWER(repo), issue_number ORDER BY id DESC)
-       ) WHERE rn = 1 ORDER BY last_at DESC LIMIT ${LIST_LIMIT}`,
+       ) WHERE rn = 1 ORDER BY last_at DESC LIMIT ${MAX_ITEMS}`,
     )
       .bind(...PR_EVENTS)
       .all<ActivityRow>(),
     env.DB.prepare(`SELECT ${STATUS_COLUMNS} FROM issue_status`).all<StatusRow>(),
-    env.DB.prepare("SELECT owner, repo, issue_number, kind, title, gh_state FROM items ORDER BY updated_at DESC LIMIT 2000").all<ItemRow>(),
+    env.DB.prepare(`SELECT owner, repo, issue_number, kind, title, gh_state FROM items LIMIT ${MAX_ITEMS}`).all<ItemRow>(),
   ]);
   const all = buildItems(activity.results, status.results, items.results, repos);
+
+  // Items whose webhooks all came before the items table: look the ones on
+  // this page up on GitHub after responding, so the next refresh shows them.
+  if (env.GITHUB_APP_TOKEN !== undefined) {
+    const missing = visible(all, filters).filter((i) => !i.known).slice(0, BACKFILL_MAX);
+    if (missing.length > 0) defer(backfillItems(env as GitHubEnv & { DB: D1Database }, missing));
+  }
 
   let selected: { item: Item | null; log: LogRow[] } | null = null;
   if (filters.open) {
@@ -272,7 +310,7 @@ export async function handleStatus(request: Request, env: StatusEnv, url: URL): 
       .all<LogRow>();
     selected = { item: all.find((i) => i.repo === filters.open!.repo && i.n === filters.open!.n) ?? null, log: log.results };
   }
-  return html(renderDashboard({ items: all, filters, repos, selected, now: Date.now(), user }));
+  return html(renderDashboard({ items: all, filters, repos, sandbox, selected, now: Date.now(), user }));
 }
 
 // --- the repository page and its controls ------------------------------------
@@ -387,61 +425,84 @@ function stateTag(i: Item): string {
   return '<span class="tag quiet">not tracked</span>';
 }
 
+const titleText = (i: Item) =>
+  i.title ? escape(i.title) : i.title === "" ? '<span class="muted">Not on GitHub any more</span>' : '<span class="muted">Title on its way</span>';
+
+/** What the list shows, in its order, before paging. */
+export function visible(items: Item[], f: Filters): Item[] {
+  return items.filter((i) => matches(i, f)).sort((a, b) => rank(a) - rank(b) || toMs(b.lastAt) - toMs(a.lastAt));
+}
+
+/** A row's id, for the link that keeps it in view. */
+const rowId = (i: { repo: string; n: number }) => `i-${i.repo.replace(/[^a-z0-9]+/g, "-")}-${i.n}`;
+
 const kindTag = (i: Item) => (i.kind === "pr" ? '<span class="kind">PR</span>' : i.kind === "issue" ? '<span class="kind">Issue</span>' : '<span class="kind unknown">Issue or PR</span>');
 
 // --- renders -----------------------------------------------------------------
 
-function pill(label: string, count: number, href: string, current: boolean): string {
-  return `<a class="pill" href="${escape(href)}"${current ? ' aria-current="true"' : ""}>${escape(label)} <span class="count">${count}</span></a>`;
+function pill(label: string, count: number, href: string, current: boolean, extra = ""): string {
+  return `<a class="pill" href="${escape(href)}"${current ? ' aria-current="true"' : ""}>${escape(label)}${extra} <span class="count">${count}</span></a>`;
 }
 
 export function renderDashboard(p: {
   items: Item[];
   filters: Filters;
   repos: string[];
+  sandbox?: string[];
   selected: { item: Item | null; log: LogRow[] } | null;
   now: number;
   user?: string;
 }): string {
   const { items, filters: f, repos, selected, now, user } = p;
-  const shown = items.filter((i) => matches(i, f)).sort((a, b) => rank(a) - rank(b) || toMs(b.lastAt) - toMs(a.lastAt));
+  const sandbox = p.sandbox ?? [];
+  const shown = visible(items, f);
   const byType = items.filter((i) => matches(i, f, "type"));
   const byStatus = items.filter((i) => matches(i, f, "status"));
   const inRepo = (r: string | null) => items.filter((i) => matches(i, { ...f, repo: r })).length;
+  const e2eTag = ' <span class="e2e">e2e</span>';
 
   const typePills = [
-    pill("All", byType.length, listHref(f, { type: "all", open: null }), f.type === "all"),
+    pill("All types", byType.length, listHref(f, { type: "all", open: null }), f.type === "all"),
     pill("Issues", byType.filter((i) => i.kind === "issue").length, listHref(f, { type: "issue", open: null }), f.type === "issue"),
     pill("Pull requests", byType.filter((i) => i.kind === "pr").length, listHref(f, { type: "pr", open: null }), f.type === "pr"),
   ].join("");
   const statusPills = [
-    pill("Everything", byStatus.length, listHref(f, { status: "all", open: null }), f.status === "all"),
+    pill("Any status", byStatus.length, listHref(f, { status: "all", open: null }), f.status === "all"),
     pill("Open", byStatus.filter(isOpen).length, listHref(f, { status: "open", open: null }), f.status === "open"),
     pill("Running", byStatus.filter((i) => i.status?.running).length, listHref(f, { status: "running", open: null }), f.status === "running"),
     pill("Needs attention", byStatus.filter(needsAttention).length, listHref(f, { status: "attention", open: null }), f.status === "attention"),
     pill("Closed", byStatus.filter((i) => i.closed).length, listHref(f, { status: "closed", open: null }), f.status === "closed"),
   ].join("");
   const repoPills = [pill("All repositories", inRepo(null), listHref(f, { repo: null, open: null }), !f.repo)]
-    .concat(repos.map((r) => pill(r, inRepo(r), listHref(f, { repo: r, open: null }), f.repo === r)))
+    .concat(repos.map((r) => pill(r, inRepo(r), listHref(f, { repo: r, open: null }), f.repo === r, sandbox.includes(r) ? e2eTag : "")))
     .join("");
   const hidden = (name: string, value: string | null) => (value ? `<input type="hidden" name="${name}" value="${escape(value)}">` : "");
 
+  const panel = selected
+    ? renderPanel(selected.item, f.open!, selected.log, now, f)
+    : `<div class="box pad panel-empty"><p class="lead">Pick an issue or pull request to see its log.</p></div>`;
+
   const rows = shown
-    .slice(0, LIST_LIMIT)
+    .slice(0, f.limit)
     .map((i) => {
       const isSel = !!f.open && f.open.repo === i.repo && f.open.n === i.n;
       const routine = i.status?.routine
         ? `${escape(i.status.routine)}${i.status.attempt > 1 ? ` <span class="muted">· try ${i.status.attempt}</span>` : ""}`
         : "";
-      return `<a class="row${isSel ? " selected" : ""}" href="${escape(listHref(f, { open: { repo: i.repo, n: i.n } }))}"${isSel ? ' aria-current="true"' : ""}>
-  <span class="row-main"><span class="num">#${i.n}</span> ${kindTag(i)} <span class="title">${i.title ? escape(i.title) : '<span class="muted">No title yet</span>'}</span></span>
+      // The link lands back on this row (#id), so the list keeps its place.
+      const href = `${listHref(f, { open: isSel ? null : { repo: i.repo, n: i.n } })}#${rowId(i)}`;
+      const row = `<a class="row${isSel ? " selected" : ""}" id="${rowId(i)}" href="${escape(href)}"${isSel ? ' aria-current="true" title="Close its log"' : ""}>
+  <span class="row-main"><span class="num">#${i.n}</span> ${kindTag(i)} <span class="title">${titleText(i)}</span></span>
   <span class="row-meta">${stateTag(i)}${i.status?.running ? ' <span class="tag running"><span class="dot"></span>Running</span>' : ""}${routine ? ` <span class="routine">${routine}</span>` : ""}</span>
-  <span class="row-sub">${escape(i.repo)} · <code>${escape(i.lastEvent)}</code> · ${escape(ago(i.lastAt, now))}</span>
+  <span class="row-sub">${escape(i.repo)}${sandbox.includes(i.repo) ? e2eTag : ""} · <code>${escape(i.lastEvent)}</code> · ${escape(ago(i.lastAt, now))}</span>
 </a>`;
+      // On a narrow screen the log opens under its row instead of beside the list.
+      return isSel ? `${row}\n<div class="inline-log">${panel}</div>` : row;
     })
     .join("\n");
-
-  const panel = selected ? renderPanel(selected.item, f.open!, selected.log, now, f) : `<div class="box pad panel-empty"><p class="lead">Pick an issue or pull request to see its log.</p></div>`;
+  const more = shown.length > f.limit
+    ? `<a class="more" href="${escape(listHref(f, { limit: Math.min(f.limit + PAGE, MAX_SHOWN) }))}">Show ${Math.min(PAGE, shown.length - f.limit)} more of ${shown.length - f.limit}</a>`
+    : "";
 
   return layout({
     title: "Orchestrator status",
@@ -461,10 +522,10 @@ export function renderDashboard(p: {
     <button type="submit" class="secondary">Find</button>${f.n ? ` <a class="quiet" href="${escape(listHref(f, { n: null, open: null }))}">Clear</a>` : ""}
   </form>
 </div>
-<div class="split">
+<div class="split${selected ? " has-selection" : ""}">
   <div class="box list" aria-label="Issues and pull requests">
     ${rows || `<div class="empty">Nothing matches these filters.</div>`}
-    ${shown.length > LIST_LIMIT ? `<div class="empty">Showing the latest ${LIST_LIMIT}.</div>` : ""}
+    ${more}
   </div>
   <div class="detail">${panel}</div>
 </div>`,
@@ -501,7 +562,7 @@ function renderPanel(item: Item | null, open: { repo: string; n: number }, log: 
     </div>
     <div class="panel-actions">
       <a class="button secondary" href="${escape(githubHref(open.repo, open.n))}">GitHub</a>
-      <a class="button secondary" href="${escape(listHref(f, { open: null }))}" aria-label="Close the log">Close</a>
+      <a class="button secondary" href="${escape(`${listHref(f, { open: null })}#${rowId(open)}`)}" aria-label="Close the log">Close</a>
     </div>
   </div>
   <div class="panel-facts">${facts}</div>
@@ -685,7 +746,11 @@ a.quiet { font-weight: 400; color: var(--ucp-color-text-alt); }
 .row-sub { font-size: 12px; color: var(--ucp-color-text-alt); overflow-wrap: anywhere; }
 .row-sub code { font-size: 12px; }
 .kind { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ucp-color-text-alt); border: 1px solid var(--ucp-color-divider); border-radius: var(--ucp-border-radius-small); padding: 0 5px; white-space: nowrap; }
-.detail { position: sticky; top: 18px; }
+.detail { position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow-y: auto; border-radius: var(--ucp-border-radius-large); }
+.inline-log { display: none; }
+.e2e { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #8a7516; background: #fef5d6; border-radius: var(--ucp-border-radius-small); padding: 0 5px; margin-left: 4px; }
+.more { display: block; padding: 14px 18px; text-align: center; border-top: 1px solid var(--ucp-color-row-divider); }
+.row { scroll-margin-top: 12px; }
 .panel { overflow: hidden; }
 .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--ucp-color-divider); }
 .panel-head h2 { margin: 0; font-size: 21px; overflow-wrap: anywhere; }
@@ -709,7 +774,9 @@ input { width: 180px; }
 .banner { background: #e3f6ec; color: #1e8a50; border-radius: var(--ucp-border-radius-medium); padding: 9px 15px; margin-bottom: 18px; font-weight: 700; font-size: 14px; }
 @media (max-width: 1100px) {
   .split { grid-template-columns: 1fr; }
-  .detail { position: static; }
+  .detail { display: none; }
+  .inline-log { display: block; padding: 0 9px 12px; background: var(--ucp-palette-dawn-pink); border-bottom: 1px solid var(--ucp-color-row-divider); }
+  .inline-log .box { box-shadow: none; }
 }
 @media (max-width: 700px) {
   main { padding: 24px 16px 36px; }
