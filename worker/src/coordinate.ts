@@ -51,6 +51,9 @@ export type TransitionRow = {
   run: string | null;
   droppedReason: string | null; // null only when a rule actually fired
   mode: Mode; // whether this event's writes were real (see Deps.enforced)
+  // Who caused it: the webhook's sender, or "watchdog" / "sweep" for the
+  // Worker's own; null when unknown.
+  actor?: string | null;
 };
 
 export type PendingFire = {
@@ -252,6 +255,14 @@ export type CoordinateInput = {
 
 export type IssueRef = Pick<CoordinateInput, "owner" | "repo" | "issueNumber">;
 
+/** What the Worker was doing when no webhook caused a row. */
+type Acting = { actor?: "watchdog" | "sweep" };
+
+/** Who caused a row: the webhook's sender, else what the Worker was doing. */
+function actorOf(input: IssueRef & Acting): string | null {
+  return (input as Partial<CoordinateInput>).payload?.sender?.login ?? input.actor ?? null;
+}
+
 export type CoordinateResult =
   | { outcome: "deduped" }
   | { outcome: "no_event" }
@@ -401,6 +412,7 @@ async function logManualOverride(
     issueNumber: input.issueNumber,
     fromState: deriveState(before),
     event: "manual_override",
+    actor: by,
     toEffect: JSON.stringify({ kind: "manual", change: summary, by, now: deriveState(now) }),
     run: null,
     droppedReason: null,
@@ -414,7 +426,7 @@ async function logManualOverride(
  * MAX_CI_FIX_ATTEMPTS per PR, then merge-blocked. */
 async function handToRework(
   deps: Deps,
-  input: IssueRef,
+  input: IssueRef & Acting,
   currentLabels: string[],
   facts: MergeGateFacts,
 ): Promise<CoordinateResult> {
@@ -464,7 +476,7 @@ export const MERGEABLE_RETRY_MS = 1000;
  * plus a comment saying why, since the label alone doesn't. */
 async function blockMerge(
   deps: Deps,
-  input: IssueRef,
+  input: IssueRef & Acting,
   currentLabels: string[],
   reason: string,
 ): Promise<CoordinateResult> {
@@ -512,13 +524,14 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
  * already in hand. */
 async function applyEvent(
   allDeps: Deps,
-  input: IssueRef,
+  input: IssueRef & Acting,
   event: Event,
   currentLabels: string[],
 ): Promise<CoordinateResult> {
   const { io: deps, mode } = depsFor(allDeps, event);
   // Present when a webhook caused this; the watchdog passes its pending fire.
   const deliveryId = (input as Partial<CoordinateInput>).deliveryId || null;
+  const actor = actorOf(input);
   const justAdded = LABEL_JUST_ADDED_BY[event];
   const labelsBeforeThisEvent = justAdded
     ? currentLabels.filter((l) => l !== justAdded)
@@ -527,6 +540,7 @@ async function applyEvent(
   if (current === "ambiguous") {
     await deps.logTransition({
       deliveryId,
+      actor,
       owner: input.owner,
       repo: input.repo,
       issueNumber: input.issueNumber,
@@ -545,6 +559,7 @@ async function applyEvent(
   if (!rule) {
     await deps.logTransition({
       deliveryId,
+      actor,
       owner: input.owner,
       repo: input.repo,
       issueNumber: input.issueNumber,
@@ -589,6 +604,7 @@ async function applyEvent(
 
   await deps.logTransition({
     deliveryId,
+    actor,
     owner: input.owner,
     repo: input.repo,
     issueNumber: input.issueNumber,
@@ -776,12 +792,13 @@ export async function coordinateReconcile(
     if (retry) await deps.setCiFix(null);
     const facts = await settledGateFacts(deps, ref);
     const reason = hardBlockReason(facts);
-    if (reason) return { outcome: "gated", result: await blockMerge(deps, ref, labels, reason) };
-    if (deriveMergeGateOutcome(facts) === "soft") return { outcome: "gated", result: await handToRework(deps, ref, labels, facts) };
+    const sweep = { ...ref, actor: "sweep" as const };
+    if (reason) return { outcome: "gated", result: await blockMerge(deps, sweep, labels, reason) };
+    if (deriveMergeGateOutcome(facts) === "soft") return { outcome: "gated", result: await handToRework(deps, sweep, labels, facts) };
     // Gate passed: the retry's own rule (merge-blocked comes off, merge-flow
     // fired and watched), not a bare re-fire that would leave merge-blocked on.
     if (retry) {
-      const result = await applyEvent(deps, ref, EVENTS.LABELLED_AUTO_MERGING, labels);
+      const result = await applyEvent(deps, sweep, EVENTS.LABELLED_AUTO_MERGING, labels);
       if (result.outcome === "applied") {
         await deps.logTransition({
           deliveryId: null,
@@ -790,6 +807,7 @@ export async function coordinateReconcile(
           issueNumber: ref.issueNumber,
           fromState: LABELS.MERGE_BLOCKED,
           event: "reconcile_refire",
+          actor: "sweep",
           toEffect: JSON.stringify({ kind: "noop", idleMinutes, retry: true }),
           run,
           droppedReason: null,
@@ -820,6 +838,7 @@ export async function coordinateReconcile(
     issueNumber: ref.issueNumber,
     fromState: state,
     event: "reconcile_refire",
+    actor: "sweep",
     toEffect: JSON.stringify({ kind: "noop", idleMinutes, ...(held ? { held } : {}) }),
     run,
     droppedReason: null,
@@ -867,7 +886,7 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
       `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
   );
 
-  const result = await applyEvent(deps, pending, EVENTS.WATCHDOG_EXPIRED, currentLabels);
+  const result = await applyEvent(deps, { ...pending, actor: "watchdog" }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
   await deps.clearPendingFire();
   // The watch is over either way: a shadow watchdog or labels with no expiry
   // rule leave the row alone above, and nothing else would stop it reading

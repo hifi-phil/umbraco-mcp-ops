@@ -471,8 +471,49 @@ is out now, the run's last heartbeat step, and its CI-fix reworks.
   GitHub account with a verified `@umbraco.com` or `@umbraco.dk` email gets
   in (`sign_in_domains`). The session lasts 7 days; "Sign out" is in the top
   bar.
+- **Pages:**
+  - `/status`: one list of every issue and PR the Worker has a log for,
+    open or closed, across the attached repos (`repo_routines` plus the
+    sandbox). Running first, then needing attention, then open, then the
+    rest by latest activity. Pills filter it by type (issues, pull
+    requests), status (open, running, needs attention, closed) and repo,
+    each with its count; a box finds a number. Selecting one opens its
+    whole D1 transition log beside the list (under it on a narrow screen):
+    time, event, from, who caused it (`actor`, migration 0008: the
+    webhook's sender, highlighted when it's a person, or "the watchdog" /
+    "the sweep"), effect, routine, mode, delivery, dropped reason,
+    newest first, under its live status. Every filter and the selection
+    are in the URL (`?type= &status= &repo= &n= &open=owner/repo/N`), so a
+    view can be shared, and survives the 5-minute refresh
+  - `/status/repo?repo=…`: the repo's controls (below) and its
+    repository-level activity (`control_changed` rows)
+- **Kind and title:** `items` in D1 (`migrations/0006_items.sql`), filled
+  from every webhook that carries an issue or PR: whether it's an issue or
+  a PR, its title, its GitHub state. Display only. An item with no title
+  yet (its webhooks all came before the table) is looked up on GitHub
+  after a page load that shows it, up to 20 a load; until then it counts as
+  a PR if it logged a PR-only event, else as an issue.
+- **What a load reads (D1's free plan allows 5M rows read a day):** one
+  `items` row per item, never the transition log. Each item's row carries
+  a summary of its log (`migrations/0007_items_summary.sql`: newest event
+  and time, event count, PR-only flag), which the issue DO updates as it
+  writes each log row. Only the open log panel reads `transitions`, and
+  only that item's rows. Before this the list read the whole log on every
+  load, and a tab left open on the 30-second refresh used three quarters of
+  a day's allowance (03-10-2026).
 - **Scripts:** `Authorization: Bearer <tofu output -raw status_secret>`,
   and `?format=json` gives the rows.
+- **Per-repo controls:** `repo_controls` in D1
+  (`migrations/0005_repo_controls.sql`, `src/controls.ts`), switched on a
+  repo's settings page. No row means on. Each change records who and when,
+  and logs a `control_changed` row (issue 0) to `transitions`. A change
+  must be a POST from the dashboard's own origin, by a signed-in person or
+  the Bearer key.
+  - **`sweep`:** off, and the Scheduler skips that repo
+    (`SweepSummary.paused`). If it can't read the switches it sweeps
+    nothing that time, rather than a repo someone turned off.
+  - More controls (an agent or routine each) are one entry in `CONTROLS`
+    plus the place that reads it.
 - **Setting up sign-in:** it goes through the Worker's GitHub App
   (`src/auth.ts`), so there's no second OAuth app. In the App's settings:
   1. General -> Callback URL: `tofu output -raw sign_in_callback_url`.
@@ -498,7 +539,8 @@ is out now, the run's last heartbeat step, and its CI-fix reworks.
 - **Side effect only:** nothing reads it to decide anything, and a failed
   write is logged, never failing the transition. Shadow events don't write
   it (their labels never moved), so a shadow repo has no rows.
-- **Refreshes itself every 30 seconds** (a meta refresh), no push. An issue the Worker
+- **Refreshes itself every 5 minutes** (a meta refresh), no push, with an
+  "Updated HH:MM · Refresh" link for sooner. An issue the Worker
   first sees after this deploy gets its row on its next transition.
 
 ## The watchdog is a real event

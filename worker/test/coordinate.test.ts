@@ -470,6 +470,37 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
   });
 });
 
+describe("who caused each log row (actor)", () => {
+  const ref = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 };
+
+  it("a webhook's row names its sender: a person removing auto-merge reads as them", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => []) });
+    await coordinateWebhook(deps, input({ payload: { action: "pull_request.unlabeled", label: { name: LABELS.AUTO_MERGING }, sender: { login: "hifi-phil", type: "User" } } }));
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.UNLABELLED_AUTO_MERGING, actor: "hifi-phil" }));
+  });
+
+  it("the watchdog's expiry is the watchdog's", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP });
+    await coordinateWatchdogExpired(deps);
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.WATCHDOG_EXPIRED, actor: "watchdog" }));
+  });
+
+  it("a sweep re-fire, and what its gate applies, are the sweep's", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), lastActivityAt: async () => "2026-10-01 00:00:00" });
+    await coordinateReconcile(deps, ref, { enforced: true, now: Date.parse("2026-10-02T00:00:00Z") });
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: "reconcile_refire", actor: "sweep" }));
+
+    const gated = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
+      lastActivityAt: async () => "2026-10-01 00:00:00",
+      getMergeGateFacts: vi.fn(async () => gateFacts({ mergeable: false })),
+    });
+    await coordinateReconcile(gated, ref, { enforced: true, now: Date.parse("2026-10-02T00:00:00Z") });
+    expect(gated.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.MERGE_GATE_FAILED_HARD, actor: "sweep" }));
+  });
+});
+
 describe("the live-status row (recordStatus): what each step tells the dashboard", () => {
   const ref = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 };
   const readyLabel = { action: "issues.labeled", label: { name: LABELS.AI_READY } };

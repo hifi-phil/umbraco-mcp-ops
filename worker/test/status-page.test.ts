@@ -1,5 +1,7 @@
+// /status's access: who gets in (a signed-in person, the Bearer key) and
+// what everyone else gets. The dashboard's content: dashboard.test.ts.
 import { describe, expect, it } from "vitest";
-import { ago, handleStatus, renderStatus, type StatusRow } from "../src/status-page";
+import { ago, handleStatus, type StatusRow } from "../src/status-page";
 import { signSession } from "../src/auth";
 
 const row = (overrides: Partial<StatusRow> = {}): StatusRow => ({
@@ -17,23 +19,29 @@ const row = (overrides: Partial<StatusRow> = {}): StatusRow => ({
   ...overrides,
 });
 
+/** issue_status holds `rows`; the items summary has one row for each. */
 function fakeDb(rows: StatusRow[]) {
   const queries: string[] = [];
+  const results = (sql: string) =>
+    sql.includes("FROM items")
+      ? rows.map((r) => ({ owner: r.owner, repo: r.repo, issue_number: r.issue_number, last_event: "labelled_ai_ready", last_at: r.updated_at, events: 1, pr_hint: 0, kind: null, title: null, gh_state: null }))
+      : rows;
   const db = {
     prepare: (sql: string) => {
       queries.push(sql);
-      return { all: async () => ({ results: rows }) };
+      const all = async () => ({ results: results(sql) });
+      return { all, bind: () => ({ all }) };
     },
   } as unknown as D1Database;
   return { db, queries };
 }
 
-const get = (headers: Record<string, string> = {}, query = "") =>
-  new Request(`https://worker/status${query}`, { headers });
+const REPOS = JSON.stringify({ "hifi-phil/umbraco-mcp-ops": {} });
+const get = (headers: Record<string, string> = {}, query = "") => new Request(`https://worker/status${query}`, { headers });
 const bearer = (secret: string) => ({ Authorization: `Bearer ${secret}` });
 const signIn = { GITHUB_OAUTH_CLIENT_ID: "Iv1.abc", GITHUB_OAUTH_CLIENT_SECRET: "cs", SESSION_SECRET: "sess-key" };
 
-describe("GET /status — the live-status dashboard", () => {
+describe("GET /status — who gets in", () => {
   it("off (404) unless STATUS_SECRET is set", async () => {
     const { db } = fakeDb([]);
     const res = await handleStatus(get(bearer("x")), { DB: db }, new URL("https://worker/status"));
@@ -59,11 +67,16 @@ describe("GET /status — the live-status dashboard", () => {
   it("a valid session -> the page, never cached, naming who's signed in with a sign-out link", async () => {
     const { db } = fakeDb([row()]);
     const token = await signSession({ login: "octo", email: "octo@umbraco.dk", exp: Math.floor(Date.now() / 1000) + 60 }, "sess-key");
-    const res = await handleStatus(get({ Cookie: `ao_session=${encodeURIComponent(token)}` }), { DB: db, STATUS_SECRET: "s3cret", ...signIn }, new URL("https://worker/status"));
+    const res = await handleStatus(
+      get({ Cookie: `ao_session=${encodeURIComponent(token)}` }),
+      { DB: db, STATUS_SECRET: "s3cret", REPO_ROUTINES_JSON: REPOS, ...signIn },
+      new URL("https://worker/status"),
+    );
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(res.headers.get("Content-Security-Policy")).toContain("form-action 'self'");
     const html = await res.text();
-    expect(html).toContain('issues/412">#412</a>');
+    expect(html).toContain("#412");
     expect(html).toContain('octo<a href="/auth/logout">Sign out</a>');
   });
 
@@ -80,52 +93,25 @@ describe("GET /status — the live-status dashboard", () => {
     expect(res.status).toBe(200);
   });
 
-  it("?format=json -> the rows, running first then most recent", async () => {
+  it("a list load reads the items summary and live status, never the whole log (D1 reads, 03-10-2026)", async () => {
+    const { db, queries } = fakeDb([row()]);
+    await handleStatus(get(bearer("s3cret")), { DB: db, STATUS_SECRET: "s3cret", REPO_ROUTINES_JSON: REPOS }, new URL("https://worker/status"));
+    expect(queries.some((q) => q.includes("FROM transitions"))).toBe(false);
+    expect(queries.some((q) => q.includes("FROM items WHERE events > 0"))).toBe(true);
+  });
+
+  it("refreshes every 5 minutes, and says when it was updated", async () => {
+    const { db } = fakeDb([]);
+    const html = await (await handleStatus(get(bearer("s3cret")), { DB: db, STATUS_SECRET: "s3cret", REPO_ROUTINES_JSON: REPOS }, new URL("https://worker/status"))).text();
+    expect(html).toContain('<meta http-equiv="refresh" content="300">');
+    expect(html).toMatch(/Updated \d\d:\d\d UTC · <a href="\/status">Refresh<\/a> · every 5 minutes/);
+  });
+
+  it("?format=json -> the issue_status rows, running first then most recent", async () => {
     const { db, queries } = fakeDb([row()]);
     const res = await handleStatus(get(bearer("s3cret")), { DB: db, STATUS_SECRET: "s3cret" }, new URL("https://worker/status?format=json"));
     expect(await res.json()).toEqual({ rows: [row()] });
     expect(queries[0]).toMatch(/ORDER BY running DESC, updated_at DESC/);
-  });
-});
-
-describe("renderStatus", () => {
-  const now = Date.parse("2026-10-02T10:12:00Z");
-
-  it("shows each row's state, routine, attempt, step and age; a running row is marked", () => {
-    const html = renderStatus([row({ attempt: 2, rework_count: 1 })], now);
-    expect(html).toContain('<span class="tag running"><span class="dot"></span>Running</span>');
-    expect(html).toContain("issue-build-loop");
-    expect(html).toContain("running tests");
-    expect(html).toContain("12 min ago");
-    expect(html).toContain('href="https://github.com/hifi-phil/umbraco-mcp-ops/issues/412"');
-    expect(html).toContain('<div class="stat-title">Tracked</div><div class="stat-value">1</div>');
-    expect(html).toContain('<div class="stat-title">Running</div><div class="stat-value">1</div>');
-  });
-
-  it("'Stuck or blocked' counts ai-stuck, merge-blocked and ai-blocked", () => {
-    const html = renderStatus([row({ state: "ai-stuck" }), row({ state: "ai-blocked" }), row({ state: "merge-blocked" }), row({ state: "ready-for-ai" })], now);
-    expect(html).toContain('<div class="stat-title">Stuck or blocked</div><div class="stat-value">3</div>');
-  });
-
-  it("tags trouble red, waiting-on-a-person amber, done green", () => {
-    const html = renderStatus([row({ state: "ai-stuck" }), row({ state: "ai-blocked" }), row({ state: "generated-by-ai" })], now);
-    expect(html).toContain('<span class="tag danger">ai-stuck</span>');
-    expect(html).toContain('<span class="tag warning">ai-blocked</span>');
-    expect(html).toContain('<span class="tag positive">generated-by-ai</span>');
-  });
-
-  it("escapes what came from a routine (a heartbeat step is free text)", () => {
-    const html = renderStatus([row({ last_step: '<img src=x onerror="alert(1)">' })], now);
-    expect(html).not.toContain("<img");
-    expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
-  });
-
-  it("reloads itself every 30 seconds", () => {
-    expect(renderStatus([], now)).toContain('<meta http-equiv="refresh" content="30">');
-  });
-
-  it("nothing tracked -> says so", () => {
-    expect(renderStatus([], now)).toContain("Nothing tracked right now.");
   });
 });
 

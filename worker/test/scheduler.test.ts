@@ -20,14 +20,23 @@ function fakeCtx(alarmAt: number | null = null) {
   return { ctx: { storage } as unknown as DurableObjectState, storage, order };
 }
 
-function fakeEnv(reconcile: (body: { issueNumber: number; enforced: boolean }) => unknown, overrides: Partial<SchedulerEnv> = {}) {
+function fakeEnv(
+  reconcile: (body: { issueNumber: number; enforced: boolean }) => unknown,
+  overrides: Partial<SchedulerEnv> = {},
+  sweepOff: { owner: string; repo: string }[] = [],
+) {
   const inserted: unknown[][] = [];
   const asked: { key: string; body: { issueNumber: number; enforced: boolean } }[] = [];
   const env: SchedulerEnv = {
     GITHUB_APP_TOKEN: "t",
     REPO_ROUTINES_JSON: JSON.stringify({ "hifi-phil/umbraco-mcp-ops": {}, "hifi-phil/mcp-ops-e2e-testing": {} }),
     DB: {
-      prepare: () => ({ bind: (...args: unknown[]) => (inserted.push(args), { run: async () => ({}) }) }),
+      prepare: (sql: string) => ({
+        bind: (...args: unknown[]) =>
+          sql.includes("repo_controls")
+            ? { all: async () => ({ results: sweepOff }) }
+            : (inserted.push(args), { run: async () => ({}) }),
+      }),
     } as unknown as D1Database,
     ISSUE_COORDINATOR: {
       idFromName: (name: string) => ({ toString: () => name }),
@@ -233,6 +242,29 @@ describe("Scheduler", () => {
     const { env, inserted } = fakeEnv(() => ({ outcome: "refired" }), { SWEEP_ENFORCE_REPOS: "hifi-phil/umbraco-mcp-ops" });
     await new Scheduler(ctx, env).sweep();
     expect(inserted[0]).toEqual(expect.arrayContaining(["sweep", "enforce"]));
+  });
+
+  it("a repo whose sweep is switched off on the dashboard is skipped, never asked; the rest still sweep", async () => {
+    vi.stubGlobal("fetch", github());
+    const { ctx } = fakeCtx();
+    const { env, asked } = fakeEnv(() => ({ outcome: "watched" }), {}, [{ owner: "hifi-phil", repo: "umbraco-mcp-ops" }]);
+    const summary = await new Scheduler(ctx, env).sweep();
+    expect(summary.paused).toEqual(["hifi-phil/umbraco-mcp-ops"]);
+    expect(asked).toEqual([]);
+    expect(summary.checked).toBe(0);
+  });
+
+  it("the switches can't be read -> nothing swept this time (never one that was turned off), and an error recorded", async () => {
+    vi.stubGlobal("fetch", github());
+    const { ctx } = fakeCtx();
+    const { env, asked } = fakeEnv(() => ({ outcome: "watched" }));
+    const broken = env.DB;
+    env.DB = {
+      prepare: (sql: string) => (sql.includes("repo_controls") ? { bind: () => ({ all: async () => { throw new Error("D1 down"); } }) } : broken.prepare(sql)),
+    } as unknown as D1Database;
+    const summary = await new Scheduler(ctx, env).sweep();
+    expect(asked).toEqual([]);
+    expect(summary.errors).toEqual([expect.stringContaining("controls: D1 down")]);
   });
 
   it("SWEEP_ENFORCE_REPOS enforces for just that repo; a sweep can be limited to some repos", async () => {

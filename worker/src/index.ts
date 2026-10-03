@@ -8,12 +8,13 @@
 // DO key, and that distinct issues/repos always produce distinct keys.
 
 import { IssueCoordinator } from "./issue-coordinator";
-import { extractRoutingInfo, toWebhookPayload, verifySignature, type RoutingInfo } from "./webhook-parse";
+import { extractItemMeta, extractRoutingInfo, toWebhookPayload, verifySignature, type RoutingInfo } from "./webhook-parse";
 import { openPullsForCommit } from "./github-client";
 import type { CoordinateInput, RoutineSignalInput } from "./coordinate";
 
 import { Scheduler } from "./scheduler";
 import { handleStatus } from "./status-page";
+import { upsertItem } from "./items";
 import { handleCallback, handleLogin, handleLogout, signedOut } from "./auth";
 
 export { IssueCoordinator, Scheduler };
@@ -50,6 +51,9 @@ export type Env = {
   GITHUB_OAUTH_CLIENT_SECRET?: string;
   SESSION_SECRET?: string;
   SIGN_IN_DOMAINS?: string;
+  // Read by the dashboard's repository page, to say what a repo's sweep does.
+  SWEEP_MODE?: string;
+  SWEEP_ENFORCE_REPOS?: string;
 };
 
 /** One DO per issue/PR. Lowercased: GitHub treats owner/repo names
@@ -60,11 +64,14 @@ function doKey(owner: string, repo: string, issueNumber: number): string {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/sweep") return handleSweep(request, env);
     if (request.method === "GET" && url.pathname === "/transitions") return handleTransitions(request, env, url);
-    if (request.method === "GET" && url.pathname === "/status") return handleStatus(request, env, url);
+    // The dashboard: its pages, and the form that switches a repo's controls.
+    if (url.pathname === "/status" || url.pathname.startsWith("/status/")) {
+      return handleStatus(request, env, url, (work) => ctx?.waitUntil(work));
+    }
     if (request.method === "GET" && url.pathname === "/auth/login") return handleLogin(env, url);
     if (request.method === "GET" && url.pathname === "/auth/callback") return handleCallback(request, env, url);
     if (request.method === "GET" && url.pathname === "/auth/logout") return handleLogout();
@@ -99,6 +106,7 @@ export default {
     const routing = extractRoutingInfo(body) ?? (eventType === "check_suite" ? await routeByCommit(env, body) : null);
     if (!routing) return Response.json({ ok: true, dropped: "no routable issue/PR number" });
 
+    await recordItem(env, routing, body);
     const payload = toWebhookPayload(body, eventType);
     const forward = (issueNumber: number) => {
       const input: CoordinateInput = { deliveryId, owner: routing.owner, repo: routing.repo, issueNumber, payload };
@@ -166,6 +174,19 @@ async function handleTransitions(request: Request, env: Env, url: URL): Promise<
     .bind(owner, repo, issue)
     .all<TransitionLogRow>();
   return Response.json({ rows: results });
+}
+
+/** The dashboard's items table (migrations/0006): an issue or PR's kind,
+ * title and GitHub state, as this webhook gives them. Display only; never
+ * fails the webhook. */
+async function recordItem(env: Env, routing: NonNullable<RoutingInfo>, body: Record<string, unknown>): Promise<void> {
+  const meta = routing.issueNumbers.length === 1 ? extractItemMeta(body) : null;
+  if (!meta) return;
+  try {
+    await upsertItem(env.DB, routing.owner, routing.repo, routing.issueNumbers[0]!, meta);
+  } catch (e) {
+    console.error("item write failed:", e instanceof Error ? e.message : e);
+  }
 }
 
 const scheduler = (env: Env) => env.SCHEDULER!.get(env.SCHEDULER!.idFromName("scheduler"));

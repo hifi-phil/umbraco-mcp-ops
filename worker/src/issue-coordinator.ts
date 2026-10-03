@@ -38,6 +38,7 @@ import {
   watchdogMinutesFor,
 } from "./coordinate";
 import * as githubClient from "./github-client";
+import { recordLogged } from "./items";
 import { appBotLogin, appConfigured } from "./github-app";
 import { fireRoutine } from "./routines-client";
 import type { GitHubEnv } from "./github-client";
@@ -315,8 +316,8 @@ export class IssueCoordinator {
   private async insertTransition(row: TransitionRow): Promise<void> {
     await this.env.DB.prepare(
       `INSERT INTO transitions
-         (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode, actor)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         row.deliveryId,
@@ -329,7 +330,15 @@ export class IssueCoordinator {
         row.run,
         row.droppedReason,
         row.mode, // per event since Phase 4, not per Worker
+        row.actor ?? null,
       )
       .run();
+    if (row.issueNumber > 0) {
+      try {
+        await recordLogged(this.env.DB, row.owner, row.repo, row.issueNumber, row.event);
+      } catch (e) {
+        console.error("item summary write failed:", e instanceof Error ? e.message : e);
+      }
+    }
   }
 }
