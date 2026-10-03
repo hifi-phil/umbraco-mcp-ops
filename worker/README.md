@@ -471,8 +471,28 @@ is out now, the run's last heartbeat step, and its CI-fix reworks.
   GitHub account with a verified `@umbraco.com` or `@umbraco.dk` email gets
   in (`sign_in_domains`). The session lasts 7 days; "Sign out" is in the top
   bar.
+- **Pages:**
+  - `/status`: open issues, across every attached repo (`repo_routines`
+    plus the sandbox) or one of them (`?repo=owner/repo`, the switcher
+    above the table)
+  - `/status/issue?repo=…&n=…`: one issue's whole D1 transition log,
+    newest first (time, event, from, effect, routine, mode, delivery,
+    dropped reason), with its current status. Every issue number links
+    here; the form under the table looks one up
+  - `/status/repo?repo=…`: the repo's controls (below)
 - **Scripts:** `Authorization: Bearer <tofu output -raw status_secret>`,
   and `?format=json` gives the rows.
+- **Per-repo controls:** `repo_controls` in D1
+  (`migrations/0005_repo_controls.sql`, `src/controls.ts`), switched on a
+  repo's settings page. No row means on. Each change records who and when,
+  and logs a `control_changed` row (issue 0) to `transitions`. A change
+  must be a POST from the dashboard's own origin, by a signed-in person or
+  the Bearer key.
+  - **`sweep`:** off, and the Scheduler skips that repo
+    (`SweepSummary.paused`). If it can't read the switches it sweeps
+    nothing that time, rather than a repo someone turned off.
+  - More controls (an agent or routine each) are one entry in `CONTROLS`
+    plus the place that reads it.
 - **Setting up sign-in:** it goes through the Worker's GitHub App
   (`src/auth.ts`), so there's no second OAuth app. In the App's settings:
   1. General -> Callback URL: `tofu output -raw sign_in_callback_url`.

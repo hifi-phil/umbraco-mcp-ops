@@ -63,7 +63,7 @@ describe("GET /status — the live-status dashboard", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     const html = await res.text();
-    expect(html).toContain('issues/412">#412</a>');
+    expect(html).toContain('href="/status/issue?repo=hifi-phil%2Fumbraco-mcp-ops&amp;n=412">#412</a>');
     expect(html).toContain('octo<a href="/auth/logout">Sign out</a>');
   });
 

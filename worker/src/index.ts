@@ -50,6 +50,9 @@ export type Env = {
   GITHUB_OAUTH_CLIENT_SECRET?: string;
   SESSION_SECRET?: string;
   SIGN_IN_DOMAINS?: string;
+  // Read by the dashboard's repository page, to say what a repo's sweep does.
+  SWEEP_MODE?: string;
+  SWEEP_ENFORCE_REPOS?: string;
 };
 
 /** One DO per issue/PR. Lowercased: GitHub treats owner/repo names
@@ -64,7 +67,8 @@ export default {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/sweep") return handleSweep(request, env);
     if (request.method === "GET" && url.pathname === "/transitions") return handleTransitions(request, env, url);
-    if (request.method === "GET" && url.pathname === "/status") return handleStatus(request, env, url);
+    // The dashboard: its pages, and the form that switches a repo's controls.
+    if (url.pathname === "/status" || url.pathname.startsWith("/status/")) return handleStatus(request, env, url);
     if (request.method === "GET" && url.pathname === "/auth/login") return handleLogin(env, url);
     if (request.method === "GET" && url.pathname === "/auth/callback") return handleCallback(request, env, url);
     if (request.method === "GET" && url.pathname === "/auth/logout") return handleLogout();
