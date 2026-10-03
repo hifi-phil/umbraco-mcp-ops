@@ -1,10 +1,8 @@
-import { describe,expect,it,vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
-import {
-coordinateWatchdogExpired,type PendingFire
-} from "../../src/coordinate";
+import { coordinateWatchdogExpired, type PendingFire } from "../../src/coordinate";
 import { fakeDeps } from "./helpers";
 
 describe("coordinateWatchdogExpired — the watchdog as a real event", () => {

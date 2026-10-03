@@ -9,12 +9,12 @@
 // This file: the shared vocabulary of coordinate/: the Deps every handler
 // takes, the row and result types, and the mode switches (shadow/enforce).
 
-import { LABELS,type Label } from "@orchestrator/graph/constants/labels";
-import { type Rule,type State } from "@orchestrator/graph/graph";
+import { LABELS, type Label } from "@orchestrator/graph/constants/labels";
+import { type Rule, type State } from "@orchestrator/graph/graph";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { type WebhookPayload } from "@orchestrator/graph/github/from-github";
 import { type MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
-import { EVENTS,type Event } from "@orchestrator/graph/constants/events";
+import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
 
 // A GitHub label-add webhook is only delivered *after* the label already
 // exists on the issue/PR — so a fresh getLabels() read for a "labelled_X"

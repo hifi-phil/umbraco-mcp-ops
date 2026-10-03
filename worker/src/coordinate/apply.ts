@@ -2,17 +2,20 @@
 // reduce() -> labelOps() -> fire and watch -> log -> live-status row. And
 // deriveState, reading the tracked state from the labels.
 
-import { ALL_LABELS,LABELS,type Label } from "@orchestrator/graph/constants/labels";
-import { CONTEXTUAL_EVENTS,isWatched,reduce,type Rule,type State } from "@orchestrator/graph/graph";
+import { ALL_LABELS, LABELS, type Label } from "@orchestrator/graph/constants/labels";
+import { CONTEXTUAL_EVENTS, isWatched, reduce, type Rule, type State } from "@orchestrator/graph/graph";
 import { labelOps } from "@orchestrator/graph/github/to-github";
 import { type Event } from "@orchestrator/graph/constants/events";
 import {
-LABEL_JUST_ADDED_BY,actorOf,
-depsFor,
-type Acting,type CoordinateInput,
-type CoordinateResult,
-type Deps,
-type IssueRef,type StatusUpdate
+  LABEL_JUST_ADDED_BY,
+  actorOf,
+  depsFor,
+  type Acting,
+  type CoordinateInput,
+  type CoordinateResult,
+  type Deps,
+  type IssueRef,
+  type StatusUpdate,
 } from "./types";
 
 /** The shared reduce() -> labelOps() -> fire/log tail, once an Event has

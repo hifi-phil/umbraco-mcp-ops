@@ -1,12 +1,16 @@
-import { describe,expect,it,vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import {
-coordinateWebhook,coordinateWatchdogExpired,
-deriveState,resolveEnforced,watchdogMinutesFor,type Deps
+  coordinateWebhook,
+  coordinateWatchdogExpired,
+  deriveState,
+  resolveEnforced,
+  watchdogMinutesFor,
+  type Deps,
 } from "../../src/coordinate";
-import { fakeDeps,input } from "./helpers";
+import { fakeDeps, input } from "./helpers";
 
 describe("coordinateWebhook — enforced events vs the shadowed watchdog", () => {
   const enforced = resolveEnforced("enforce", undefined);

@@ -1,10 +1,8 @@
 // A routine's direct signal (heartbeat or completion): extends or ends the
 // watchdog. Never a label write: that's the webhook path's.
 
-import { parseRoutineSignal,type RoutineSignal } from "@orchestrator/graph/routines/from-routine";
-import {
-type Deps
-} from "./types";
+import { parseRoutineSignal, type RoutineSignal } from "@orchestrator/graph/routines/from-routine";
+import { type Deps } from "./types";
 
 export type RoutineSignalInput = { owner: string; repo: string; signal: RoutineSignal };
 

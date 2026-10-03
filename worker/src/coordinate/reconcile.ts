@@ -1,16 +1,12 @@
 // The reconciliation sweep's question for one issue: was it left behind?
 
-import { LABELS,type Label } from "@orchestrator/graph/constants/labels";
+import { LABELS, type Label } from "@orchestrator/graph/constants/labels";
 import { reduce } from "@orchestrator/graph/graph";
-import { deriveMergeGateOutcome,hardBlockReason } from "@orchestrator/graph/github/merge-gate";
-import { EVENTS,type Event } from "@orchestrator/graph/constants/events";
-import {
-type CoordinateResult,
-type Deps,
-type IssueRef
-} from "./types";
-import { applyEvent,deriveState } from "./apply";
-import { blockMerge,handToRework,settledGateFacts } from "./merge-gate";
+import { deriveMergeGateOutcome, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
+import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
+import { type CoordinateResult, type Deps, type IssueRef } from "./types";
+import { applyEvent, deriveState } from "./apply";
+import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 
 // getAlarm() is null from the moment the watchdog alarm is invoked (even
 // while it waits its turn in serial()) and again once its retries are spent.
