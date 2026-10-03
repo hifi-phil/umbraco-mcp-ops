@@ -1,27 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe,expect,it,vi } from "vitest";
 import { LABELS } from "../../../graph/constants/labels";
 import { EVENTS } from "../../../graph/constants/events";
 import { ROUTINES } from "../../../graph/constants/routines";
 import {
-  LABEL_JUST_ADDED_BY,
-  coordinateWebhook,
-  coordinateReconcile,
-  coordinateRoutineSignal,
-  coordinateWatchdogExpired,
-  deriveState,
-  MAX_CI_FIX_ATTEMPTS,
-  resolveEnforced,
-  resolveMode,
-  shadowDeps,
-  watchdogMinutesFor,
-  type CiFix,
-  type CoordinateInput,
-  type Deps,
-  type PendingFire,
+coordinateWebhook,MAX_CI_FIX_ATTEMPTS
 } from "../../src/coordinate";
-import type { RoutineSignal } from "../../../graph/routines/from-routine";
-import type { MergeGateFacts } from "../../../graph/github/merge-gate";
-import { fakeDeps, gateFacts, input } from "./helpers";
+import { fakeDeps,gateFacts,input } from "./helpers";
 
 describe("coordinateWebhook — check_suite.completed, the real merge-gate aggregation", () => {
   const checkSuiteInput = (status: "completed" | "in_progress" = "completed") =>

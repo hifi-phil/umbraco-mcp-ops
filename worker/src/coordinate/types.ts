@@ -9,14 +9,12 @@
 // This file: the shared vocabulary of coordinate/: the Deps every handler
 // takes, the row and result types, and the mode switches (shadow/enforce).
 
-import { ALL_LABELS, LABELS, type Label } from "../../../graph/constants/labels";
-import { CONTEXTUAL_EVENTS, isWatched, reduce, type Rule, type State } from "../../../graph/graph";
+import { LABELS,type Label } from "../../../graph/constants/labels";
+import { type Rule,type State } from "../../../graph/graph";
 import { ROUTINES } from "../../../graph/constants/routines";
-import { translate, type WebhookPayload } from "../../../graph/github/from-github";
-import { labelOps } from "../../../graph/github/to-github";
-import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason, type MergeGateFacts } from "../../../graph/github/merge-gate";
-import { EVENTS, type Event } from "../../../graph/constants/events";
-import { parseRoutineSignal, type RoutineSignal } from "../../../graph/routines/from-routine";
+import { type WebhookPayload } from "../../../graph/github/from-github";
+import { type MergeGateFacts } from "../../../graph/github/merge-gate";
+import { EVENTS,type Event } from "../../../graph/constants/events";
 
 // A GitHub label-add webhook is only delivered *after* the label already
 // exists on the issue/PR — so a fresh getLabels() read for a "labelled_X"

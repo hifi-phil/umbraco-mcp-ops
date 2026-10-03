@@ -1,29 +1,16 @@
 // The reconciliation sweep's question for one issue: was it left behind?
 
-import { ALL_LABELS, LABELS, type Label } from "../../../graph/constants/labels";
-import { CONTEXTUAL_EVENTS, isWatched, reduce, type Rule, type State } from "../../../graph/graph";
-import { ROUTINES } from "../../../graph/constants/routines";
-import { translate, type WebhookPayload } from "../../../graph/github/from-github";
-import { labelOps } from "../../../graph/github/to-github";
-import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason, type MergeGateFacts } from "../../../graph/github/merge-gate";
-import { EVENTS, type Event } from "../../../graph/constants/events";
-import { parseRoutineSignal, type RoutineSignal } from "../../../graph/routines/from-routine";
+import { LABELS,type Label } from "../../../graph/constants/labels";
+import { reduce } from "../../../graph/graph";
+import { deriveMergeGateOutcome,hardBlockReason } from "../../../graph/github/merge-gate";
+import { EVENTS,type Event } from "../../../graph/constants/events";
 import {
-  LABEL_JUST_ADDED_BY,
-  MAX_CI_FIX_ATTEMPTS,
-  actorOf,
-  depsFor,
-  type Acting,
-  type CiFix,
-  type CoordinateInput,
-  type CoordinateResult,
-  type Deps,
-  type IssueRef,
-  type PendingFire,
-  type StatusUpdate,
+type CoordinateResult,
+type Deps,
+type IssueRef
 } from "./types";
-import { applyEvent, deriveState } from "./apply";
-import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
+import { applyEvent,deriveState } from "./apply";
+import { blockMerge,handToRework,settledGateFacts } from "./merge-gate";
 
 // getAlarm() is null from the moment the watchdog alarm is invoked (even
 // while it waits its turn in serial()) and again once its retries are spent.

@@ -1,27 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe,expect,it,vi } from "vitest";
 import { LABELS } from "../../../graph/constants/labels";
 import { EVENTS } from "../../../graph/constants/events";
 import { ROUTINES } from "../../../graph/constants/routines";
 import {
-  LABEL_JUST_ADDED_BY,
-  coordinateWebhook,
-  coordinateReconcile,
-  coordinateRoutineSignal,
-  coordinateWatchdogExpired,
-  deriveState,
-  MAX_CI_FIX_ATTEMPTS,
-  resolveEnforced,
-  resolveMode,
-  shadowDeps,
-  watchdogMinutesFor,
-  type CiFix,
-  type CoordinateInput,
-  type Deps,
-  type PendingFire,
+coordinateReconcile,
+coordinateRoutineSignal
 } from "../../src/coordinate";
-import type { RoutineSignal } from "../../../graph/routines/from-routine";
-import type { MergeGateFacts } from "../../../graph/github/merge-gate";
-import { fakeDeps, gateFacts, input } from "./helpers";
+import { fakeDeps,gateFacts } from "./helpers";
 
 describe("coordinateReconcile — the sweep's question: was this issue left behind?", () => {
   const ref = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 };

@@ -1,27 +1,9 @@
 // A routine's direct signal (heartbeat or completion): extends or ends the
 // watchdog. Never a label write: that's the webhook path's.
 
-import { ALL_LABELS, LABELS, type Label } from "../../../graph/constants/labels";
-import { CONTEXTUAL_EVENTS, isWatched, reduce, type Rule, type State } from "../../../graph/graph";
-import { ROUTINES } from "../../../graph/constants/routines";
-import { translate, type WebhookPayload } from "../../../graph/github/from-github";
-import { labelOps } from "../../../graph/github/to-github";
-import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason, type MergeGateFacts } from "../../../graph/github/merge-gate";
-import { EVENTS, type Event } from "../../../graph/constants/events";
-import { parseRoutineSignal, type RoutineSignal } from "../../../graph/routines/from-routine";
+import { parseRoutineSignal,type RoutineSignal } from "../../../graph/routines/from-routine";
 import {
-  LABEL_JUST_ADDED_BY,
-  MAX_CI_FIX_ATTEMPTS,
-  actorOf,
-  depsFor,
-  type Acting,
-  type CiFix,
-  type CoordinateInput,
-  type CoordinateResult,
-  type Deps,
-  type IssueRef,
-  type PendingFire,
-  type StatusUpdate,
+type Deps
 } from "./types";
 
 export type RoutineSignalInput = { owner: string; repo: string; signal: RoutineSignal };
