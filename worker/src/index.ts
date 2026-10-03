@@ -33,7 +33,7 @@ export type Env = {
   // {"owner/repo": {"fireUrl", "token"}} — each repo's loop-dispatch routine.
   // See routines-client.ts.
   REPO_ROUTINES_JSON: string;
-  // Auth for POST /routine-signal (see coordinate.ts's coordinateRoutineSignal
+  // Auth for POST /routine-signal (see coordinate/routine-signal.ts's coordinateRoutineSignal
   // doc comment). Same permissive-when-unset shape as GITHUB_WEBHOOK_SECRET —
   // easy local dev, a real secret required once actually deployed.
   ROUTINE_SIGNAL_SECRET?: string;
@@ -212,7 +212,7 @@ async function routeByCommit(env: Env, body: Record<string, unknown>): Promise<R
 }
 
 /**
- * The direct routine-to-DO heartbeat channel (see coordinate.ts's
+ * The direct routine-to-DO heartbeat channel (see coordinate/routine-signal.ts's
  * coordinateRoutineSignal). Not a GitHub webhook — no X-GitHub-Event, no
  * HMAC signature; a bearer secret instead, since this is a routine
  * calling in directly, not GitHub delivering a signed payload.

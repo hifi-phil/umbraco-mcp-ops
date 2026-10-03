@@ -17,7 +17,7 @@ native `pull_request.synchronize` webhook instead (a git push is already
 independently observable; see below), and `merge_gate_failed_soft`/
 `merge_gate_failed_hard` (`merge-flow`) need a live gate re-check rather
 than an artifact — that infrastructure is now built:
-`worker/src/coordinate.ts`'s `handleCheckSuiteCompleted` independently
+`worker/src/coordinate/webhook.ts`'s `handleCheckSuiteCompleted` independently
 re-fetches the check-run list, review state, and mergeability rather than
 trusting anything `merge-flow` self-reports, and
 `graph/github/merge-gate.ts`'s pure `deriveMergeGateOutcome()` decides
@@ -102,7 +102,7 @@ Nothing here is meant to still be additive a year from now.
   review/mergeability state (the same checks `merge-flow` itself runs
   before commenting a blocker), not something a comment could ever carry
   as reliably. That re-check is now real, not a stub: `worker/src/
-  coordinate.ts`'s `handleCheckSuiteCompleted` + `graph/github/
+  coordinate/webhook.ts`'s `handleCheckSuiteCompleted` + `graph/github/
   merge-gate.ts` — see `worker/README.md`. Building a fake artifact for
   these would have reported a fact no more verifiable than the thing it
   was replacing, which is exactly why this path instead of that one.
@@ -171,11 +171,11 @@ two different ideas of what counts as a valid outcome. **This now has a
 real receiving endpoint**: `worker/src/index.ts`'s `POST /routine-signal`
 (bearer-secret guarded via `ROUTINE_SIGNAL_SECRET`, permissive when unset
 — matching `GITHUB_WEBHOOK_SECRET`'s local-dev shape) routes to the
-matching DO, which runs `coordinate.ts`'s `coordinateRoutineSignal` —
+matching DO, which runs `coordinate/routine-signal.ts`'s `coordinateRoutineSignal` —
 "process" re-schedules the watchdog alarm, "completion" cancels it early;
 neither ever calls `reduce()` or writes a label/close, exactly as this
 section specifies. Covered by unit tests across all three layers
-(`coordinate.test.ts`, `issue-coordinator.test.ts`, `index.test.ts`) —
+(`coordinate/*.test.ts`, `issue-coordinator.test.ts`, `index.test.ts`) —
 see `worker/README.md`. **Still not real:** `AGENT_OUTCOMES_ENDPOINT`
 has never actually been pointed at this Worker's URL, and the hook's
 POST has never been sent to or verified against it — that's a manual

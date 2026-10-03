@@ -1,10 +1,10 @@
-// issue-coordinator.ts is a thin wrapper — coordinate.ts (already unit
+// issue-coordinator.ts is a thin wrapper — coordinate/ (already unit
 // tested against fake Deps) does the real decision logic; this class only
 // wires that to ctx.storage, D1, and the real githubClient/routines-client
 // (which are themselves already unit tested against a stubbed global
 // fetch). So testing this class means: fake ctx.storage + fake D1 + a
 // stubbed global fetch standing in for the GitHub/Claude APIs — same
-// fake-deps pattern as coordinate.test.ts, no Miniflare/vitest-pool-workers
+// fake-deps pattern as coordinate/*.test.ts, no Miniflare/vitest-pool-workers
 // needed (see worker/README.md for why that'd force an unwanted vitest
 // major-version bump).
 
