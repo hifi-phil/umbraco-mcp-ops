@@ -316,8 +316,8 @@ export class IssueCoordinator {
   private async insertTransition(row: TransitionRow): Promise<void> {
     await this.env.DB.prepare(
       `INSERT INTO transitions
-         (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode, actor)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         row.deliveryId,
@@ -330,6 +330,7 @@ export class IssueCoordinator {
         row.run,
         row.droppedReason,
         row.mode, // per event since Phase 4, not per Worker
+        row.actor ?? null,
       )
       .run();
     if (row.issueNumber > 0) {

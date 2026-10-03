@@ -60,6 +60,7 @@ export type LogRow = {
   dropped_reason: string | null;
   mode: string;
   created_at: string;
+  actor?: string | null;
 };
 
 /** One row per issue or PR with a log: its latest row, and hints. */
@@ -296,7 +297,7 @@ export async function handleStatus(request: Request, env: StatusEnv, url: URL, d
   if (filters.open) {
     const [owner, repo] = filters.open.repo.split("/") as [string, string];
     const log = await env.DB.prepare(
-      `SELECT id, delivery_id, from_state, event, to_effect, run, dropped_reason, mode, created_at
+      `SELECT id, delivery_id, from_state, event, to_effect, run, dropped_reason, mode, created_at, actor
          FROM transitions WHERE LOWER(owner) = ? AND LOWER(repo) = ? AND issue_number = ?
         ORDER BY id DESC LIMIT 300`,
     )
@@ -316,7 +317,7 @@ async function repoPage(env: StatusEnv, url: URL, user: string | undefined, repo
   const [controls, activity] = await Promise.all([
     controlsFor(env.DB, owner, repo),
     env.DB.prepare(
-      `SELECT id, delivery_id, from_state, event, to_effect, run, dropped_reason, mode, created_at
+      `SELECT id, delivery_id, from_state, event, to_effect, run, dropped_reason, mode, created_at, actor
          FROM transitions WHERE LOWER(owner) = ? AND LOWER(repo) = ? AND issue_number = 0
         ORDER BY id DESC LIMIT 50`,
     )
@@ -413,6 +414,15 @@ export function effectText(toEffect: string | null): string {
   } catch {
     return toEffect;
   }
+}
+
+/** "· by …" for a log row: the Worker's own (watchdog, sweep, its App bot),
+ * another app's bot, or a person, marked so their changes stand out. */
+export function byText(actor: string | null | undefined): string {
+  if (!actor) return "";
+  if (actor === "watchdog" || actor === "sweep") return ` · by the ${escape(actor)}`;
+  if (actor.endsWith("[bot]")) return ` · by ${escape(actor)}`;
+  return ` · by <span class="person">${escape(actor)}</span>`;
 }
 
 const githubHref = (repo: string, n: number) => `https://github.com/${repo.split("/").map(encodeURIComponent).join("/")}/issues/${n}`;
@@ -554,7 +564,7 @@ function renderPanel(item: Item | null, open: { repo: string; n: number }, log: 
     .map(
       (r) => `<tr>
   <td>${escape(when(r.created_at))}<div class="sub">${escape(ago(r.created_at, now))}</div></td>
-  <td><code>${escape(r.event)}</code><div class="sub">from ${escape(r.from_state)}</div></td>
+  <td><code>${escape(r.event)}</code><div class="sub">from ${escape(r.from_state)}${byText(r.actor)}</div></td>
   <td>${escape(effectText(r.to_effect))}${r.dropped_reason ? `<div class="sub">${escape(r.dropped_reason)}</div>` : ""}</td>
   <td>${r.run ? escape(r.run) : '<span class="muted">—</span>'}</td>
   <td><span class="tag ${r.mode === "enforce" ? "default" : "quiet"}">${escape(r.mode)}</span><div class="sub">${r.delivery_id ? `delivery ${escape(r.delivery_id.slice(0, 8))}` : "no delivery"}</div></td>
@@ -757,6 +767,7 @@ a.quiet { font-weight: 400; color: var(--ucp-color-text-alt); }
 .detail { position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow-y: auto; border-radius: var(--ucp-border-radius-large); }
 .inline-log { display: none; }
 .e2e { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #8a7516; background: #fef5d6; border-radius: var(--ucp-border-radius-small); padding: 0 5px; margin-left: 4px; }
+.person { font-weight: 700; color: var(--ucp-color-interactive); background: var(--ucp-palette-dawn-pink); border-radius: var(--ucp-border-radius-small); padding: 0 4px; }
 .paused { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #a82547; background: #fbe4eb; border-radius: var(--ucp-border-radius-small); padding: 0 5px; margin-left: 4px; }
 .pill[aria-current] .paused, .pill[aria-current] .e2e { background: rgba(255, 255, 255, 0.85); }
 .more { display: block; padding: 14px 18px; text-align: center; border-top: 1px solid var(--ucp-color-row-divider); }

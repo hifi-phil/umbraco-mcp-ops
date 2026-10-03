@@ -479,7 +479,9 @@ is out now, the run's last heartbeat step, and its CI-fix reworks.
     requests), status (open, running, needs attention, closed) and repo,
     each with its count; a box finds a number. Selecting one opens its
     whole D1 transition log beside the list (under it on a narrow screen):
-    time, event, from, effect, routine, mode, delivery, dropped reason,
+    time, event, from, who caused it (`actor`, migration 0008: the
+    webhook's sender, highlighted when it's a person, or "the watchdog" /
+    "the sweep"), effect, routine, mode, delivery, dropped reason,
     newest first, under its live status. Every filter and the selection
     are in the URL (`?type= &status= &repo= &n= &open=owner/repo/N`), so a
     view can be shared, and survives the 5-minute refresh

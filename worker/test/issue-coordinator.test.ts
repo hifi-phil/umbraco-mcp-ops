@@ -181,6 +181,7 @@ describe("IssueCoordinator.fetch()", () => {
       "issue-build-loop",
       null,
       "enforce",
+      "phil", // who caused it: the webhook's sender
     ]);
     // rule.run is set -> setPendingFire -> a real watchdog alarm scheduled
     expect(setAlarm).toHaveBeenCalledTimes(1);

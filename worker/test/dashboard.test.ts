@@ -332,7 +332,7 @@ describe("GET /status/repo and POST /status/controls — a repo's switches", () 
     const back = get(res.headers.get("Location")!);
     expect(await (await handleStatus(back.req, env(db), back.url)).text()).toContain("Reconciliation sweep is now off.");
     expect(writes.find((w) => w.sql.includes("INSERT INTO repo_controls"))!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", "sweep", 0, "script"]);
-    expect(writes.find((w) => w.sql.includes("control_changed"))!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", '{"control":"sweep","enabled":false,"by":"script"}']);
+    expect(writes.find((w) => w.sql.includes("control_changed"))!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", '{"control":"sweep","enabled":false,"by":"script"}', "script"]);
   });
 
   it("a signed-in person's post from this origin is recorded under their login", async () => {
@@ -372,6 +372,18 @@ describe("setControl", () => {
     await setControl(db, "Hifi-Phil", "Repo", "sweep", true, "octo");
     expect(writes).toHaveLength(2);
     expect(writes[0]!.sql).toMatch(/ON CONFLICT \(owner, repo, control\) DO UPDATE/);
+  });
+});
+
+describe("byText — who caused a log row", () => {
+  it("the Worker's own say so; a person is marked; nothing when unknown", async () => {
+    const { byText } = await import("../src/status-page");
+    expect(byText("watchdog")).toBe(" · by the watchdog");
+    expect(byText("sweep")).toBe(" · by the sweep");
+    expect(byText("umbraco-agent-orchestrator[bot]")).toBe(" · by umbraco-agent-orchestrator[bot]");
+    expect(byText("hifi-phil")).toBe(' · by <span class="person">hifi-phil</span>');
+    expect(byText("<x>")).toBe(' · by <span class="person">&lt;x&gt;</span>');
+    expect(byText(null)).toBe("");
   });
 });
 

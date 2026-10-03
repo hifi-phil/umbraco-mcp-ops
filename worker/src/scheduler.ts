@@ -191,8 +191,8 @@ export class Scheduler {
     // would-re-fire, or an error. Repeats of a settled issue aren't news.
     if (summary.refired.length === 0 && summary.wouldRefire.length === 0 && summary.errors.length === 0) return summary;
     await this.env.DB.prepare(
-      `INSERT INTO transitions (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO transitions (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode, actor)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sweep')`,
     )
       // enforce when anything was really re-fired (SWEEP_ENFORCE_REPOS too),
       // so real re-fires never count in the shadow numbers.

@@ -51,9 +51,9 @@ export async function setControl(db: D1Database, owner: string, repo: string, co
       .bind(lower(owner), lower(repo), control, enabled ? 1 : 0, by),
     db
       .prepare(
-        `INSERT INTO transitions (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode)
-         VALUES (NULL, ?, ?, 0, '-', 'control_changed', ?, NULL, NULL, 'enforce')`,
+        `INSERT INTO transitions (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode, actor)
+         VALUES (NULL, ?, ?, 0, '-', 'control_changed', ?, NULL, NULL, 'enforce', ?)`,
       )
-      .bind(lower(owner), lower(repo), JSON.stringify({ control, enabled, by })),
+      .bind(lower(owner), lower(repo), JSON.stringify({ control, enabled, by }), by),
   ]);
 }
