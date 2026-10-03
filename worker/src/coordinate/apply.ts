@@ -2,27 +2,17 @@
 // reduce() -> labelOps() -> fire and watch -> log -> live-status row. And
 // deriveState, reading the tracked state from the labels.
 
-import { ALL_LABELS, LABELS, type Label } from "../../../graph/constants/labels";
-import { CONTEXTUAL_EVENTS, isWatched, reduce, type Rule, type State } from "../../../graph/graph";
-import { ROUTINES } from "../../../graph/constants/routines";
-import { translate, type WebhookPayload } from "../../../graph/github/from-github";
+import { ALL_LABELS,LABELS,type Label } from "../../../graph/constants/labels";
+import { CONTEXTUAL_EVENTS,isWatched,reduce,type Rule,type State } from "../../../graph/graph";
 import { labelOps } from "../../../graph/github/to-github";
-import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason, type MergeGateFacts } from "../../../graph/github/merge-gate";
-import { EVENTS, type Event } from "../../../graph/constants/events";
-import { parseRoutineSignal, type RoutineSignal } from "../../../graph/routines/from-routine";
+import { type Event } from "../../../graph/constants/events";
 import {
-  LABEL_JUST_ADDED_BY,
-  MAX_CI_FIX_ATTEMPTS,
-  actorOf,
-  depsFor,
-  type Acting,
-  type CiFix,
-  type CoordinateInput,
-  type CoordinateResult,
-  type Deps,
-  type IssueRef,
-  type PendingFire,
-  type StatusUpdate,
+LABEL_JUST_ADDED_BY,actorOf,
+depsFor,
+type Acting,type CoordinateInput,
+type CoordinateResult,
+type Deps,
+type IssueRef,type StatusUpdate
 } from "./types";
 
 /** The shared reduce() -> labelOps() -> fire/log tail, once an Event has

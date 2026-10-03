@@ -6,6 +6,8 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    // An unused import or variable fails the typecheck (and so CI).
+    "noUnusedLocals": true,
     "skipLibCheck": true,
     "types": ["@cloudflare/workers-types", "vitest/globals"],
     // The dashboard's views are Hono JSX components (server-rendered).

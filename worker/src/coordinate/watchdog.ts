@@ -1,29 +1,14 @@
 // The watchdog's expiry, as a real event through the same path as a
 // webhook.
 
-import { ALL_LABELS, LABELS, type Label } from "../../../graph/constants/labels";
-import { CONTEXTUAL_EVENTS, isWatched, reduce, type Rule, type State } from "../../../graph/graph";
-import { ROUTINES } from "../../../graph/constants/routines";
-import { translate, type WebhookPayload } from "../../../graph/github/from-github";
-import { labelOps } from "../../../graph/github/to-github";
-import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason, type MergeGateFacts } from "../../../graph/github/merge-gate";
-import { EVENTS, type Event } from "../../../graph/constants/events";
-import { parseRoutineSignal, type RoutineSignal } from "../../../graph/routines/from-routine";
+import { LABELS } from "../../../graph/constants/labels";
+import { reduce } from "../../../graph/graph";
+import { EVENTS } from "../../../graph/constants/events";
 import {
-  LABEL_JUST_ADDED_BY,
-  MAX_CI_FIX_ATTEMPTS,
-  actorOf,
-  depsFor,
-  type Acting,
-  type CiFix,
-  type CoordinateInput,
-  type CoordinateResult,
-  type Deps,
-  type IssueRef,
-  type PendingFire,
-  type StatusUpdate,
+depsFor,type CoordinateResult,
+type Deps
 } from "./types";
-import { applyEvent, deriveState } from "./apply";
+import { applyEvent,deriveState } from "./apply";
 
 export type WatchdogResult = { outcome: "no_pending_fire" } | { outcome: "not_due"; dueAt: number } | CoordinateResult;
 
