@@ -85,9 +85,15 @@ src/
   index.ts              the Worker fetch handler — thin, wires
                         webhook-parse.ts to the right DO instance
   scheduler.ts          the Scheduler DO: the reconciliation sweep's alarm
-  status-page.ts, auth.ts, controls.ts, items.ts
-                        the dashboard, its GitHub sign-in, per-repo
-                        controls, and filling item titles from GitHub
+  dashboard/            the dashboard, on Hono (the Worker's router too):
+    app.tsx               its routes, and the sign-in check in front
+    model.ts              filters, building and ordering the list (pure)
+    views/*.tsx           the pages, as server-rendered JSX components:
+                          Hono escapes every value; no script ships
+    styles.ts             the stylesheet (the Cloud Portal design system)
+  auth.ts, controls.ts, items.ts
+                        GitHub sign-in, per-repo controls, and filling
+                        item titles from GitHub
   db/                   every D1 read and write, one module per table:
     transitions.ts        the log (reads by issue only, via its index)
     issue-status.ts       the live-status row per open issue
@@ -101,8 +107,9 @@ free plan allows 5M rows read a day, and a read that scans the whole log on
 a schedule or a page load is how that ran out on 03-10-2026).
 
 **Two test suites, both in `npm test`:**
-- `unit` (`test/*.test.ts`): the logic, against fakes.
-- `db` (`test/db/`, `npm run test:db`): the repositories against a real
+- `unit` (`test/*.test.ts`, `test/coordinate/`): the logic, against fakes.
+- `db` (`test/db/`, `test/dashboard/`, `npm run test:db`): the
+  repositories, and the dashboard through its Hono routes, against a real
   SQLite database (Node's built-in `node:sqlite`, Node 22.5+, D1 being
   SQLite) with the real migrations applied, through a small D1 adapter
   (`test/db/sqlite-d1.ts`). The SQL itself runs, migrations included, and

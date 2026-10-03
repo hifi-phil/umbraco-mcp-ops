@@ -7,9 +7,12 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "types": ["@cloudflare/workers-types", "vitest/globals"]
+    "types": ["@cloudflare/workers-types", "vitest/globals"],
+    // The dashboard's views are Hono JSX components (server-rendered).
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx"
   },
-  "include": ["**/*.ts", "../graph/**/*.ts"],
+  "include": ["**/*.ts", "**/*.tsx", "../graph/**/*.ts"],
   // The db tests run in Node: test/db/tsconfig.json checks them.
-  "exclude": ["test/db/**", "node_modules", "dist"]
+  "exclude": ["test/db/**", "test/dashboard/**", "node_modules", "dist"]
 }

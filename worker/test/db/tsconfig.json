@@ -5,5 +5,5 @@
   "compilerOptions": {
     "types": ["node", "@cloudflare/workers-types", "vitest/globals"]
   },
-  "include": ["./**/*.ts", "../../src/**/*.ts", "../../../graph/**/*.ts"]
+  "include": ["./**/*.ts", "../dashboard/**/*.ts", "../../src/**/*.ts", "../../src/**/*.tsx", "../../../graph/**/*.ts"]
 }

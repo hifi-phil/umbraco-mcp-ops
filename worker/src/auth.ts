@@ -15,6 +15,9 @@
 // The session is `<payload>.<HMAC-SHA256>`, base64url, keyed with
 // SESSION_SECRET; nothing is stored server-side.
 
+import { MessagePage } from "./dashboard/views/repo";
+import { htmlResponse } from "./dashboard/views/respond";
+
 export type AuthEnv = {
   GITHUB_OAUTH_CLIENT_ID?: string;
   GITHUB_OAUTH_CLIENT_SECRET?: string;
@@ -192,28 +195,8 @@ export function handleLogout(): Response {
 
 export const signedOut = () => page(200, "You're signed out.", true);
 
-/** A small page in the status page's look, for sign-in outcomes. */
-function page(status: number, message: string, retry: boolean): Response {
-  const html = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Orchestrator status</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap">
-<style>
-body { margin: 0; background: #f7f8fc; color: #030229; font: 15px/1.6 Lato, "Helvetica Neue", Helvetica, Arial, sans-serif; }
-.box { max-width: 420px; margin: 96px auto; background: #fff; border: 1px solid #e9edf7; border-radius: 12px; box-shadow: 0 6px 5px -4px rgba(0, 0, 0, 0.05); padding: 30px; }
-h1 { margin: 0 0 9px; font-size: 21px; font-weight: 700; }
-p { margin: 0 0 18px; color: #707b81; }
-a { display: inline-block; background: #1b264f; color: #fff; font-weight: 700; text-decoration: none; padding: 9px 18px; border-radius: 6px; }
-a:hover { background: #151e3f; }
-a:focus-visible { outline: 2px solid #4f64ff; outline-offset: 2px; }
-</style></head>
-<body><div class="box"><h1>Agent orchestrator</h1><p>${message.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}</p>${retry ? '<a href="/auth/login?next=/status">Sign in with GitHub</a>' : ""}</div></body></html>`;
-  return new Response(html, {
-    status,
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com",
-    },
-  });
+/** A sign-in outcome, as a dashboard page (no one signed in yet). */
+function page(status: number, message: string, retry: boolean): Promise<Response> {
+  const action = retry ? { href: "/auth/login?next=/status", label: "Sign in with GitHub" } : undefined;
+  return htmlResponse(MessagePage({ title: "Orchestrator status", message, action }), status);
 }

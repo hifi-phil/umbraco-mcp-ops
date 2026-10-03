@@ -1,7 +1,9 @@
-// The webhook receiver — the front door GitHub actually talks to. Thin on
-// purpose, same as issue-coordinator.ts: verifies the signature, parses
-// the payload (webhook-parse.ts, unit tested), and forwards to the right
-// DO instance. Covered by test/index.test.ts — a fake DurableObjectNamespace
+// The Worker's front door, routed by Hono: the GitHub webhook (any other
+// POST), the dashboard and its sign-in (dashboard/app.tsx), routine
+// signals, and the e2e sandbox's log read and on-demand sweep. The webhook
+// path is thin on purpose, same as issue-coordinator.ts: verifies the
+// signature, parses the payload (webhook-parse.ts, unit tested), and
+// forwards to the right DO instance. Covered by test/index.test.ts — a fake DurableObjectNamespace
 // (idFromName/get as spies) is enough, no real Workers runtime needed.
 // Covers: method/JSON validation, the signature-verification branch
 // end-to-end (missing/wrong/correct/no-secret), routing to the correct
@@ -13,10 +15,10 @@ import { openPullsForCommit } from "./github-client";
 import type { CoordinateInput, RoutineSignalInput } from "./coordinate";
 
 import { Scheduler } from "./scheduler";
-import { handleStatus } from "./status-page";
+import { Hono } from "hono";
+import { dashboard } from "./dashboard/app";
 import { upsertMeta } from "./db/items";
 import * as transitions from "./db/transitions";
-import { handleCallback, handleLogin, handleLogout, signedOut } from "./auth";
 
 export { IssueCoordinator, Scheduler };
 
@@ -43,7 +45,7 @@ export type Env = {
   // tofu sets both for the e2e sandbox alone.
   LOG_READ_SECRET?: string;
   LOG_READ_REPOS?: string;
-  // GET /status, the live-status dashboard (status-page.ts). Off unless set;
+  // GET /status, the live-status dashboard (dashboard/app.tsx). Off unless set;
   // also the Bearer key for scripts.
   STATUS_SECRET?: string;
   // Its GitHub sign-in (auth.ts): the GitHub App's client ID and a client
@@ -64,75 +66,72 @@ function doKey(owner: string, repo: string, issueNumber: number): string {
   return `${owner}/${repo}`.toLowerCase() + `#${issueNumber}`;
 }
 
+const app = new Hono<{ Bindings: Env }>();
+
+// The dashboard first: its routes (and its POST /status/controls) aren't webhooks.
+app.route("/", dashboard);
+app.post("/sweep", (c) => handleSweep(c.req.raw, c.env));
+app.get("/transitions", (c) => handleTransitions(c.req.raw, c.env, new URL(c.req.url)));
+app.post("/routine-signal", (c) => handleRoutineSignal(c.req.raw, c.env));
+// GitHub delivers webhooks to the Worker's root; any other POST is read as one.
+app.post("*", (c) => handleWebhook(c.req.raw, c.env));
+app.all("*", (c) => c.text("method not allowed", 405));
+
 export default {
-  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-    if (request.method === "POST" && url.pathname === "/sweep") return handleSweep(request, env);
-    if (request.method === "GET" && url.pathname === "/transitions") return handleTransitions(request, env, url);
-    // The dashboard: its pages, and the form that switches a repo's controls.
-    if (url.pathname === "/status" || url.pathname.startsWith("/status/")) {
-      return handleStatus(request, env, url, (work) => ctx?.waitUntil(work));
-    }
-    if (request.method === "GET" && url.pathname === "/auth/login") return handleLogin(env, url);
-    if (request.method === "GET" && url.pathname === "/auth/callback") return handleCallback(request, env, url);
-    if (request.method === "GET" && url.pathname === "/auth/logout") return handleLogout();
-    if (request.method === "GET" && url.pathname === "/auth/signed-out") return signedOut();
-    if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
-
-    if (url.pathname === "/routine-signal") {
-      return handleRoutineSignal(request, env);
-    }
-
-    const rawBody = await request.text();
-
-    if (env.GITHUB_WEBHOOK_SECRET) {
-      const signature = request.headers.get("X-Hub-Signature-256");
-      if (!(await verifySignature(env.GITHUB_WEBHOOK_SECRET, rawBody, signature))) {
-        return new Response("invalid signature", { status: 401 });
-      }
-    }
-
-    const eventType = request.headers.get("X-GitHub-Event");
-    if (!eventType) return new Response("missing X-GitHub-Event header", { status: 400 });
-    const deliveryId = request.headers.get("X-GitHub-Delivery") ?? "";
-
-    let body: Record<string, unknown>;
-    try {
-      body = JSON.parse(rawBody);
-    } catch {
-      return new Response("invalid JSON body", { status: 400 });
-    }
-
-    await ensureScheduler(env);
-    const routing = extractRoutingInfo(body) ?? (eventType === "check_suite" ? await routeByCommit(env, body) : null);
-    if (!routing) return Response.json({ ok: true, dropped: "no routable issue/PR number" });
-
-    await recordItem(env, routing, body);
-    const payload = toWebhookPayload(body, eventType);
-    const forward = (issueNumber: number) => {
-      const input: CoordinateInput = { deliveryId, owner: routing.owner, repo: routing.repo, issueNumber, payload };
-      const id = env.ISSUE_COORDINATOR.idFromName(doKey(routing.owner, routing.repo, issueNumber));
-      return env.ISSUE_COORDINATOR.get(id).fetch("https://issue-coordinator/", {
-        method: "POST",
-        body: JSON.stringify(input),
-      });
-    };
-
-    const [only, ...more] = routing.issueNumbers;
-    if (more.length === 0) return forward(only!);
-
-    // A check_suite on a commit several PRs share: each PR's DO decides for
-    // itself. Any failure fails the delivery so it can be redelivered, and
-    // each DO's own dedupe makes the redelivery safe for the ones that passed.
-    const results = [];
-    for (const issueNumber of routing.issueNumbers) {
-      const res = await forward(issueNumber);
-      results.push({ issueNumber, status: res.status, body: await res.json().catch(() => null) });
-    }
-    const failed = results.some((r) => r.status >= 400);
-    return Response.json({ routed: results }, { status: failed ? 500 : 200 });
-  },
+  fetch: (request: Request, env: Env, ctx?: ExecutionContext) => app.fetch(request, env, ctx),
 };
+
+/** A GitHub webhook: verify, parse, route to the issue's (or each PR's) DO. */
+async function handleWebhook(request: Request, env: Env): Promise<Response> {
+  const rawBody = await request.text();
+
+  if (env.GITHUB_WEBHOOK_SECRET) {
+    const signature = request.headers.get("X-Hub-Signature-256");
+    if (!(await verifySignature(env.GITHUB_WEBHOOK_SECRET, rawBody, signature))) {
+      return new Response("invalid signature", { status: 401 });
+    }
+  }
+
+  const eventType = request.headers.get("X-GitHub-Event");
+  if (!eventType) return new Response("missing X-GitHub-Event header", { status: 400 });
+  const deliveryId = request.headers.get("X-GitHub-Delivery") ?? "";
+
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return new Response("invalid JSON body", { status: 400 });
+  }
+
+  await ensureScheduler(env);
+  const routing = extractRoutingInfo(body) ?? (eventType === "check_suite" ? await routeByCommit(env, body) : null);
+  if (!routing) return Response.json({ ok: true, dropped: "no routable issue/PR number" });
+
+  await recordItem(env, routing, body);
+  const payload = toWebhookPayload(body, eventType);
+  const forward = (issueNumber: number) => {
+    const input: CoordinateInput = { deliveryId, owner: routing.owner, repo: routing.repo, issueNumber, payload };
+    const id = env.ISSUE_COORDINATOR.idFromName(doKey(routing.owner, routing.repo, issueNumber));
+    return env.ISSUE_COORDINATOR.get(id).fetch("https://issue-coordinator/", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  };
+
+  const [only, ...more] = routing.issueNumbers;
+  if (more.length === 0) return forward(only!);
+
+  // A check_suite on a commit several PRs share: each PR's DO decides for
+  // itself. Any failure fails the delivery so it can be redelivered, and
+  // each DO's own dedupe makes the redelivery safe for the ones that passed.
+  const results = [];
+  for (const issueNumber of routing.issueNumbers) {
+    const res = await forward(issueNumber);
+    results.push({ issueNumber, status: res.status, body: await res.json().catch(() => null) });
+  }
+  const failed = results.some((r) => r.status >= 400);
+  return Response.json({ routed: results }, { status: failed ? 500 : 200 });
+}
 
 export type { LogRow as TransitionLogRow } from "./db/transitions";
 
