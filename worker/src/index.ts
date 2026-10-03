@@ -14,7 +14,8 @@ import type { CoordinateInput, RoutineSignalInput } from "./coordinate";
 
 import { Scheduler } from "./scheduler";
 import { handleStatus } from "./status-page";
-import { upsertItem } from "./items";
+import { upsertMeta } from "./db/items";
+import * as transitions from "./db/transitions";
 import { handleCallback, handleLogin, handleLogout, signedOut } from "./auth";
 
 export { IssueCoordinator, Scheduler };
@@ -133,17 +134,7 @@ export default {
   },
 };
 
-export type TransitionLogRow = {
-  id: number;
-  delivery_id: string | null;
-  from_state: string;
-  event: string;
-  to_effect: string | null;
-  run: string | null;
-  dropped_reason: string | null;
-  mode: string;
-  created_at: string;
-};
+export type { LogRow as TransitionLogRow } from "./db/transitions";
 
 /** One issue's transition rows, oldest first. Read-only, and refused for
  * any repo not named in LOG_READ_REPOS. */
@@ -165,15 +156,7 @@ async function handleTransitions(request: Request, env: Env, url: URL): Promise<
   if (!allowed.includes(`${owner}/${repo}`.toLowerCase())) {
     return new Response(`the log isn't readable for ${owner}/${repo}`, { status: 403 });
   }
-  const { results } = await env.DB.prepare(
-    `SELECT id, delivery_id, from_state, event, to_effect, run, dropped_reason, mode, created_at
-       FROM transitions
-      WHERE LOWER(owner) = LOWER(?) AND LOWER(repo) = LOWER(?) AND issue_number = ?
-      ORDER BY id`,
-  )
-    .bind(owner, repo, issue)
-    .all<TransitionLogRow>();
-  return Response.json({ rows: results });
+  return Response.json({ rows: await transitions.forIssue(env.DB, owner, repo, issue) });
 }
 
 /** The dashboard's items table (migrations/0006): an issue or PR's kind,
@@ -183,7 +166,7 @@ async function recordItem(env: Env, routing: NonNullable<RoutingInfo>, body: Rec
   const meta = routing.issueNumbers.length === 1 ? extractItemMeta(body) : null;
   if (!meta) return;
   try {
-    await upsertItem(env.DB, routing.owner, routing.repo, routing.issueNumbers[0]!, meta);
+    await upsertMeta(env.DB, routing.owner, routing.repo, routing.issueNumbers[0]!, meta);
   } catch (e) {
     console.error("item write failed:", e instanceof Error ? e.message : e);
   }

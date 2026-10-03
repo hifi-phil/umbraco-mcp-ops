@@ -332,7 +332,9 @@ describe("GET /status/repo and POST /status/controls — a repo's switches", () 
     const back = get(res.headers.get("Location")!);
     expect(await (await handleStatus(back.req, env(db), back.url)).text()).toContain("Reconciliation sweep is now off.");
     expect(writes.find((w) => w.sql.includes("INSERT INTO repo_controls"))!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", "sweep", 0, "script"]);
-    expect(writes.find((w) => w.sql.includes("control_changed"))!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", '{"control":"sweep","enabled":false,"by":"script"}', "script"]);
+    expect(writes.find((w) => w.args.includes("control_changed"))!.args).toEqual([
+      null, "hifi-phil", "umbraco-mcp-ops", 0, "-", "control_changed", '{"control":"sweep","enabled":false,"by":"script"}', null, null, "enforce", "script",
+    ]);
   });
 
   it("a signed-in person's post from this origin is recorded under their login", async () => {

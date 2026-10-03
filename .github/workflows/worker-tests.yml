@@ -37,7 +37,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 22: the db tests use Node's built-in SQLite (node:sqlite, 22.5+).
+          node-version: '22'
 
       - name: Install graph/
         working-directory: graph

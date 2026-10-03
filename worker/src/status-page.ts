@@ -19,6 +19,9 @@
 import { readSession, signInConfigured, type AuthEnv } from "./auth";
 import { CONTROLS, controlsFor, isControl, reposWithControlOff, setControl } from "./controls";
 import { BACKFILL_MAX, backfillItems } from "./items";
+import * as issueStatus from "./db/issue-status";
+import * as itemsDb from "./db/items";
+import * as transitions from "./db/transitions";
 import type { GitHubEnv } from "./github-client";
 
 export type StatusEnv = AuthEnv &
@@ -36,32 +39,11 @@ export type StatusEnv = AuthEnv &
 /** Runs work after the response is sent (the Worker's ctx.waitUntil). */
 export type Defer = (work: Promise<unknown>) => void;
 
-export type StatusRow = {
-  owner: string;
-  repo: string;
-  issue_number: number;
-  state: string;
-  routine: string | null;
-  attempt: number;
-  running: number;
-  last_step: string | null;
-  last_step_at: string | null;
-  rework_count: number;
-  updated_at: string;
-};
+export type { StatusRow } from "./db/issue-status";
+import type { StatusRow } from "./db/issue-status";
 
-export type LogRow = {
-  id: number;
-  delivery_id: string | null;
-  from_state: string;
-  event: string;
-  to_effect: string | null;
-  run: string | null;
-  dropped_reason: string | null;
-  mode: string;
-  created_at: string;
-  actor?: string | null;
-};
+export type { LogRow } from "./db/transitions";
+import type { LogRow } from "./db/transitions";
 
 /** One row per issue or PR with a log: its latest row, and hints. */
 export type ActivityRow = {
@@ -103,7 +85,6 @@ export type Filters = {
 /** How often the list page reloads itself (a meta refresh: no script needed). */
 export const REFRESH_SECONDS = 300;
 
-const STATUS_COLUMNS = "owner, repo, issue_number, state, routine, attempt, running, last_step, last_step_at, rework_count, updated_at";
 const PAGE = 100; // the list shows this many more per "Show more"
 const MAX_SHOWN = 1000;
 const MAX_ITEMS = 5000; // a safety cap on the grouped log; counts are exact below it
@@ -256,23 +237,15 @@ export async function handleStatus(request: Request, env: StatusEnv, url: URL, d
   if (url.pathname !== "/status") return new Response("not found", { status: 404 });
 
   if (url.searchParams.get("format") === "json") {
-    const { results } = await env.DB.prepare(`SELECT ${STATUS_COLUMNS} FROM issue_status ORDER BY running DESC, updated_at DESC LIMIT 500`).all<StatusRow>();
-    return Response.json({ rows: results }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ rows: await issueStatus.list(env.DB) }, { headers: { "Cache-Control": "no-store" } });
   }
 
   const filters = readFilters(url, repos);
   // One row per item from its summary (migrations/0007), never the whole
   // log: a load reads about as many rows as there are items.
-  const [summary, status] = await Promise.all([
-    env.DB.prepare(
-      `SELECT owner, repo, issue_number, kind, title, gh_state, last_event, last_at, events, pr_hint
-         FROM items WHERE events > 0 ORDER BY last_at DESC LIMIT ${MAX_ITEMS}`,
-    ).all<ItemRow & { last_event: string; last_at: string; events: number; pr_hint: number }>(),
-    env.DB.prepare(`SELECT ${STATUS_COLUMNS} FROM issue_status`).all<StatusRow>(),
-  ]);
-  const activity = { results: summary.results.map((r) => ({ owner: r.owner, repo: r.repo, issue_number: r.issue_number, event: r.last_event, last_at: r.last_at, events: r.events, pr_hint: r.pr_hint })) };
-  const items = { results: summary.results };
-  const all = buildItems(activity.results, status.results, items.results, repos);
+  const [summary, status] = await Promise.all([itemsDb.listSummaries(env.DB, MAX_ITEMS), issueStatus.list(env.DB)]);
+  const activity = summary.map((r) => ({ owner: r.owner, repo: r.repo, issue_number: r.issue_number, event: r.last_event, last_at: r.last_at, events: r.events, pr_hint: r.pr_hint }));
+  const all = buildItems(activity, status, summary, repos);
 
   // Find with exactly one match: open its log straight away.
   if (filters.n && !filters.open) {
@@ -296,14 +269,8 @@ export async function handleStatus(request: Request, env: StatusEnv, url: URL, d
   let selected: { item: Item | null; log: LogRow[] } | null = null;
   if (filters.open) {
     const [owner, repo] = filters.open.repo.split("/") as [string, string];
-    const log = await env.DB.prepare(
-      `SELECT id, delivery_id, from_state, event, to_effect, run, dropped_reason, mode, created_at, actor
-         FROM transitions WHERE LOWER(owner) = ? AND LOWER(repo) = ? AND issue_number = ?
-        ORDER BY id DESC LIMIT 300`,
-    )
-      .bind(owner, repo, filters.open.n)
-      .all<LogRow>();
-    selected = { item: all.find((i) => i.repo === filters.open!.repo && i.n === filters.open!.n) ?? null, log: log.results };
+    const log = await transitions.forIssue(env.DB, owner, repo, filters.open.n, { newestFirst: true, limit: 300 });
+    selected = { item: all.find((i) => i.repo === filters.open!.repo && i.n === filters.open!.n) ?? null, log };
   }
   return html(renderDashboard({ items: all, filters, repos, sandbox, sweepOff: [...sweepOff], selected, now: Date.now(), user }));
 }
@@ -314,20 +281,11 @@ async function repoPage(env: StatusEnv, url: URL, user: string | undefined, repo
   const full = pickRepo(repos, url.searchParams.get("repo"));
   if (!full) return html(layout({ title: "Repository", user, body: `<div class="box pad"><p class="lead">That isn't an attached repository.</p><a class="button secondary" href="/status">Back to the list</a></div>` }), 404);
   const [owner, repo] = full.split("/") as [string, string];
-  const [controls, activity] = await Promise.all([
-    controlsFor(env.DB, owner, repo),
-    env.DB.prepare(
-      `SELECT id, delivery_id, from_state, event, to_effect, run, dropped_reason, mode, created_at, actor
-         FROM transitions WHERE LOWER(owner) = ? AND LOWER(repo) = ? AND issue_number = 0
-        ORDER BY id DESC LIMIT 50`,
-    )
-      .bind(owner, repo)
-      .all<LogRow>(),
-  ]);
+  const [controls, activity] = await Promise.all([controlsFor(env.DB, owner, repo), transitions.forRepo(env.DB, owner, repo)]);
   const enforced = env.SWEEP_MODE === "enforce" || (env.SWEEP_ENFORCE_REPOS ?? "").split(",").map((r) => r.trim().toLowerCase()).includes(full);
   const saved = /^([a-z]+)-(on|off)$/.exec(url.searchParams.get("saved") ?? "");
   const savedText = saved && isControl(saved[1]!) ? `${CONTROLS[saved[1]!].name} is now ${saved[2]}.` : null;
-  return html(renderRepo(owner, repo, controls, enforced, Date.now(), user, savedText, activity.results));
+  return html(renderRepo(owner, repo, controls, enforced, Date.now(), user, savedText, activity));
 }
 
 async function handleSetControl(request: Request, env: StatusEnv, url: URL, who: string, script: boolean, repos: string[]): Promise<Response> {

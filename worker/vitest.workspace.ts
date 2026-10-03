@@ -5,6 +5,10 @@
 //   index.ts, github-client.ts, webhook-parse.ts, routines-client.ts, +
 //   graph/'s own). Fast, free, deterministic — `npm test`, CI-blocking
 //   on every PR via worker-tests.yml.
+// - "db": the repositories in src/db/ against a real SQLite database
+//   (Node's built-in node:sqlite, so Node 22.5+) with the real migrations
+//   applied: the SQL itself runs, and query plans are checked (D1's free
+//   plan allows 5M rows read a day). Fast and free: part of `npm test`.
 // - "evals": real @anthropic-ai/claude-agent-sdk calls against the
 //   verbatim skill text (agent-runner.mjs's OUTCOME_CONFIGS). Slow
 //   (15-30s/scenario), costs real money (~$2.50-3/run measured),
@@ -21,7 +25,13 @@ export default defineWorkspace([
     test: {
       name: "unit",
       include: ["test/**/*.test.ts"],
-      exclude: ["test/evals/**"],
+      exclude: ["test/evals/**", "test/db/**"],
+    },
+  },
+  {
+    test: {
+      name: "db",
+      include: ["test/db/**/*.test.ts"],
     },
   },
   {
