@@ -1,9 +1,7 @@
-import { describe,expect,it,vi } from "vitest";
-import { ROUTINES } from "../../../graph/constants/routines";
-import {
-coordinateRoutineSignal
-} from "../../src/coordinate";
-import type { RoutineSignal } from "../../../graph/routines/from-routine";
+import { describe, expect, it, vi } from "vitest";
+import { ROUTINES } from "@orchestrator/graph/constants/routines";
+import { coordinateRoutineSignal } from "../../src/coordinate";
+import type { RoutineSignal } from "@orchestrator/graph/routines/from-routine";
 import { fakeDeps } from "./helpers";
 
 describe("coordinateRoutineSignal — the direct routine-to-DO heartbeat channel", () => {

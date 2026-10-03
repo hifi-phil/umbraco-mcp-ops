@@ -1,10 +1,14 @@
 {
-  "name": "agent-orchestration-graph",
+  "name": "@orchestrator/graph",
   "private": true,
-  "description": "Phase 1/2 prototype: the pure reduce()/translate() functions for the agent-orchestration state machine design. No infrastructure — see the design doc for how this eventually gets wired to a Durable Object.",
+  "description": "The orchestrator's domain, platform-free: the state machine (reduce() and its transition table), the labels/events/routines vocabulary, translating a GitHub webhook or a routine's signal into an event, the label changes a rule makes, and the merge-gate decision. No I/O and no Cloudflare: worker/ wires it to Durable Objects, D1 and GitHub, and anything else could. Imported by name (@orchestrator/graph/<module>), as TypeScript source: every consumer bundles or runs it through Vite or esbuild, so there's no build step.",
   "type": "module",
+  "exports": {
+    "./*": "./*.ts"
+  },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

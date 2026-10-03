@@ -1,14 +1,11 @@
 // The watchdog's expiry, as a real event through the same path as a
 // webhook.
 
-import { LABELS } from "../../../graph/constants/labels";
-import { reduce } from "../../../graph/graph";
-import { EVENTS } from "../../../graph/constants/events";
-import {
-depsFor,type CoordinateResult,
-type Deps
-} from "./types";
-import { applyEvent,deriveState } from "./apply";
+import { LABELS } from "@orchestrator/graph/constants/labels";
+import { reduce } from "@orchestrator/graph/graph";
+import { EVENTS } from "@orchestrator/graph/constants/events";
+import { depsFor, type CoordinateResult, type Deps } from "./types";
+import { applyEvent, deriveState } from "./apply";
 
 export type WatchdogResult = { outcome: "no_pending_fire" } | { outcome: "not_due"; dueAt: number } | CoordinateResult;
 

@@ -7,10 +7,10 @@
 // phrases). Every scenario uses its own issues/PRs, so they run concurrently.
 
 import { expect } from "vitest";
-import { LABELS } from "../../graph/constants/labels";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 import { outcomeComment } from "../stub/src/loops";
 import { runHook } from "./hook";
-import type { Outcome } from "../../graph/outcomes";
+import type { Outcome } from "@orchestrator/graph/outcomes";
 import {
   addLabel,
   cleanUp,

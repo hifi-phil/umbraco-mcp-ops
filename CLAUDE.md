@@ -23,6 +23,9 @@ bumped only when files under their folder changed since the last `v*` tag.
 - **Version files / bump rules**: follow the `release-versioning` skill
   (`.claude/skills/release-versioning/`) — it takes the version from the
   issue title and runs `scripts/bump.mjs`. Don't list paths by hand.
+- **Install**: npm workspaces (root `package.json`: `graph/` as
+  `@orchestrator/graph`, `worker/`, `e2e/`): `npm ci` once at the root,
+  one root `package-lock.json`.
 - **Build/test**: `cd worker && npm test && npm run typecheck`, and
   `node .claude/skills/release-versioning/scripts/bump.test.mjs`.
 - **Trigger**: an issue titled `release <version>`, labelled

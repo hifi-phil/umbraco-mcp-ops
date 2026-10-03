@@ -2,17 +2,13 @@
 // merge-gate cases, then apply. Also a person's label edit the table ignores
 // (manual_override), and check_suite.completed.
 
-import { ALL_LABELS,LABELS } from "../../../graph/constants/labels";
-import { translate } from "../../../graph/github/from-github";
-import { deriveMergeGateOutcome,failedCheckNames,hardBlockReason } from "../../../graph/github/merge-gate";
-import { EVENTS,type Event } from "../../../graph/constants/events";
-import {
-depsFor,type CoordinateInput,
-type CoordinateResult,
-type Deps
-} from "./types";
-import { applyEvent,deriveState } from "./apply";
-import { blockMerge,handToRework,settledGateFacts } from "./merge-gate";
+import { ALL_LABELS, LABELS } from "@orchestrator/graph/constants/labels";
+import { translate } from "@orchestrator/graph/github/from-github";
+import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
+import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
+import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
+import { applyEvent, deriveState } from "./apply";
+import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 
 /**
  * The literal implementation of translate() -> reduce() -> labelOps() +

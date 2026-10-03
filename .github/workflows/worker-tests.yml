@@ -1,33 +1,29 @@
 name: worker tests
 
-# worker/'s 103 unit tests + graph/'s own 80 (coordinate.ts,
-# issue-coordinator.ts, index.ts, github-client.ts, webhook-parse.ts,
-# routines-client.ts, graph.ts, from-github.ts/to-github.ts, merge-gate.ts,
-# from-routine.ts, outcomes.ts) had zero CI enforcement before this —
-# nothing stopped a PR from breaking them. Deterministic and free (no LLM
-# calls; that's the separate worker-agent-evals.yml, gated on a release
-# instead). See worker/README.md and CLAUDE.md.
+# graph/'s and worker/'s tests and typechecks, on every PR that touches
+# them. Deterministic and free (no LLM calls; that's worker-agent-evals.yml,
+# on a release instead). See worker/README.md and CLAUDE.md.
 #
-# graph/ is installed and tested here too, not just worker/ — two real
-# reasons, not just thoroughness: (1) it's its own package with its own
-# test suite that otherwise runs nowhere in CI, and (2) worker/'s own
-# `tsc --noEmit` typechecks graph/**/*.ts as part of the SAME tsconfig
-# (worker/src imports graph/ directly), which sweeps in graph/*.test.ts's
-# `import "vitest"` too — that only resolves if graph/'s own node_modules
-# exists. Skipping graph/'s install here isn't just missing its tests,
-# it silently breaks worker's own typecheck step.
+# The repo is npm workspaces (the root package.json): one `npm ci` at the
+# root installs graph/, worker/ and e2e/ from the one root lockfile, and
+# links @orchestrator/graph (graph/) into the packages that import it.
+# Each package then runs its own scripts.
 
 on:
   pull_request:
     paths:
       - 'worker/**'
       - 'graph/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/worker-tests.yml'
   push:
     branches: [main, dev]
     paths:
       - 'worker/**'
       - 'graph/**'
+      - 'package.json'
+      - 'package-lock.json'
 
 jobs:
   worker-tests:
@@ -40,22 +36,21 @@ jobs:
           # 22: the db tests use Node's built-in SQLite (node:sqlite, 22.5+).
           node-version: '22'
 
-      - name: Install graph/
-        working-directory: graph
+      - name: Install (all workspaces, from the root lockfile)
         run: npm ci
 
       - name: Test graph/
         working-directory: graph
         run: npm test
 
-      - name: Install worker/
-        working-directory: worker
-        run: npm ci
+      - name: Typecheck graph/
+        working-directory: graph
+        run: npm run typecheck
 
       - name: Test worker/
         working-directory: worker
         run: npm test
 
-      - name: Typecheck worker/ (covers graph/**/*.ts too, same tsconfig)
+      - name: Typecheck worker/
         working-directory: worker
         run: npm run typecheck

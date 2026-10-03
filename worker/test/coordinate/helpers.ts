@@ -1,8 +1,14 @@
 // Shared fakes for the coordinate/ tests: an in-memory Deps, a webhook
 // input, and merge-gate facts.
 import { vi } from "vitest";
-import { watchdogMinutesFor, type CiFix, type CoordinateInput, type Deps, type PendingFire } from "../../src/coordinate";
-import type { MergeGateFacts } from "../../../graph/github/merge-gate";
+import {
+  watchdogMinutesFor,
+  type CiFix,
+  type CoordinateInput,
+  type Deps,
+  type PendingFire,
+} from "../../src/coordinate";
+import type { MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 
 export function gateFacts(overrides: Partial<MergeGateFacts> = {}): MergeGateFacts {
   return {

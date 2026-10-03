@@ -1,11 +1,9 @@
-import { describe,expect,it,vi } from "vitest";
-import { LABELS } from "../../../graph/constants/labels";
-import { EVENTS } from "../../../graph/constants/events";
-import { ROUTINES } from "../../../graph/constants/routines";
-import {
-coordinateWebhook,MAX_CI_FIX_ATTEMPTS
-} from "../../src/coordinate";
-import { fakeDeps,gateFacts,input } from "./helpers";
+import { describe, expect, it, vi } from "vitest";
+import { LABELS } from "@orchestrator/graph/constants/labels";
+import { EVENTS } from "@orchestrator/graph/constants/events";
+import { ROUTINES } from "@orchestrator/graph/constants/routines";
+import { coordinateWebhook, MAX_CI_FIX_ATTEMPTS } from "../../src/coordinate";
+import { fakeDeps, gateFacts, input } from "./helpers";
 
 describe("coordinateWebhook — check_suite.completed, the real merge-gate aggregation", () => {
   const checkSuiteInput = (status: "completed" | "in_progress" = "completed") =>

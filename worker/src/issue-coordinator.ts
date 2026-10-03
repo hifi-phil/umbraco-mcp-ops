@@ -45,7 +45,7 @@ import { appBotLogin, appConfigured } from "./github-app";
 import { fireRoutine } from "./routines-client";
 import type { GitHubEnv } from "./github-client";
 import type { RoutinesEnv } from "./routines-client";
-import type { MergeGateFacts } from "../../graph/github/merge-gate";
+import type { MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 
 export type IssueCoordinatorEnv = GitHubEnv &
   RoutinesEnv & {

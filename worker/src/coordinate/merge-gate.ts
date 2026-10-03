@@ -2,15 +2,10 @@
 // (merge-blocked) or CI failing, handed to rework-loop up to
 // MAX_CI_FIX_ATTEMPTS times; and the settled facts both read.
 
-import { LABELS } from "../../../graph/constants/labels";
-import { failedCheckNames,type MergeGateFacts } from "../../../graph/github/merge-gate";
-import { EVENTS } from "../../../graph/constants/events";
-import {
-MAX_CI_FIX_ATTEMPTS,depsFor,
-type Acting,type CoordinateResult,
-type Deps,
-type IssueRef
-} from "./types";
+import { LABELS } from "@orchestrator/graph/constants/labels";
+import { failedCheckNames, type MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
+import { EVENTS } from "@orchestrator/graph/constants/events";
+import { MAX_CI_FIX_ATTEMPTS, depsFor, type Acting, type CoordinateResult, type Deps, type IssueRef } from "./types";
 import { applyEvent } from "./apply";
 
 /** CI failed under auto-merge: swap auto-merge -> auto-rework so

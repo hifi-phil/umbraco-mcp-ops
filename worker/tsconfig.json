@@ -14,7 +14,7 @@
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
   },
-  "include": ["**/*.ts", "**/*.tsx", "../graph/**/*.ts"],
+  "include": ["**/*.ts", "**/*.tsx"],
   // The db tests run in Node: test/db/tsconfig.json checks them.
   "exclude": ["test/db/**", "test/dashboard/**", "node_modules", "dist"]
 }

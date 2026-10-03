@@ -1,13 +1,15 @@
-import { describe,expect,it } from "vitest";
-import { LABELS } from "../../../graph/constants/labels";
-import { EVENTS } from "../../../graph/constants/events";
+import { describe, expect, it } from "vitest";
+import { LABELS } from "@orchestrator/graph/constants/labels";
+import { EVENTS } from "@orchestrator/graph/constants/events";
 import {
-LABEL_JUST_ADDED_BY,
-coordinateWebhook,deriveState,resolveEnforced,
-resolveMode,
-shadowDeps
+  LABEL_JUST_ADDED_BY,
+  coordinateWebhook,
+  deriveState,
+  resolveEnforced,
+  resolveMode,
+  shadowDeps,
 } from "../../src/coordinate";
-import { fakeDeps,input } from "./helpers";
+import { fakeDeps, input } from "./helpers";
 
 describe("LABEL_JUST_ADDED_BY — completeness", () => {
   it("has an entry for every labelled_* event in EVENTS", () => {

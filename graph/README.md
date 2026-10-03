@@ -1,8 +1,15 @@
-# graph/ — Phase 1/2 prototype
+# graph/ — `@orchestrator/graph`, the orchestrator's domain
 
-Pure logic only, per the build order in the design doc
-(`agent-orchestration-plan/07-build-phases.md`), split into pipeline
-stages, each with its own fixture tests:
+The state machine and everything it decides with, platform-free: no I/O,
+no Cloudflare, no GitHub calls. `worker/` wires it to Durable Objects, D1
+and GitHub; anything else could (it's the part the orchestrator owns
+whatever it runs on). Imported by name, `@orchestrator/graph/<module>`
+(e.g. `@orchestrator/graph/graph`, `@orchestrator/graph/constants/labels`),
+as TypeScript source: the repo is npm workspaces (the root `package.json`),
+and every consumer bundles or runs it through Vite or esbuild, so there's
+no build step.
+
+Split into pipeline stages, each with its own fixture tests:
 
 ```
 github/from-github.ts  ─┐
@@ -38,25 +45,17 @@ cancelling its alarm promptly, the dashboard showing "done" sooner — never
 a state transition on its own). No `routines/to-routine.ts` exists: nothing
 sends data back to a routine today.
 
-A Worker, Durable Object, and D1 log now exist for real — see `../worker/`
-— importing this directory's functions directly. Nothing here in `graph/`
-itself talks to GitHub, or anything else; `worker/` is where that I/O
-lives, and even it isn't deployed anywhere (no live Cloudflare account
-access exists for this repo) — see `worker/README.md`.
-
-This is the first code in this repo that isn't shell or Markdown — a
-deliberate, scoped choice: a `package.json` here doesn't change how any
-existing plugin/skill works, and this whole directory is disposable if the
-eventual platform decision (Cloudflare vs. Azure — see
-`06-platform-alternative.md`) points somewhere that doesn't want it in this
-form (e.g. C#/Durable Functions would port the *logic*, not this file).
+Nothing here talks to GitHub, or anything else: `worker/` is where that
+I/O lives. Used by `worker/` (everywhere), and by `e2e/` (labels, outcome
+shapes).
 
 ## Run the tests
 
 ```
+npm ci              # once, at the repo root: installs every workspace
 cd graph
-npm install
 npm test
+npm run typecheck
 ```
 
 ## No magic strings

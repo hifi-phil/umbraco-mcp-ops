@@ -3,7 +3,7 @@
 // functions, tested with plain vitest — no live request/DO/crypto-context
 // needed beyond what Node's global Web Crypto already provides.
 
-import type { WebhookPayload } from "../../graph/github/from-github";
+import type { WebhookPayload } from "@orchestrator/graph/github/from-github";
 
 export type RoutingInfo = { owner: string; repo: string; issueNumbers: number[] } | null;
 

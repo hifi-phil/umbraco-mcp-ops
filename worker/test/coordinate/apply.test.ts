@@ -1,14 +1,14 @@
-import { describe,expect,it,vi } from "vitest";
-import { LABELS } from "../../../graph/constants/labels";
-import { EVENTS } from "../../../graph/constants/events";
-import { ROUTINES } from "../../../graph/constants/routines";
+import { describe, expect, it, vi } from "vitest";
+import { LABELS } from "@orchestrator/graph/constants/labels";
+import { EVENTS } from "@orchestrator/graph/constants/events";
+import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import {
-coordinateWebhook,
-coordinateReconcile,
-coordinateRoutineSignal,
-coordinateWatchdogExpired
+  coordinateWebhook,
+  coordinateReconcile,
+  coordinateRoutineSignal,
+  coordinateWatchdogExpired,
 } from "../../src/coordinate";
-import { fakeDeps,gateFacts,input } from "./helpers";
+import { fakeDeps, gateFacts, input } from "./helpers";
 
 describe("who caused each log row (actor)", () => {
   const ref = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 };
