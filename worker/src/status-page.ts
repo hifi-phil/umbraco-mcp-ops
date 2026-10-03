@@ -200,7 +200,9 @@ export function buildItems(activity: ActivityRow[], status: StatusRow[], items: 
       return {
         repo: `${a.owner}/${a.repo}`.toLowerCase(),
         n: a.issue_number,
-        kind: meta?.kind === "pr" || meta?.kind === "issue" ? meta.kind : a.pr_hint ? "pr" : null,
+        // Not known yet: a PR-only event makes it a PR; otherwise it's almost
+        // certainly an issue (the lookup corrects it if not).
+        kind: meta?.kind === "pr" || meta?.kind === "issue" ? meta.kind : a.pr_hint ? "pr" : "issue",
         title: meta?.title ?? null,
         closed,
         merged,
@@ -545,6 +547,7 @@ export function renderDashboard(p: {
 </div>
 <div class="split${selected ? " has-selection" : ""}">
   <div class="box list" aria-label="Issues and pull requests">
+    ${shown.length ? `<div class="list-head">Showing ${shown.length > f.limit ? `1–${f.limit} of ${shown.length}` : `all ${shown.length}`}</div>` : ""}
     ${rows || `<div class="empty">Nothing matches these filters.</div>`}
     ${more}
   </div>
@@ -755,6 +758,7 @@ a.quiet { font-weight: 400; color: var(--ucp-color-text-alt); }
 .filters .lookup { margin-top: 3px; }
 .split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 18px; align-items: start; }
 .list { overflow: hidden; }
+.list-head { padding: 9px 18px; font-size: 12px; color: var(--ucp-color-text-alt); background: var(--ucp-color-background); border-bottom: 1px solid var(--ucp-color-divider); }
 .row { display: grid; gap: 3px; padding: 12px 18px; border-bottom: 1px solid var(--ucp-color-row-divider); color: var(--ucp-color-text); font-weight: 400; transition: background-color .15s; }
 .row:last-child { border-bottom: 0; }
 .row:hover { background: var(--ucp-palette-dawn-pink); text-decoration: none; color: var(--ucp-color-text); }

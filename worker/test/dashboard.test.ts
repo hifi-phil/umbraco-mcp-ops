@@ -66,7 +66,7 @@ describe("buildItems — the log's issues and PRs, with what's live and known", 
     const [pr] = buildItems([activity({ event: "merged", pr_hint: 1 })], [], [], REPOS);
     expect(pr).toMatchObject({ kind: "pr", closed: true, merged: true, title: null });
     const [unknown] = buildItems([activity({ event: "build_blocked" })], [], [], REPOS);
-    expect(unknown).toMatchObject({ kind: null, closed: false });
+    expect(unknown).toMatchObject({ kind: "issue", closed: false, known: false });
   });
 
   it("GitHub's state wins: a closed item never shows a stale live status", () => {
@@ -122,7 +122,8 @@ describe("renderDashboard — one list, pills, and the log beside it", () => {
   it("pills count within the other filters, and each is a link keeping them", () => {
     const html = render({ repo: OPS });
     expect(html).toContain(`>Pull requests <span class="count">2</span></a>`);
-    expect(html).toContain(`>Issues <span class="count">1</span></a>`);
+    // #1 known; #3 not known yet but has no PR-only event, so counted as an issue
+    expect(html).toContain(`>Issues <span class="count">2</span></a>`);
     expect(html).toContain(`>Needs attention <span class="count">1</span></a>`);
     expect(html).toContain(`>Closed <span class="count">1</span></a>`);
     expect(html).toContain(`href="/status?repo=${encodeURIComponent(OPS)}&amp;type=pr"`);
@@ -139,11 +140,10 @@ describe("renderDashboard — one list, pills, and the log beside it", () => {
     expect(attention).not.toContain('<span class="num">#2</span>');
   });
 
-  it("each row opens its log in the panel; titles are escaped; unknown kinds say so", () => {
+  it("each row opens its log in the panel; titles are escaped; an untitled one says its title is on its way", () => {
     const html = render();
     expect(html).toContain(`id="i-hifi-phil-umbraco-mcp-ops-1" href="/status?open=${encodeURIComponent(`${OPS}/1`)}#i-hifi-phil-umbraco-mcp-ops-1"`);
     expect(html).toContain("Build &lt;the&gt; thing");
-    expect(html).toContain('<span class="kind unknown">Issue or PR</span>');
     expect(html).toContain("Title on its way");
     expect(html).toContain("Pick an issue or pull request to see its log.");
   });
@@ -174,6 +174,7 @@ describe("renderDashboard — one list, pills, and the log beside it", () => {
     );
     const html = renderDashboard({ items: many, filters: NO_FILTERS, repos: REPOS, selected: null, now });
     expect(html.match(/class="row"/g)).toHaveLength(100);
+    expect(html).toContain('<div class="list-head">Showing 1–100 of 130</div>');
     expect(html).toMatch(/<a class="more" href="\/status\?limit=200#i-hifi-phil-umbraco-mcp-ops-\d+">Show 30 more of 30<\/a>/);
     expect(html).toContain('>All types <span class="count">130</span>');
   });
