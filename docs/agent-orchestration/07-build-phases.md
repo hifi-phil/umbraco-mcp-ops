@@ -275,6 +275,21 @@ transition log is the historical complement to it).
 **Exit:** One place shows every open issue's current state, current routine
 and attempt, and last-known step, without querying GitHub or a DO directly.
 
+**Status (02-10-2026):**
+- **Built:** the `issue_status` table and `GET /status`, a read-only page
+  styled to the Umbraco Cloud Portal design system, behind "Sign in with
+  GitHub" for verified `@umbraco.com` / `@umbraco.dk` emails. Each issue's DO upserts its row on
+  enforced transitions, sweep re-fires, heartbeats and completions, and
+  deletes it when the issue closes. The worker README's "The live-status
+  dashboard" has the detail.
+- **Shadow repos show nothing:** only enforced events write it, since a
+  shadow event's labels never moved.
+- **Also on the dashboard:** one list of every issue and PR the Worker
+  has logged, filtered by pills (type, status, repo), with the selected
+  one's D1 transition log beside it, and per-repo controls (`repo_controls`),
+  starting with switching a repo's sweep off: the start of turning agents
+  on and off per repo, as the target graph needs.
+
 ## Phase 9 — Harden against loss and loops
 
 **Entry:** Phase 8 live.

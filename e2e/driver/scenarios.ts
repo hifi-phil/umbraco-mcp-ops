@@ -32,6 +32,7 @@ import {
   setHint,
   sleep,
   snapshot,
+  statusOf,
   transitions,
   waitFor,
   waitForChecks,
@@ -154,6 +155,20 @@ export const scenarios: Scenario[] = [
         );
         await expectLogged(pr, { event: "labelled_auto_merging", run: "merge-flow" }, { event: "merged", effect: "close" });
         await expectLogged(release, { event: "labelled_auto_releasing", run: "auto-release-loop" }, { event: "release_published", effect: "close" });
+
+        // The live-status view: the built issue shows its last run; a closed
+        // PR or release has no row.
+        expect(await statusOf(issue), `#${issue} status`).toMatchObject({
+          state: LABELS.AI_GENERATED,
+          routine: "issue-build-loop",
+          attempt: 1,
+          running: 0,
+        });
+        // After the close's own webhooks have all landed (issues.closed comes
+        // after the Worker's own close, and must not put the row back).
+        await sleep(20_000);
+        expect(await statusOf(pr), `PR #${pr} status, closed`).toBeUndefined();
+        expect(await statusOf(release), `#${release} status, closed`).toBeUndefined();
       }),
   },
   {
@@ -175,6 +190,28 @@ export const scenarios: Scenario[] = [
         expect(s.state).toBe("open");
         expect(hasMarker(s, "issue-build-loop", "build_blocked"), `#${issue} marker`).toBe(true);
         await expectLogged(issue, { event: "labelled_ai_ready", run: "issue-build-loop" }, { event: "build_blocked", effect: LABELS.AI_BLOCKED });
+      }),
+  },
+  {
+    name: "live status: a release closed by hand with auto-release still on -> its row goes",
+    timeoutMs: 2 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        // issue_closed from auto-release is a noop rule that applies; the
+        // row must still go, whatever order the close's webhooks land in.
+        const issue = t.n(await openIssue("Close me mid-release", "A person closes this while it's releasing.", "silent"));
+        await addLabel(issue, LABELS.AUTO_RELEASING);
+        let row = await statusOf(issue);
+        for (let tries = 0; tries < 10 && !row; tries++) {
+          await sleep(3000);
+          row = await statusOf(issue);
+        }
+        expect(row, `#${issue} status, releasing`).toMatchObject({ state: LABELS.AUTO_RELEASING, routine: "auto-release-loop", running: 1 });
+
+        await gh("PATCH", `/repos/${REPO}/issues/${issue}`, { state: "closed" });
+        await expectLogged(issue, { event: "labelled_auto_releasing", run: "auto-release-loop" }, { event: "issue_closed", effect: "noop" });
+        await sleep(10_000);
+        expect(await statusOf(issue), `#${issue} status, closed`).toBeUndefined();
       }),
   },
   {
@@ -413,8 +450,16 @@ export const scenarios: Scenario[] = [
         const issue = t.n(await openIssue("Say little (heartbeat)", "The agent reports one step, then dies.", "heartbeat"));
         const stuck = await expectStuck(issue, LABELS.AI_READY);
         expect(hasComment(stuck, "Last reported step: `e2e-heartbeat`")).toBe(true);
+        // The live-status view keeps where the dead run got to.
+        expect(await statusOf(issue), `#${issue} status, stuck`).toMatchObject({
+          state: LABELS.AI_STUCK,
+          routine: "issue-build-loop",
+          running: 0,
+          last_step: "e2e-heartbeat",
+        });
         await lateOutcome(issue, "issue-build-loop", { outcome: "build_blocked", reason: "late" });
         expectLabels(await waitFor(issue, labelsAre(LABELS.AI_BLOCKED), MIN), issue, LABELS.AI_BLOCKED);
+        expect(await statusOf(issue), `#${issue} status, blocked`).toMatchObject({ state: LABELS.AI_BLOCKED });
       }),
   },
   {

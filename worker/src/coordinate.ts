@@ -51,6 +51,9 @@ export type TransitionRow = {
   run: string | null;
   droppedReason: string | null; // null only when a rule actually fired
   mode: Mode; // whether this event's writes were real (see Deps.enforced)
+  // Who caused it: the webhook's sender, or "watchdog" / "sweep" for the
+  // Worker's own; null when unknown.
+  actor?: string | null;
 };
 
 export type PendingFire = {
@@ -69,6 +72,26 @@ export type PendingFire = {
 };
 
 export type CiFix = { attempts: number; pending: boolean };
+
+/**
+ * A change to the issue's live-status row (03-components.md §3.6, the
+ * dashboard's table). Side effect only: nothing reads it back to decide.
+ * - transition: an enforced rule applied (or a sweep re-fire); `run` is the
+ *   routine it fired, if any, and `running` whether that run is watched
+ * - step: a heartbeat; done: the run reported completion
+ * - rework: a CI-fix rework was handed out (its new count)
+ * - gone: the issue closed, or has nothing left to show; reopened: it can
+ *   show again
+ */
+export type StatusUpdate =
+  | { kind: "transition"; state: string; run: string | null; running: boolean }
+  | { kind: "step"; step: string; at: string }
+  | { kind: "done" }
+  | { kind: "rework"; count: number }
+  // closed: it was closed on GitHub, so nothing re-creates its row until a
+  // reopened clears that
+  | { kind: "gone"; closed?: boolean }
+  | { kind: "reopened" };
 
 /** After this many CI-fix reworks on one PR, stop and ask a human. */
 export const MAX_CI_FIX_ATTEMPTS = 3;
@@ -123,6 +146,9 @@ export type Deps = {
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;
+  // The live-status row (StatusUpdate). Never throws: a failed write is
+  // logged and the transition goes on.
+  recordStatus(ref: IssueRef, update: StatusUpdate): Promise<void>;
 };
 
 /**
@@ -229,6 +255,14 @@ export type CoordinateInput = {
 
 export type IssueRef = Pick<CoordinateInput, "owner" | "repo" | "issueNumber">;
 
+/** What the Worker was doing when no webhook caused a row. */
+type Acting = { actor?: "watchdog" | "sweep" };
+
+/** Who caused a row: the webhook's sender, else what the Worker was doing. */
+function actorOf(input: IssueRef & Acting): string | null {
+  return (input as Partial<CoordinateInput>).payload?.sender?.login ?? input.actor ?? null;
+}
+
 export type CoordinateResult =
   | { outcome: "deduped" }
   | { outcome: "no_event" }
@@ -275,6 +309,22 @@ export async function coordinateWebhook(
 }
 
 async function processWebhook(deps: Deps, input: CoordinateInput): Promise<CoordinateResult> {
+  const result = await processEvent(deps, input);
+  // Closed by anyone (a merge, a person, a release): off the dashboard,
+  // which shows open issues. Last, so the close's own rule (issue_closed is
+  // a noop that would otherwise re-write the row) can't put it back.
+  // It stays gone: a late outcome or a watchdog expiry on the closed issue
+  // doesn't put it back (the DO remembers the close until it's reopened).
+  if (input.payload.action === "issues.closed" || input.payload.action === "pull_request.closed") {
+    await deps.recordStatus(input, { kind: "gone", closed: true });
+  }
+  if (input.payload.action === "issues.reopened" || input.payload.action === "pull_request.reopened") {
+    await deps.recordStatus(input, { kind: "reopened" });
+  }
+  return result;
+}
+
+async function processEvent(deps: Deps, input: CoordinateInput): Promise<CoordinateResult> {
   if (input.payload.action === "check_suite.completed") {
     return handleCheckSuiteCompleted(deps, input);
   }
@@ -362,6 +412,7 @@ async function logManualOverride(
     issueNumber: input.issueNumber,
     fromState: deriveState(before),
     event: "manual_override",
+    actor: by,
     toEffect: JSON.stringify({ kind: "manual", change: summary, by, now: deriveState(now) }),
     run: null,
     droppedReason: null,
@@ -375,7 +426,7 @@ async function logManualOverride(
  * MAX_CI_FIX_ATTEMPTS per PR, then merge-blocked. */
 async function handToRework(
   deps: Deps,
-  input: IssueRef,
+  input: IssueRef & Acting,
   currentLabels: string[],
   facts: MergeGateFacts,
 ): Promise<CoordinateResult> {
@@ -393,6 +444,7 @@ async function handToRework(
       await depsFor(deps, EVENTS.MERGE_GATE_FAILED_SOFT).io.removeLabel(input.owner, input.repo, input.issueNumber, LABELS.MERGE_BLOCKED);
     }
     await deps.setCiFix({ attempts: attempts + 1, pending: true });
+    if (deps.enforced(EVENTS.MERGE_GATE_FAILED_SOFT)) await deps.recordStatus(input, { kind: "rework", count: attempts + 1 });
     await depsFor(deps, EVENTS.MERGE_GATE_FAILED_SOFT).io.commentOnIssue(
       input.owner,
       input.repo,
@@ -424,7 +476,7 @@ export const MERGEABLE_RETRY_MS = 1000;
  * plus a comment saying why, since the label alone doesn't. */
 async function blockMerge(
   deps: Deps,
-  input: IssueRef,
+  input: IssueRef & Acting,
   currentLabels: string[],
   reason: string,
 ): Promise<CoordinateResult> {
@@ -472,13 +524,14 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
  * already in hand. */
 async function applyEvent(
   allDeps: Deps,
-  input: IssueRef,
+  input: IssueRef & Acting,
   event: Event,
   currentLabels: string[],
 ): Promise<CoordinateResult> {
   const { io: deps, mode } = depsFor(allDeps, event);
   // Present when a webhook caused this; the watchdog passes its pending fire.
   const deliveryId = (input as Partial<CoordinateInput>).deliveryId || null;
+  const actor = actorOf(input);
   const justAdded = LABEL_JUST_ADDED_BY[event];
   const labelsBeforeThisEvent = justAdded
     ? currentLabels.filter((l) => l !== justAdded)
@@ -487,6 +540,7 @@ async function applyEvent(
   if (current === "ambiguous") {
     await deps.logTransition({
       deliveryId,
+      actor,
       owner: input.owner,
       repo: input.repo,
       issueNumber: input.issueNumber,
@@ -505,6 +559,7 @@ async function applyEvent(
   if (!rule) {
     await deps.logTransition({
       deliveryId,
+      actor,
       owner: input.owner,
       repo: input.repo,
       issueNumber: input.issueNumber,
@@ -549,6 +604,7 @@ async function applyEvent(
 
   await deps.logTransition({
     deliveryId,
+    actor,
     owner: input.owner,
     repo: input.repo,
     issueNumber: input.issueNumber,
@@ -560,7 +616,20 @@ async function applyEvent(
     mode,
   });
 
+  // Only what really happened: a shadow event's labels never moved.
+  if (mode === "enforce") await allDeps.recordStatus(input, statusAfter(current, rule));
+
   return { outcome: "applied", from: current, event, rule };
+}
+
+/** The live-status change an applied rule makes. */
+function statusAfter(current: State, rule: Rule): StatusUpdate {
+  if (rule.to.kind === "close") return { kind: "gone" };
+  const state = rule.to.kind === "label" ? rule.to.value : rule.to.kind === "unlabel" ? "none" : current;
+  const running = !!rule.run && isWatched(rule.to.kind === "label" ? rule.to.value : current);
+  // Untracked, and nothing out for it: nothing to show.
+  if (state === "none" && !rule.run) return { kind: "gone" };
+  return { kind: "transition", state, run: rule.run ?? null, running };
 }
 
 export type RoutineSignalInput = { owner: string; repo: string; signal: RoutineSignal };
@@ -598,12 +667,15 @@ export async function coordinateRoutineSignal(
   if (update.kind === "process") {
     // Records the step (so an expiry can quote it) and, because the DO's
     // setPendingFire always re-schedules the alarm, extends the watchdog.
-    await deps.setPendingFire({ ...pending, lastStep: update.step, lastStepAt: new Date().toISOString() });
+    const at = new Date().toISOString();
+    await deps.setPendingFire({ ...pending, lastStep: update.step, lastStepAt: at });
+    await deps.recordStatus(pending, { kind: "step", step: update.step, at });
     return { outcome: "heartbeat_extended" };
   }
 
   await deps.clearPendingFire();
   await deps.markCompleted(new Date().toISOString());
+  await deps.recordStatus(pending, { kind: "done" });
   return { outcome: "completion_acknowledged" };
 }
 
@@ -720,12 +792,13 @@ export async function coordinateReconcile(
     if (retry) await deps.setCiFix(null);
     const facts = await settledGateFacts(deps, ref);
     const reason = hardBlockReason(facts);
-    if (reason) return { outcome: "gated", result: await blockMerge(deps, ref, labels, reason) };
-    if (deriveMergeGateOutcome(facts) === "soft") return { outcome: "gated", result: await handToRework(deps, ref, labels, facts) };
+    const sweep = { ...ref, actor: "sweep" as const };
+    if (reason) return { outcome: "gated", result: await blockMerge(deps, sweep, labels, reason) };
+    if (deriveMergeGateOutcome(facts) === "soft") return { outcome: "gated", result: await handToRework(deps, sweep, labels, facts) };
     // Gate passed: the retry's own rule (merge-blocked comes off, merge-flow
     // fired and watched), not a bare re-fire that would leave merge-blocked on.
     if (retry) {
-      const result = await applyEvent(deps, ref, EVENTS.LABELLED_AUTO_MERGING, labels);
+      const result = await applyEvent(deps, sweep, EVENTS.LABELLED_AUTO_MERGING, labels);
       if (result.outcome === "applied") {
         await deps.logTransition({
           deliveryId: null,
@@ -734,6 +807,7 @@ export async function coordinateReconcile(
           issueNumber: ref.issueNumber,
           fromState: LABELS.MERGE_BLOCKED,
           event: "reconcile_refire",
+          actor: "sweep",
           toEffect: JSON.stringify({ kind: "noop", idleMinutes, retry: true }),
           run,
           droppedReason: null,
@@ -747,6 +821,7 @@ export async function coordinateReconcile(
   if (enforced) {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
     await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run });
+    await deps.recordStatus(ref, { kind: "transition", state, run, running: true });
   } else {
     // Shadow: one row per idle stretch. Until the issue sees new activity,
     // a later sweep finds the same thing and has nothing new to say.
@@ -763,6 +838,7 @@ export async function coordinateReconcile(
     issueNumber: ref.issueNumber,
     fromState: state,
     event: "reconcile_refire",
+    actor: "sweep",
     toEffect: JSON.stringify({ kind: "noop", idleMinutes, ...(held ? { held } : {}) }),
     run,
     droppedReason: null,
@@ -810,8 +886,12 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
       `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
   );
 
-  const result = await applyEvent(deps, pending, EVENTS.WATCHDOG_EXPIRED, currentLabels);
+  const result = await applyEvent(deps, { ...pending, actor: "watchdog" }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
   await deps.clearPendingFire();
+  // The watch is over either way: a shadow watchdog or labels with no expiry
+  // rule leave the row alone above, and nothing else would stop it reading
+  // "running" (a late completion finds no pending fire).
+  await deps.recordStatus(pending, { kind: "done" });
   return result;
 }
 

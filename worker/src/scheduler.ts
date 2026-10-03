@@ -20,6 +20,7 @@
 
 import { TRIGGER_LABELS, type ReconcileResult } from "./coordinate";
 import { openWithLabel, type GitHubEnv } from "./github-client";
+import { reposWithControlOff } from "./controls";
 
 export type SchedulerEnv = GitHubEnv & {
   ISSUE_COORDINATOR: DurableObjectNamespace;
@@ -46,6 +47,8 @@ export type SchedulerEnv = GitHubEnv & {
 // wouldRefire: only newly reported ones, not every sweep's repeat.
 export type SweepSummary = {
   repos: string[];
+  // Repos skipped because their sweep is switched off (controls.ts).
+  paused: string[];
   checked: number;
   live: number;
   refired: string[];
@@ -129,9 +132,24 @@ export class Scheduler {
   async sweep(only?: string[]): Promise<SweepSummary> {
     const all = Object.keys(JSON.parse(this.env.REPO_ROUTINES_JSON) as Record<string, unknown>);
     const repos = only ? all.filter((r) => only.some((o) => o.toLowerCase() === r.toLowerCase())) : all;
-    const summary: SweepSummary = { repos, checked: 0, live: 0, refired: [], wouldRefire: [], errors: [] };
+    const summary: SweepSummary = { repos, paused: [], checked: 0, live: 0, refired: [], wouldRefire: [], errors: [] };
+
+    // A repo whose sweep someone switched off on the dashboard is skipped.
+    // Can't read the switches: sweep nothing this time rather than one that
+    // was turned off (the error keeps the normal pace, so it's retried soon).
+    let off: Set<string>;
+    try {
+      off = await reposWithControlOff(this.env.DB, "sweep");
+    } catch (e) {
+      summary.errors.push(`controls: ${e instanceof Error ? e.message : e}`);
+      off = new Set(repos.map((r) => r.toLowerCase()));
+    }
 
     for (const full of repos) {
+      if (off.has(full.toLowerCase())) {
+        summary.paused.push(full);
+        continue;
+      }
       const [owner, repo] = full.split("/") as [string, string];
       let candidates: Map<number, string>;
       try {
@@ -173,8 +191,8 @@ export class Scheduler {
     // would-re-fire, or an error. Repeats of a settled issue aren't news.
     if (summary.refired.length === 0 && summary.wouldRefire.length === 0 && summary.errors.length === 0) return summary;
     await this.env.DB.prepare(
-      `INSERT INTO transitions (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO transitions (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode, actor)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sweep')`,
     )
       // enforce when anything was really re-fired (SWEEP_ENFORCE_REPOS too),
       // so real re-fires never count in the shadow numbers.

@@ -68,6 +68,13 @@ export async function getLabels(
   return labels.map((l) => l.name);
 }
 
+/** An issue or PR (GitHub's issues API covers both), or null if it's gone. */
+export async function getIssue(env: GitHubEnv, owner: string, repo: string, issueNumber: number): Promise<Record<string, unknown> | null> {
+  const res = await gh(env, "GET", `/repos/${owner}/${repo}/issues/${issueNumber}`, undefined, { allow404: true });
+  if (res.status === 404) return null;
+  return (await res.json()) as Record<string, unknown>;
+}
+
 export async function addLabel(
   env: GitHubEnv,
   owner: string,
