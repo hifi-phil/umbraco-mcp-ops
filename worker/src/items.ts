@@ -18,6 +18,34 @@ export async function upsertItem(db: D1Database, owner: string, repo: string, n:
     .run();
 }
 
+/** Events only a pull request can have: an item that logged one is a PR. */
+export const PR_EVENTS = [
+  "labelled_auto_reworking",
+  "unlabelled_auto_reworking",
+  "rework_pushed",
+  "ci_fix_pushed",
+  "labelled_auto_merging",
+  "unlabelled_auto_merging",
+  "merge_gate_failed_soft",
+  "merge_gate_failed_hard",
+  "merged",
+];
+
+/** Keeps the item's log summary (migrations/0007) up to date as a log row
+ * is written: its newest event and time, its count, and whether it's
+ * logged a PR-only event. The dashboard reads this, never the whole log. */
+export async function recordLogged(db: D1Database, owner: string, repo: string, n: number, event: string): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO items (owner, repo, issue_number, last_event, last_at, events, pr_hint) VALUES (?, ?, ?, ?, datetime('now'), 1, ?)
+       ON CONFLICT (owner, repo, issue_number) DO UPDATE SET
+         last_event = excluded.last_event, last_at = excluded.last_at,
+         events = items.events + 1, pr_hint = MAX(items.pr_hint, excluded.pr_hint)`,
+    )
+    .bind(owner.toLowerCase(), repo.toLowerCase(), n, event, PR_EVENTS.includes(event) ? 1 : 0)
+    .run();
+}
+
 /** At most this many GitHub lookups per dashboard load. */
 export const BACKFILL_MAX = 20;
 

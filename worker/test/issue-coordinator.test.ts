@@ -43,22 +43,24 @@ function fakeCtx() {
   return { ctx: { storage } as unknown as DurableObjectState, storage, store, setAlarm, deleteAlarm };
 }
 
-/** A fake D1Database recording every bound INSERT. */
 /** A fake D1: `inserted` is the transition log's rows, `status` the
- * live-status table's writes (each its SQL and bound values). */
+ * live-status table's writes, `summary` the items summary's (each its SQL
+ * and bound values). */
 function fakeDb() {
   const inserted: unknown[][] = [];
   const status: { sql: string; args: unknown[] }[] = [];
+  const summary: { sql: string; args: unknown[] }[] = [];
   const db = {
     prepare: vi.fn((sql: string) => ({
       bind: vi.fn((...args: unknown[]) => {
         if (sql.includes("issue_status")) status.push({ sql, args });
+        else if (sql.includes("INTO items")) summary.push({ sql, args });
         else inserted.push(args);
         return { run: vi.fn(async () => ({ success: true })) };
       }),
     })),
   };
-  return { db: db as unknown as D1Database, inserted, status };
+  return { db: db as unknown as D1Database, inserted, status, summary };
 }
 
 function fakeEnv(overrides: Partial<IssueCoordinatorEnv> = {}): IssueCoordinatorEnv {
@@ -325,6 +327,18 @@ describe("IssueCoordinator — the live-status row (issue_status)", () => {
     expect(status.some((w) => w.sql.includes("INSERT INTO issue_status"))).toBe(true);
   });
 
+  it("each log row also updates the item's summary (what the dashboard reads instead of the log)", async () => {
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    const { ctx } = fakeCtx();
+    const { db, summary } = fakeDb();
+    await new IssueCoordinator(ctx, fakeEnv({ DB: db })).fetch(
+      fetchRequest({ deliveryId: "d-s", owner: "Hifi-Phil", repo: "umbraco-mcp-ops", issueNumber: 412, payload: { action: "issues.labeled", label: { name: "ready-for-ai" } } }),
+    );
+    expect(summary).toHaveLength(1);
+    expect(summary[0]!.sql).toMatch(/events = items\.events \+ 1/);
+    expect(summary[0]!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", 412, "labelled_ai_ready", 0]);
+  });
+
   it("a failing status write never fails the transition", async () => {
     vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
     const { ctx } = fakeCtx();
@@ -333,7 +347,7 @@ describe("IssueCoordinator — the live-status row (issue_status)", () => {
       prepare: (sql: string) => ({
         bind: (...args: unknown[]) => ({
           run: async () => {
-            if (sql.includes("issue_status")) throw new Error("no such table: issue_status");
+            if (sql.includes("issue_status") || sql.includes("INTO items")) throw new Error("no such table");
             inserted.push(args);
             return { success: true };
           },

@@ -100,26 +100,13 @@ export type Filters = {
 };
 
 /** How often the list page reloads itself (a meta refresh: no script needed). */
-export const REFRESH_SECONDS = 30;
+export const REFRESH_SECONDS = 300;
 
 const STATUS_COLUMNS = "owner, repo, issue_number, state, routine, attempt, running, last_step, last_step_at, rework_count, updated_at";
 const PAGE = 100; // the list shows this many more per "Show more"
 const MAX_SHOWN = 1000;
 const MAX_ITEMS = 5000; // a safety cap on the grouped log; counts are exact below it
 
-// Events that only happen on a pull request, to guess the kind of an item
-// whose webhooks predate the items table.
-const PR_EVENTS = [
-  "labelled_auto_reworking",
-  "unlabelled_auto_reworking",
-  "rework_pushed",
-  "ci_fix_pushed",
-  "labelled_auto_merging",
-  "unlabelled_auto_merging",
-  "merge_gate_failed_soft",
-  "merge_gate_failed_hard",
-  "merged",
-];
 // A latest event that means it's closed, for the same older items.
 const CLOSING_EVENTS = ["merged", "release_published", "issue_closed"];
 
@@ -207,7 +194,7 @@ export function buildItems(activity: ActivityRow[], status: StatusRow[], items: 
         closed,
         merged,
         ghOpen,
-        known: !!meta,
+        known: meta?.title != null,
         status: closed ? null : s,
         lastEvent: a.event,
         lastAt: a.last_at,
@@ -273,24 +260,17 @@ export async function handleStatus(request: Request, env: StatusEnv, url: URL, d
   }
 
   const filters = readFilters(url, repos);
-  const [activity, status, items] = await Promise.all([
+  // One row per item from its summary (migrations/0007), never the whole
+  // log: a load reads about as many rows as there are items.
+  const [summary, status] = await Promise.all([
     env.DB.prepare(
-      `SELECT owner, repo, issue_number, event, created_at AS last_at, events, pr_hint FROM (
-         SELECT LOWER(owner) AS owner, LOWER(repo) AS repo, issue_number, event, created_at,
-                ROW_NUMBER() OVER w AS rn,
-                COUNT(*) OVER p AS events,
-                MAX(CASE WHEN event IN (${PR_EVENTS.map(() => "?").join(", ")}) THEN 1 ELSE 0 END) OVER p AS pr_hint
-           FROM transitions
-          WHERE issue_number > 0
-         WINDOW p AS (PARTITION BY LOWER(owner), LOWER(repo), issue_number),
-                w AS (PARTITION BY LOWER(owner), LOWER(repo), issue_number ORDER BY id DESC)
-       ) WHERE rn = 1 ORDER BY last_at DESC LIMIT ${MAX_ITEMS}`,
-    )
-      .bind(...PR_EVENTS)
-      .all<ActivityRow>(),
+      `SELECT owner, repo, issue_number, kind, title, gh_state, last_event, last_at, events, pr_hint
+         FROM items WHERE events > 0 ORDER BY last_at DESC LIMIT ${MAX_ITEMS}`,
+    ).all<ItemRow & { last_event: string; last_at: string; events: number; pr_hint: number }>(),
     env.DB.prepare(`SELECT ${STATUS_COLUMNS} FROM issue_status`).all<StatusRow>(),
-    env.DB.prepare(`SELECT owner, repo, issue_number, kind, title, gh_state FROM items LIMIT ${MAX_ITEMS}`).all<ItemRow>(),
   ]);
+  const activity = { results: summary.results.map((r) => ({ owner: r.owner, repo: r.repo, issue_number: r.issue_number, event: r.last_event, last_at: r.last_at, events: r.events, pr_hint: r.pr_hint })) };
+  const items = { results: summary.results };
   const all = buildItems(activity.results, status.results, items.results, repos);
 
   // Find with exactly one match: open its log straight away.
@@ -398,6 +378,9 @@ export function ago(at: string | null, now: number): string {
   const h = Math.round(m / 60);
   return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
 }
+
+/** HH:MM UTC, for "Updated". */
+export const clock = (now: number) => `${new Date(now).toISOString().slice(11, 16)} UTC`;
 
 /** DD-MM-YYYY HH:MM:SS UTC. */
 export function when(at: string): string {
@@ -533,7 +516,7 @@ export function renderDashboard(p: {
     refresh: true,
     body: `<div class="section-title">
   <div><div class="eyebrow">Orchestrator · Live status</div><h1>Issues and pull requests</h1></div>
-  <div class="refresh">Refreshes every ${REFRESH_SECONDS} seconds${f.repo ? ` · <a href="/status/repo?repo=${encodeURIComponent(f.repo)}">${escape(f.repo)} settings</a>` : ""}</div>
+  <div class="refresh">Updated ${escape(clock(now))} · <a href="${escape(listHref(f))}">Refresh</a> · every ${REFRESH_SECONDS / 60} minutes${f.repo ? ` · <a href="/status/repo?repo=${encodeURIComponent(f.repo)}">${escape(f.repo)} settings</a>` : ""}</div>
 </div>
 <div class="filters">
   <div class="pills" role="group" aria-label="Type">${typePills}</div>

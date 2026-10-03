@@ -38,6 +38,7 @@ import {
   watchdogMinutesFor,
 } from "./coordinate";
 import * as githubClient from "./github-client";
+import { recordLogged } from "./items";
 import { appBotLogin, appConfigured } from "./github-app";
 import { fireRoutine } from "./routines-client";
 import type { GitHubEnv } from "./github-client";
@@ -331,5 +332,12 @@ export class IssueCoordinator {
         row.mode, // per event since Phase 4, not per Worker
       )
       .run();
+    if (row.issueNumber > 0) {
+      try {
+        await recordLogged(this.env.DB, row.owner, row.repo, row.issueNumber, row.event);
+      } catch (e) {
+        console.error("item summary write failed:", e instanceof Error ? e.message : e);
+      }
+    }
   }
 }

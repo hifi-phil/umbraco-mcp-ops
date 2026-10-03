@@ -482,14 +482,23 @@ is out now, the run's last heartbeat step, and its CI-fix reworks.
     time, event, from, effect, routine, mode, delivery, dropped reason,
     newest first, under its live status. Every filter and the selection
     are in the URL (`?type= &status= &repo= &n= &open=owner/repo/N`), so a
-    view can be shared, and survives the 30-second refresh
+    view can be shared, and survives the 5-minute refresh
   - `/status/repo?repo=…`: the repo's controls (below) and its
     repository-level activity (`control_changed` rows)
 - **Kind and title:** `items` in D1 (`migrations/0006_items.sql`), filled
   from every webhook that carries an issue or PR: whether it's an issue or
-  a PR, its title, its GitHub state. Display only. An item whose webhooks
-  all came before it has no title, and its kind is guessed from PR-only
-  events, else shown as "Issue or PR", until its next event.
+  a PR, its title, its GitHub state. Display only. An item with no title
+  yet (its webhooks all came before the table) is looked up on GitHub
+  after a page load that shows it, up to 20 a load; until then it counts as
+  a PR if it logged a PR-only event, else as an issue.
+- **What a load reads (D1's free plan allows 5M rows read a day):** one
+  `items` row per item, never the transition log. Each item's row carries
+  a summary of its log (`migrations/0007_items_summary.sql`: newest event
+  and time, event count, PR-only flag), which the issue DO updates as it
+  writes each log row. Only the open log panel reads `transitions`, and
+  only that item's rows. Before this the list read the whole log on every
+  load, and a tab left open on the 30-second refresh used three quarters of
+  a day's allowance (03-10-2026).
 - **Scripts:** `Authorization: Bearer <tofu output -raw status_secret>`,
   and `?format=json` gives the rows.
 - **Per-repo controls:** `repo_controls` in D1
@@ -528,7 +537,8 @@ is out now, the run's last heartbeat step, and its CI-fix reworks.
 - **Side effect only:** nothing reads it to decide anything, and a failed
   write is logged, never failing the transition. Shadow events don't write
   it (their labels never moved), so a shadow repo has no rows.
-- **Refreshes itself every 30 seconds** (a meta refresh), no push. An issue the Worker
+- **Refreshes itself every 5 minutes** (a meta refresh), no push, with an
+  "Updated HH:MM · Refresh" link for sooner. An issue the Worker
   first sees after this deploy gets its row on its next transition.
 
 ## The watchdog is a real event

@@ -19,15 +19,13 @@ const row = (overrides: Partial<StatusRow> = {}): StatusRow => ({
   ...overrides,
 });
 
-/** issue_status holds `rows`; the log has one row for each. */
+/** issue_status holds `rows`; the items summary has one row for each. */
 function fakeDb(rows: StatusRow[]) {
   const queries: string[] = [];
   const results = (sql: string) =>
-    sql.includes("FROM transitions")
-      ? rows.map((r) => ({ owner: r.owner, repo: r.repo, issue_number: r.issue_number, event: "labelled_ai_ready", last_at: r.updated_at, events: 1, pr_hint: 0 }))
-      : sql.includes("FROM items")
-        ? []
-        : rows;
+    sql.includes("FROM items")
+      ? rows.map((r) => ({ owner: r.owner, repo: r.repo, issue_number: r.issue_number, last_event: "labelled_ai_ready", last_at: r.updated_at, events: 1, pr_hint: 0, kind: null, title: null, gh_state: null }))
+      : rows;
   const db = {
     prepare: (sql: string) => {
       queries.push(sql);
@@ -93,6 +91,20 @@ describe("GET /status — who gets in", () => {
     const { db } = fakeDb([row()]);
     const res = await handleStatus(get(bearer("s3cret")), { DB: db, STATUS_SECRET: "s3cret", ...signIn }, new URL("https://worker/status"));
     expect(res.status).toBe(200);
+  });
+
+  it("a list load reads the items summary and live status, never the whole log (D1 reads, 03-10-2026)", async () => {
+    const { db, queries } = fakeDb([row()]);
+    await handleStatus(get(bearer("s3cret")), { DB: db, STATUS_SECRET: "s3cret", REPO_ROUTINES_JSON: REPOS }, new URL("https://worker/status"));
+    expect(queries.some((q) => q.includes("FROM transitions"))).toBe(false);
+    expect(queries.some((q) => q.includes("FROM items WHERE events > 0"))).toBe(true);
+  });
+
+  it("refreshes every 5 minutes, and says when it was updated", async () => {
+    const { db } = fakeDb([]);
+    const html = await (await handleStatus(get(bearer("s3cret")), { DB: db, STATUS_SECRET: "s3cret", REPO_ROUTINES_JSON: REPOS }, new URL("https://worker/status"))).text();
+    expect(html).toContain('<meta http-equiv="refresh" content="300">');
+    expect(html).toMatch(/Updated \d\d:\d\d UTC · <a href="\/status">Refresh<\/a> · every 5 minutes/);
   });
 
   it("?format=json -> the issue_status rows, running first then most recent", async () => {

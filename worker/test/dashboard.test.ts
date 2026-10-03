@@ -207,16 +207,21 @@ describe("renderDashboard — one list, pills, and the log beside it", () => {
 /** A fake D1 answering by SQL. */
 function fakeDb(data: { activity?: ActivityRow[]; status?: StatusRow[]; items?: ItemRow[]; log?: unknown[]; controls?: unknown[] } = {}) {
   const writes: { sql: string; args: unknown[] }[] = [];
+  // The list reads the items summary: each activity row, with its item's
+  // kind, title and state where there is one.
+  const summary = () =>
+    (data.activity ?? []).map((a) => {
+      const m = (data.items ?? []).find((i) => i.issue_number === a.issue_number && i.repo === a.repo);
+      return { ...a, last_event: a.event, kind: m?.kind ?? null, title: m?.title ?? null, gh_state: m?.gh_state ?? null };
+    });
   const results = (sql: string) =>
-    sql.includes("ROW_NUMBER()")
-      ? (data.activity ?? [])
+    sql.includes("FROM items WHERE events > 0")
+      ? summary()
       : sql.includes("FROM transitions")
         ? (data.log ?? [])
         : sql.includes("FROM repo_controls")
           ? (data.controls ?? [])
-          : sql.includes("FROM items")
-            ? (data.items ?? [])
-            : (data.status ?? []);
+          : (data.status ?? []);
   const stmt = (sql: string, args: unknown[]) => ({
     sql,
     args,
