@@ -5,7 +5,8 @@
 //   index.ts, github-client.ts, webhook-parse.ts, routines-client.ts, +
 //   graph/'s own). Fast, free, deterministic — `npm test`, CI-blocking
 //   on every PR via worker-tests.yml.
-// - "db": the repositories in src/db/ against a real SQLite database
+// - "db": the repositories in src/db/, and the dashboard through its Hono
+//   routes (test/dashboard/), against a real SQLite database
 //   (Node's built-in node:sqlite, so Node 22.5+) with the real migrations
 //   applied: the SQL itself runs, and query plans are checked (D1's free
 //   plan allows 5M rows read a day). Fast and free: part of `npm test`.
@@ -20,18 +21,24 @@
 
 import { defineWorkspace } from "vitest/config";
 
+// The dashboard's views are Hono JSX (tsconfig.json says the same to tsc).
+const esbuild = { jsx: "automatic" as const, jsxImportSource: "hono/jsx" };
+
 export default defineWorkspace([
   {
+    esbuild,
     test: {
       name: "unit",
       include: ["test/**/*.test.ts"],
-      exclude: ["test/evals/**", "test/db/**"],
+      exclude: ["test/evals/**", "test/db/**", "test/dashboard/**"],
     },
   },
   {
+    esbuild,
     test: {
       name: "db",
-      include: ["test/db/**/*.test.ts"],
+      // The repositories, and the dashboard's routes, against real SQLite.
+      include: ["test/db/**/*.test.ts", "test/dashboard/**/*.test.ts"],
     },
   },
   {

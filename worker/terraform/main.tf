@@ -141,7 +141,7 @@ resource "cloudflare_workers_script" "worker" {
         local.e2e_routines,
       )),
     },
-    # GET /status, the live-status dashboard (src/status-page.ts).
+    # GET /status, the live-status dashboard (src/dashboard/).
     { type = "secret_text", name = "STATUS_SECRET", text = random_password.status_secret.result },
     ],
     # The dashboard's GitHub sign-in (src/auth.ts), limited to
