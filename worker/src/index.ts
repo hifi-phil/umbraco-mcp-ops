@@ -8,7 +8,7 @@
 // DO key, and that distinct issues/repos always produce distinct keys.
 
 import { IssueCoordinator } from "./issue-coordinator";
-import { extractRoutingInfo, toWebhookPayload, verifySignature, type RoutingInfo } from "./webhook-parse";
+import { extractItemMeta, extractRoutingInfo, toWebhookPayload, verifySignature, type RoutingInfo } from "./webhook-parse";
 import { openPullsForCommit } from "./github-client";
 import type { CoordinateInput, RoutineSignalInput } from "./coordinate";
 
@@ -103,6 +103,7 @@ export default {
     const routing = extractRoutingInfo(body) ?? (eventType === "check_suite" ? await routeByCommit(env, body) : null);
     if (!routing) return Response.json({ ok: true, dropped: "no routable issue/PR number" });
 
+    await recordItem(env, routing, body);
     const payload = toWebhookPayload(body, eventType);
     const forward = (issueNumber: number) => {
       const input: CoordinateInput = { deliveryId, owner: routing.owner, repo: routing.repo, issueNumber, payload };
@@ -170,6 +171,26 @@ async function handleTransitions(request: Request, env: Env, url: URL): Promise<
     .bind(owner, repo, issue)
     .all<TransitionLogRow>();
   return Response.json({ rows: results });
+}
+
+/** The dashboard's items table (migrations/0006): an issue or PR's kind,
+ * title and GitHub state, as this webhook gives them. Display only; never
+ * fails the webhook. */
+async function recordItem(env: Env, routing: NonNullable<RoutingInfo>, body: Record<string, unknown>): Promise<void> {
+  const meta = routing.issueNumbers.length === 1 ? extractItemMeta(body) : null;
+  if (!meta) return;
+  try {
+    await env.DB.prepare(
+      `INSERT INTO items (owner, repo, issue_number, kind, title, gh_state) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (owner, repo, issue_number) DO UPDATE SET
+         kind = excluded.kind, title = COALESCE(excluded.title, items.title),
+         gh_state = COALESCE(excluded.gh_state, items.gh_state), updated_at = datetime('now')`,
+    )
+      .bind(routing.owner.toLowerCase(), routing.repo.toLowerCase(), routing.issueNumbers[0], meta.kind, meta.title, meta.state)
+      .run();
+  } catch (e) {
+    console.error("item write failed:", e instanceof Error ? e.message : e);
+  }
 }
 
 const scheduler = (env: Env) => env.SCHEDULER!.get(env.SCHEDULER!.idFromName("scheduler"));

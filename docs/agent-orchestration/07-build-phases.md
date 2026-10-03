@@ -284,8 +284,9 @@ and attempt, and last-known step, without querying GitHub or a DO directly.
   dashboard" has the detail.
 - **Shadow repos show nothing:** only enforced events write it, since a
   shadow event's labels never moved.
-- **Also on the dashboard:** a switcher between the attached repos, each
-  issue's D1 transition log, and per-repo controls (`repo_controls`),
+- **Also on the dashboard:** one list of every issue and PR the Worker
+  has logged, filtered by pills (type, status, repo), with the selected
+  one's D1 transition log beside it, and per-repo controls (`repo_controls`),
   starting with switching a repo's sweep off: the start of turning agents
   on and off per repo, as the target graph needs.
 

@@ -472,14 +472,24 @@ is out now, the run's last heartbeat step, and its CI-fix reworks.
   in (`sign_in_domains`). The session lasts 7 days; "Sign out" is in the top
   bar.
 - **Pages:**
-  - `/status`: open issues, across every attached repo (`repo_routines`
-    plus the sandbox) or one of them (`?repo=owner/repo`, the switcher
-    above the table)
-  - `/status/issue?repo=…&n=…`: one issue's whole D1 transition log,
-    newest first (time, event, from, effect, routine, mode, delivery,
-    dropped reason), with its current status. Every issue number links
-    here; the form under the table looks one up
-  - `/status/repo?repo=…`: the repo's controls (below)
+  - `/status`: one list of every issue and PR the Worker has a log for,
+    open or closed, across the attached repos (`repo_routines` plus the
+    sandbox). Running first, then needing attention, then open, then the
+    rest by latest activity. Pills filter it by type (issues, pull
+    requests), status (open, running, needs attention, closed) and repo,
+    each with its count; a box finds a number. Selecting one opens its
+    whole D1 transition log beside the list (under it on a narrow screen):
+    time, event, from, effect, routine, mode, delivery, dropped reason,
+    newest first, under its live status. Every filter and the selection
+    are in the URL (`?type= &status= &repo= &n= &open=owner/repo/N`), so a
+    view can be shared, and survives the 30-second refresh
+  - `/status/repo?repo=…`: the repo's controls (below) and its
+    repository-level activity (`control_changed` rows)
+- **Kind and title:** `items` in D1 (`migrations/0006_items.sql`), filled
+  from every webhook that carries an issue or PR: whether it's an issue or
+  a PR, its title, its GitHub state. Display only. An item whose webhooks
+  all came before it has no title, and its kind is guessed from PR-only
+  events, else shown as "Issue or PR", until its next event.
 - **Scripts:** `Authorization: Bearer <tofu output -raw status_secret>`,
   and `?format=json` gives the rows.
 - **Per-repo controls:** `repo_controls` in D1

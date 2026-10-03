@@ -36,6 +36,25 @@ export function extractRoutingInfo(body: Record<string, unknown>): RoutingInfo {
   return { owner, repo, issueNumbers };
 }
 
+export type ItemMeta = { kind: "issue" | "pr"; title: string | null; state: "open" | "closed" | "merged" | null };
+
+/** What a webhook says about its one issue or PR, for the dashboard's
+ * items table: an issue event's `issue` (a PR's comment arrives as an issue
+ * with a `pull_request` key) or a PR event's `pull_request`. Null when it
+ * names neither (a check_suite). */
+export function extractItemMeta(body: Record<string, unknown>): ItemMeta | null {
+  type Thing = { title?: unknown; state?: unknown; pull_request?: unknown; merged?: unknown; merged_at?: unknown };
+  const pr = body.pull_request as Thing | undefined;
+  const issue = body.issue as Thing | undefined;
+  const thing = pr ?? issue;
+  if (!thing || typeof thing !== "object") return null;
+  const kind = pr || issue?.pull_request ? "pr" : "issue";
+  const title = typeof thing.title === "string" ? thing.title.slice(0, 300) : null;
+  const merged = thing.merged === true || (typeof thing.merged_at === "string" && thing.merged_at !== "");
+  const state = merged ? "merged" : thing.state === "open" || thing.state === "closed" ? thing.state : null;
+  return { kind, title, state };
+}
+
 export function toWebhookPayload(body: Record<string, unknown>, eventType: string): WebhookPayload {
   const sender = body.sender as { login?: string; type?: "Bot" | "User" } | undefined;
   const label = body.label as { name?: string } | undefined;

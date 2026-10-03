@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   combineEventAction,
+  extractItemMeta,
   extractRoutingInfo,
   toWebhookPayload,
   verifySignature,
@@ -161,5 +162,25 @@ describe("verifySignature", () => {
       "sha256=" + [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
     expect(await verifySignature(secret, body, header)).toBe(false);
+  });
+});
+
+describe("extractItemMeta — what the dashboard's items table keeps", () => {
+  it("an issue event: an issue, its title and state", () => {
+    expect(extractItemMeta({ issue: { number: 7, title: "Add a thing", state: "open" } })).toEqual({ kind: "issue", title: "Add a thing", state: "open" });
+  });
+
+  it("a comment on a PR arrives as an issue with a pull_request key: a PR", () => {
+    expect(extractItemMeta({ issue: { number: 7, title: "Fix", state: "open", pull_request: { url: "x" } } })).toMatchObject({ kind: "pr" });
+  });
+
+  it("a PR event: a PR; merged when it was", () => {
+    expect(extractItemMeta({ pull_request: { number: 8, title: "Fix", state: "closed", merged: true } })).toEqual({ kind: "pr", title: "Fix", state: "merged" });
+    expect(extractItemMeta({ pull_request: { number: 8, title: "Fix", state: "closed", merged_at: null } })).toEqual({ kind: "pr", title: "Fix", state: "closed" });
+  });
+
+  it("a check_suite names neither: nothing; an odd title or state is left out", () => {
+    expect(extractItemMeta({ check_suite: { pull_requests: [{ number: 1 }] } })).toBeNull();
+    expect(extractItemMeta({ issue: { number: 7, title: 42, state: "weird" } })).toEqual({ kind: "issue", title: null, state: null });
   });
 });
