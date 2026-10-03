@@ -277,7 +277,8 @@ and attempt, and last-known step, without querying GitHub or a DO directly.
 
 **Status (02-10-2026):**
 - **Built:** the `issue_status` table and `GET /status`, a read-only page
-  behind a tofu-generated password. Each issue's DO upserts its row on
+  styled to the Umbraco Cloud Portal design system, behind "Sign in with
+  GitHub" for verified `@umbraco.com` / `@umbraco.dk` emails. Each issue's DO upserts its row on
   enforced transitions, sweep re-fires, heartbeats and completions, and
   deletes it when the issue closes. The worker README's "The live-status
   dashboard" has the detail.

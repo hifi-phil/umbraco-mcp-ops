@@ -1,10 +1,13 @@
 // GET /status: the live-status dashboard (03-components.md §3.6). A thin,
 // read-only render of the issue_status table (migrations/0004), reloading
-// itself every REFRESH_SECONDS, no push. Off unless STATUS_SECRET is set; the browser's
-// own Basic auth prompt asks for it (any user name), and a Bearer header
-// works too, for scripts. ?format=json returns the rows instead.
+// itself every REFRESH_SECONDS, no push. Off unless STATUS_SECRET is set.
+// People sign in with GitHub (auth.ts: a verified Umbraco email); scripts
+// send `Authorization: Bearer <STATUS_SECRET>`. ?format=json returns the
+// rows instead.
 
-export type StatusEnv = { DB: D1Database; STATUS_SECRET?: string };
+import { readSession, signInConfigured, type AuthEnv } from "./auth";
+
+export type StatusEnv = AuthEnv & { DB: D1Database; STATUS_SECRET?: string };
 
 export type StatusRow = {
   owner: string;
@@ -20,22 +23,15 @@ export type StatusRow = {
   updated_at: string;
 };
 
-function authorized(request: Request, secret: string): boolean {
-  const header = request.headers.get("Authorization") ?? "";
-  if (header === `Bearer ${secret}`) return true;
-  if (!header.startsWith("Basic ")) return false;
-  try {
-    const decoded = atob(header.slice(6));
-    return decoded.slice(decoded.indexOf(":") + 1) === secret;
-  } catch {
-    return false;
-  }
-}
-
 export async function handleStatus(request: Request, env: StatusEnv, url: URL): Promise<Response> {
   if (!env.STATUS_SECRET) return new Response("not found", { status: 404 });
-  if (!authorized(request, env.STATUS_SECRET)) {
-    return new Response("unauthorized", { status: 401, headers: { "WWW-Authenticate": 'Basic realm="orchestrator status"' } });
+  const script = request.headers.get("Authorization") === `Bearer ${env.STATUS_SECRET}`;
+  const session = script ? null : await readSession(request, env);
+  if (!script && !session) {
+    if (!signInConfigured(env)) return new Response("unauthorized", { status: 401 });
+    const login = new URL("/auth/login", url);
+    login.searchParams.set("next", url.pathname + url.search);
+    return new Response(null, { status: 302, headers: { Location: login.pathname + login.search, "Cache-Control": "no-store" } });
   }
   const { results } = await env.DB.prepare(
     `SELECT owner, repo, issue_number, state, routine, attempt, running, last_step, last_step_at, rework_count, updated_at
@@ -46,7 +42,7 @@ export async function handleStatus(request: Request, env: StatusEnv, url: URL): 
   if (url.searchParams.get("format") === "json") {
     return Response.json({ rows: results }, { headers: { "Cache-Control": "no-store" } });
   }
-  return new Response(renderStatus(results, Date.now()), {
+  return new Response(renderStatus(results, Date.now(), session?.login), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
@@ -93,7 +89,7 @@ const LOGO_MARK =
 // tokens and component previews): the navy top bar, white-lilac page, 12px
 // bordered boxes, the portal's table and tinted tags, Lato. Light only, as
 // the portal is.
-export function renderStatus(rows: StatusRow[], now: number): string {
+export function renderStatus(rows: StatusRow[], now: number, signedInAs?: string): string {
   const running = rows.filter((r) => r.running).length;
   const stuck = rows.filter((r) => tone(r.state) === "danger").length;
   const body = rows
@@ -140,6 +136,9 @@ body { margin: 0; background: var(--ucp-color-background); color: var(--ucp-colo
 .top-bar { height: 62px; background: var(--ucp-color-header-surface); color: #fff; display: flex; align-items: center; gap: 12px; padding: 0 24px; }
 .top-bar .product { font-size: 15px; font-weight: 700; }
 .top-bar .product span { font-weight: 400; color: rgba(255, 255, 255, 0.7); }
+.top-bar .user { margin-left: auto; font-size: 13px; color: rgba(255, 255, 255, 0.8); display: flex; align-items: center; gap: 12px; }
+.top-bar .user a { color: #fff; font-weight: 700; padding: 6px 12px; border-radius: 6px; }
+.top-bar .user a:hover { background: #2a3360; text-decoration: none; color: #fff; }
 main { width: min(100%, 1600px); margin: 0 auto; padding: 36px 50px 50px; }
 .section-title { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .eyebrow { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ucp-color-text-alt); margin-bottom: 4px; }
@@ -184,7 +183,9 @@ a:focus-visible { outline: 2px solid var(--ucp-color-focus); outline-offset: 2px
 </style>
 </head>
 <body>
-<header class="top-bar">${LOGO_MARK}<div class="product">Agent orchestrator <span>/ Live status</span></div></header>
+<header class="top-bar">${LOGO_MARK}<div class="product">Agent orchestrator <span>/ Live status</span></div>${
+    signedInAs ? `<div class="user">${escape(signedInAs)}<a href="/auth/logout">Sign out</a></div>` : ""
+  }</header>
 <main>
 <div class="section-title">
   <div><div class="eyebrow">Orchestrator · Live status</div><h1>Open issues</h1></div>

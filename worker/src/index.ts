@@ -14,6 +14,7 @@ import type { CoordinateInput, RoutineSignalInput } from "./coordinate";
 
 import { Scheduler } from "./scheduler";
 import { handleStatus } from "./status-page";
+import { handleCallback, handleLogin, handleLogout, signedOut } from "./auth";
 
 export { IssueCoordinator, Scheduler };
 
@@ -40,8 +41,15 @@ export type Env = {
   // tofu sets both for the e2e sandbox alone.
   LOG_READ_SECRET?: string;
   LOG_READ_REPOS?: string;
-  // GET /status, the live-status dashboard (status-page.ts). Off unless set.
+  // GET /status, the live-status dashboard (status-page.ts). Off unless set;
+  // also the Bearer key for scripts.
   STATUS_SECRET?: string;
+  // Its GitHub sign-in (auth.ts): the GitHub App's client ID and a client
+  // secret, the session cookie's signing key, and the email domains let in.
+  GITHUB_OAUTH_CLIENT_ID?: string;
+  GITHUB_OAUTH_CLIENT_SECRET?: string;
+  SESSION_SECRET?: string;
+  SIGN_IN_DOMAINS?: string;
 };
 
 /** One DO per issue/PR. Lowercased: GitHub treats owner/repo names
@@ -57,6 +65,10 @@ export default {
     if (request.method === "POST" && url.pathname === "/sweep") return handleSweep(request, env);
     if (request.method === "GET" && url.pathname === "/transitions") return handleTransitions(request, env, url);
     if (request.method === "GET" && url.pathname === "/status") return handleStatus(request, env, url);
+    if (request.method === "GET" && url.pathname === "/auth/login") return handleLogin(env, url);
+    if (request.method === "GET" && url.pathname === "/auth/callback") return handleCallback(request, env, url);
+    if (request.method === "GET" && url.pathname === "/auth/logout") return handleLogout();
+    if (request.method === "GET" && url.pathname === "/auth/signed-out") return signedOut();
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
 
     if (url.pathname === "/routine-signal") {

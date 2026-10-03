@@ -18,6 +18,13 @@ github_app_private_key = <<-EOT
   -----END RSA PRIVATE KEY-----
 EOT
 
+# The status dashboard's "Sign in with GitHub", through the same App: its
+# Client ID and a client secret (App settings -> General). Leave both out
+# and sign-in is off. Only verified emails at sign_in_domains get in.
+# github_app_client_id     = "Iv23li…"
+# github_app_client_secret = "…"
+# sign_in_domains          = "umbraco.com,umbraco.dk"   # the default
+
 # mode = "shadow"      # the default; "enforce" = the Worker dispatches the repo.
 #                      # Then delete the repo's loop-dispatch caller workflow.
 # watchdog = "shadow"  # only honoured under mode = "enforce"

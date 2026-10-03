@@ -58,9 +58,16 @@ resource "random_password" "routine_signal_secret" {
   special = false
 }
 
-# The live-status dashboard's password (GET /status, any user name).
+# The live-status dashboard's key for scripts (GET /status, Bearer).
 resource "random_password" "status_secret" {
   length  = 40
+  special = false
+}
+
+# Signs the dashboard's session cookie after a GitHub sign-in. Rotating it
+# signs everyone out.
+resource "random_password" "session_secret" {
+  length  = 48
   special = false
 }
 
@@ -137,6 +144,15 @@ resource "cloudflare_workers_script" "worker" {
     # GET /status, the live-status dashboard (src/status-page.ts).
     { type = "secret_text", name = "STATUS_SECRET", text = random_password.status_secret.result },
     ],
+    # The dashboard's GitHub sign-in (src/auth.ts), limited to
+    # sign_in_domains. Without github_app_client_id it's off, and only the
+    # Bearer key reads /status.
+    var.github_app_client_id != "" ? [
+      { type = "plain_text", name = "GITHUB_OAUTH_CLIENT_ID", text = var.github_app_client_id },
+      { type = "secret_text", name = "GITHUB_OAUTH_CLIENT_SECRET", text = var.github_app_client_secret },
+      { type = "secret_text", name = "SESSION_SECRET", text = random_password.session_secret.result },
+      { type = "plain_text", name = "SIGN_IN_DOMAINS", text = var.sign_in_domains },
+    ] : [],
     # GET /transitions, the e2e suite's read of the D1 log, for the sandbox
     # only. Without e2e_repo there's no LOG_READ_SECRET, so the route is off.
     local.e2e ? [

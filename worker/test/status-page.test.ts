@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ago, handleStatus, renderStatus, type StatusRow } from "../src/status-page";
+import { signSession } from "../src/auth";
 
 const row = (overrides: Partial<StatusRow> = {}): StatusRow => ({
   owner: "hifi-phil",
@@ -29,40 +30,59 @@ function fakeDb(rows: StatusRow[]) {
 
 const get = (headers: Record<string, string> = {}, query = "") =>
   new Request(`https://worker/status${query}`, { headers });
-const basic = (password: string) => ({ Authorization: `Basic ${btoa(`anyone:${password}`)}` });
+const bearer = (secret: string) => ({ Authorization: `Bearer ${secret}` });
+const signIn = { GITHUB_OAUTH_CLIENT_ID: "Iv1.abc", GITHUB_OAUTH_CLIENT_SECRET: "cs", SESSION_SECRET: "sess-key" };
 
 describe("GET /status — the live-status dashboard", () => {
   it("off (404) unless STATUS_SECRET is set", async () => {
     const { db } = fakeDb([]);
-    const res = await handleStatus(get(basic("x")), { DB: db }, new URL("https://worker/status"));
+    const res = await handleStatus(get(bearer("x")), { DB: db }, new URL("https://worker/status"));
     expect(res.status).toBe(404);
   });
 
-  it("no or wrong credentials -> 401 with a Basic challenge (the browser's own prompt)", async () => {
+  it("no session and no key, sign-in set up -> off to GitHub sign-in, coming back here", async () => {
     const { db } = fakeDb([]);
-    const env = { DB: db, STATUS_SECRET: "s3cret" };
-    for (const headers of [{}, basic("wrong"), { Authorization: "Bearer wrong" }, { Authorization: "Basic !!notbase64" }]) {
-      const res = await handleStatus(get(headers), env, new URL("https://worker/status"));
+    const res = await handleStatus(get({}, "?format=json"), { DB: db, STATUS_SECRET: "s3cret", ...signIn }, new URL("https://worker/status?format=json"));
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/auth/login?next=%2Fstatus%3Fformat%3Djson");
+  });
+
+  it("no sign-in set up -> a wrong or missing key is a plain 401 (no password prompt)", async () => {
+    const { db } = fakeDb([]);
+    for (const headers of [{}, bearer("wrong"), { Authorization: `Basic ${btoa("anyone:s3cret")}` }]) {
+      const res = await handleStatus(get(headers), { DB: db, STATUS_SECRET: "s3cret" }, new URL("https://worker/status"));
       expect(res.status, JSON.stringify(headers)).toBe(401);
-      expect(res.headers.get("WWW-Authenticate")).toMatch(/^Basic /);
+      expect(res.headers.get("WWW-Authenticate")).toBeNull();
     }
   });
 
-  it("Basic (any user name) or Bearer with the secret -> the page, never cached", async () => {
+  it("a valid session -> the page, never cached, naming who's signed in with a sign-out link", async () => {
     const { db } = fakeDb([row()]);
-    const env = { DB: db, STATUS_SECRET: "s3cret" };
-    for (const headers of [basic("s3cret"), { Authorization: "Bearer s3cret" }]) {
-      const res = await handleStatus(get(headers), env, new URL("https://worker/status"));
-      expect(res.status).toBe(200);
-      expect(res.headers.get("Content-Type")).toMatch(/text\/html/);
-      expect(res.headers.get("Cache-Control")).toBe("no-store");
-      expect(await res.text()).toContain('issues/412">#412</a>');
-    }
+    const token = await signSession({ login: "octo", email: "octo@umbraco.dk", exp: Math.floor(Date.now() / 1000) + 60 }, "sess-key");
+    const res = await handleStatus(get({ Cookie: `ao_session=${encodeURIComponent(token)}` }), { DB: db, STATUS_SECRET: "s3cret", ...signIn }, new URL("https://worker/status"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const html = await res.text();
+    expect(html).toContain('issues/412">#412</a>');
+    expect(html).toContain('octo<a href="/auth/logout">Sign out</a>');
+  });
+
+  it("a session signed with another key -> not let in", async () => {
+    const { db } = fakeDb([row()]);
+    const token = await signSession({ login: "x", email: "x@umbraco.dk", exp: Math.floor(Date.now() / 1000) + 60 }, "other-key");
+    const res = await handleStatus(get({ Cookie: `ao_session=${encodeURIComponent(token)}` }), { DB: db, STATUS_SECRET: "s3cret", ...signIn }, new URL("https://worker/status"));
+    expect(res.status).toBe(302);
+  });
+
+  it("the Bearer key (scripts, the e2e driver) -> the page", async () => {
+    const { db } = fakeDb([row()]);
+    const res = await handleStatus(get(bearer("s3cret")), { DB: db, STATUS_SECRET: "s3cret", ...signIn }, new URL("https://worker/status"));
+    expect(res.status).toBe(200);
   });
 
   it("?format=json -> the rows, running first then most recent", async () => {
     const { db, queries } = fakeDb([row()]);
-    const res = await handleStatus(get(basic("s3cret")), { DB: db, STATUS_SECRET: "s3cret" }, new URL("https://worker/status?format=json"));
+    const res = await handleStatus(get(bearer("s3cret")), { DB: db, STATUS_SECRET: "s3cret" }, new URL("https://worker/status?format=json"));
     expect(await res.json()).toEqual({ rows: [row()] });
     expect(queries[0]).toMatch(/ORDER BY running DESC, updated_at DESC/);
   });
