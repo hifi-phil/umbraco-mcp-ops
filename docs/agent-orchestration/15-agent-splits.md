@@ -76,13 +76,62 @@ then `ai-review`.
 `MAX_REVIEW_REWORKS` counts both together. A person re-adding
 `auto-rework` from `ai-stuck` resets both counts, as now.
 
-### The decision log
+### The decision log and build log, in D1
 
-A `## Decisions` section in the PR description: each real choice and why
-("used X rather than Y because …"). The build agent writes it when it opens
-the PR; `rework-loop` appends when it makes a choice of its own. Every node
-already reads the PR and people see it too, so it needs no new storage and
-no vendor.
+Two logs per issue and PR, after the convention in Matt Brailsford's
+[umbraco-claude-playbook](https://github.com/mattbrailsford/umbraco-claude-playbook)
+(`DECISION-LOG.md`, `BUILD-LOG.md` and `decision-review`, used on
+`umbraco/Umbraco.AI`), but kept in D1 rather than files:
+
+- **Decision log:** each choice the issue left open, one short dated entry
+  with why (and what was rejected), tagged with his four categories:
+  *assumption*, *deviation*, *workaround*, *judgment call*.
+- **Build log:** what each node did and verified: commit, tests run and
+  their counts, review round and verdict, and what wasn't verified.
+
+**Why D1.** `transitions` is already each issue's build history (every
+label change and fire, with its actor). Putting decisions and verification
+beside it gives one timeline on the dashboard: labelled → decided X because
+Y → tests 42/42 → review round 1 FAIL → rework → PASS. Entries are rows,
+so writers never overwrite each other, and they can be queried across
+issues ("every workaround this month"), which is the data Phase 10 says
+splits should follow. Writing doesn't push a commit, so the reviewer can
+log its verdicts without restarting CI and review. It's our own schema, so
+no GitHub lock-in.
+
+**Who writes what:**
+
+| Node | Decision log | Build log |
+|---|---|---|
+| build | its decisions (the self-review subagent's go through it) | its entry |
+| `ai-review` | reads it, after forming its findings | its verdict, round and findings |
+| `rework-loop` | reads it; appends its own | its entry |
+| Worker | — | — (`transitions` stays its log) |
+
+**Access: an MCP endpoint on the Worker.** Tools to append an entry and to
+read an issue's log. Each fire carries a short-lived token the Worker mints
+for that one issue/PR and that routine: append-only (no edit, no delete),
+entries capped at a few KB, so a routine that has read hostile text (issue
+bodies, PR comments) can only add short entries to its own issue. Writes
+are best effort: a routine never stops because the Worker is unreachable.
+
+**For people:**
+- The dashboard shows the merged timeline (reading summaries, not the whole
+  log, per the D1 read budget).
+- The PR description gets a `decision-review`-style digest: only the
+  entries a person should look at, ranked, with a recommended action.
+- On merge, the Worker exports the issue's logs as the permanent copy
+  (D1 belongs to this deployment; `tofu destroy` removes it). Where the
+  export goes, a file in the repo or the PR itself, is still open.
+
+**Repos that already use the playbook** (a `docs/plans/<feature>/` folder)
+keep their files; the routines read them as well as D1.
+
+**Prerequisite: Workers Paid.** The plan is per Cloudflare account and
+covers the Worker, Durable Objects and D1 together. Since 01-09-2026 the
+free plan fails D1 queries outright once the daily row cap is hit, which
+would stop the orchestrator, not just the logs. Size isn't a limit: about
+50 KB per busy issue against 500 MB (free) or 10 GB (paid) per database.
 
 ## Split 2: release
 
@@ -117,8 +166,13 @@ loops. Then umbraco-mcp-ops; the umbraco repos inherit it once onboarded.
   `LABELS`.
 - Whether a CI-fix push on a PR already in `ai-review` restarts the
   review.
-- Skill changes: `issue-build-loop` stops at PR open; `rework-loop` reads
-  and appends to the decision log.
+- Skill changes: `issue-build-loop` stops at PR open; every node reads and
+  appends to the logs through the MCP.
+- The logs' schema (one table or two), the MCP's tools, and how the fire
+  token reaches the routine.
+- Where the on-merge export goes.
+- Whether the orchestrator moves to an Umbraco-owned Cloudflare account
+  (not the shared production one) before going paid.
 
 ---
 
