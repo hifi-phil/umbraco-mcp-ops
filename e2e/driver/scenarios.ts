@@ -53,6 +53,11 @@ const CAP = Number(process.env.E2E_REWORK_CAP ?? 1);
 /** For the audit (run.e2e.test.ts): an issue whose label delivery to redeliver, and the two PRs sharing a head. */
 export const runLog: { redeliverIssue?: number; sharedHead?: number[]; manualOverrideIssue?: number; sweepIssue?: number } = {};
 
+/** Every issue and PR this run's scenarios created (each registers its own,
+ * see scoped()), so the audit judges only the run's items, not whatever
+ * else touched the sandbox in the same minutes. */
+export const runItems = new Set<number>();
+
 const labelsAre = (...want: string[]) => (s: Snapshot) => JSON.stringify(s.labels) === JSON.stringify([...want].sort());
 const expectLabels = (s: Snapshot, n: number, ...want: string[]) => expect(s.labels, `#${n} labels`).toEqual([...want].sort());
 const hasComment = (s: Snapshot, ...parts: string[]) => s.comments.some((c) => parts.every((p) => c.includes(p)));
@@ -64,7 +69,7 @@ async function scoped(body: (t: Track) => Promise<void>) {
   const numbers: number[] = [];
   const branches: string[] = [];
   try {
-    await body({ n: (x) => (numbers.push(x), x), branch: (b) => (branches.push(b), b) });
+    await body({ n: (x) => (numbers.push(x), runItems.add(x), x), branch: (b) => (branches.push(b), b) });
   } finally {
     await cleanUp(numbers, branches);
   }
