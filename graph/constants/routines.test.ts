@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ALL_ROUTINES, ROUTINES } from "./routines";
 
 describe("ROUTINES — the absolute list", () => {
-  it("has exactly the five real loop skills, none blank or duplicated", () => {
-    expect(ALL_ROUTINES).toHaveLength(5);
-    expect(new Set(ALL_ROUTINES).size).toBe(5);
+  it("has exactly the six loop routines, none blank or duplicated", () => {
+    expect(ALL_ROUTINES).toHaveLength(6);
+    expect(new Set(ALL_ROUTINES).size).toBe(6);
     expect(ALL_ROUTINES.every((r) => r.length > 0)).toBe(true);
   });
 

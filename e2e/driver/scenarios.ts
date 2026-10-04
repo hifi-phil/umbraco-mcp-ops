@@ -639,4 +639,106 @@ export const scenarios: Scenario[] = [
         expect(s.merged).toBe(true);
       }),
   },
+  // --- The review (15-agent-splits.md) ---------------------------------------
+  {
+    name: "review: ai-review on a green PR -> review-loop -> passed -> unlabelled; re-added -> reviewed again",
+    timeoutMs: 6 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const pr = await trackedPr(t, { title: "review pass", hint: "review_pass", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
+        await waitForChecks(pr.number);
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const passed = await waitFor(pr.number, (s) => s.labels.length === 0 && hasMarker(s, "review-loop", "review_passed"), 2 * MIN);
+        expectLabels(passed, pr.number);
+        await expectLogged(
+          pr.number,
+          "labelled_ai_reviewing",
+          { event: "review_ci_passed", run: "review-loop" },
+          { event: "review_passed", effect: "unlabel" },
+        );
+
+        // A person re-running it (say after editing the PR by hand).
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const twice = (s: Snapshot) =>
+          s.labels.length === 0 && s.comments.filter((c) => c.includes('"outcome":"review_passed"')).length === 2;
+        expectLabels(await waitFor(pr.number, twice, 2 * MIN), pr.number);
+        const rows = await transitions(pr.number);
+        expect(rows.filter((r) => r.event === "review_ci_passed"), "two reviews fired").toHaveLength(2);
+      }),
+  },
+  {
+    name: "review: findings -> rework-loop -> push -> CI -> reviewed again -> passed",
+    timeoutMs: 9 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const pr = await trackedPr(t, { title: "review findings", hint: "review_findings_once", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
+        // Labelled at once, before CI has finished: the check_suite path fires the review.
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const s = await waitFor(pr.number, (x) => x.labels.length === 0 && hasMarker(x, "review-loop", "review_passed"), 8 * MIN);
+        expectLabels(s, pr.number);
+        expect(hasComment(s, "Review round 1 of 3")).toBe(true);
+        const commits = await gh<unknown[]>("GET", `/repos/${REPO}/pulls/${pr.number}/commits`);
+        expect(commits.length, "the stub's rework push").toBe(2);
+        await expectLogged(
+          pr.number,
+          { event: "review_ci_passed", run: "review-loop" },
+          { event: "review_findings", effect: LABELS.AUTO_REWORKING, run: "rework-loop" },
+          { event: "review_fix_pushed", effect: LABELS.AI_REVIEWING },
+          { event: "review_ci_passed", run: "review-loop" },
+          { event: "review_passed", effect: "unlabel" },
+        );
+      }),
+  },
+  {
+    name: "review: blocked -> ai-blocked, waits; a person re-adds ai-review -> reviewed again -> passed",
+    timeoutMs: 6 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const pr = await trackedPr(t, { title: "review block", hint: "review_block", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
+        await waitForChecks(pr.number);
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const blocked = await waitFor(pr.number, labelsAre(LABELS.AI_BLOCKED), 2 * MIN);
+        expectLabels(blocked, pr.number, LABELS.AI_BLOCKED);
+        await expectLogged(pr.number, { event: "review_ci_passed", run: "review-loop" }, { event: "review_blocked", effect: LABELS.AI_BLOCKED });
+
+        await setHint(pr.number, "review_pass");
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const passed = await waitFor(pr.number, (s) => s.labels.length === 0 && hasMarker(s, "review-loop", "review_passed"), 2 * MIN);
+        expectLabels(passed, pr.number);
+      }),
+  },
+  {
+    name: "review: CI red under ai-review -> CI fix -> back to ai-review -> passed",
+    timeoutMs: 9 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const pr = await trackedPr(t, { title: "review ci red", hint: "review_ci_fail", files: { "ci-state": "fail\n" } });
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const s = await waitFor(pr.number, (x) => x.labels.length === 0 && hasMarker(x, "review-loop", "review_passed"), 8 * MIN);
+        expectLabels(s, pr.number);
+        expect(hasComment(s, "🔧 CI failing", "attempt 1 of 3")).toBe(true);
+        await expectLogged(
+          pr.number,
+          { event: "review_ci_failed", effect: LABELS.AUTO_REWORKING, run: "rework-loop" },
+          { event: "review_fix_pushed", effect: LABELS.AI_REVIEWING },
+          { event: "review_ci_passed", run: "review-loop" },
+          { event: "review_passed", effect: "unlabel" },
+        );
+      }),
+  },
+  {
+    name: "review: findings every round -> ai-stuck after three rounds",
+    timeoutMs: 16 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const pr = await trackedPr(t, { title: "review never passes", hint: "review_findings_always", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const s = await waitFor(pr.number, labelsAre(LABELS.AI_STUCK), 15 * MIN);
+        expectLabels(s, pr.number, LABELS.AI_STUCK);
+        expect(hasComment(s, "asked for changes 3 times")).toBe(true);
+        const rows = await expectLogged(pr.number, { event: "rework_cap_reached", effect: LABELS.AI_STUCK });
+        expect(rows.filter((r) => r.event === "review_findings"), "three counted rounds").toHaveLength(3);
+        expect(rows.filter((r) => r.event === "review_fix_pushed"), "three pushes back to ai-review").toHaveLength(3);
+      }),
+  },
 ];

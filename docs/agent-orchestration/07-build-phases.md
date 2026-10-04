@@ -340,11 +340,17 @@ splitting costs more agent context, not less (see
 **Exit:** N/A — this phase repeats as needed, driven by data rather than a
 schedule.
 
-**Status (04-10-2026):** the first two splits are designed, not built:
-build/review and release, in [15-agent-splits.md](15-agent-splits.md).
-They come from long sessions losing context and a review that isn't
-independent, rather than failure data. Build/review goes first, in the
-sandbox.
+**Status (04-10-2026):** the first two splits are designed: build/review
+and release, in [15-agent-splits.md](15-agent-splits.md). They come from
+long sessions losing context and a review that isn't independent, rather
+than failure data. Build/review goes first, in the sandbox.
+- **Build/review, graph and Worker: built.** `ai-review` and its CI gate,
+  `review-loop`'s three outcomes, the push back to `ai-review`, and the
+  review's own round cap (`MAX_BOT_REVIEW_REWORKS`), counted apart from a
+  person's. Tested with the e2e stub; dormant on real repos until the
+  skills change (nothing adds `ai-review` there yet).
+- **Still to build:** the decision and build logs, the skills, and what
+  people see.
 
 ## Note on infrastructure timing
 

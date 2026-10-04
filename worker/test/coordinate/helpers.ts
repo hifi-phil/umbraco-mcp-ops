@@ -7,6 +7,7 @@ import {
   type CoordinateInput,
   type Deps,
   type PendingFire,
+  type ReviewLoop,
 } from "../../src/coordinate";
 import type { MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 
@@ -24,6 +25,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   let pendingFire: PendingFire | null = null;
   let ciFix: CiFix | null = null;
   let reviewReworks = 0;
+  let reviewLoop: ReviewLoop | null = null;
   let reconcileReported: string | null = null;
   let completed: string | null = null;
   return {
@@ -58,6 +60,10 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     }),
     setCiFix: vi.fn(async (state: CiFix | null) => {
       ciFix = state;
+    }),
+    getReviewLoop: vi.fn(async () => reviewLoop),
+    setReviewLoop: vi.fn(async (state: ReviewLoop | null) => {
+      reviewLoop = state;
     }),
     // These tests are about the write path; shadow and per-event
     // enforcement have their own describe blocks.

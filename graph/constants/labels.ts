@@ -21,7 +21,12 @@
 //
 // merge-blocked marks a PR that can't merge without a human: a merge conflict
 // or requested changes, found when auto-merge is added or while it waits.
-// Separate from ai-blocked, which means the build loop gave up on an issue.
+// Separate from ai-blocked, which means the build loop gave up on an issue
+// (or, on a PR, that the review blocked it: the approach needs a person).
+//
+// ai-review is on a PR while it waits for, or is under, the review-loop's
+// adversarial review (15-agent-splits.md): added by the build (or a person,
+// to re-run it), it fires the review once CI is green.
 
 export const LABELS = {
   AI_READY: "ready-for-ai",
@@ -33,11 +38,12 @@ export const LABELS = {
   AUTO_MERGING: "auto-merge",
   AI_STUCK: "ai-stuck",
   MERGE_BLOCKED: "merge-blocked",
+  AI_REVIEWING: "ai-review",
 } as const;
 
 export type Label = (typeof LABELS)[keyof typeof LABELS];
 
-/** Same nine values as LABELS, as an array — for anything that needs to
+/** Same ten values as LABELS, as an array — for anything that needs to
  * iterate all of them (a dashboard, a check against a live repo's actual
  * label set, a "does this string name a tracked label" guard). */
 export const ALL_LABELS: readonly Label[] = Object.values(LABELS);

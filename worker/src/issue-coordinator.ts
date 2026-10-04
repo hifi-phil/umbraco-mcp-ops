@@ -32,6 +32,7 @@ import {
   type Deps,
   type IssueRef,
   type PendingFire,
+  type ReviewLoop,
   type StatusUpdate,
   type RoutineSignalInput,
   type TransitionRow,
@@ -83,6 +84,7 @@ async function respond(run: () => Promise<unknown>): Promise<Response> {
 const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
 const REVIEW_REWORKS_KEY = "reviewReworks"; // review rework rounds on this PR (MAX_REVIEW_REWORKS)
+const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MAX_BOT_REVIEW_REWORKS)
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
 const CLOSED_KEY = "closedOnGitHub"; // its status row stays gone until reopened
@@ -230,6 +232,11 @@ export class IssueCoordinator {
       getReviewReworks: async () => (await this.ctx.storage.get<number>(REVIEW_REWORKS_KEY)) ?? 0,
       setReviewReworks: async (rounds: number) => {
         await this.ctx.storage.put(REVIEW_REWORKS_KEY, rounds);
+      },
+      getReviewLoop: async () => (await this.ctx.storage.get<ReviewLoop>(REVIEW_LOOP_KEY)) ?? null,
+      setReviewLoop: async (state: ReviewLoop | null) => {
+        if (state) await this.ctx.storage.put(REVIEW_LOOP_KEY, state);
+        else await this.ctx.storage.delete(REVIEW_LOOP_KEY);
       },
       getCiFix: async () => (await this.ctx.storage.get<CiFix>(CI_FIX_KEY)) ?? null,
       setCiFix: async (state: CiFix | null) => {

@@ -64,6 +64,7 @@ describe("reduce — issue lifecycle", () => {
       [EVENTS.UNLABELLED_AUTO_RELEASING, ["none", LABELS.AI_STUCK]],
       [EVENTS.UNLABELLED_AUTO_REWORKING, ["none", LABELS.AI_STUCK]],
       [EVENTS.UNLABELLED_AUTO_MERGING, ["none", LABELS.AI_STUCK]],
+      [EVENTS.UNLABELLED_AI_REVIEWING, ["none", LABELS.AI_STUCK]],
     ] as const;
     for (const [event, froms] of cases) {
       for (const from of froms) {
@@ -81,7 +82,11 @@ describe("CONTEXTUAL_EVENTS", () => {
       EVENTS.LABELLED_AI_READY,
       EVENTS.LABELLED_AUTO_RELEASING,
       EVENTS.LABELLED_AUTO_MERGING,
+      EVENTS.LABELLED_AI_REVIEWING,
       EVENTS.BUILD_SUCCEEDED,
+      EVENTS.REVIEW_PASSED,
+      EVENTS.REVIEW_FINDINGS,
+      EVENTS.REVIEW_BLOCKED,
       EVENTS.RELEASE_PUBLISHED,
       EVENTS.WATCHDOG_EXPIRED,
     ]) {
@@ -132,6 +137,51 @@ describe("reduce — PR lifecycle", () => {
   });
 });
 
+describe("reduce — the review (15-agent-splits.md)", () => {
+  it("ai-review added (from none, a blocked PR, or ai-stuck) -> ai-review, firing nothing until CI is read", () => {
+    for (const from of ["none", LABELS.AI_BLOCKED, LABELS.AI_STUCK] as const) {
+      const rule = reduce(from, EVENTS.LABELLED_AI_REVIEWING);
+      expect(rule?.to, from).toEqual(label(LABELS.AI_REVIEWING));
+      expect(rule?.run, from).toBeUndefined();
+    }
+  });
+
+  it("CI green fires review-loop and stays in ai-review; CI red hands it to rework-loop first", () => {
+    const green = reduce(LABELS.AI_REVIEWING, EVENTS.REVIEW_CI_PASSED);
+    expect(green?.to).toEqual(noop);
+    expect(green?.run).toBe(ROUTINES.REVIEW_LOOP);
+    const red = reduce(LABELS.AI_REVIEWING, EVENTS.REVIEW_CI_FAILED);
+    expect(red?.to).toEqual(label(LABELS.AUTO_REWORKING));
+    expect(red?.run).toBe(ROUTINES.REWORK_LOOP);
+  });
+
+  it("the review's outcomes: pass -> unlabelled; findings -> rework-loop; block -> ai-blocked, nothing fired", () => {
+    expect(reduce(LABELS.AI_REVIEWING, EVENTS.REVIEW_PASSED)?.to).toEqual(unlabel);
+    const findings = reduce(LABELS.AI_REVIEWING, EVENTS.REVIEW_FINDINGS);
+    expect(findings?.to).toEqual(label(LABELS.AUTO_REWORKING));
+    expect(findings?.run).toBe(ROUTINES.REWORK_LOOP);
+    const blocked = reduce(LABELS.AI_REVIEWING, EVENTS.REVIEW_BLOCKED);
+    expect(blocked?.to).toEqual(label(LABELS.AI_BLOCKED));
+    expect(blocked?.run).toBeUndefined();
+  });
+
+  it("that rework's push goes back to ai-review, firing nothing (it waits for the new CI)", () => {
+    const rule = reduce(LABELS.AUTO_REWORKING, EVENTS.REVIEW_FIX_PUSHED);
+    expect(rule?.to).toEqual(label(LABELS.AI_REVIEWING));
+    expect(rule?.run).toBeUndefined();
+  });
+
+  it("past the cap -> ai-stuck", () => {
+    expect(reduce(LABELS.AI_REVIEWING, EVENTS.REWORK_CAP_REACHED)?.to).toEqual(label(LABELS.AI_STUCK));
+  });
+
+  it("a review that was running is watched; a late verdict still lands from ai-stuck", () => {
+    expect(isWatched(LABELS.AI_REVIEWING)).toBe(true);
+    expect(reduce(LABELS.AI_STUCK, EVENTS.REVIEW_PASSED)?.to).toEqual(unlabel);
+    expect(reduce(LABELS.AI_STUCK, EVENTS.REVIEW_BLOCKED)?.to).toEqual(label(LABELS.AI_BLOCKED));
+  });
+});
+
 describe("reduce — illegal moves are dropped, not errors", () => {
   it("an event with no matching rule for the current state returns null", () => {
     expect(reduce(LABELS.AI_GENERATED, EVENTS.LABELLED_AI_READY)).toBeNull();
@@ -142,7 +192,7 @@ describe("reduce — illegal moves are dropped, not errors", () => {
 
 describe("reduce — the watchdog and ai-stuck", () => {
   it("every state a watched routine runs in, + watchdog_expired -> ai-stuck, deterministic, fires nothing", () => {
-    for (const from of [LABELS.AI_READY, LABELS.AUTO_RELEASING, LABELS.AUTO_REWORKING, LABELS.AUTO_MERGING]) {
+    for (const from of [LABELS.AI_READY, LABELS.AUTO_RELEASING, LABELS.AUTO_REWORKING, LABELS.AUTO_MERGING, LABELS.AI_REVIEWING]) {
       const rule = reduce(from, EVENTS.WATCHDOG_EXPIRED);
       expect(rule?.to, from).toEqual(label(LABELS.AI_STUCK));
       expect(rule?.run, from).toBeUndefined();

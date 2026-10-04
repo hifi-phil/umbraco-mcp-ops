@@ -235,6 +235,80 @@ export const rules: Rule[] = [
     verifiedBy: "deterministic",
   },
 
+  // --- the review (15-agent-splits.md) ---
+  // ai-review is added by the build when it opens the PR, or by a person to
+  // (re-)run the review. Nothing fires yet: coordinate/review-gate.ts reads
+  // the PR's CI (now, and each time a check suite finishes) and raises
+  // review_ci_passed or review_ci_failed, the same live re-check auto-merge
+  // uses. The review's state lives on the PR; the issue's generated-by-ai
+  // still marks "the build opened a PR".
+  {
+    from: "none",
+    on: EVENTS.LABELLED_AI_REVIEWING,
+    to: label(LABELS.AI_REVIEWING),
+    verifiedBy: "external-judgment", // the build or a person asked for a review
+  },
+  {
+    // A person re-running the review on a PR it blocked.
+    from: LABELS.AI_BLOCKED,
+    on: EVENTS.LABELLED_AI_REVIEWING,
+    to: label(LABELS.AI_REVIEWING),
+    verifiedBy: "external-judgment",
+  },
+  {
+    from: LABELS.AI_REVIEWING,
+    on: EVENTS.REVIEW_CI_PASSED,
+    to: noop,
+    run: ROUTINES.REVIEW_LOOP,
+    verifiedBy: "deterministic", // the Worker's own re-fetched check runs
+  },
+  {
+    // CI red before the review: rework-loop fixes it first (capped, like
+    // auto-merge's CI fixes, at MAX_CI_FIX_ATTEMPTS).
+    from: LABELS.AI_REVIEWING,
+    on: EVENTS.REVIEW_CI_FAILED,
+    to: label(LABELS.AUTO_REWORKING),
+    run: ROUTINES.REWORK_LOOP,
+    verifiedBy: "deterministic",
+  },
+  {
+    // That rework (a CI fix, or the review's findings) pushed: back to
+    // ai-review, which waits for the new commit's CI and reviews again.
+    from: LABELS.AUTO_REWORKING,
+    on: EVENTS.REVIEW_FIX_PUSHED,
+    to: label(LABELS.AI_REVIEWING),
+    verifiedBy: "deterministic",
+  },
+  {
+    from: LABELS.AI_REVIEWING,
+    on: EVENTS.REVIEW_PASSED,
+    to: unlabel, // ready for a person
+    verifiedBy: "external-judgment", // review-loop's verdict
+  },
+  {
+    // Fixes are rework-loop's, never the reviewer's own. coordinate/ counts
+    // these rounds per PR (MAX_BOT_REVIEW_REWORKS), then ai-stuck.
+    from: LABELS.AI_REVIEWING,
+    on: EVENTS.REVIEW_FINDINGS,
+    to: label(LABELS.AUTO_REWORKING),
+    run: ROUTINES.REWORK_LOOP,
+    verifiedBy: "external-judgment",
+  },
+  {
+    // "The approach is wrong": waits for a person, nothing rebuilds.
+    from: LABELS.AI_REVIEWING,
+    on: EVENTS.REVIEW_BLOCKED,
+    to: label(LABELS.AI_BLOCKED),
+    verifiedBy: "external-judgment",
+  },
+  {
+    // The review's findings, or its CI fixes, past their cap.
+    from: LABELS.AI_REVIEWING,
+    on: EVENTS.REWORK_CAP_REACHED,
+    to: label(LABELS.AI_STUCK),
+    verifiedBy: "deterministic", // the Worker's own count
+  },
+
   // --- a loop taking its own trigger label off ---
   // Native and reliable: in shadow run 1 every build and release removed its
   // trigger label, but only 1 of 4 posted the outcome comment. So removal is
@@ -248,6 +322,7 @@ export const rules: Rule[] = [
       [EVENTS.UNLABELLED_AUTO_RELEASING, ["none", LABELS.AI_STUCK]],
       [EVENTS.UNLABELLED_AUTO_REWORKING, ["none", LABELS.AI_STUCK]],
       [EVENTS.UNLABELLED_AUTO_MERGING, ["none", LABELS.AI_STUCK]],
+      [EVENTS.UNLABELLED_AI_REVIEWING, ["none", LABELS.AI_STUCK]],
     ] as const
   ).flatMap(([on, froms]) =>
     froms.map((from): Rule => ({ from, on, to: noop, verifiedBy: "deterministic" })),
@@ -264,7 +339,7 @@ export const rules: Rule[] = [
   // (issue-discuss-loop posts no outcome artifact, ever) is deliberately
   // absent rather than raising a false alarm on every discussion.
   ...(
-    [LABELS.AI_READY, LABELS.AUTO_RELEASING, LABELS.AUTO_REWORKING, LABELS.AUTO_MERGING] as const
+    [LABELS.AI_READY, LABELS.AUTO_RELEASING, LABELS.AUTO_REWORKING, LABELS.AUTO_MERGING, LABELS.AI_REVIEWING] as const
   ).map(
     (from): Rule => ({
       from,
@@ -301,6 +376,8 @@ export const rules: Rule[] = [
   { from: LABELS.AI_STUCK, on: EVENTS.RELEASE_PUBLISHED, to: close, verifiedBy: "external-judgment" },
   { from: LABELS.AI_STUCK, on: EVENTS.REWORK_PUSHED, to: unlabel, verifiedBy: "deterministic" },
   { from: LABELS.AI_STUCK, on: EVENTS.MERGED, to: close, verifiedBy: "deterministic" },
+  { from: LABELS.AI_STUCK, on: EVENTS.REVIEW_PASSED, to: unlabel, verifiedBy: "external-judgment" },
+  { from: LABELS.AI_STUCK, on: EVENTS.REVIEW_BLOCKED, to: label(LABELS.AI_BLOCKED), verifiedBy: "external-judgment" },
   {
     from: LABELS.AI_STUCK,
     on: EVENTS.LABELLED_AI_READY,
@@ -329,6 +406,13 @@ export const rules: Rule[] = [
     run: ROUTINES.MERGE_FLOW,
     verifiedBy: "external-judgment",
   },
+  {
+    // Fresh counts (coordinate/), then the CI gate as from "none".
+    from: LABELS.AI_STUCK,
+    on: EVENTS.LABELLED_AI_REVIEWING,
+    to: label(LABELS.AI_REVIEWING),
+    verifiedBy: "external-judgment",
+  },
 ];
 
 /**
@@ -349,6 +433,7 @@ export const CONTEXTUAL_EVENTS: ReadonlySet<Event> = new Set([
   EVENTS.UNLABELLED_AUTO_RELEASING,
   EVENTS.UNLABELLED_AUTO_REWORKING,
   EVENTS.UNLABELLED_AUTO_MERGING,
+  EVENTS.UNLABELLED_AI_REVIEWING,
 ]);
 
 /** Whether a routine fired into `state` should be watched: true exactly
