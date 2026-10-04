@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { deliveriesSince, deliveryDetail, redeliver, REPO, sleep, transitions, workerHook, type DeliveryDetail } from "./github";
 import { inScenario, progress } from "./progress";
-import { runLog, scenarios } from "./scenarios";
+import { runItems, runLog, scenarios } from "./scenarios";
 
 const only = process.env.E2E_ONLY?.toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
 const runStart = new Date(Date.now() - 5_000).toISOString().replace(/\.\d+Z$/, "Z");
@@ -57,10 +57,15 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       const hook = await workerHook();
       const deliveries = await deliveriesSince(hook, runStart);
       progress(`audit: checking the orchestrator's answers to ${deliveries.length} deliveries`);
-      // The App's hook delivers for every repo it's installed on: keep the sandbox's.
+      // The App's hook delivers for every repo it's installed on: keep the
+      // sandbox's. And only what's about this run: a delivery only about
+      // items it didn't create (another run's leftovers being closed just
+      // before this one, say) isn't its to judge. One about no item at all
+      // (a check_suite with no PR) still is.
+      const ours = (d: DeliveryDetail) => d.numbers.length === 0 || d.numbers.some((n) => runItems.has(n));
       const details: (DeliveryDetail & { id: string })[] = (
         await pool(deliveries, 6, async (d) => ({ id: d.id, ...(await deliveryDetail(hook, d.id)) }))
-      ).filter((d) => d.repo.toLowerCase() === REPO.toLowerCase());
+      ).filter((d) => d.repo.toLowerCase() === REPO.toLowerCase() && ours(d));
       const line = (d: DeliveryDetail) => `${d.event}.${d.action} #${d.numbers.join(",")} -> ${d.statusCode} ${d.response}`;
 
       // The sweep scenario's refused fire is scripted; any other failure isn't.
@@ -77,7 +82,7 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       // added applies its label rule, then the CI gate's, two rows ending
       // in the event it answered); and the only rows no delivery caused are
       // the watchdog's own expiries.
-      const numbers = [...new Set(details.flatMap((d) => d.numbers))];
+      const numbers = [...new Set(details.flatMap((d) => d.numbers))].filter((n) => runItems.has(n));
       progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
       const logs = new Map(await pool(numbers, 6, async (n) => [n, await transitions(n)] as const));
       const badRows = [...logs].flatMap(([n, rows]) =>
