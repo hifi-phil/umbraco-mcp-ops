@@ -14,7 +14,7 @@
 // Only the sandbox repo (E2E_REPO) is ever acted on, whatever a request says.
 
 import { act, mergeIfGreen, type Fire, type Gh, type Signal } from "./loops";
-import { installationToken } from "../../../worker/src/github-app";
+import { forgetInstallationToken, installationToken } from "../../../worker/src/github-app";
 
 export { outcomeComment, type Action, type Fire, type Gh, type Signal } from "./loops";
 
@@ -81,9 +81,23 @@ export function github(token: string): Gh {
 }
 
 /** The stub's GitHub access: the orchestrator's App, on an installation
- * token for the sandbox (cached until shortly before it expires). */
-export function stubGitHub(env: StubEnv, appToken: () => Promise<string> = () => installationTokenFor(env)): Gh {
-  return async (method, path, body) => github(await appToken())(method, path, body);
+ * token for the sandbox (cached until shortly before it expires). A 403 is
+ * retried once on a fresh token, as the Worker's own calls are: a cached
+ * token can predate a permission the App has since been granted. */
+export function stubGitHub(
+  env: StubEnv,
+  appToken: () => Promise<string> = () => installationTokenFor(env),
+  forget: () => void = () => forgetInstallationToken(...(env.E2E_REPO.split("/") as [string, string])),
+): Gh {
+  return async (method, path, body) => {
+    try {
+      return await github(await appToken())(method, path, body);
+    } catch (e) {
+      if (!(e instanceof Error && / 403 /.test(e.message))) throw e;
+      forget();
+      return github(await appToken())(method, path, body);
+    }
+  };
 }
 
 function installationTokenFor(env: StubEnv): Promise<string> {

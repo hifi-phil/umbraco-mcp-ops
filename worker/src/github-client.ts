@@ -4,7 +4,7 @@
 // this client's; keeping this dumb makes it easy to reason about and easy
 // to fully replace with github-ops's actual dual-path mechanism later.
 
-import { appConfigured, installationToken, type GitHubAppEnv } from "./github-app";
+import { appConfigured, forgetInstallationToken, installationToken, type GitHubAppEnv } from "./github-app";
 
 export type GitHubEnv = GitHubAppEnv & {
   // A personal token, for local runs and tests without the GitHub App only.
@@ -35,6 +35,10 @@ export function githubConfigured(env: GitHubEnv): boolean {
 }
 
 /**
+ * A 403 on the App's token is retried once on a fresh one (see
+ * forgetInstallationToken): a cached token can predate a permission the App
+ * has since been granted. A second 403 is a real refusal, and throws.
+ *
  * A 404 throws like any other failure. GitHub also answers 404 for a repo
  * the token can't see, so treating it as "nothing there" turned a missing
  * token grant into empty labels and silently skipped writes (found by the
@@ -49,17 +53,24 @@ async function gh(
   { allow404 = false }: { allow404?: boolean } = {},
 ): Promise<Response> {
   const base = env.GITHUB_API_BASE_URL ?? "https://api.github.com";
-  const res = await fetch(`${base}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${await tokenFor(env, path)}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "agent-orchestration-worker",
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const call = async () =>
+    fetch(`${base}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${await tokenFor(env, path)}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "agent-orchestration-worker",
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  let res = await call();
+  const repo = path.match(/^\/repos\/([^/]+)\/([^/]+)\//);
+  if (res.status === 403 && appConfigured(env) && repo) {
+    forgetInstallationToken(repo[1]!, repo[2]!);
+    res = await call();
+  }
   if (!res.ok && !(allow404 && res.status === 404)) {
     throw new Error(`GitHub API ${method} ${path} failed: ${res.status} ${await res.text()}`);
   }
