@@ -2,6 +2,7 @@
 // input, and merge-gate facts.
 import { vi } from "vitest";
 import {
+  DEFAULT_CAPS,
   watchdogMinutesFor,
   type CiFix,
   type CoordinateInput,
@@ -69,6 +70,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     // enforcement have their own describe blocks.
     enforced: () => true,
     watchdogMinutes: watchdogMinutesFor,
+    caps: DEFAULT_CAPS,
     botLogin: async () => null,
     lastActivityAt: async () => null,
     markCompleted: vi.fn(async (at: string) => {

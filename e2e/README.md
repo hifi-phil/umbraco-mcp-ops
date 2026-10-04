@@ -31,7 +31,9 @@ as it goes, one tagged line per step and per label change
 The Worker and the stub must be deployed with `e2e_repo` set in
 `worker/terraform/`. That also makes the sandbox's watchdog real, with a
 2-minute timeout (`e2e_watchdog_minutes`), while every other repo's stays
-as configured. The sandbox can be private: the Worker reads CI through
+as configured, and lowers the sandbox's CI-fix and review-round caps to 1
+(`e2e_rework_cap`; the driver reads `E2E_REWORK_CAP`, default 1), so the
+cap scenarios run one round instead of three. The sandbox can be private: the Worker reads CI through
 its GitHub App, and so does the stub (only for check-runs, which a
 fine-grained token can't read on a private repo).
 

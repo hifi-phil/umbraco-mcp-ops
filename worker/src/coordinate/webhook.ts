@@ -6,7 +6,7 @@ import { ALL_LABELS, LABELS } from "@orchestrator/graph/constants/labels";
 import { translate } from "@orchestrator/graph/github/from-github";
 import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
-import { MAX_REVIEW_REWORKS, depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
+import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
 import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 import { reviewFindings, reviewGate } from "./review-gate";
@@ -99,13 +99,13 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
 
   // A review rework round (auto-rework added by a reviewer: the Worker's own
   // label changes never arrive as events). Counted per PR; past
-  // MAX_REVIEW_REWORKS it goes to a person instead of looping. A person
+  // caps.reviewReworks it goes to a person instead of looping. A person
   // retrying from ai-stuck starts a fresh count.
   if (event === EVENTS.LABELLED_AUTO_REWORKING) {
     const before = deriveState(currentLabels.filter((l) => l !== LABELS.AUTO_REWORKING));
     if (before === "none" || before === LABELS.AI_STUCK) {
       const rounds = before === LABELS.AI_STUCK ? 1 : (await deps.getReviewReworks()) + 1;
-      if (rounds > MAX_REVIEW_REWORKS) return capReviewRework(deps, input, currentLabels, rounds - 1);
+      if (rounds > deps.caps.reviewReworks) return capReviewRework(deps, input, currentLabels, rounds - 1);
       await deps.setReviewReworks(rounds);
       // From ai-stuck, the review's own count starts fresh too.
       if (before === LABELS.AI_STUCK) await deps.setReviewLoop(null);
@@ -175,7 +175,7 @@ async function capReviewRework(deps: Deps, input: CoordinateInput, currentLabels
       input.owner,
       input.repo,
       input.issueNumber,
-      `🛑 This PR has had ${rounds} review rework rounds, the most rework-loop is given (${MAX_REVIEW_REWORKS}), so it's moved to \`${LABELS.AI_STUCK}\` ` +
+      `🛑 This PR has had ${rounds} review rework rounds, the most rework-loop is given (${deps.caps.reviewReworks}), so it's moved to \`${LABELS.AI_STUCK}\` ` +
         `for a person to look at. Re-add \`${LABELS.AUTO_REWORKING}\` to try again; that starts a fresh count. ` +
         `(Automatic, from the orchestrator.)`,
     );

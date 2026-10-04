@@ -5,6 +5,7 @@ import { LABELS } from "@orchestrator/graph/constants/labels";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import {
+  DEFAULT_CAPS,
   MAX_BOT_REVIEW_REWORKS,
   MAX_CI_FIX_ATTEMPTS,
   MAX_REVIEW_REWORKS,
@@ -226,5 +227,26 @@ describe("the sweep and a PR left in ai-review", () => {
     const d = deps([LABELS.AI_REVIEWING], running, idle);
     expect(await coordinateReconcile(d, ref, opts)).toEqual({ outcome: "gated", result: { outcome: "no_event" } });
     expect(d.fireRoutine).not.toHaveBeenCalled();
+  });
+});
+
+describe("a repo's lowered caps (the e2e sandbox's)", () => {
+  const caps = { ...DEFAULT_CAPS, ciFixAttempts: 1, botReviewReworks: 1 };
+
+  it("review findings: the second round is past a cap of 1", async () => {
+    const d = deps([LABELS.AI_REVIEWING], green, { caps });
+    await d.setReviewLoop({ botRounds: 1, fixPending: false });
+    expect(await coordinateWebhook(d, verdict({ outcome: "review_findings", findings: 1 }))).toMatchObject({
+      event: EVENTS.REWORK_CAP_REACHED,
+    });
+    expect(d.commentOnIssue).toHaveBeenCalledWith(OWNER, REPO, PR, expect.stringMatching(/asked for changes 1 times, the most it's given \(1\)/));
+  });
+
+  it("CI fixes under ai-review: the first says 'attempt 1 of 1', the second is past the cap", async () => {
+    const d = deps([LABELS.AI_REVIEWING], red, { caps });
+    await coordinateWebhook(d, checkSuite("s-1"));
+    expect(d.commentOnIssue).toHaveBeenCalledWith(OWNER, REPO, PR, expect.stringMatching(/attempt 1 of 1/));
+    await d.setCiFix({ attempts: 1, pending: false, returnTo: LABELS.AI_REVIEWING });
+    expect(await coordinateWebhook(d, checkSuite("s-2"))).toMatchObject({ event: EVENTS.REWORK_CAP_REACHED });
   });
 });

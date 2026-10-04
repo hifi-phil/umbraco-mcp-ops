@@ -1,21 +1,13 @@
 // The review's gate (15-agent-splits.md): a PR in ai-review gets review-loop
 // once its CI is green, rework-loop first if it's red. And the caps: CI
-// fixes at MAX_CI_FIX_ATTEMPTS, the review's own findings at
-// MAX_BOT_REVIEW_REWORKS, then ai-stuck.
+// fixes at caps.ciFixAttempts, the review's own findings at
+// caps.botReviewReworks, then ai-stuck.
 
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { failedCheckNames, type MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS } from "@orchestrator/graph/constants/events";
-import {
-  MAX_BOT_REVIEW_REWORKS,
-  MAX_CI_FIX_ATTEMPTS,
-  depsFor,
-  type Acting,
-  type CoordinateResult,
-  type Deps,
-  type IssueRef,
-} from "./types";
+import { depsFor, type Acting, type CoordinateResult, type Deps, type IssueRef } from "./types";
 import { applyEvent } from "./apply";
 
 /**
@@ -36,7 +28,7 @@ export async function reviewGate(deps: Deps, input: IssueRef & Acting, currentLa
 }
 
 /** CI red under ai-review: rework-loop fixes it (its push comes back to
- * ai-review), up to MAX_CI_FIX_ATTEMPTS, then ai-stuck. */
+ * ai-review), up to caps.ciFixAttempts, then ai-stuck. */
 async function handReviewToRework(
   deps: Deps,
   input: IssueRef & Acting,
@@ -45,7 +37,7 @@ async function handReviewToRework(
 ): Promise<CoordinateResult> {
   const failed = failedCheckNames(facts).join(", ");
   const attempts = (await deps.getCiFix())?.attempts ?? 0;
-  if (attempts >= MAX_CI_FIX_ATTEMPTS) {
+  if (attempts >= deps.caps.ciFixAttempts) {
     return capReview(deps, input, currentLabels, `CI is still failing after ${attempts} fix attempts (${failed})`);
   }
   const result = await applyEvent(deps, input, EVENTS.REVIEW_CI_FAILED, currentLabels);
@@ -57,18 +49,19 @@ async function handReviewToRework(
       input.repo,
       input.issueNumber,
       `🔧 CI failing: ${failed}. Handing this to rework-loop to fix before the review (attempt ${attempts + 1} of ` +
-        `${MAX_CI_FIX_ATTEMPTS}); \`${LABELS.AI_REVIEWING}\` comes back when it pushes the fix. (Automatic, from the orchestrator.)`,
+        `${deps.caps.ciFixAttempts}); \`${LABELS.AI_REVIEWING}\` comes back when it pushes the fix. (Automatic, from the orchestrator.)`,
     );
   }
   return result;
 }
 
 /** review-loop found things to fix: a round for rework-loop, counted per PR,
- * up to MAX_BOT_REVIEW_REWORKS, then ai-stuck. */
+ * up to caps.botReviewReworks, then ai-stuck. */
 export async function reviewFindings(deps: Deps, input: IssueRef & Acting, currentLabels: string[]): Promise<CoordinateResult> {
   const rounds = ((await deps.getReviewLoop())?.botRounds ?? 0) + 1;
-  if (rounds > MAX_BOT_REVIEW_REWORKS) {
-    return capReview(deps, input, currentLabels, `the review has asked for changes ${rounds - 1} times, the most it's given (${MAX_BOT_REVIEW_REWORKS})`);
+  const cap = deps.caps.botReviewReworks;
+  if (rounds > cap) {
+    return capReview(deps, input, currentLabels, `the review has asked for changes ${rounds - 1} times, the most it's given (${cap})`);
   }
   const result = await applyEvent(deps, input, EVENTS.REVIEW_FINDINGS, currentLabels);
   if (result.outcome === "applied") {
@@ -77,7 +70,7 @@ export async function reviewFindings(deps: Deps, input: IssueRef & Acting, curre
       input.owner,
       input.repo,
       input.issueNumber,
-      `🔍 Review round ${rounds} of ${MAX_BOT_REVIEW_REWORKS} found things to fix: handing them to rework-loop; ` +
+      `🔍 Review round ${rounds} of ${cap} found things to fix: handing them to rework-loop; ` +
         `\`${LABELS.AI_REVIEWING}\` comes back when it pushes. (Automatic, from the orchestrator.)`,
     );
   }

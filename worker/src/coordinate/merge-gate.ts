@@ -1,16 +1,16 @@
 // The merge gate's two outcomes when auto-merge is on: a hard block
 // (merge-blocked) or CI failing, handed to rework-loop up to
-// MAX_CI_FIX_ATTEMPTS times; and the settled facts both read.
+// caps.ciFixAttempts times; and the settled facts both read.
 
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { failedCheckNames, type MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS } from "@orchestrator/graph/constants/events";
-import { MAX_CI_FIX_ATTEMPTS, depsFor, type Acting, type CoordinateResult, type Deps, type IssueRef } from "./types";
+import { depsFor, type Acting, type CoordinateResult, type Deps, type IssueRef } from "./types";
 import { applyEvent } from "./apply";
 
 /** CI failed under auto-merge: swap auto-merge -> auto-rework so
  * rework-loop fixes it (its push swaps back to auto-merge), up to
- * MAX_CI_FIX_ATTEMPTS per PR, then merge-blocked. */
+ * caps.ciFixAttempts per PR, then merge-blocked. */
 export async function handToRework(
   deps: Deps,
   input: IssueRef & Acting,
@@ -19,7 +19,7 @@ export async function handToRework(
 ): Promise<CoordinateResult> {
   const failed = failedCheckNames(facts).join(", ") || "a required check";
   const attempts = (await deps.getCiFix())?.attempts ?? 0;
-  if (attempts >= MAX_CI_FIX_ATTEMPTS) {
+  if (attempts >= deps.caps.ciFixAttempts) {
     return blockMerge(deps, input, currentLabels, `CI still failing after ${attempts} fix attempts (${failed})`);
   }
   const result = await applyEvent(deps, input, EVENTS.MERGE_GATE_FAILED_SOFT, currentLabels);
@@ -37,7 +37,7 @@ export async function handToRework(
       input.repo,
       input.issueNumber,
       `🔧 CI failing: ${failed}. Handing this to rework-loop to fix (attempt ${attempts + 1} of ` +
-        `${MAX_CI_FIX_ATTEMPTS}); \`auto-merge\` comes back when it pushes the fix. ` +
+        `${deps.caps.ciFixAttempts}); \`auto-merge\` comes back when it pushes the fix. ` +
         `(Automatic, from the orchestrator's merge gate.)`,
     );
   }
