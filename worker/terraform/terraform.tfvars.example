@@ -5,12 +5,9 @@ cloudflare_account_id = "your-account-id"
 workers_subdomain     = "your-subdomain"   # <script>.<this>.workers.dev
 github_owner          = "hifi-phil"
 github_repo           = "your-test-repo"   # where the real loops run (ready-for-ai, …)
-# Shadow: read-only Issues, Pull requests, Metadata (fine-grained tokens have
-# no Checks permission). Enforce: Issues + Pull requests read AND write.
-github_read_token     = "github_pat_…"   # fallback only; the Worker uses the App below
-
 # The Worker's GitHub App (worker/README.md, known gaps): its ID, and the
-# private key GitHub downloads, pasted as-is.
+# private key GitHub downloads, pasted as-is. The Worker and the e2e stub
+# both act as it; there's no personal token.
 github_app_id          = "123456"
 github_app_private_key = <<-EOT
   -----BEGIN RSA PRIVATE KEY-----
@@ -43,4 +40,3 @@ EOT
 # stub first: cd ../../e2e && npm install && npm run build. The sandbox's
 # Fire URL entry is added for you, pointing at the stub.
 # e2e_repo              = "mcp-ops-e2e-testing"
-# e2e_stub_github_token = "github_pat_…"  # sandbox only: Contents, Issues, Pull requests read/write

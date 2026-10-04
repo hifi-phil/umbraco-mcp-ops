@@ -85,15 +85,9 @@ variable "github_owner" {
 }
 
 
-variable "github_read_token" {
-  type        = string
-  sensitive   = true
-  description = "A personal token, the Worker's fallback GITHUB_APP_TOKEN. Unused while the GitHub App (github_app_id + github_app_private_key) is configured, which it always is now; kept so a Worker without the App still has something to call GitHub with."
-}
-
 variable "github_app_id" {
   type        = string
-  description = "The Worker's GitHub App ID (the App's settings page). The Worker reads and writes GitHub as this App's bot. The App needs Issues and Pull requests read & write, Checks and Contents read, and must be installed on every repo the Worker serves (including e2e_repo)."
+  description = "The Worker's GitHub App ID (the App's settings page). The Worker reads and writes GitHub as this App's bot. The App needs Issues, Pull requests and Contents read & write (Contents write for the e2e stub, which acts as the App on the sandbox), and Checks read, and must be installed on every repo the Worker serves (including e2e_repo). No personal token is stored: the Worker and the stub both act as this App."
 }
 
 variable "github_app_private_key" {
@@ -164,14 +158,3 @@ variable "e2e_rework_cap" {
   description = "The sandbox's CI-fix and review-round caps (the defaults are 3), so the e2e cap scenarios run one round instead of three. No other repo is affected. The e2e driver reads it as E2E_REWORK_CAP; keep the two the same."
 }
 
-variable "e2e_stub_github_token" {
-  type        = string
-  sensitive   = true
-  default     = null
-  description = "The stub agent's GitHub token: fine-grained, the sandbox repo only, with Contents, Issues and Pull requests read/write. Required when e2e_repo is set."
-
-  validation {
-    condition     = var.e2e_repo == null || var.e2e_stub_github_token != null
-    error_message = "e2e_stub_github_token is required when e2e_repo is set."
-  }
-}

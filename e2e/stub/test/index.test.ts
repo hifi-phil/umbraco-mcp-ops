@@ -15,7 +15,6 @@ import {
 import { act, mergeIfGreen } from "../src/loops";
 
 const env: StubEnv = {
-  GITHUB_TOKEN: "gh",
   FIRE_TOKEN: "fire",
   HOOK_SECRET: "hook",
   E2E_REPO: "hifi-phil/mcp-ops-e2e-testing",
@@ -333,18 +332,15 @@ describe("stubGitHub", () => {
   };
   const withApp = () => stubGitHub(env, async () => "inst-token");
 
-  it("check-runs are read with the App's token (a fine-grained token can't, on a private sandbox)", async () => {
-    expect(await auth(withApp(), "GET", `${R}/commits/h/check-runs`)).toBe("Bearer inst-token");
-  });
-
-  it("everything else (branches, commits, merges) stays on the stub's own token: the App has no Contents: write", async () => {
-    expect(await auth(withApp(), "PUT", `${R}/contents/ci-state`)).toBe("Bearer gh");
-    expect(await auth(withApp(), "PUT", `${R}/pulls/7/merge`)).toBe("Bearer gh");
-    expect(await auth(withApp(), "GET", `${R}/issues/7`)).toBe("Bearer gh");
-  });
-
-  it("without the App -> the stub's own token for check-runs too", async () => {
-    expect(await auth(stubGitHub({ ...env, GITHUB_APP_ID: "" }), "GET", `${R}/commits/h/check-runs`)).toBe("Bearer gh");
+  it("every call goes as the App: check-runs, commits, merges, issues (no personal token)", async () => {
+    for (const [method, path] of [
+      ["GET", `${R}/commits/h/check-runs`],
+      ["PUT", `${R}/contents/ci-state`],
+      ["PUT", `${R}/pulls/7/merge`],
+      ["GET", `${R}/issues/7`],
+    ] as const) {
+      expect(await auth(withApp(), method, path), `${method} ${path}`).toBe("Bearer inst-token");
+    }
   });
 });
 

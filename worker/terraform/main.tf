@@ -132,7 +132,6 @@ resource "cloudflare_workers_script" "worker" {
         "${var.github_owner}/${var.e2e_repo}" = { ciFixAttempts = var.e2e_rework_cap, botReviewReworks = var.e2e_rework_cap }
       } : {}),
     },
-    { type = "secret_text", name = "GITHUB_APP_TOKEN", text = var.github_read_token },
     # The Worker's own GitHub identity: every call goes as the App's bot on
     # an installation token (src/github-app.ts), and the self-trigger guard
     # drops that bot's label echoes. Required, not optional: the table's
@@ -207,15 +206,14 @@ resource "cloudflare_workers_script" "e2e_stub" {
   bindings = [
     { type = "plain_text", name = "E2E_REPO", text = "${var.github_owner}/${var.e2e_repo}" },
     { type = "secret_text", name = "FIRE_TOKEN", text = random_password.e2e_fire_token[0].result },
-    { type = "secret_text", name = "GITHUB_TOKEN", text = var.e2e_stub_github_token },
     { type = "secret_text", name = "HOOK_SECRET", text = random_password.e2e_hook_secret[0].result },
     # Heartbeats and completion signals to the orchestrator's /routine-signal.
     # A service binding, because a Worker can't fetch another Worker on the
     # same account's workers.dev URL (Cloudflare error 1042).
     { type = "service", name = "ORCHESTRATOR", service = cloudflare_workers_script.worker.script_name },
     { type = "secret_text", name = "ROUTINE_SIGNAL_SECRET", text = random_password.routine_signal_secret.result },
-    # The orchestrator's App, so the stub can review a sandbox PR as a
-    # different identity from its author (POST /review).
+    # The orchestrator's App: every GitHub call the stub makes goes as its
+    # bot, so no personal token is stored for the stub either.
     { type = "plain_text", name = "GITHUB_APP_ID", text = var.github_app_id },
     { type = "secret_text", name = "GITHUB_APP_PRIVATE_KEY", text = var.github_app_private_key },
   ]

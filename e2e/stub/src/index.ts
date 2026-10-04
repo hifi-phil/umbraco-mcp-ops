@@ -19,7 +19,6 @@ import { installationToken } from "../../../worker/src/github-app";
 export { outcomeComment, type Action, type Fire, type Gh, type Signal } from "./loops";
 
 export type StubEnv = {
-  GITHUB_TOKEN: string;
   FIRE_TOKEN: string;
   HOOK_SECRET: string;
   E2E_REPO: string;
@@ -27,8 +26,10 @@ export type StubEnv = {
   // binding, since a Worker can't fetch another on the same workers.dev.
   ORCHESTRATOR: { fetch: (input: string, init?: RequestInit) => Promise<Response> };
   ROUTINE_SIGNAL_SECRET: string;
-  // The orchestrator's GitHub App, so the stub can review a PR as a
-  // different identity from its author (POST /review).
+  // The orchestrator's GitHub App: every GitHub call the stub makes goes as
+  // its bot (installed on the sandbox, with Contents, Issues and Pull
+  // requests write). Also a different identity from the driver, who opens
+  // the scenarios' PRs, so it can review them (POST /review).
   GITHUB_APP_ID: string;
   GITHUB_APP_PRIVATE_KEY: string;
 };
@@ -79,18 +80,10 @@ export function github(token: string): Gh {
   };
 }
 
-/**
- * The stub's GitHub access: its own token, except for reading check-runs,
- * which a fine-grained token can't do on a private sandbox. Those go through
- * the orchestrator's App (Checks: read) when it's configured. Only that read:
- * the App has no Contents: write, and shouldn't get it for a test stub, so
- * branches, commits and merges stay on the stub's token.
- */
+/** The stub's GitHub access: the orchestrator's App, on an installation
+ * token for the sandbox (cached until shortly before it expires). */
 export function stubGitHub(env: StubEnv, appToken: () => Promise<string> = () => installationTokenFor(env)): Gh {
-  const own = github(env.GITHUB_TOKEN);
-  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY) return own;
-  return async (method, path, body) =>
-    method === "GET" && /\/check-runs(\?|$)/.test(path) ? github(await appToken())(method, path, body) : own(method, path, body);
+  return async (method, path, body) => github(await appToken())(method, path, body);
 }
 
 function installationTokenFor(env: StubEnv): Promise<string> {

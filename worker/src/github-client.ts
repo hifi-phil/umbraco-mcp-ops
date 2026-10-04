@@ -7,10 +7,11 @@
 import { appConfigured, installationToken, type GitHubAppEnv } from "./github-app";
 
 export type GitHubEnv = GitHubAppEnv & {
-  // A personal token, used only while the GitHub App isn't configured
-  // (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY): with the App, every call goes
+  // A personal token, for local runs and tests without the GitHub App only.
+  // A deployed Worker always has the App (GITHUB_APP_ID +
+  // GITHUB_APP_PRIVATE_KEY; tofu sets no personal token), so every call goes
   // as the App's bot on an installation token (github-app.ts).
-  GITHUB_APP_TOKEN: string;
+  GITHUB_APP_TOKEN?: string;
   // Overridable for local smoke-testing against a stub server instead of
   // the real API — see worker/README.md. Defaults to the real API in
   // every environment that doesn't set it, including production.
@@ -19,10 +20,18 @@ export type GitHubEnv = GitHubAppEnv & {
 
 /** The token for a call on `path` (every call here is under /repos/{owner}/{repo}). */
 async function tokenFor(env: GitHubEnv, path: string): Promise<string> {
-  if (!appConfigured(env)) return env.GITHUB_APP_TOKEN;
+  if (!appConfigured(env)) {
+    if (env.GITHUB_APP_TOKEN) return env.GITHUB_APP_TOKEN;
+    throw new Error("no GitHub access: set GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY (or, locally, GITHUB_APP_TOKEN)");
+  }
   const m = path.match(/^\/repos\/([^/]+)\/([^/]+)\//);
   if (!m) throw new Error(`no repo in GitHub path ${path}`);
   return installationToken(env, m[1]!, m[2]!);
+}
+
+/** Whether the Worker can call GitHub at all: the App, or (locally) a token. */
+export function githubConfigured(env: GitHubEnv): boolean {
+  return appConfigured(env) || !!env.GITHUB_APP_TOKEN;
 }
 
 /**
