@@ -92,6 +92,11 @@ export type StatusUpdate =
 /** After this many CI-fix reworks on one PR, stop and ask a human. */
 export const MAX_CI_FIX_ATTEMPTS = 3;
 
+/** After this many review rework rounds on one PR (auto-rework added by a
+ * reviewer, person or bot), the next goes to ai-stuck instead of looping
+ * (Phase 9, 05-technical-elements.md's default). Tune from real data. */
+export const MAX_REVIEW_REWORKS = 3;
+
 export type Deps = {
   getLabels(owner: string, repo: string, issueNumber: number): Promise<string[]>;
   addLabel(owner: string, repo: string, issueNumber: number, label: string): Promise<void>;
@@ -119,6 +124,9 @@ export type Deps = {
   // has been handed to rework-loop, and whether one is running now.
   getCiFix(): Promise<CiFix | null>;
   setCiFix(state: CiFix | null): Promise<void>;
+  // How many review rework rounds this PR has had (DO storage).
+  getReviewReworks(): Promise<number>;
+  setReviewReworks(rounds: number): Promise<void>;
   // Phase 4: whether this event's writes and fire are real. Everything not
   // enforced runs in shadow (see resolveEnforced).
   enforced(event: Event): boolean;

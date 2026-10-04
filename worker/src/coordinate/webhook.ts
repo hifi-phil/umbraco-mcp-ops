@@ -6,7 +6,7 @@ import { ALL_LABELS, LABELS } from "@orchestrator/graph/constants/labels";
 import { translate } from "@orchestrator/graph/github/from-github";
 import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
-import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
+import { MAX_REVIEW_REWORKS, depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
 import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 
@@ -88,6 +88,19 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     }
   }
 
+  // A review rework round (auto-rework added by a reviewer: the Worker's own
+  // label changes never arrive as events). Counted per PR; past
+  // MAX_REVIEW_REWORKS it goes to a person instead of looping. A person
+  // retrying from ai-stuck starts a fresh count.
+  if (event === EVENTS.LABELLED_AUTO_REWORKING) {
+    const before = deriveState(currentLabels.filter((l) => l !== LABELS.AUTO_REWORKING));
+    if (before === "none" || before === LABELS.AI_STUCK) {
+      const rounds = before === LABELS.AI_STUCK ? 1 : (await deps.getReviewReworks()) + 1;
+      if (rounds > MAX_REVIEW_REWORKS) return capReviewRework(deps, input, currentLabels, rounds - 1);
+      await deps.setReviewReworks(rounds);
+    }
+  }
+
   // auto-merge added: check the PR before firing merge-flow. Reviews aren't
   // expected once the label is on, so this is where requested changes are
   // caught; conflicts are caught here and again each time CI finishes
@@ -109,6 +122,23 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // A contextual event the table ignores here (say auto-merge removed from
   // a merge-blocked PR) is still a person's edit worth a row.
   return result.outcome === "ignored" && human ? logManualOverride(deps, input, human, currentLabels) : result;
+}
+
+/** Review rework asked for past the cap: say so, and move the PR to
+ * ai-stuck (the table's REWORK_CAP_REACHED rule) without firing. */
+async function capReviewRework(deps: Deps, input: CoordinateInput, currentLabels: string[], rounds: number): Promise<CoordinateResult> {
+  const result = await applyEvent(deps, input, EVENTS.REWORK_CAP_REACHED, currentLabels);
+  if (result.outcome === "applied") {
+    await depsFor(deps, EVENTS.REWORK_CAP_REACHED).io.commentOnIssue(
+      input.owner,
+      input.repo,
+      input.issueNumber,
+      `🛑 This PR has had ${rounds} review rework rounds, the most rework-loop is given (${MAX_REVIEW_REWORKS}), so it's moved to \`${LABELS.AI_STUCK}\` ` +
+        `for a person to look at. Re-add \`${LABELS.AUTO_REWORKING}\` to try again; that starts a fresh count. ` +
+        `(Automatic, from the orchestrator.)`,
+    );
+  }
+  return result;
 }
 
 /** A person (anyone but the Worker's own App bot) adding or removing a label

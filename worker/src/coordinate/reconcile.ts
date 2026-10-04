@@ -140,8 +140,14 @@ export async function coordinateReconcile(
   }
 
   if (enforced) {
-    await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
+    // Armed before the fire, as on the webhook path (coordinate/apply.ts).
     await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run });
+    try {
+      await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
+    } catch (e) {
+      await deps.clearPendingFire();
+      throw e;
+    }
     await deps.recordStatus(ref, { kind: "transition", state, run, running: true });
   } else {
     // Shadow: one row per idle stretch. Until the issue sees new activity,

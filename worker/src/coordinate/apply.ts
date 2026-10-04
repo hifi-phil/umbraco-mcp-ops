@@ -82,12 +82,14 @@ export async function applyEvent(
   }
 
   if (rule.run) {
-    await deps.fireRoutine(input.owner, input.repo, input.issueNumber, rule.run);
     // Only arm the watchdog where the table says what an expiry means —
     // see graph.ts's watchdog section (issue-discuss-loop never reports an
     // outcome, so watching it would only ever raise false alarms).
     const target = rule.to.kind === "label" ? rule.to.value : current;
-    if (isWatched(target)) {
+    const watched = isWatched(target);
+    // Armed before the fire (Phase 9): a crash between deciding to fire and
+    // firing leaves the watchdog to notice, never a silent lost attempt.
+    if (watched) {
       await deps.setPendingFire({
         owner: input.owner,
         repo: input.repo,
@@ -96,6 +98,14 @@ export async function applyEvent(
       });
     } else {
       await deps.clearPendingFire();
+    }
+    try {
+      await deps.fireRoutine(input.owner, input.repo, input.issueNumber, rule.run);
+    } catch (e) {
+      // The fire was refused, not lost: nothing's running, so disarm (the
+      // sweep re-fires a trigger left with nothing watching it), and fail.
+      if (watched) await deps.clearPendingFire();
+      throw e;
     }
   } else {
     await deps.clearPendingFire();

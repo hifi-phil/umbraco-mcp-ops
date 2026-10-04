@@ -172,6 +172,16 @@ export const rules: Rule[] = [
     verifiedBy: "deterministic", // a git push is directly observable
   },
   {
+    // Review rework asked for once too often (coordinate/webhook.ts counts
+    // the rounds; MAX_REVIEW_REWORKS): stop and hand it to a person instead
+    // of looping. Re-adding auto-rework from ai-stuck retries, with a fresh
+    // count (the leaving-ai-stuck rules below).
+    from: LABELS.AUTO_REWORKING,
+    on: EVENTS.REWORK_CAP_REACHED,
+    to: label(LABELS.AI_STUCK),
+    verifiedBy: "deterministic", // the Worker's own count of rounds
+  },
+  {
     from: "none",
     on: EVENTS.LABELLED_AUTO_MERGING,
     to: label(LABELS.AUTO_MERGING),

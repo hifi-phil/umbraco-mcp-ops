@@ -23,6 +23,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   const seen = new Set<string>();
   let pendingFire: PendingFire | null = null;
   let ciFix: CiFix | null = null;
+  let reviewReworks = 0;
   let reconcileReported: string | null = null;
   let completed: string | null = null;
   return {
@@ -51,6 +52,10 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     recordStatus: vi.fn(async () => {}),
     getMergeGateFacts: vi.fn(async () => gateFacts()),
     getCiFix: vi.fn(async () => ciFix),
+    getReviewReworks: vi.fn(async () => reviewReworks),
+    setReviewReworks: vi.fn(async (n: number) => {
+      reviewReworks = n;
+    }),
     setCiFix: vi.fn(async (state: CiFix | null) => {
       ciFix = state;
     }),

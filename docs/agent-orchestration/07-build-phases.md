@@ -307,6 +307,21 @@ and attempt, and last-known step, without querying GitHub or a DO directly.
 of running forever, and a crash between "decided to fire" and "actually
 fired" is never silent.
 
+**Status (04-10-2026):**
+- **Rework cap: built.** CI-fix reworks were already capped
+  (`MAX_CI_FIX_ATTEMPTS`, 3, then `merge-blocked`). Review rework rounds
+  (`auto-rework` added by a reviewer, person or bot) are now counted per
+  PR: past `MAX_REVIEW_REWORKS` (3) the next goes to `ai-stuck`
+  (`rework_cap_reached`) with a comment, firing nothing. A person re-adding
+  `auto-rework` from `ai-stuck` retries with a fresh count.
+- **Record-then-fire: built.** The watchdog is armed before the fire, on
+  the webhook path and the sweep's re-fire alike, so a crash between them
+  leaves the watchdog to notice. A fire that's refused (an error, not a
+  crash) disarms and fails, as before: nothing is running, and the sweep
+  re-fires a trigger left with nothing watching it.
+- **Concurrency cap and ready queue: open.** Waits on a decision
+  ([08-open-questions.md](08-open-questions.md)) and real traffic.
+
 ## Phase 10 — Split nodes that still fail too often
 
 **Entry:** Phases 1–9 live, with real per-node failure/timeout data from the

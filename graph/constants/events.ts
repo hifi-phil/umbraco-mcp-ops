@@ -33,6 +33,9 @@ export const EVENTS = {
   // auto-merge (coordinate/ tells it apart from a review rework).
   CI_FIX_PUSHED: "ci_fix_pushed",
   UNLABELLED_AUTO_REWORKING: "unlabelled_auto_reworking",
+  // A PR asked for review rework once more than the cap allows (Phase 9):
+  // raised by the Worker from its own count of rounds, not by GitHub.
+  REWORK_CAP_REACHED: "rework_cap_reached",
   LABELLED_AUTO_MERGING: "labelled_auto_merging",
   MERGE_GATE_FAILED_SOFT: "merge_gate_failed_soft",
   MERGE_GATE_FAILED_HARD: "merge_gate_failed_hard",
