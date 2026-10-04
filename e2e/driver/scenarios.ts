@@ -47,6 +47,8 @@ const MIN = 60_000;
 /** The sandbox's watchdog (tofu's e2e_watchdog_minutes). */
 const WATCHDOG_MINUTES = Number(process.env.E2E_WATCHDOG_MINUTES ?? 2);
 const STUCK_WAIT = (WATCHDOG_MINUTES + 2) * MIN;
+/** The sandbox's CI-fix and review-round caps (tofu's e2e_rework_cap). */
+const CAP = Number(process.env.E2E_REWORK_CAP ?? 1);
 
 /** For the audit (run.e2e.test.ts): an issue whose label delivery to redeliver, and the two PRs sharing a head. */
 export const runLog: { redeliverIssue?: number; sharedHead?: number[]; manualOverrideIssue?: number; sweepIssue?: number } = {};
@@ -301,7 +303,7 @@ export const scenarios: Scenario[] = [
         const s = await waitFor(pr.number, (x) => x.merged, 7 * MIN);
         expect(s.merged, `PR #${pr.number} merged`).toBe(true);
         expect(await labelHistory(pr.number)).toEqual(expect.arrayContaining([`+${LABELS.AUTO_REWORKING}`, `-${LABELS.AUTO_REWORKING}`]));
-        expect(hasComment(s, "🔧 CI failing", "attempt 1 of 3")).toBe(true);
+        expect(hasComment(s, "🔧 CI failing", `attempt 1 of ${CAP}`)).toBe(true);
       }),
   },
   {
@@ -321,7 +323,7 @@ export const scenarios: Scenario[] = [
           `/repos/${REPO}/commits/${head.sha}/check-runs`,
         );
         expect(labelled! < check_runs[0]!.completed_at, "label added before CI finished (else the setup raced)").toBe(true);
-        expect(hasComment(s, "🔧 CI failing", "attempt 1 of 3")).toBe(true);
+        expect(hasComment(s, "🔧 CI failing", `attempt 1 of ${CAP}`)).toBe(true);
         await expectLogged(
           pr.number,
           { event: "labelled_auto_merging", run: "merge-flow" },
@@ -332,21 +334,21 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "CI-fix limit: three fixes that don't fix it -> merge-blocked",
-    timeoutMs: 14 * MIN,
+    name: "CI-fix limit: fixes that don't fix it, up to the cap -> merge-blocked",
+    timeoutMs: (4 + 3 * CAP) * MIN,
     run: () =>
       scoped(async (t) => {
         const pr = await trackedPr(t, { title: "ci never fixed", hint: "ci_never_fixed", files: { "ci-state": "fail\n" } });
         await addLabel(pr.number, LABELS.AUTO_MERGING);
-        const s = await waitFor(pr.number, labelsAre(LABELS.MERGE_BLOCKED), 13 * MIN);
+        const s = await waitFor(pr.number, labelsAre(LABELS.MERGE_BLOCKED), (3 + 3 * CAP) * MIN);
         expectLabels(s, pr.number, LABELS.MERGE_BLOCKED);
         expect(s.merged).toBe(false);
         const reworks = (await labelHistory(pr.number)).filter((h) => h === `+${LABELS.AUTO_REWORKING}`);
-        expect(reworks.length, "rework rounds").toBe(3);
-        expect(hasComment(s, "after 3 fix attempts")).toBe(true);
+        expect(reworks.length, "rework rounds").toBe(CAP);
+        expect(hasComment(s, `after ${CAP} fix attempts`)).toBe(true);
         const rows = await expectLogged(pr.number, { event: "merge_gate_failed_hard", effect: LABELS.MERGE_BLOCKED });
-        expect(rows.filter((r) => r.event === "merge_gate_failed_soft"), "three soft fails logged").toHaveLength(3);
-        expect(rows.filter((r) => r.event === "ci_fix_pushed"), "three CI-fix pushes logged").toHaveLength(3);
+        expect(rows.filter((r) => r.event === "merge_gate_failed_soft"), "a soft fail per fix").toHaveLength(CAP);
+        expect(rows.filter((r) => r.event === "ci_fix_pushed"), "a CI-fix push per fix").toHaveLength(CAP);
       }),
   },
   {
@@ -676,7 +678,7 @@ export const scenarios: Scenario[] = [
         await addLabel(pr.number, LABELS.AI_REVIEWING);
         const s = await waitFor(pr.number, (x) => x.labels.length === 0 && hasMarker(x, "review-loop", "review_passed"), 8 * MIN);
         expectLabels(s, pr.number);
-        expect(hasComment(s, "Review round 1 of 3")).toBe(true);
+        expect(hasComment(s, `Review round 1 of ${CAP}`)).toBe(true);
         const commits = await gh<unknown[]>("GET", `/repos/${REPO}/pulls/${pr.number}/commits`);
         expect(commits.length, "the stub's rework push").toBe(2);
         await expectLogged(
@@ -716,7 +718,7 @@ export const scenarios: Scenario[] = [
         await addLabel(pr.number, LABELS.AI_REVIEWING);
         const s = await waitFor(pr.number, (x) => x.labels.length === 0 && hasMarker(x, "review-loop", "review_passed"), 8 * MIN);
         expectLabels(s, pr.number);
-        expect(hasComment(s, "🔧 CI failing", "attempt 1 of 3")).toBe(true);
+        expect(hasComment(s, "🔧 CI failing", `attempt 1 of ${CAP}`)).toBe(true);
         await expectLogged(
           pr.number,
           { event: "review_ci_failed", effect: LABELS.AUTO_REWORKING, run: "rework-loop" },
@@ -727,18 +729,18 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "review: findings every round -> ai-stuck after three rounds",
-    timeoutMs: 16 * MIN,
+    name: "review: findings every round -> ai-stuck once past the cap",
+    timeoutMs: (5 + 3 * CAP) * MIN,
     run: () =>
       scoped(async (t) => {
         const pr = await trackedPr(t, { title: "review never passes", hint: "review_findings_always", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
         await addLabel(pr.number, LABELS.AI_REVIEWING);
-        const s = await waitFor(pr.number, labelsAre(LABELS.AI_STUCK), 15 * MIN);
+        const s = await waitFor(pr.number, labelsAre(LABELS.AI_STUCK), (4 + 3 * CAP) * MIN);
         expectLabels(s, pr.number, LABELS.AI_STUCK);
-        expect(hasComment(s, "asked for changes 3 times")).toBe(true);
+        expect(hasComment(s, `asked for changes ${CAP} times`)).toBe(true);
         const rows = await expectLogged(pr.number, { event: "rework_cap_reached", effect: LABELS.AI_STUCK });
-        expect(rows.filter((r) => r.event === "review_findings"), "three counted rounds").toHaveLength(3);
-        expect(rows.filter((r) => r.event === "review_fix_pushed"), "three pushes back to ai-review").toHaveLength(3);
+        expect(rows.filter((r) => r.event === "review_findings"), "a counted round per finding, up to the cap").toHaveLength(CAP);
+        expect(rows.filter((r) => r.event === "review_fix_pushed"), "a push back to ai-review per round").toHaveLength(CAP);
       }),
   },
 ];

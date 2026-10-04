@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import {
+  DEFAULT_CAPS,
   LABEL_JUST_ADDED_BY,
+  capsFor,
   coordinateWebhook,
   deriveState,
   resolveEnforced,
@@ -79,5 +81,30 @@ describe("resolveEnforced — MODE plus the watchdog's own switch (Phase 4)", ()
     for (const raw of [undefined, "", "shadow", "enforced", "ENFORCE"]) {
       expect(resolveEnforced(raw, "enforce")(EVENTS.LABELLED_AUTO_MERGING), String(raw)).toBe(false);
     }
+  });
+});
+
+describe("capsFor — per-repo caps (CAP_OVERRIDES_JSON)", () => {
+  const raw = JSON.stringify({ "Hifi-Phil/MCP-Ops-E2E-Testing": { ciFixAttempts: 1, botReviewReworks: 1 } });
+
+  it("the overridden repo (any case) gets its caps; the ones it doesn't set keep the default", () => {
+    expect(capsFor(raw, "hifi-phil", "mcp-ops-e2e-testing")).toEqual({ ...DEFAULT_CAPS, ciFixAttempts: 1, botReviewReworks: 1 });
+  });
+
+  it("every other repo, and no JSON at all, keeps the defaults", () => {
+    expect(capsFor(raw, "hifi-phil", "umbraco-mcp-ops")).toEqual(DEFAULT_CAPS);
+    expect(capsFor(undefined, "hifi-phil", "umbraco-mcp-ops")).toEqual(DEFAULT_CAPS);
+    expect(capsFor("{}", "hifi-phil", "umbraco-mcp-ops")).toEqual(DEFAULT_CAPS);
+  });
+
+  it("only a whole number of 1 or more counts: 0, negatives, fractions and strings keep the default", () => {
+    for (const bad of [0, -1, 1.5, "1"]) {
+      const caps = capsFor(JSON.stringify({ "a/b": { ciFixAttempts: bad } }), "a", "b");
+      expect(caps.ciFixAttempts, String(bad)).toBe(DEFAULT_CAPS.ciFixAttempts);
+    }
+  });
+
+  it("invalid JSON throws, naming the setting", () => {
+    expect(() => capsFor("{", "a", "b")).toThrow(/CAP_OVERRIDES_JSON/);
   });
 });

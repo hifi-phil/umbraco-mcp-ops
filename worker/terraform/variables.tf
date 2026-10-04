@@ -158,6 +158,12 @@ variable "e2e_watchdog_minutes" {
   description = "The sandbox's watchdog timeout, for every routine. Its watchdog is always real (enforce), whatever `watchdog` is; no other repo is affected. Long enough for merge-flow to outlast a CI run (it stays watched while CI runs), short enough for a scenario to wait out."
 }
 
+variable "e2e_rework_cap" {
+  type        = number
+  default     = 1
+  description = "The sandbox's CI-fix and review-round caps (the defaults are 3), so the e2e cap scenarios run one round instead of three. No other repo is affected. The e2e driver reads it as E2E_REWORK_CAP; keep the two the same."
+}
+
 variable "e2e_stub_github_token" {
   type        = string
   sensitive   = true

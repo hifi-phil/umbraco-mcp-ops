@@ -27,6 +27,8 @@ import {
   coordinateWatchdogExpired,
   resolveEnforced,
   watchdogOverrideFor,
+  capsFor,
+  DEFAULT_CAPS,
   type CiFix,
   type CoordinateInput,
   type Deps,
@@ -60,6 +62,8 @@ export type IssueCoordinatorEnv = GitHubEnv &
     // {"owner/repo": {"mode"?, "minutes"?}}: a repo's own watchdog switch and
     // timeout, over WATCHDOG and watchdogMinutesFor. See coordinate/.
     WATCHDOG_OVERRIDES_JSON?: string;
+    // Per-repo loop caps (coordinate/types.ts's capsFor); the e2e sandbox's.
+    CAP_OVERRIDES_JSON?: string;
   };
 
 /**
@@ -171,6 +175,7 @@ export class IssueCoordinator {
     return {
       enforced: resolveEnforced(this.env.MODE, override?.mode ?? this.env.WATCHDOG),
       watchdogMinutes,
+      caps: ref ? capsFor(this.env.CAP_OVERRIDES_JSON, ref.owner, ref.repo) : DEFAULT_CAPS,
       botLogin: async () => (appConfigured(this.env) ? appBotLogin(this.env) : null),
       markCompleted: async (at: string) => {
         await this.ctx.storage.put(COMPLETED_KEY, at);

@@ -123,6 +123,15 @@ resource "cloudflare_workers_script" "worker" {
         "${var.github_owner}/${var.e2e_repo}" = { mode = "enforce", minutes = var.e2e_watchdog_minutes }
       } : {}),
     },
+    # The sandbox's CI-fix and review-round caps, so its cap scenarios run
+    # one round, not three. Every other repo keeps the defaults.
+    {
+      type = "plain_text",
+      name = "CAP_OVERRIDES_JSON",
+      text = jsonencode(local.e2e ? {
+        "${var.github_owner}/${var.e2e_repo}" = { ciFixAttempts = var.e2e_rework_cap, botReviewReworks = var.e2e_rework_cap }
+      } : {}),
+    },
     { type = "secret_text", name = "GITHUB_APP_TOKEN", text = var.github_read_token },
     # The Worker's own GitHub identity: every call goes as the App's bot on
     # an installation token (src/github-app.ts), and the self-trigger guard

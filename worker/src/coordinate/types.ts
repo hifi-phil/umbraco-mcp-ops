@@ -109,6 +109,40 @@ export const MAX_REVIEW_REWORKS = 3;
  * bot can't use up a person's rounds (15-agent-splits.md). */
 export const MAX_BOT_REVIEW_REWORKS = 3;
 
+/** The loop caps in force for one repo (Deps.caps): the defaults above,
+ * unless CAP_OVERRIDES_JSON sets them for it (capsFor). */
+export type Caps = { ciFixAttempts: number; reviewReworks: number; botReviewReworks: number };
+
+export const DEFAULT_CAPS: Caps = {
+  ciFixAttempts: MAX_CI_FIX_ATTEMPTS,
+  reviewReworks: MAX_REVIEW_REWORKS,
+  botReviewReworks: MAX_BOT_REVIEW_REWORKS,
+};
+
+/**
+ * Per-repo caps, keyed "owner/repo" (any case), from CAP_OVERRIDES_JSON,
+ * over DEFAULT_CAPS. Only the e2e sandbox uses it today: a cap of 1 lets a
+ * cap scenario run one round instead of three. Only whole numbers of 1 or
+ * more count; anything else keeps the default. Unset or `{}` means none.
+ */
+export function capsFor(raw: string | undefined, owner: string, repo: string): Caps {
+  if (!raw) return DEFAULT_CAPS;
+  let map: Record<string, Partial<Caps>>;
+  try {
+    map = JSON.parse(raw);
+  } catch {
+    throw new Error("CAP_OVERRIDES_JSON is not valid JSON");
+  }
+  const want = `${owner}/${repo}`.toLowerCase();
+  const override = Object.entries(map).find(([key]) => key.toLowerCase() === want)?.[1] ?? {};
+  const pick = (v: unknown, fallback: number) => (Number.isInteger(v) && (v as number) >= 1 ? (v as number) : fallback);
+  return {
+    ciFixAttempts: pick(override.ciFixAttempts, DEFAULT_CAPS.ciFixAttempts),
+    reviewReworks: pick(override.reviewReworks, DEFAULT_CAPS.reviewReworks),
+    botReviewReworks: pick(override.botReviewReworks, DEFAULT_CAPS.botReviewReworks),
+  };
+}
+
 export type Deps = {
   getLabels(owner: string, repo: string, issueNumber: number): Promise<string[]>;
   addLabel(owner: string, repo: string, issueNumber: number, label: string): Promise<void>;
@@ -142,6 +176,8 @@ export type Deps = {
   // review-loop's own rounds on this PR (DO storage).
   getReviewLoop(): Promise<ReviewLoop | null>;
   setReviewLoop(state: ReviewLoop | null): Promise<void>;
+  // The CI-fix and review-round caps for this issue's repo (capsFor).
+  caps: Caps;
   // Phase 4: whether this event's writes and fire are real. Everything not
   // enforced runs in shadow (see resolveEnforced).
   enforced(event: Event): boolean;
