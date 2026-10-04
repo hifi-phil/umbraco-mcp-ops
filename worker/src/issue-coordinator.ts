@@ -82,6 +82,7 @@ async function respond(run: () => Promise<unknown>): Promise<Response> {
 
 const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
+const REVIEW_REWORKS_KEY = "reviewReworks"; // review rework rounds on this PR (MAX_REVIEW_REWORKS)
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
 const CLOSED_KEY = "closedOnGitHub"; // its status row stays gone until reopened
@@ -226,6 +227,10 @@ export class IssueCoordinator {
       },
       watchdogArmed: async () => (await this.ctx.storage.getAlarm()) !== null,
       getPendingFire: async () => (await this.ctx.storage.get<PendingFire>(PENDING_FIRE_KEY)) ?? null,
+      getReviewReworks: async () => (await this.ctx.storage.get<number>(REVIEW_REWORKS_KEY)) ?? 0,
+      setReviewReworks: async (rounds: number) => {
+        await this.ctx.storage.put(REVIEW_REWORKS_KEY, rounds);
+      },
       getCiFix: async () => (await this.ctx.storage.get<CiFix>(CI_FIX_KEY)) ?? null,
       setCiFix: async (state: CiFix | null) => {
         if (state) await this.ctx.storage.put(CI_FIX_KEY, state);

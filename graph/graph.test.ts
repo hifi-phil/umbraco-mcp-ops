@@ -99,6 +99,10 @@ describe("reduce — PR lifecycle", () => {
 
   it("auto-rework + rework_pushed -> label cleared, no replacement", () => {
     expect(reduce(LABELS.AUTO_REWORKING, EVENTS.REWORK_PUSHED)?.to).toEqual(unlabel);
+    // too many review rounds: hand it to a person, firing nothing
+    const capped = reduce(LABELS.AUTO_REWORKING, EVENTS.REWORK_CAP_REACHED);
+    expect(capped?.to).toEqual(label(LABELS.AI_STUCK));
+    expect(capped?.run).toBeUndefined();
   });
 
   it("auto-merge + merge_gate_failed_soft (CI failed) -> auto-rework, and fires rework-loop itself (no echo)", () => {
