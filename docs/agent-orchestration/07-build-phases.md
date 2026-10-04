@@ -340,6 +340,12 @@ splitting costs more agent context, not less (see
 **Exit:** N/A — this phase repeats as needed, driven by data rather than a
 schedule.
 
+**Status (04-10-2026):** the first two splits are designed, not built:
+build/review and release, in [15-agent-splits.md](15-agent-splits.md).
+They come from long sessions losing context and a review that isn't
+independent, rather than failure data. Build/review goes first, in the
+sandbox.
+
 ## Note on infrastructure timing
 
 The Durable Object can be deferred if it's adding conceptual load early —
