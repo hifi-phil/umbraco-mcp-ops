@@ -27,7 +27,7 @@ export type Env = {
   // The one Scheduler DO (scheduler.ts): the reconciliation sweep's alarm.
   SCHEDULER?: DurableObjectNamespace;
   DB: D1Database;
-  GITHUB_APP_TOKEN: string;
+  GITHUB_APP_TOKEN?: string; // local runs and tests only (github-client.ts)
   GITHUB_APP_ID?: string; // the Worker's GitHub App — see github-app.ts
   GITHUB_APP_PRIVATE_KEY?: string;
   GITHUB_API_BASE_URL?: string; // local smoke-testing seam — see github-client.ts

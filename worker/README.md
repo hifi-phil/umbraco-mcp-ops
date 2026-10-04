@@ -676,8 +676,8 @@ before either has changed anything, so a `ready-for-ai` would get two builds
 (two PRs) and an `ai-discuss` two replies. The cutover closes that window:
 
 1. In `terraform.tfvars`: fill in `repo_routines` (Fire URL + token), set
-   `mode = "enforce"`, and give `github_read_token` Issues + Pull requests
-   **write** (enforced rules remove labels and close). `tofu apply`.
+   `mode = "enforce"`, and make sure the GitHub App has Issues + Pull
+   requests **write** (enforced rules remove labels and close). `tofu apply`.
 2. **Straight away**, disable the old caller, and don't label anything
    between steps 1 and 2:
    `gh workflow disable "loop-dispatch (caller)" --repo <owner>/<repo>`

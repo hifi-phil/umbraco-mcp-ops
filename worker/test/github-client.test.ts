@@ -17,6 +17,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("no GitHub access configured", () => {
+  it("neither the App nor a local token: a call fails, naming what to set (a deployed Worker always has the App)", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(getLabels({}, "hifi-phil", "umbraco-mcp-ops", 412)).rejects.toThrow(/GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("getLabels", () => {
   it("returns the label names from a successful response", async () => {
     const fetchMock = vi.fn(
