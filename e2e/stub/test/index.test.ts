@@ -332,6 +332,18 @@ describe("stubGitHub", () => {
   };
   const withApp = () => stubGitHub(env, async () => "inst-token");
 
+  it("a 403 is retried once on a fresh token (one cached before a permission was granted)", async () => {
+    const fetch = vi
+      .fn(async (_url: string, _init?: RequestInit) => new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(new Response("Resource not accessible by integration", { status: 403 }));
+    vi.stubGlobal("fetch", fetch);
+    const tokens = ["stale", "fresh"];
+    const forget = vi.fn();
+    await stubGitHub(env, async () => tokens.shift()!, forget)("PUT", `${R}/contents/ci-state`);
+    expect(forget).toHaveBeenCalledOnce();
+    expect((fetch.mock.calls[1]![1]!.headers as Record<string, string>).Authorization).toBe("Bearer fresh");
+  });
+
   it("every call goes as the App: check-runs, commits, merges, issues (no personal token)", async () => {
     for (const [method, path] of [
       ["GET", `${R}/commits/h/check-runs`],
