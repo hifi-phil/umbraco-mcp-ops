@@ -177,15 +177,18 @@ to read an issue's log.
 Repos that already use the playbook, with a `docs/plans/<feature>/` folder,
 keep their files. The routines read those as well as D1.
 
-### Prerequisite: Workers Paid
+### The free plan is enough for now
 
-- **It's an account plan.** Workers Paid applies to the whole Cloudflare
-  account and covers the Worker, the Durable Objects and D1 together.
-- **The free plan fails hard.** Since 01-09-2026, D1 queries fail outright
-  once the daily row cap is hit. That would stop the orchestrator, not just
-  the logs.
+- **Volume is small.** A few log rows per routine run is far inside the
+  free plan's daily caps.
 - **Size isn't the issue.** A busy issue is about 50 KB of log entries. A
-  database holds 500 MB on the free plan and 10 GB on paid.
+  database holds 500 MB on the free plan, 10 GB on paid.
+- **Watch the read cap.** Since 01-09-2026 the free plan fails D1 queries
+  outright once a daily cap is hit, which would stop the orchestrator, not
+  just the logs. The dashboard already reads summaries to stay well clear.
+- **When to go paid:** if daily usage starts getting close to a cap, for
+  example once the umbraco repos bring real traffic. Workers Paid is an
+  account plan: it covers the Worker, the Durable Objects and D1 together.
 
 ## Split 2: release
 
@@ -240,7 +243,7 @@ This needs exploring before split 2 is built.
 
 **Account**
 - Whether the orchestrator moves to an Umbraco-owned Cloudflare account
-  (not the shared production one) before going paid.
+  (not the shared production one), if and when it goes paid.
 
 ---
 
