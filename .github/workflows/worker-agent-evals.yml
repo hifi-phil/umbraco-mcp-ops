@@ -38,7 +38,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install (npm workspaces: one install at the root)
+      - name: "Install (npm workspaces: one install at the root)"
         run: npm ci
 
       - name: Run outcome-reporting evals

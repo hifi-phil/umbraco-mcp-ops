@@ -319,8 +319,13 @@ fired" is never silent.
   leaves the watchdog to notice. A fire that's refused (an error, not a
   crash) disarms and fails, as before: nothing is running, and the sweep
   re-fires a trigger left with nothing watching it.
-- **Concurrency cap and ready queue: open.** Waits on a decision
-  ([08-open-questions.md](08-open-questions.md)) and real traffic.
+- **Concurrency cap and ready queue: deferred until there are several
+  users.** With one person labelling, every burst is one they started and
+  can see; nothing has stalled or collided so far. Adding it later is cheap:
+  every fire goes through the one arm-then-fire step (`coordinate/apply.ts`,
+  `coordinate/reconcile.ts`), and `transitions` already records each fire,
+  so peak in-flight per repo can be read back when it's needed. The design
+  agreed for then is in [08-open-questions.md](08-open-questions.md).
 
 ## Phase 10 — Split nodes that still fail too often
 

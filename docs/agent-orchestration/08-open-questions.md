@@ -19,7 +19,27 @@
   labelling, release notes? The bookkeeping ones are probably cheaper as
   plain Actions than as routines.
 - What's the right in-flight concurrency cap, and does the ready queue live
-  in the DO or in a separate coordinator? (Phase 9.)
+  in the DO or in a separate coordinator? (Phase 9.) **Deferred until there
+  are several users** (04-10-2026): with one person labelling it isn't
+  needed yet. Agreed for when it is:
+  - Caps per repo and per routine, starting at builds 4, reworks 2, merges
+    5 (cheap), releases 2 (e.g. v17 and v18 at once), overridable per repo
+    in `repo_controls`; plus a global ceiling on builds and reworks only
+    (spend), 8 to start.
+  - In flight means a watched fire, the watchdog's window, so a slot frees
+    on outcome, completion, expiry or a person removing the label.
+  - The queue lives in one Dispatcher DO (single-threaded: no races); the
+    issue DO asks it for a slot before arming and firing. Who goes next is
+    a pure function in `graph/`. Merges and reworks go before new builds,
+    otherwise FIFO.
+  - Leaks are the main risk: slots expire with the watchdog, and the
+    Dispatcher's alarm reconciles against pending fires; the sweep treats
+    queued as waiting, not lost.
+  - Shown on the dashboard only ("Queued, position n"); no GitHub comment
+    or label.
+  - No shadow phase: tested in the e2e sandbox (cap 1, three issues at
+    once), then on with generous caps and a per-repo off switch. Check
+    peak in-flight in `transitions` first.
 - Cloudflare or Azure? Decide on maintainership rather than capability — see
   [06-platform-alternative.md](06-platform-alternative.md).
 
