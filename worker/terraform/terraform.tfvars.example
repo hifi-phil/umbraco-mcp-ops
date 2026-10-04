@@ -4,7 +4,7 @@
 cloudflare_account_id = "your-account-id"
 workers_subdomain     = "your-subdomain"   # <script>.<this>.workers.dev
 github_owner          = "hifi-phil"
-github_repo           = "your-test-repo"   # where the real loops run (ready-for-ai, …)
+github_repo           = "your-test-repo"   # where the real loops run (ai-ready, …)
 # The Worker's GitHub App (worker/README.md, known gaps): its ID, and the
 # private key GitHub downloads, pasted as-is. The Worker and the e2e stub
 # both act as it; there's no personal token.

@@ -86,11 +86,11 @@ changes a rule changes its scenario too. Each one is data:
 
 ```ts
 {
-  name: "CI fails under auto-merge, rework fixes it, merge-flow merges",
+  name: "CI fails under auto-merging, rework fixes it, merge-flow merges",
   setup: { pr: { files: { "ci-state": "fail" } } }, // genuinely red for real agents too
   hint: "ci_fail",
-  trigger: "auto-merge",
-  expect: ["auto-rework", "auto-merge", "merged"],
+  trigger: "auto-merging",
+  expect: ["auto-reworking", "auto-merging", "merged"],
   timeout: { stub: "3m", real: "30m" },
 }
 ```
@@ -105,15 +105,15 @@ real agents.
 
 ## The first scenarios
 
-1. **The full lane:** `ready-for-ai` → PR → `auto-merge` → merged, then
-   `auto-release` → published and closed.
-2. **Build blocked:** `ready-for-ai` → `ai-blocked`.
-3. **Release blocked:** `auto-release` removed, and the issue stays open.
-4. **Review rework:** `auto-rework` → push → label cleared.
-5. **CI fixed:** `auto-merge` → `auto-rework` → `auto-merge` → merged.
+1. **The full lane:** `ai-ready` → PR → `auto-merging` → merged, then
+   `auto-releasing` → published and closed.
+2. **Build blocked:** `ai-ready` → `ai-blocked`.
+3. **Release blocked:** `auto-releasing` removed, and the issue stays open.
+4. **Review rework:** `auto-reworking` → push → label cleared.
+5. **CI fixed:** `auto-merging` → `auto-reworking` → `auto-merging` → merged.
 6. **The CI-fix limit:** the stub's rework never fixes CI, so after three
    attempts the PR ends in `merge-blocked`.
-7. **Merge conflict:** `auto-merge` → `merge-blocked`, and merge-flow is
+7. **Merge conflict:** `auto-merging` → `merge-blocked`, and merge-flow is
    never fired.
 8. **Silent agent:** no outcome. Phase 6 uses this: in shadow it asserts a
    logged expiry, and in enforce it asserts `ai-stuck`.

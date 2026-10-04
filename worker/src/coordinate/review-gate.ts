@@ -1,4 +1,4 @@
-// The review's gate (15-agent-splits.md): a PR in ai-review gets review-loop
+// The review's gate (15-agent-splits.md): a PR in ai-reviewing gets review-loop
 // once its CI is green, rework-loop first if it's red. And the caps: CI
 // fixes at caps.ciFixAttempts, the review's own findings at
 // caps.botReviewReworks, then ai-stuck.
@@ -13,7 +13,7 @@ import { applyEvent } from "./apply";
 /**
  * Reads the PR's CI and moves it on: green fires review-loop, red hands it to
  * rework-loop, still running (or nothing reported yet) waits for the next
- * check suite to finish. Called when ai-review is added, each time a check
+ * check suite to finish. Called when ai-reviewing is added, each time a check
  * suite finishes, and by the sweep. A review already out leaves CI alone:
  * its verdict decides what's next.
  */
@@ -27,8 +27,8 @@ export async function reviewGate(deps: Deps, input: IssueRef & Acting, currentLa
   return applyEvent(deps, input, EVENTS.REVIEW_CI_PASSED, currentLabels);
 }
 
-/** CI red under ai-review: rework-loop fixes it (its push comes back to
- * ai-review), up to caps.ciFixAttempts, then ai-stuck. */
+/** CI red under ai-reviewing: rework-loop fixes it (its push comes back to
+ * ai-reviewing), up to caps.ciFixAttempts, then ai-stuck. */
 async function handReviewToRework(
   deps: Deps,
   input: IssueRef & Acting,
@@ -77,7 +77,7 @@ export async function reviewFindings(deps: Deps, input: IssueRef & Acting, curre
   return result;
 }
 
-/** ai-review -> ai-stuck (the table's REWORK_CAP_REACHED rule), saying why. */
+/** ai-reviewing -> ai-stuck (the table's REWORK_CAP_REACHED rule), saying why. */
 async function capReview(deps: Deps, input: IssueRef & Acting, currentLabels: string[], why: string): Promise<CoordinateResult> {
   const result = await applyEvent(deps, input, EVENTS.REWORK_CAP_REACHED, currentLabels);
   if (result.outcome === "applied") {

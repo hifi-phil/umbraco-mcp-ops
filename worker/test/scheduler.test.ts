@@ -53,10 +53,10 @@ function fakeEnv(
   return { env, inserted, asked };
 }
 
-/** GitHub: issue #7 has ready-for-ai on the ops repo; nothing else anywhere. */
+/** GitHub: issue #7 has ai-ready on the ops repo; nothing else anywhere. */
 const github = () =>
   vi.fn(async (url: string) => {
-    if (url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ready-for-ai")) {
+    if (url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ai-ready")) {
       return Response.json([{ number: 7 }]);
     }
     return Response.json([]);
@@ -91,7 +91,7 @@ describe("Scheduler", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
-        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ready-for-ai")
+        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ai-ready")
           ? Response.json([{ number: 1 }, { number: 2 }, { number: 3 }])
           : Response.json([]),
       ),
@@ -200,7 +200,7 @@ describe("Scheduler", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
-        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ready-for-ai")
+        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ai-ready")
           ? Response.json([{ number: 1 }, { number: 2 }, { number: 3 }])
           : Response.json([]),
       ),
@@ -220,7 +220,7 @@ describe("Scheduler", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
-        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ready-for-ai")
+        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ai-ready")
           ? Response.json([{ number: 1 }, { number: 2 }])
           : Response.json([]),
       ),

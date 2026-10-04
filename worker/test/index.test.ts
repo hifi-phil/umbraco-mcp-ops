@@ -34,7 +34,7 @@ function labeledIssuePayload(overrides: Record<string, unknown> = {}) {
     action: "labeled",
     repository: { name: "umbraco-mcp-ops", owner: { login: "hifi-phil" } },
     issue: { number: 412 },
-    label: { name: "ready-for-ai" },
+    label: { name: "ai-ready" },
     sender: { login: "phil", type: "User" },
     ...overrides,
   };

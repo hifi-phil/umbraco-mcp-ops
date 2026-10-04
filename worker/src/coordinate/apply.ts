@@ -156,13 +156,13 @@ export function deriveState(labels: readonly string[]): State | "ambiguous" {
   if (tracked.length === 1) return tracked[0]!;
   // The one expected pairing: ai-stuck plus a label a late routine swapped
   // in itself after the watchdog had already fired (e.g. ai-stuck +
-  // generated-by-ai, just before its outcome comment arrives). A known race
+  // pr-open, just before its outcome comment arrives). A known race
   // with a defined answer — the issue is still ai-stuck, and graph.ts's
   // "leaving ai-stuck" rules decide what the late outcome does with it.
   if (tracked.length === 2 && tracked.includes(LABELS.AI_STUCK)) return LABELS.AI_STUCK;
-  // A human re-added auto-merge to a merge-blocked PR that's still blocked:
-  // read it as auto-merge, so the hard-block rule swaps it back to
-  // merge-blocked (which is already there, so only auto-merge comes off).
+  // A human re-added auto-merging to a merge-blocked PR that's still blocked:
+  // read it as auto-merging, so the hard-block rule swaps it back to
+  // merge-blocked (which is already there, so only auto-merging comes off).
   if (tracked.length === 2 && tracked.includes(LABELS.MERGE_BLOCKED) && tracked.includes(LABELS.AUTO_MERGING)) {
     return LABELS.AUTO_MERGING;
   }

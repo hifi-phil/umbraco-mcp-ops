@@ -6,27 +6,27 @@ import { close, label, noop, unlabel } from "./github/to-github";
 import { CONTEXTUAL_EVENTS, isWatched, reduce, rules } from "./graph";
 
 describe("reduce — issue lifecycle", () => {
-  it("none + labelled_ai_ready -> ready-for-ai, fires issue-build-loop", () => {
+  it("none + labelled_ai_ready -> ai-ready, fires issue-build-loop", () => {
     const rule = reduce("none", EVENTS.LABELLED_AI_READY);
     expect(rule?.to).toEqual(label(LABELS.AI_READY));
     expect(rule?.run).toBe(ROUTINES.ISSUE_BUILD_LOOP);
   });
 
-  it("generated-by-ai + build_succeeded -> noop (a loop that swaps itself already applied it)", () => {
-    expect(reduce(LABELS.AI_GENERATED, EVENTS.BUILD_SUCCEEDED)?.to).toEqual(noop);
+  it("pr-open + build_succeeded -> noop (a loop that swaps itself already applied it)", () => {
+    expect(reduce(LABELS.PR_OPEN, EVENTS.BUILD_SUCCEEDED)?.to).toEqual(noop);
   });
 
   it("ai-blocked + build_blocked -> noop (same, for a loop that swaps itself)", () => {
     expect(reduce(LABELS.AI_BLOCKED, EVENTS.BUILD_BLOCKED)?.to).toEqual(noop);
   });
 
-  it("none + release_blocked -> noop (a loop that removed auto-release itself)", () => {
+  it("none + release_blocked -> noop (a loop that removed auto-releasing itself)", () => {
     expect(reduce("none", EVENTS.RELEASE_BLOCKED)?.to).toEqual(noop);
   });
 
   it("Phase 5, orchestrated: the outcome arrives pre-swap and the Worker does the swap, firing nothing", () => {
     const cases = [
-      [LABELS.AI_READY, EVENTS.BUILD_SUCCEEDED, label(LABELS.AI_GENERATED)],
+      [LABELS.AI_READY, EVENTS.BUILD_SUCCEEDED, label(LABELS.PR_OPEN)],
       [LABELS.AI_READY, EVENTS.BUILD_BLOCKED, label(LABELS.AI_BLOCKED)],
       [LABELS.AUTO_RELEASING, EVENTS.RELEASE_BLOCKED, unlabel],
       [LABELS.AUTO_RELEASING, EVENTS.RELEASE_PUBLISHED, close],
@@ -38,29 +38,29 @@ describe("reduce — issue lifecycle", () => {
     }
   });
 
-  it("auto-release + release_published -> native close, not a label", () => {
+  it("auto-releasing + release_published -> native close, not a label", () => {
     expect(reduce(LABELS.AUTO_RELEASING, EVENTS.RELEASE_PUBLISHED)?.to).toEqual(close);
   });
 
-  it("ai-discuss has no outbound rules — human-owned by design", () => {
+  it("ai-discussing has no outbound rules — human-owned by design", () => {
     expect(reduce(LABELS.AI_DISCUSSING, EVENTS.LABELLED_AI_READY)).toBeNull();
     expect(reduce(LABELS.AI_DISCUSSING, EVENTS.BUILD_SUCCEEDED)).toBeNull();
   });
 
-  it("ai-discuss + discussion_reply -> stays put, fires the next round", () => {
+  it("ai-discussing + discussion_reply -> stays put, fires the next round", () => {
     const rule = reduce(LABELS.AI_DISCUSSING, EVENTS.DISCUSSION_REPLY);
     expect(rule?.to).toEqual(noop);
     expect(rule?.run).toBe(ROUTINES.ISSUE_DISCUSS_LOOP);
     expect(reduce("none", EVENTS.DISCUSSION_REPLY)).toBeNull();
   });
 
-  it("auto-release + issue_closed -> noop (Step 4's native close ends the run, comment or not)", () => {
+  it("auto-releasing + issue_closed -> noop (Step 4's native close ends the run, comment or not)", () => {
     expect(reduce(LABELS.AUTO_RELEASING, EVENTS.ISSUE_CLOSED)?.to).toEqual(noop);
   });
 
   it("a loop removing its trigger label -> noop from every state it can leave behind, fires nothing", () => {
     const cases = [
-      [EVENTS.UNLABELLED_AI_READY, ["none", LABELS.AI_GENERATED, LABELS.AI_BLOCKED, LABELS.AI_STUCK]],
+      [EVENTS.UNLABELLED_AI_READY, ["none", LABELS.PR_OPEN, LABELS.AI_BLOCKED, LABELS.AI_STUCK]],
       [EVENTS.UNLABELLED_AUTO_RELEASING, ["none", LABELS.AI_STUCK]],
       [EVENTS.UNLABELLED_AUTO_REWORKING, ["none", LABELS.AI_STUCK]],
       [EVENTS.UNLABELLED_AUTO_MERGING, ["none", LABELS.AI_STUCK]],
@@ -96,13 +96,13 @@ describe("CONTEXTUAL_EVENTS", () => {
 });
 
 describe("reduce — PR lifecycle", () => {
-  it("none + labelled_auto_reworking -> auto-rework, fires rework-loop", () => {
+  it("none + labelled_auto_reworking -> auto-reworking, fires rework-loop", () => {
     const rule = reduce("none", EVENTS.LABELLED_AUTO_REWORKING);
     expect(rule?.to).toEqual(label(LABELS.AUTO_REWORKING));
     expect(rule?.run).toBe(ROUTINES.REWORK_LOOP);
   });
 
-  it("auto-rework + rework_pushed -> label cleared, no replacement", () => {
+  it("auto-reworking + rework_pushed -> label cleared, no replacement", () => {
     expect(reduce(LABELS.AUTO_REWORKING, EVENTS.REWORK_PUSHED)?.to).toEqual(unlabel);
     // too many review rounds: hand it to a person, firing nothing
     const capped = reduce(LABELS.AUTO_REWORKING, EVENTS.REWORK_CAP_REACHED);
@@ -110,35 +110,35 @@ describe("reduce — PR lifecycle", () => {
     expect(capped?.run).toBeUndefined();
   });
 
-  it("auto-merge + merge_gate_failed_soft (CI failed) -> auto-rework, and fires rework-loop itself (no echo)", () => {
+  it("auto-merging + merge_gate_failed_soft (CI failed) -> auto-reworking, and fires rework-loop itself (no echo)", () => {
     const rule = reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_FAILED_SOFT);
     expect(rule?.to).toEqual(label(LABELS.AUTO_REWORKING));
     expect(rule?.run).toBe(ROUTINES.REWORK_LOOP);
   });
 
-  it("auto-rework + ci_fix_pushed -> back to auto-merge, and fires merge-flow itself (no echo)", () => {
+  it("auto-reworking + ci_fix_pushed -> back to auto-merging, and fires merge-flow itself (no echo)", () => {
     const rule = reduce(LABELS.AUTO_REWORKING, EVENTS.CI_FIX_PUSHED);
     expect(rule?.to).toEqual(label(LABELS.AUTO_MERGING));
     expect(rule?.run).toBe(ROUTINES.MERGE_FLOW);
   });
 
-  it("auto-merge + merge_gate_failed_hard -> merge-blocked, needs a human", () => {
+  it("auto-merging + merge_gate_failed_hard -> merge-blocked, needs a human", () => {
     expect(reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_FAILED_HARD)?.to).toEqual(label(LABELS.MERGE_BLOCKED));
   });
 
-  it("merge-blocked + auto-merge re-added -> auto-merge again, fires merge-flow", () => {
+  it("merge-blocked + auto-merging re-added -> auto-merging again, fires merge-flow", () => {
     const rule = reduce(LABELS.MERGE_BLOCKED, EVENTS.LABELLED_AUTO_MERGING);
     expect(rule?.to).toEqual(label(LABELS.AUTO_MERGING));
     expect(rule?.run).toBe(ROUTINES.MERGE_FLOW);
   });
 
-  it("auto-merge + merged -> native close", () => {
+  it("auto-merging + merged -> native close", () => {
     expect(reduce(LABELS.AUTO_MERGING, EVENTS.MERGED)?.to).toEqual(close);
   });
 });
 
 describe("reduce — the review (15-agent-splits.md)", () => {
-  it("ai-review added (from none, a blocked PR, or ai-stuck) -> ai-review, firing nothing until CI is read", () => {
+  it("ai-reviewing added (from none, a blocked PR, or ai-stuck) -> ai-reviewing, firing nothing until CI is read", () => {
     for (const from of ["none", LABELS.AI_BLOCKED, LABELS.AI_STUCK] as const) {
       const rule = reduce(from, EVENTS.LABELLED_AI_REVIEWING);
       expect(rule?.to, from).toEqual(label(LABELS.AI_REVIEWING));
@@ -146,7 +146,7 @@ describe("reduce — the review (15-agent-splits.md)", () => {
     }
   });
 
-  it("CI green fires review-loop and stays in ai-review; CI red hands it to rework-loop first", () => {
+  it("CI green fires review-loop and stays in ai-reviewing; CI red hands it to rework-loop first", () => {
     const green = reduce(LABELS.AI_REVIEWING, EVENTS.REVIEW_CI_PASSED);
     expect(green?.to).toEqual(noop);
     expect(green?.run).toBe(ROUTINES.REVIEW_LOOP);
@@ -165,7 +165,7 @@ describe("reduce — the review (15-agent-splits.md)", () => {
     expect(blocked?.run).toBeUndefined();
   });
 
-  it("that rework's push goes back to ai-review, firing nothing (it waits for the new CI)", () => {
+  it("that rework's push goes back to ai-reviewing, firing nothing (it waits for the new CI)", () => {
     const rule = reduce(LABELS.AUTO_REWORKING, EVENTS.REVIEW_FIX_PUSHED);
     expect(rule?.to).toEqual(label(LABELS.AI_REVIEWING));
     expect(rule?.run).toBeUndefined();
@@ -184,7 +184,7 @@ describe("reduce — the review (15-agent-splits.md)", () => {
 
 describe("reduce — illegal moves are dropped, not errors", () => {
   it("an event with no matching rule for the current state returns null", () => {
-    expect(reduce(LABELS.AI_GENERATED, EVENTS.LABELLED_AI_READY)).toBeNull();
+    expect(reduce(LABELS.PR_OPEN, EVENTS.LABELLED_AI_READY)).toBeNull();
     expect(reduce("none", EVENTS.MERGED)).toBeNull();
     expect(reduce("none", EVENTS.MERGE_GATE_FAILED_HARD)).toBeNull();
   });
@@ -200,7 +200,7 @@ describe("reduce — the watchdog and ai-stuck", () => {
     }
   });
 
-  it("isWatched: ai-discuss (never reports an outcome), none, and ai-stuck itself are not watched", () => {
+  it("isWatched: ai-discussing (never reports an outcome), none, and ai-stuck itself are not watched", () => {
     expect(isWatched(LABELS.AI_READY)).toBe(true);
     expect(isWatched(LABELS.AI_DISCUSSING)).toBe(false);
     expect(isWatched("none")).toBe(false);
@@ -208,12 +208,12 @@ describe("reduce — the watchdog and ai-stuck", () => {
   });
 
   it("a build's outcome labels are finished states, never watched (shadow run 1: finished #116 would have gone ai-stuck)", () => {
-    expect(isWatched(LABELS.AI_GENERATED)).toBe(false);
+    expect(isWatched(LABELS.PR_OPEN)).toBe(false);
     expect(isWatched(LABELS.AI_BLOCKED)).toBe(false);
   });
 
   it("a late outcome still wins from ai-stuck", () => {
-    expect(reduce(LABELS.AI_STUCK, EVENTS.BUILD_SUCCEEDED)?.to).toEqual(label(LABELS.AI_GENERATED));
+    expect(reduce(LABELS.AI_STUCK, EVENTS.BUILD_SUCCEEDED)?.to).toEqual(label(LABELS.PR_OPEN));
     expect(reduce(LABELS.AI_STUCK, EVENTS.BUILD_BLOCKED)?.to).toEqual(label(LABELS.AI_BLOCKED));
     expect(reduce(LABELS.AI_STUCK, EVENTS.RELEASE_BLOCKED)?.to).toEqual(unlabel);
     expect(reduce(LABELS.AI_STUCK, EVENTS.RELEASE_PUBLISHED)?.to).toEqual(close);

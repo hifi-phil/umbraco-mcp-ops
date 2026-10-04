@@ -30,14 +30,14 @@ describe("getLabels", () => {
   it("returns the label names from a successful response", async () => {
     const fetchMock = vi.fn(
       async () =>
-        new Response(JSON.stringify([{ name: "ready-for-ai" }, { name: "dependencies" }]), {
+        new Response(JSON.stringify([{ name: "ai-ready" }, { name: "dependencies" }]), {
           status: 200,
         }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
     const labels = await getLabels(env, "hifi-phil", "umbraco-mcp-ops", 412);
-    expect(labels).toEqual(["ready-for-ai", "dependencies"]);
+    expect(labels).toEqual(["ai-ready", "dependencies"]);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.github.com/repos/hifi-phil/umbraco-mcp-ops/issues/412/labels",
       expect.objectContaining({ method: "GET" }),
@@ -63,7 +63,7 @@ describe("openWithLabel", () => {
       return new Response(JSON.stringify(p === 1 ? page(1, 100) : p === 2 ? page(2, 100) : page(3, 7)), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
-    const numbers = await openWithLabel(env, "hifi-phil", "umbraco-mcp-ops", "ready-for-ai");
+    const numbers = await openWithLabel(env, "hifi-phil", "umbraco-mcp-ops", "ai-ready");
     expect(numbers).toHaveLength(207);
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
@@ -75,9 +75,9 @@ describe("addLabel / removeLabel", () => {
       new Response("[]", { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    await addLabel(env, "hifi-phil", "umbraco-mcp-ops", 412, "generated-by-ai");
+    await addLabel(env, "hifi-phil", "umbraco-mcp-ops", 412, "pr-open");
     const [, options] = fetchMock.mock.calls[0]!;
-    expect(JSON.parse(options!.body as string)).toEqual({ labels: ["generated-by-ai"] });
+    expect(JSON.parse(options!.body as string)).toEqual({ labels: ["pr-open"] });
   });
 
   it("addLabel throws on a 404 (e.g. no access to the repo) instead of silently doing nothing", async () => {
@@ -87,7 +87,7 @@ describe("addLabel / removeLabel", () => {
 
   it("removeLabel tolerates a 404 (already removed) without throwing", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
-    await expect(removeLabel(env, "hifi-phil", "umbraco-mcp-ops", 412, "ready-for-ai")).resolves.toBeUndefined();
+    await expect(removeLabel(env, "hifi-phil", "umbraco-mcp-ops", 412, "ai-ready")).resolves.toBeUndefined();
   });
 
   it("removeLabel URL-encodes the label name", async () => {

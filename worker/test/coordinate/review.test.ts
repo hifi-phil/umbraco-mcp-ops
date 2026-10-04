@@ -1,5 +1,5 @@
-// The review (15-agent-splits.md): ai-review's CI gate, review-loop's
-// verdicts, the pushes that bring a PR back to ai-review, and the caps.
+// The review (15-agent-splits.md): ai-reviewing's CI gate, review-loop's
+// verdicts, the pushes that bring a PR back to ai-reviewing, and the caps.
 import { describe, expect, it, vi } from "vitest";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { EVENTS } from "@orchestrator/graph/constants/events";
@@ -47,7 +47,7 @@ function deps(labels: string[], facts = green, overrides: Partial<Deps> = {}) {
   return fakeDeps({ getLabels: vi.fn(async () => labels), getMergeGateFacts: vi.fn(async () => facts), ...overrides });
 }
 
-describe("ai-review added: the label, then the CI gate", () => {
+describe("ai-reviewing added: the label, then the CI gate", () => {
   it("CI already green: fires review-loop and watches it", async () => {
     const d = deps([LABELS.AI_REVIEWING]);
     const result = await coordinateWebhook(d, labelled(LABELS.AI_REVIEWING));
@@ -68,7 +68,7 @@ describe("ai-review added: the label, then the CI gate", () => {
     }
   });
 
-  it("CI red: rework-loop fixes it first, a counted CI fix that comes back to ai-review", async () => {
+  it("CI red: rework-loop fixes it first, a counted CI fix that comes back to ai-reviewing", async () => {
     const d = deps([LABELS.AI_REVIEWING], red);
     expect(await coordinateWebhook(d, labelled(LABELS.AI_REVIEWING))).toMatchObject({ event: EVENTS.REVIEW_CI_FAILED });
     expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_REVIEWING);
@@ -96,7 +96,7 @@ describe("ai-review added: the label, then the CI gate", () => {
   });
 });
 
-describe("a check suite finishing on an ai-review PR", () => {
+describe("a check suite finishing on an ai-reviewing PR", () => {
   it("green: fires review-loop once, however many suites report after it", async () => {
     const d = deps([LABELS.AI_REVIEWING]);
     expect(await coordinateWebhook(d, checkSuite("s-1"))).toMatchObject({ event: EVENTS.REVIEW_CI_PASSED });
@@ -120,8 +120,8 @@ describe("a check suite finishing on an ai-review PR", () => {
   });
 });
 
-describe("the push that brings a PR back to ai-review", () => {
-  it("after a CI fix started from ai-review: review_fix_pushed -> ai-review, nothing fired (it waits for CI)", async () => {
+describe("the push that brings a PR back to ai-reviewing", () => {
+  it("after a CI fix started from ai-reviewing: review_fix_pushed -> ai-reviewing, nothing fired (it waits for CI)", async () => {
     const d = deps([LABELS.AUTO_REWORKING]);
     await d.setCiFix({ attempts: 1, pending: true, returnTo: LABELS.AI_REVIEWING });
     expect(await coordinateWebhook(d, pushed())).toMatchObject({ event: EVENTS.REVIEW_FIX_PUSHED });
@@ -138,7 +138,7 @@ describe("the push that brings a PR back to ai-review", () => {
     expect(await d.getReviewLoop()).toEqual({ botRounds: 1, fixPending: false });
   });
 
-  it("an auto-merge CI fix still goes back to auto-merge", async () => {
+  it("an auto-merging CI fix still goes back to auto-merging", async () => {
     const d = deps([LABELS.AUTO_REWORKING]);
     await d.setCiFix({ attempts: 1, pending: true });
     expect(await coordinateWebhook(d, pushed())).toMatchObject({ event: EVENTS.CI_FIX_PUSHED });
@@ -168,7 +168,7 @@ describe("review-loop's verdicts", () => {
     expect(d.commentOnIssue).toHaveBeenCalledWith(OWNER, REPO, PR, expect.stringMatching(/asked for changes 3 times/));
   });
 
-  it("pass: ai-review comes off, and the counts reset for the next stage", async () => {
+  it("pass: ai-reviewing comes off, and the counts reset for the next stage", async () => {
     const d = deps([LABELS.AI_REVIEWING]);
     await d.setReviewLoop({ botRounds: 2, fixPending: false });
     await d.setCiFix({ attempts: 2, pending: false, returnTo: LABELS.AI_REVIEWING });
@@ -196,14 +196,14 @@ describe("bot and human review rounds are counted separately", () => {
     });
   });
 
-  it("the review's rounds used up don't stop a person's auto-rework", async () => {
+  it("the review's rounds used up don't stop a person's auto-reworking", async () => {
     const d = deps([LABELS.AUTO_REWORKING]);
     await d.setReviewLoop({ botRounds: MAX_BOT_REVIEW_REWORKS, fixPending: false });
     expect(await coordinateWebhook(d, labelled(LABELS.AUTO_REWORKING))).toMatchObject({ event: EVENTS.LABELLED_AUTO_REWORKING });
     expect(d.fireRoutine).toHaveBeenCalledWith(OWNER, REPO, PR, ROUTINES.REWORK_LOOP);
   });
 
-  it("a person retrying auto-rework from ai-stuck resets the review's count too", async () => {
+  it("a person retrying auto-reworking from ai-stuck resets the review's count too", async () => {
     const d = deps([LABELS.AI_STUCK, LABELS.AUTO_REWORKING]);
     await d.setReviewLoop({ botRounds: MAX_BOT_REVIEW_REWORKS, fixPending: false });
     await coordinateWebhook(d, labelled(LABELS.AUTO_REWORKING));
@@ -211,7 +211,7 @@ describe("bot and human review rounds are counted separately", () => {
   });
 });
 
-describe("the sweep and a PR left in ai-review", () => {
+describe("the sweep and a PR left in ai-reviewing", () => {
   const ref = { owner: OWNER, repo: REPO, issueNumber: PR };
   const opts = { enforced: true, now: Date.parse("2026-10-04T12:00:00Z") };
   const idle = { lastActivityAt: async () => "2026-10-04 08:00:00" };
@@ -242,7 +242,7 @@ describe("a repo's lowered caps (the e2e sandbox's)", () => {
     expect(d.commentOnIssue).toHaveBeenCalledWith(OWNER, REPO, PR, expect.stringMatching(/asked for changes 1 times, the most it's given \(1\)/));
   });
 
-  it("CI fixes under ai-review: the first says 'attempt 1 of 1', the second is past the cap", async () => {
+  it("CI fixes under ai-reviewing: the first says 'attempt 1 of 1', the second is past the cap", async () => {
     const d = deps([LABELS.AI_REVIEWING], red, { caps });
     await coordinateWebhook(d, checkSuite("s-1"));
     expect(d.commentOnIssue).toHaveBeenCalledWith(OWNER, REPO, PR, expect.stringMatching(/attempt 1 of 1/));

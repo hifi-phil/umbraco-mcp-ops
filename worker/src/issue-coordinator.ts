@@ -104,7 +104,7 @@ export class IssueCoordinator {
    * One request at a time for this issue, start to finish. Cloudflare only
    * holds back the next request while a DO awaits its own storage, not while
    * it awaits GitHub or a routine, so two webhooks for one PR (say its
-   * auto-merge label and its CI finishing red) used to interleave mid-run:
+   * auto-merging label and its CI finishing red) used to interleave mid-run:
    * one read labels the other was halfway through swapping (found by e2e on
    * sandbox PR #168). In memory is enough: a DO instance is the only one for
    * its issue, and an evicted instance has nothing in flight.

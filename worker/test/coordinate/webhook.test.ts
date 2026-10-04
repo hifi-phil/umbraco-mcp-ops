@@ -83,12 +83,12 @@ describe("coordinateWebhook — no event / no rule", () => {
   });
 
   it("a legal event with no rule for the current state -> dropped, logged", async () => {
-    // generated-by-ai added while the issue is in ai-discuss: build_succeeded
+    // pr-open added while the issue is in ai-discussing: build_succeeded
     // has no rule from there, and it isn't a contextual event, so it's a gap.
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
     const result = await coordinateWebhook(
       deps,
-      input({ payload: { action: "issues.labeled", label: { name: LABELS.AI_GENERATED }, sender: { login: "phil", type: "User" } } }),
+      input({ payload: { action: "issues.labeled", label: { name: LABELS.PR_OPEN }, sender: { login: "phil", type: "User" } } }),
     );
     expect(result).toEqual({ outcome: "dropped_no_rule", from: LABELS.AI_DISCUSSING, event: EVENTS.BUILD_SUCCEEDED });
     expect(deps.logTransition).toHaveBeenCalledWith(
@@ -96,7 +96,7 @@ describe("coordinateWebhook — no event / no rule", () => {
     );
   });
 
-  it("a contextual event outside its states (a merge with no auto-merge, a push with no auto-rework) -> ignored, not logged", async () => {
+  it("a contextual event outside its states (a merge with no auto-merging, a push with no auto-reworking) -> ignored, not logged", async () => {
     for (const payload of [
       { action: "pull_request.closed", pull_request: { merged: true } },
       { action: "pull_request.synchronize" },
@@ -109,19 +109,19 @@ describe("coordinateWebhook — no event / no rule", () => {
   });
 
   it("the build loop swapping its own label (no outcome comment) clears the watchdog", async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.PR_OPEN]) });
     await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.ISSUE_BUILD_LOOP });
     const result = await coordinateWebhook(
       deps,
-      input({ payload: { action: "issues.labeled", label: { name: LABELS.AI_GENERATED }, sender: { login: "phil", type: "User" } } }),
+      input({ payload: { action: "issues.labeled", label: { name: LABELS.PR_OPEN }, sender: { login: "phil", type: "User" } } }),
     );
-    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_GENERATED, event: EVENTS.BUILD_SUCCEEDED });
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.PR_OPEN, event: EVENTS.BUILD_SUCCEEDED });
     expect(await deps.getPendingFire()).toBeNull();
     expect(deps.addLabel).not.toHaveBeenCalled();
     expect(deps.removeLabel).not.toHaveBeenCalled();
   });
 
-  it("the release loop removing auto-release (blocked, no outcome comment) clears the watchdog", async () => {
+  it("the release loop removing auto-releasing (blocked, no outcome comment) clears the watchdog", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => []) });
     await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.AUTO_RELEASE_LOOP });
     const result = await coordinateWebhook(
@@ -132,7 +132,7 @@ describe("coordinateWebhook — no event / no rule", () => {
     expect(await deps.getPendingFire()).toBeNull();
   });
 
-  it("a discussion reply on an ai-discuss issue fires issue-discuss-loop, unwatched", async () => {
+  it("a discussion reply on an ai-discussing issue fires issue-discuss-loop, unwatched", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
     const result = await coordinateWebhook(
       deps,
@@ -149,7 +149,7 @@ describe("coordinateWebhook — no event / no rule", () => {
     expect(deps.setPendingFire).not.toHaveBeenCalled();
   });
 
-  it("the same comment on an issue that isn't in ai-discuss -> ignored, not logged", async () => {
+  it("the same comment on an issue that isn't in ai-discussing -> ignored, not logged", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => []) });
     const result = await coordinateWebhook(
       deps,
@@ -173,9 +173,9 @@ describe("coordinateWebhook — no event / no rule", () => {
   });
 
   it("a labelled_* event's own label doesn't count towards ambiguity — only genuinely pre-existing labels do", async () => {
-    // ready-for-ai is what THIS event just added, so it's excluded before
-    // checking ambiguity; ai-discuss was already there. The real
-    // pre-event state is just "ai-discuss", which has no rule for
+    // ai-ready is what THIS event just added, so it's excluded before
+    // checking ambiguity; ai-discussing was already there. The real
+    // pre-event state is just "ai-discussing", which has no rule for
     // labelled_ai_ready -- correctly dropped, not ambiguous.
     const deps = fakeDeps({
       getLabels: vi.fn(async () => [LABELS.AI_READY, LABELS.AI_DISCUSSING]),
@@ -232,8 +232,8 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
     expect(deps.clearPendingFire).not.toHaveBeenCalled();
   });
 
-  it("build_succeeded outcome artifact, realistic ordering (issue-build-loop's own Step 3 already swapped ready-for-ai -> generated-by-ai before commenting): applied as a noop confirm, no GitHub write, clears pendingFire", async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
+  it("build_succeeded outcome artifact, realistic ordering (issue-build-loop's own Step 3 already swapped ai-ready -> pr-open before commenting): applied as a noop confirm, no GitHub write, clears pendingFire", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.PR_OPEN]) });
     const body = [
       "PR opened.",
       "",
@@ -254,7 +254,7 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
     expect(deps.setPendingFire).not.toHaveBeenCalled();
   });
 
-  it("Phase 5: build_succeeded marker while ready-for-ai is still on -> the Worker does the swap itself", async () => {
+  it("Phase 5: build_succeeded marker while ai-ready is still on -> the Worker does the swap itself", async () => {
     // Orchestrated loops post the marker and don't swap, so this is the main
     // path now. For a loop that still swaps, this is the rare reverse race;
     // the Worker's swap is then redundant but harmless (the loop's own
@@ -273,12 +273,12 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
     );
     expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_READY, event: EVENTS.BUILD_SUCCEEDED });
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_READY);
-    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_GENERATED);
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.PR_OPEN);
     expect(deps.fireRoutine).not.toHaveBeenCalled();
     expect(await deps.getPendingFire()).toBeNull(); // the outcome ends the watch
   });
 
-  it("Phase 5: release_blocked marker while auto-release is still on -> the Worker removes it", async () => {
+  it("Phase 5: release_blocked marker while auto-releasing is still on -> the Worker removes it", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]) });
     const body = [
       `<!-- agent-outcome:${ROUTINES.AUTO_RELEASE_LOOP} -->`,
@@ -320,15 +320,15 @@ describe("coordinateWebhook — leaving ai-stuck", () => {
   const outcomeComment = (outcome: Record<string, unknown>) =>
     [`<!-- agent-outcome:${ROUTINES.ISSUE_BUILD_LOOP} -->`, "```json", JSON.stringify(outcome), "```"].join("\n");
 
-  it("a late build_succeeded after the routine's own swap landed (ai-stuck + generated-by-ai): read as ai-stuck, only ai-stuck removed", async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK, LABELS.AI_GENERATED]) });
+  it("a late build_succeeded after the routine's own swap landed (ai-stuck + pr-open): read as ai-stuck, only ai-stuck removed", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK, LABELS.PR_OPEN]) });
     const result = await coordinateWebhook(
       deps,
       input({ payload: { action: "issue_comment.created", comment: { body: outcomeComment({ outcome: "build_succeeded", pr: 123 }) } } }),
     );
     expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_STUCK, event: EVENTS.BUILD_SUCCEEDED });
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
-    expect(deps.addLabel).not.toHaveBeenCalled(); // generated-by-ai already there
+    expect(deps.addLabel).not.toHaveBeenCalled(); // pr-open already there
   });
 
   it("a late build_blocked with no swap visible yet (only ai-stuck): swaps ai-stuck -> ai-blocked itself", async () => {
@@ -341,7 +341,7 @@ describe("coordinateWebhook — leaving ai-stuck", () => {
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_BLOCKED);
   });
 
-  it("a human retry — re-adding ready-for-ai on a stuck issue: removes ai-stuck, re-fires issue-build-loop, re-arms the watchdog", async () => {
+  it("a human retry — re-adding ai-ready on a stuck issue: removes ai-stuck, re-fires issue-build-loop, re-arms the watchdog", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK, LABELS.AI_READY]) });
     const result = await coordinateWebhook(
       deps,
@@ -355,7 +355,7 @@ describe("coordinateWebhook — leaving ai-stuck", () => {
   });
 
   it("ai-stuck plus two other tracked labels is still genuinely ambiguous", () => {
-    expect(deriveState([LABELS.AI_STUCK, LABELS.AI_GENERATED, LABELS.AUTO_MERGING])).toBe("ambiguous");
+    expect(deriveState([LABELS.AI_STUCK, LABELS.PR_OPEN, LABELS.AUTO_MERGING])).toBe("ambiguous");
   });
 });
 
@@ -376,17 +376,17 @@ describe("coordinateWebhook — manual_override (a person editing a tracked labe
     expect(deps.fireRoutine).not.toHaveBeenCalled();
   });
 
-  it("a person adds merge-blocked by hand -> logged, from auto-merge", async () => {
+  it("a person adds merge-blocked by hand -> logged, from auto-merging", async () => {
     const deps = fakeDeps({ botLogin: async () => bot, getLabels: vi.fn(async () => [LABELS.AUTO_MERGING, LABELS.MERGE_BLOCKED]) });
     const result = await coordinateWebhook(deps, change("pull_request.labeled", LABELS.MERGE_BLOCKED));
     expect(result).toMatchObject({ outcome: "manual_override", change: "+merge-blocked" });
     expect(row(deps).fromState).toBe(LABELS.AUTO_MERGING);
   });
 
-  it("a person removes auto-merge from a merge-blocked PR (contextual there, normally unlogged) -> logged", async () => {
+  it("a person removes auto-merging from a merge-blocked PR (contextual there, normally unlogged) -> logged", async () => {
     const deps = fakeDeps({ botLogin: async () => bot, getLabels: vi.fn(async () => [LABELS.MERGE_BLOCKED]) });
     const result = await coordinateWebhook(deps, change("pull_request.unlabeled", LABELS.AUTO_MERGING));
-    expect(result).toMatchObject({ outcome: "manual_override", change: "-auto-merge" });
+    expect(result).toMatchObject({ outcome: "manual_override", change: "-auto-merging" });
   });
 
   it("the Worker's own bot changing a label -> not an override, nothing logged", async () => {

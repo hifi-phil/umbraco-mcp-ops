@@ -68,8 +68,8 @@ export type PendingFire = {
   dueAt?: number;
 };
 
-// returnTo: where the fix's push goes back to, auto-merge (the default) or
-// ai-review (CI red before the review).
+// returnTo: where the fix's push goes back to, auto-merging (the default) or
+// ai-reviewing (CI red before the review).
 export type CiFix = { attempts: number; pending: boolean; returnTo?: Label };
 
 // The review's own rounds on this PR: how many times review-loop has asked
@@ -99,7 +99,7 @@ export type StatusUpdate =
 /** After this many CI-fix reworks on one PR, stop and ask a human. */
 export const MAX_CI_FIX_ATTEMPTS = 3;
 
-/** After this many review rework rounds on one PR (auto-rework added by a
+/** After this many review rework rounds on one PR (auto-reworking added by a
  * reviewer outside the orchestrator: a person, or another bot), the next
  * goes to ai-stuck instead of looping (Phase 9, 05-technical-elements.md's
  * default). Tune from real data. */

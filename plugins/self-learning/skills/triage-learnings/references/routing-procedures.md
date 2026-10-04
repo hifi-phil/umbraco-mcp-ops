@@ -12,7 +12,7 @@ concrete command/tool. Issue/PR title and body follow
    `Guessed Home` heuristic) — favor a project-local skill over `CLAUDE.md`
    when unsure, to keep `CLAUDE.md` lean. Let that repo's process decide the
    final placement.
-2. **Do not** add `ready-for-ai` — a human decides whether to feed it to the loop.
+2. **Do not** add `ai-ready` — a human decides whether to feed it to the loop.
 3. Mark the source row: `Status` → `Actioned`, `Notes` → the new issue link.
 
 ## `shared-mcp-skills` (generalizable → PR to Umbraco-MCP-Base)

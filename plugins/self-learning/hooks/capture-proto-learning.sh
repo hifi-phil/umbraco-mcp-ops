@@ -64,11 +64,11 @@ fi
 # Avoids spawning an analyzer for unrelated subagents/sessions. Matches on
 # ecosystem-wide conventions every loop here follows (github-ops is the shared
 # GitHub dependency every loop defers to; /goal drives the autonomous ones;
-# ready-for-ai is the issue-driven ones' trigger label) rather than naming
+# ai-ready is the issue-driven ones' trigger label) rather than naming
 # individual loops — a new loop needs no edit here. False positives are cheap:
 # the analyzer below makes the real, content-based call and just answers
 # `{"file":false}` if this wasn't loop-driven work after all.
-if ! grep -qiE 'github-ops|/goal|ready-for-ai' "$TRANSCRIPT" 2>/dev/null; then
+if ! grep -qiE 'github-ops|/goal|ai-ready' "$TRANSCRIPT" 2>/dev/null; then
   log "transcript has no loop signature — skipping"; exit 0
 fi
 

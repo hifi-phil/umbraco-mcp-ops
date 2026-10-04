@@ -67,7 +67,7 @@ export type MergeGateOutcome = "still_pending" | "soft" | "hard" | null;
  */
 /**
  * The blocks that need a human, checked on their own, without waiting for
- * CI: used when auto-merge is added (CI is usually still running then) and
+ * CI: used when auto-merging is added (CI is usually still running then) and
  * to word the block comment. null also covers "mergeable not computed yet":
  * too early to call a conflict, so it isn't treated as one.
  */

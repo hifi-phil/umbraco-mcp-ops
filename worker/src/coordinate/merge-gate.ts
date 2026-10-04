@@ -1,4 +1,4 @@
-// The merge gate's two outcomes when auto-merge is on: a hard block
+// The merge gate's two outcomes when auto-merging is on: a hard block
 // (merge-blocked) or CI failing, handed to rework-loop up to
 // caps.ciFixAttempts times; and the settled facts both read.
 
@@ -8,8 +8,8 @@ import { EVENTS } from "@orchestrator/graph/constants/events";
 import { depsFor, type Acting, type CoordinateResult, type Deps, type IssueRef } from "./types";
 import { applyEvent } from "./apply";
 
-/** CI failed under auto-merge: swap auto-merge -> auto-rework so
- * rework-loop fixes it (its push swaps back to auto-merge), up to
+/** CI failed under auto-merging: swap auto-merging -> auto-reworking so
+ * rework-loop fixes it (its push swaps back to auto-merging), up to
  * caps.ciFixAttempts per PR, then merge-blocked. */
 export async function handToRework(
   deps: Deps,
@@ -24,9 +24,9 @@ export async function handToRework(
   }
   const result = await applyEvent(deps, input, EVENTS.MERGE_GATE_FAILED_SOFT, currentLabels);
   if (result.outcome === "applied") {
-    // A merge-blocked PR's retry (auto-merge re-added, read as auto-merge):
-    // the rule swaps only auto-merge, so merge-blocked comes off here, or
-    // merge-blocked + auto-rework would read as ambiguous from then on.
+    // A merge-blocked PR's retry (auto-merging re-added, read as auto-merging):
+    // the rule swaps only auto-merging, so merge-blocked comes off here, or
+    // merge-blocked + auto-reworking would read as ambiguous from then on.
     if (currentLabels.includes(LABELS.MERGE_BLOCKED)) {
       await depsFor(deps, EVENTS.MERGE_GATE_FAILED_SOFT).io.removeLabel(input.owner, input.repo, input.issueNumber, LABELS.MERGE_BLOCKED);
     }
@@ -37,7 +37,7 @@ export async function handToRework(
       input.repo,
       input.issueNumber,
       `🔧 CI failing: ${failed}. Handing this to rework-loop to fix (attempt ${attempts + 1} of ` +
-        `${deps.caps.ciFixAttempts}); \`auto-merge\` comes back when it pushes the fix. ` +
+        `${deps.caps.ciFixAttempts}); \`auto-merging\` comes back when it pushes the fix. ` +
         `(Automatic, from the orchestrator's merge gate.)`,
     );
   }
@@ -59,7 +59,7 @@ export async function settledGateFacts(deps: Deps, input: IssueRef): Promise<Mer
 export const MERGEABLE_RETRIES = 2;
 export const MERGEABLE_RETRY_MS = 1000;
 
-/** auto-merge -> merge-blocked (the table's MERGE_GATE_FAILED_HARD rule),
+/** auto-merging -> merge-blocked (the table's MERGE_GATE_FAILED_HARD rule),
  * plus a comment saying why, since the label alone doesn't. */
 export async function blockMerge(
   deps: Deps,
@@ -73,8 +73,8 @@ export async function blockMerge(
       input.owner,
       input.repo,
       input.issueNumber,
-      `🛑 Not merging: ${reason}. \`auto-merge\` is replaced by \`${LABELS.MERGE_BLOCKED}\`. ` +
-        `Fix it, then re-add \`auto-merge\` to try again. (Automatic, from the orchestrator's merge gate.)`,
+      `🛑 Not merging: ${reason}. \`auto-merging\` is replaced by \`${LABELS.MERGE_BLOCKED}\`. ` +
+        `Fix it, then re-add \`auto-merging\` to try again. (Automatic, from the orchestrator's merge gate.)`,
     );
   }
   return result;

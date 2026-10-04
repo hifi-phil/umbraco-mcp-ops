@@ -134,14 +134,14 @@ const lateOutcome = (n: number, loop: string, outcome: Outcome) => comment(n, ou
 export const scenarios: Scenario[] = [
   // --- The lane --------------------------------------------------------------
   {
-    name: "full lane: build -> PR -> auto-merge -> merged, then release -> published",
+    name: "full lane: build -> PR -> auto-merging -> merged, then release -> published",
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
         const issue = t.n(await openIssue("Add a build note", "Add a file under builds/ for this issue.", "success"));
         await addLabel(issue, LABELS.AI_READY);
-        const built = await waitFor(issue, labelsAre(LABELS.AI_GENERATED), 2 * MIN);
-        expectLabels(built, issue, LABELS.AI_GENERATED);
+        const built = await waitFor(issue, labelsAre(LABELS.PR_OPEN), 2 * MIN);
+        expectLabels(built, issue, LABELS.PR_OPEN);
         expect(hasMarker(built, "issue-build-loop", "build_succeeded"), `#${issue} build_succeeded marker`).toBe(true);
         const pr = t.n(Number(built.comments.join("\n").match(/"outcome":"build_succeeded","pr":(\d+)/)?.[1]));
 
@@ -158,7 +158,7 @@ export const scenarios: Scenario[] = [
         await expectLogged(
           issue,
           { event: "labelled_ai_ready", run: "issue-build-loop" },
-          { event: "build_succeeded", effect: LABELS.AI_GENERATED },
+          { event: "build_succeeded", effect: LABELS.PR_OPEN },
         );
         await expectLogged(pr, { event: "labelled_auto_merging", run: "merge-flow" }, { event: "merged", effect: "close" });
         await expectLogged(release, { event: "labelled_auto_releasing", run: "auto-release-loop" }, { event: "release_published", effect: "close" });
@@ -166,7 +166,7 @@ export const scenarios: Scenario[] = [
         // The live-status view: the built issue shows its last run; a closed
         // PR or release has no row.
         expect(await statusOf(issue), `#${issue} status`).toMatchObject({
-          state: LABELS.AI_GENERATED,
+          state: LABELS.PR_OPEN,
           routine: "issue-build-loop",
           attempt: 1,
           running: 0,
@@ -179,7 +179,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "build blocked: ready-for-ai -> ai-blocked",
+    name: "build blocked: ai-ready -> ai-blocked",
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -200,11 +200,11 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "live status: a release closed by hand with auto-release still on -> its row goes",
+    name: "live status: a release closed by hand with auto-releasing still on -> its row goes",
     timeoutMs: 2 * MIN,
     run: () =>
       scoped(async (t) => {
-        // issue_closed from auto-release is a noop rule that applies; the
+        // issue_closed from auto-releasing is a noop rule that applies; the
         // row must still go, whatever order the close's webhooks land in.
         const issue = t.n(await openIssue("Close me mid-release", "A person closes this while it's releasing.", "silent"));
         await addLabel(issue, LABELS.AUTO_RELEASING);
@@ -241,7 +241,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "release blocked: auto-release removed, issue stays open",
+    name: "release blocked: auto-releasing removed, issue stays open",
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -255,7 +255,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "review rework: auto-rework -> push -> label cleared",
+    name: "review rework: auto-reworking -> push -> label cleared",
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -269,7 +269,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "discussion: ai-discuss -> a round, a human reply -> the next round; '//' replies are ignored",
+    name: "discussion: ai-discussing -> a round, a human reply -> the next round; '//' replies are ignored",
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -297,7 +297,7 @@ export const scenarios: Scenario[] = [
 
   // --- The merge gate ------------------------------------------------------------
   {
-    name: "CI red before auto-merge: auto-rework at label time -> fix -> auto-merge -> merged",
+    name: "CI red before auto-merging: auto-reworking at label time -> fix -> auto-merging -> merged",
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -312,7 +312,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "CI red after auto-merge: the check_suite path -> auto-rework -> fix -> merged",
+    name: "CI red after auto-merging: the check_suite path -> auto-reworking -> fix -> merged",
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -357,7 +357,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "merge conflict -> merge-blocked; fixed and auto-merge re-added -> merged",
+    name: "merge conflict -> merge-blocked; fixed and auto-merging re-added -> merged",
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -397,7 +397,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "requested changes -> merge-blocked; approved and auto-merge re-added -> merged",
+    name: "requested changes -> merge-blocked; approved and auto-merging re-added -> merged",
     timeoutMs: 6 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -438,7 +438,7 @@ export const scenarios: Scenario[] = [
 
   // --- The watchdog and ai-stuck (the sandbox's watchdog is real, short) --------
   {
-    name: "watchdog: silent build -> ai-stuck; late build_succeeded -> generated-by-ai",
+    name: "watchdog: silent build -> ai-stuck; late build_succeeded -> pr-open",
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -446,7 +446,7 @@ export const scenarios: Scenario[] = [
         const stuck = await expectStuck(issue, LABELS.AI_READY);
         expect(hasComment(stuck, "No progress step was ever reported")).toBe(true);
         await lateOutcome(issue, "issue-build-loop", { outcome: "build_succeeded", pr: 1 });
-        expectLabels(await waitFor(issue, labelsAre(LABELS.AI_GENERATED), MIN), issue, LABELS.AI_GENERATED);
+        expectLabels(await waitFor(issue, labelsAre(LABELS.PR_OPEN), MIN), issue, LABELS.PR_OPEN);
       }),
   },
   {
@@ -551,7 +551,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck build, ready-for-ai re-added -> retried -> ai-blocked",
+    name: "watchdog: stuck build, ai-ready re-added -> retried -> ai-blocked",
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -587,7 +587,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck release, auto-release re-added -> retried -> published",
+    name: "watchdog: stuck release, auto-releasing re-added -> retried -> published",
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -610,7 +610,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck rework, auto-rework re-added -> retried -> pushed and cleared",
+    name: "watchdog: stuck rework, auto-reworking re-added -> retried -> pushed and cleared",
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -622,7 +622,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck merge-flow, auto-merge re-added -> retried -> merged",
+    name: "watchdog: stuck merge-flow, auto-merging re-added -> retried -> merged",
     timeoutMs: STUCK_WAIT + 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -648,7 +648,7 @@ export const scenarios: Scenario[] = [
   },
   // --- The review (15-agent-splits.md) ---------------------------------------
   {
-    name: "review: ai-review on a green PR -> review-loop -> passed -> unlabelled; re-added -> reviewed again",
+    name: "review: ai-reviewing on a green PR -> review-loop -> passed -> unlabelled; re-added -> reviewed again",
     timeoutMs: 6 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -697,7 +697,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "review: blocked -> ai-blocked, waits; a person re-adds ai-review -> reviewed again -> passed",
+    name: "review: blocked -> ai-blocked, waits; a person re-adds ai-reviewing -> reviewed again -> passed",
     timeoutMs: 6 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -715,7 +715,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "review: CI red under ai-review -> CI fix -> back to ai-review -> passed",
+    name: "review: CI red under ai-reviewing -> CI fix -> back to ai-reviewing -> passed",
     timeoutMs: 9 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -745,7 +745,7 @@ export const scenarios: Scenario[] = [
         expect(hasComment(s, `asked for changes ${CAP} times`)).toBe(true);
         const rows = await expectLogged(pr.number, { event: "rework_cap_reached", effect: LABELS.AI_STUCK });
         expect(rows.filter((r) => r.event === "review_findings"), "a counted round per finding, up to the cap").toHaveLength(CAP);
-        expect(rows.filter((r) => r.event === "review_fix_pushed"), "a push back to ai-review per round").toHaveLength(CAP);
+        expect(rows.filter((r) => r.event === "review_fix_pushed"), "a push back to ai-reviewing per round").toHaveLength(CAP);
       }),
   },
 ];

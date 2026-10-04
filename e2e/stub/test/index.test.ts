@@ -147,7 +147,7 @@ describe("act — review-loop", () => {
 
 describe("act — merge-flow (mergeIfGreen)", () => {
   const pull = (over: Record<string, unknown> = {}) => ({
-    [`GET ${R}/pulls/7`]: { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merge" }], ...over },
+    [`GET ${R}/pulls/7`]: { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merging" }], ...over },
   });
   const runs = (...r: { status: string; conclusion: string | null }[]) => ({
     [`GET ${R}/commits/h/check-runs`]: { check_runs: r.map((x, i) => ({ name: `c${i}`, ...x })) },
@@ -172,7 +172,7 @@ describe("act — merge-flow (mergeIfGreen)", () => {
     expect(calls(gh).some((c) => c.includes("/merge") || c.includes("/labels"))).toBe(false);
   });
 
-  it("no auto-merge label, closed, or a conflict -> does nothing", async () => {
+  it("no auto-merging label, closed, or a conflict -> does nothing", async () => {
     for (const over of [{ labels: [] }, { state: "closed" }, { mergeable: false }]) {
       const gh = fakeGh({ ...pull(over), ...runs({ status: "completed", conclusion: "success" }) });
       expect(await mergeIfGreen(gh, fireFor("merge-flow"))).toBe("none");
@@ -187,7 +187,7 @@ describe("act — merge-flow (mergeIfGreen)", () => {
       if (path.endsWith("/pulls/7")) {
         reads++;
         return reads === 1
-          ? { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merge" }] }
+          ? { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merging" }] }
           : { state: "closed", merged: true };
       }
       if (path.endsWith("/check-runs")) return { check_runs: [{ name: "ci", status: "completed", conclusion: "success" }] };
@@ -204,7 +204,7 @@ describe("act — merge-flow (mergeIfGreen)", () => {
         if (++puts === 1) throw new Error(`GitHub PUT ${path} failed: 405 Base branch was modified`);
         return {};
       }
-      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merge" }] };
+      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merging" }] };
       if (path.endsWith("/check-runs")) return { check_runs: [{ name: "ci", status: "completed", conclusion: "success" }] };
       return {};
     });
@@ -436,7 +436,7 @@ describe("handleWebhook (the stub's own check_suite webhook)", () => {
     let checks = 0;
     const gh = vi.fn<Gh>(async (method, path) => {
       if (path.endsWith("/issues/7")) return { body: "<!-- e2e: merge -->" };
-      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merge" }] };
+      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merging" }] };
       if (path.endsWith("/check-runs")) {
         checks++;
         return { check_runs: [{ name: "ci", status: checks < 2 ? "in_progress" : "completed", conclusion: checks < 2 ? null : "success" }] };

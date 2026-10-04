@@ -10,7 +10,7 @@ const row = (o: Partial<TransitionRow> = {}): TransitionRow => ({
   issueNumber: 412,
   fromState: "none",
   event: "labelled_ai_ready",
-  toEffect: '{"kind":"label","value":"ready-for-ai"}',
+  toEffect: '{"kind":"label","value":"ai-ready"}',
   run: "issue-build-loop",
   droppedReason: null,
   mode: "enforce",
@@ -27,7 +27,7 @@ describe("db/transitions — the log, against real SQLite", () => {
       delivery_id: "d-1",
       from_state: "none",
       event: "labelled_ai_ready",
-      to_effect: '{"kind":"label","value":"ready-for-ai"}',
+      to_effect: '{"kind":"label","value":"ai-ready"}',
       run: "issue-build-loop",
       dropped_reason: null,
       mode: "enforce",
@@ -52,11 +52,11 @@ describe("db/transitions — the log, against real SQLite", () => {
     expect(await transitions.lastActivityAt(db, "hifi-phil", "umbraco-mcp-ops", 412)).toBeNull();
     db.exec(`INSERT INTO transitions (owner, repo, issue_number, from_state, event, mode, created_at) VALUES
       ('hifi-phil', 'umbraco-mcp-ops', 412, 'none', 'labelled_ai_ready', 'enforce', '2026-10-03 10:00:00'),
-      ('hifi-phil', 'umbraco-mcp-ops', 412, 'ready-for-ai', 'reconcile_refire', 'shadow', '2026-10-03 12:00:00'),
+      ('hifi-phil', 'umbraco-mcp-ops', 412, 'ai-ready', 'reconcile_refire', 'shadow', '2026-10-03 12:00:00'),
       ('hifi-phil', 'umbraco-mcp-ops', 413, 'none', 'labelled_ai_ready', 'enforce', '2026-10-03 13:00:00')`);
     expect(await transitions.lastActivityAt(db, "Hifi-Phil", "umbraco-mcp-ops", 412)).toBe("2026-10-03 10:00:00");
     db.exec(`INSERT INTO transitions (owner, repo, issue_number, from_state, event, mode, created_at) VALUES
-      ('hifi-phil', 'umbraco-mcp-ops', 412, 'ready-for-ai', 'reconcile_refire', 'enforce', '2026-10-03 14:00:00')`);
+      ('hifi-phil', 'umbraco-mcp-ops', 412, 'ai-ready', 'reconcile_refire', 'enforce', '2026-10-03 14:00:00')`);
     expect(await transitions.lastActivityAt(db, "hifi-phil", "umbraco-mcp-ops", 412)).toBe("2026-10-03 14:00:00");
   });
 

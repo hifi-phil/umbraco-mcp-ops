@@ -30,7 +30,7 @@ export const TRIGGER_LABELS = Object.keys(TRIGGER_EVENTS) as Label[];
 export type ReconcileResult =
   | { outcome: "watched" }
   | { outcome: "completed" } // its last run reported done; it's waiting, not lost
-  | { outcome: "gated"; result: CoordinateResult } // a lost auto-merge fire, gated first like the webhook path
+  | { outcome: "gated"; result: CoordinateResult } // a lost auto-merging fire, gated first like the webhook path
   | { outcome: "not_triggered"; state: string }
   | { outcome: "recent"; idleMinutes: number }
   | {
@@ -76,7 +76,7 @@ export async function coordinateReconcile(
   const labels = await deps.getLabels(ref.owner, ref.repo, ref.issueNumber);
   const state = deriveState(labels);
   const event = state === "ambiguous" || state === "none" ? undefined : TRIGGER_EVENTS[state as Label];
-  // ai-review fires nothing itself (its CI gate does), so it's swept by the
+  // ai-reviewing fires nothing itself (its CI gate does), so it's swept by the
   // routine the gate would fire.
   const run = state === LABELS.AI_REVIEWING ? ROUTINES.REVIEW_LOOP : event ? reduce("none", event)?.run : undefined;
   if (!run) return { outcome: "not_triggered", state };
@@ -108,11 +108,11 @@ export async function coordinateReconcile(
         : undefined;
   if (enforced && held) enforced = false;
 
-  // A lost auto-merge fire goes through the same gate as a fresh label: a
+  // A lost auto-merging fire goes through the same gate as a fresh label: a
   // conflict or requested changes -> merge-blocked, red CI -> rework, else
   // merge-flow below.
   if (enforced && state === LABELS.AUTO_MERGING) {
-    // A person's lost retry of a merge-blocked PR (auto-merge re-added, both
+    // A person's lost retry of a merge-blocked PR (auto-merging re-added, both
     // labels on): a fresh CI-fix count, as the webhook path starts.
     const retry = labels.includes(LABELS.MERGE_BLOCKED);
     if (retry) await deps.setCiFix(null);
@@ -144,7 +144,7 @@ export async function coordinateReconcile(
     }
   }
 
-  // A PR left in ai-review (a lost check_suite webhook, or a lost review
+  // A PR left in ai-reviewing (a lost check_suite webhook, or a lost review
   // fire): the CI gate again, as when the label went on.
   if (enforced && state === LABELS.AI_REVIEWING) {
     return { outcome: "gated", result: await reviewGate(deps, { ...ref, actor: "sweep" }, labels) };

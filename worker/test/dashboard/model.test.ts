@@ -25,7 +25,7 @@ const status = (o: Partial<StatusRow> = {}): StatusRow => ({
   owner: "hifi-phil",
   repo: "umbraco-mcp-ops",
   issue_number: 412,
-  state: "ready-for-ai",
+  state: "ai-ready",
   routine: "issue-build-loop",
   attempt: 1,
   running: 1,
@@ -57,7 +57,7 @@ describe("attachedRepos", () => {
 
 describe("buildItems", () => {
   it("joins the live status and the item's kind and title", () => {
-    expect(buildItems([activity()], [status()], [meta()], REPOS)[0]).toMatchObject({ repo: OPS, n: 412, kind: "issue", title: "Add a thing", closed: false, status: { state: "ready-for-ai" } });
+    expect(buildItems([activity()], [status()], [meta()], REPOS)[0]).toMatchObject({ repo: OPS, n: 412, kind: "issue", title: "Add a thing", closed: false, status: { state: "ai-ready" } });
   });
 
   it("not known yet: a PR-only event makes it a PR, a closing last event closed; otherwise an issue", () => {

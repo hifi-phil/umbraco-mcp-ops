@@ -25,7 +25,7 @@ E2E_ONLY=conflict,watchdog npm run e2e   # just the scenarios whose name contain
 
 `npm run e2e` uses your `gh` login (or `GITHUB_TOKEN`). It prints progress
 as it goes, one tagged line per step and per label change
-(`06:18:23 [CI-fix limit] #122 open [auto-merge] -> open [auto-rework]`);
+(`06:18:23 [CI-fix limit] #122 open [auto-merging] -> open [auto-reworking]`);
 `E2E_QUIET=1` turns that off. Scenarios run five at a time.
 
 The Worker and the stub must be deployed with `e2e_repo` set in
@@ -60,7 +60,7 @@ Latest full run (01-10-2026): all 21 scenarios and the audit pass in about
 
 A real merge-flow polls CI for minutes, which a Worker request can't. So
 the stub also has its own `check_suite` webhook (`POST /webhook`) and runs
-merge-flow's gate again when CI finishes on a PR carrying `auto-merge`. It
+merge-flow's gate again when CI finishes on a PR carrying `auto-merging`. It
 finds the PRs by commit when GitHub's payload leaves them out, and
 re-checks a gate that still reads "CI running".
 
@@ -69,14 +69,14 @@ re-checks a gate that still reads "CI running".
 **Scenarios** (`driver/scenarios.ts`):
 
 - The lane:
-  1. Full lane: build, PR, `auto-merge`, merged, then `auto-release`, published.
+  1. Full lane: build, PR, `auto-merging`, merged, then `auto-releasing`, published.
   2. Build blocked.
   3. Release blocked.
   4. Review rework.
   5. Discussion rounds (and `//` comments ignored).
 - The merge gate:
-  1. CI red before `auto-merge` (the label-time path).
-  2. CI red after `auto-merge` (the `check_suite` path).
+  1. CI red before `auto-merging` (the label-time path).
+  2. CI red after `auto-merging` (the `check_suite` path).
   3. The CI-fix limit → `merge-blocked`.
   4. A merge conflict → `merge-blocked`, fixed and retried → merged.
   5. A `check_suite` two PRs share, fanned out to both.
@@ -134,7 +134,7 @@ the Worker's `GET /status` (key: `tofu output -raw status_secret`, or
   have no row
 - a stuck issue keeps its dead run's last step, and moves to `ai-blocked`
   when the late outcome lands
-- a release a person closes with `auto-release` still on loses its row,
+- a release a person closes with `auto-releasing` still on loses its row,
   though `issue_closed`'s no-op rule applies (the order that left #443
   behind)
 

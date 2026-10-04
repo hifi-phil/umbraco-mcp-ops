@@ -25,7 +25,7 @@ the label already *on* the issue, so the gate is built from the issue and the co
 
 | Field | Example | Notes |
 |---|---|---|
-| issue labels | `bug,ai-discuss` | `.issue.labels[].name` — the labels already on the issue |
+| issue labels | `bug,ai-discussing` | `.issue.labels[].name` — the labels already on the issue |
 | issue state | `open` | `.issue.state` — a closed issue routes nowhere |
 | author association | `OWNER` | `.comment.author_association` — only `OWNER`/`MEMBER`/`COLLABORATOR` route. These repos are public; without this any user could fire a session |
 | author type | `User` | `.comment.user.type` — must be `User` |
@@ -50,7 +50,7 @@ supersedes that; the field contract is identical either way.)
    it prints `route=<loop|none>`. Act only on a named route; **any other value → quiet
    no-op.** Do **not** wake a loop and let it sweep on a label you don't care about —
    that's the wasteful pattern (a Dependabot PR labelled `dependencies` must *not* trigger
-   the `auto-merge` path; that's what caused merge-flow to fire 4× overnight). A scripted
+   the `auto-merging` path; that's what caused merge-flow to fire 4× overnight). A scripted
    decision is byte-identical across firings and model instances.
 4. **Fetch details with the exact values** through `github-ops` — `issue_read`
    (`method: "get"`) for issues, `pull_request_read` (`method: "get"`) for PRs — using

@@ -211,7 +211,7 @@ export function when(at: string): string {
 export function tone(state: string): string {
   if (state === "ai-stuck" || state === "merge-blocked") return "danger";
   if (state === "ai-blocked") return "warning";
-  if (state === "generated-by-ai") return "positive";
+  if (state === "pr-open") return "positive";
   return "default";
 }
 

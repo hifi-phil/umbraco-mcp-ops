@@ -10,7 +10,7 @@ function facts(overrides: Partial<MergeGateFacts> = {}): MergeGateFacts {
   };
 }
 
-describe("hardBlockReason (checked when auto-merge is added, CI or not)", () => {
+describe("hardBlockReason (checked when auto-merging is added, CI or not)", () => {
   const pending = [{ status: "in_progress" as const, conclusion: null }];
 
   it("a conflict or requested changes block even while CI is still running", () => {
