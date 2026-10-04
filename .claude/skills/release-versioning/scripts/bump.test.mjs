@@ -26,6 +26,8 @@ put(".claude-plugin/marketplace.json", {
   plugins: [plugin("changed", "1.0.0"), plugin("still", "1.0.0"), plugin("drift", "1.2.0", "1.3.0"), plugin("drift-still", "1.2.0", "1.3.0")],
 });
 put("worker/package.json", { name: "worker", version: "0.1.0" });
+// npm workspaces: the root lockfile records the worker's version too
+put("package-lock.json", { name: "repo", lockfileVersion: 3, packages: { "": { name: "repo" }, worker: { name: "worker", version: "0.1.0" } } });
 git("init", "-q");
 git("config", "user.email", "t@t");
 git("config", "user.name", "t");
@@ -63,6 +65,7 @@ assert.deepEqual([entry("still"), own("still")], ["1.0.0", "1.0.0"]);
 assert.deepEqual([entry("drift"), own("drift")], ["1.4.0", "1.4.0"]);
 assert.deepEqual([entry("drift-still"), own("drift-still")], ["1.2.0", "1.3.0"]);
 assert.equal(get("worker/package.json").version, "0.2.0");
+assert.equal(get("package-lock.json").packages.worker.version, "0.2.0", "the root lockfile follows, or npm ci refuses it");
 
 // a lower version is rejected
 assert.throws(() => run("1.0.0"));

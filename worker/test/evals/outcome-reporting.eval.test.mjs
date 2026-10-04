@@ -3,7 +3,7 @@
 // OUTCOME_CONFIGS) — issue-build-loop's build_succeeded/build_blocked,
 // auto-release-loop's release_blocked/release_published. Checks agent
 // BEHAVIOR against verbatim skill text, not the reducer (that's the "unit"
-// project's job, with fakes — see ../coordinate.test.ts). Deliberately not
+// project's job, with fakes — see ../coordinate/*.test.ts). Deliberately not
 // a `.ts` file: it imports mock-github's plain-JS ecosystem
 // (agent-runner.mjs/mock-state.mjs) directly, matching that ecosystem's
 // own untyped convention rather than adding TS/allowJs friction at the

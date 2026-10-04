@@ -14,7 +14,7 @@ Worker through its **GitHub App**, which tofu can't manage (see below).
 
 ```bash
 cd worker
-npm ci && npm run build                     # wrangler bundles to dist/index.js
+npm ci && npm run build                     # npm ci installs every workspace; wrangler bundles to dist/index.js
 cd terraform
 cp terraform.tfvars.example terraform.tfvars   # fill in; gitignored
 export CLOUDFLARE_API_TOKEN=…   # account token: Workers Scripts: Edit, D1: Edit
@@ -73,22 +73,54 @@ namespace removed first.
 
 ```
 src/
-  coordinate.ts        the actual dispatch logic — dependency-injected,
-                        no ctx.storage/fetch/D1 — tested with plain vitest
+  coordinate/          the actual dispatch logic — dependency-injected,
+                        no ctx.storage/fetch/D1 — tested with plain vitest;
+                        one file per job (index.ts lists them)
   webhook-parse.ts      raw GitHub webhook -> routing info + WebhookPayload
                         — pure, tested with plain vitest
   github-client.ts      real fetch-based GitHub REST calls
   routines-client.ts    real fetch-based Claude Code routines API call
   issue-coordinator.ts  the Durable Object class — thin, wires
-                        coordinate.ts's Deps to real storage/D1/clients
+                        coordinate/types.ts's Deps to real storage/D1/clients
   index.ts              the Worker fetch handler — thin, wires
                         webhook-parse.ts to the right DO instance
+  scheduler.ts          the Scheduler DO: the reconciliation sweep's alarm
+  dashboard/            the dashboard, on Hono (the Worker's router too):
+    app.tsx               its routes, and the sign-in check in front
+    model.ts              filters, building and ordering the list (pure)
+    views/*.tsx           the pages, as server-rendered JSX components:
+                          Hono escapes every value; no script ships
+    styles.ts             the stylesheet (the Cloud Portal design system)
+  auth.ts, controls.ts, items.ts
+                        GitHub sign-in, per-repo controls, and filling
+                        item titles from GitHub
+  db/                   every D1 read and write, one module per table:
+    transitions.ts        the log (reads by issue only, via its index)
+    issue-status.ts       the live-status row per open issue
+    items.ts              kind, title, state, and each item's log summary
+    controls.ts           per-repo switches
 ```
+
+**All SQL lives in `src/db/`.** Nothing else calls `prepare()`: callers use
+the repository functions, so every D1 read is in one place to review (the
+free plan allows 5M rows read a day, and a read that scans the whole log on
+a schedule or a page load is how that ran out on 03-10-2026).
+
+**Two test suites, both in `npm test`:**
+- `unit` (`test/*.test.ts`, `test/coordinate/`): the logic, against fakes.
+- `db` (`test/db/`, `test/dashboard/`, `npm run test:db`): the
+  repositories, and the dashboard through its Hono routes, against a real
+  SQLite database (Node's built-in `node:sqlite`, Node 22.5+, D1 being
+  SQLite) with the real migrations applied, through a small D1 adapter
+  (`test/db/sqlite-d1.ts`). The SQL itself runs, migrations included, and
+  `queryPlan()` checks a query uses its index rather than scanning a table.
+  Typechecked under its own `test/db/tsconfig.json` (Node's types, kept
+  apart from the Worker's).
 
 ## What's actually verified, and how
 
 **135 unit tests** (`npm test` — the `"unit"` vitest workspace project;
-see `vitest.workspace.ts`) cover `coordinate.ts` (the decision logic,
+see `vitest.workspace.ts`) cover `coordinate/` (the decision logic,
 against fake in-memory deps), `webhook-parse.ts` (payload mapping +
 signature verification), `github-client.ts` and `routines-client.ts`
 (against mocked `fetch`, including the `GITHUB_API_BASE_URL` override seam
@@ -106,7 +138,7 @@ logs a `watchdog_expired` row to D1 and clears state; a failing GitHub call
 leaves the pending fire for the platform's alarm retry; the no-pending case
 is a harmless no-op — see "The watchdog is a real event" below), and that two `IssueCoordinator` instances (standing in
 for two different issues' real DOs) never share dedup/pending-fire state.
-All of this via the same fake-deps pattern `coordinate.test.ts` already
+All of this via the same fake-deps pattern `coordinate/*.test.ts` already
 used — no `@cloudflare/vitest-pool-workers` (that package needs vitest
 ^4, and this repo pins vitest ^2; pulling it in would mean an unprompted
 major-version bump of an existing dependency, not just adding a new one —
@@ -301,7 +333,7 @@ that event directly is the *more* faithful stand-in, not a shortcut.
 a native single-fact webhook nor a self-report — it's the Worker
 independently re-deriving a judgment from several live facts**, matching
 option (b) from the discussion that led here: rather than trust a
-self-reported artifact, `worker/src/coordinate.ts`'s
+self-reported artifact, `worker/src/coordinate/`'s
 `handleCheckSuiteCompleted` re-fetches the full check-run list for the
 head SHA, the latest review state, and mergeability — real GitHub-shaped
 calls (`getPull`/`getCheckRuns`/`getLatestReviewState` in
@@ -388,7 +420,7 @@ its DO, bypassing GitHub entirely — now has a real receiving endpoint:
 what that file's own design already specified: neither kind ever calls
 `reduce()` or writes a label/close. `"process"` records the step on the
 pending fire (`lastStep`/`lastStepAt`, quoted by the watchdog's comment if
-the run then dies) and re-schedules the watchdog alarm (`coordinate.ts`'s
+the run then dies) and re-schedules the watchdog alarm (`coordinate/`'s
 `coordinateRoutineSignal` → `setPendingFire`); `"completion"` cancels it early
 (`clearPendingFire`) — the real state transition still only ever comes
 from `github/from-github.ts` reading the actual GitHub comment, later.
@@ -404,7 +436,7 @@ signal for a routine that isn't the one currently pending on that issue
 rather than silently accepted — a light guard against a stale/misrouted
 signal touching the wrong run's watchdog.
 
-Unit tested end to end — `coordinate.test.ts` (the parse/mismatch/extend/
+Unit tested end to end — `coordinate/*.test.ts` (the parse/mismatch/extend/
 cancel logic against fake deps), `issue-coordinator.test.ts` (the DO's
 `/routine-signal` branch, real `ctx.storage.setAlarm`/`deleteAlarm` calls),
 `index.test.ts` (auth, routing, validation).
@@ -461,11 +493,93 @@ Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
   a month. That's well inside the Free plan,
   and inside the $5 Paid allowance.
 
+## The live-status dashboard (Phase 8)
+
+`GET /status` shows every open issue the Worker is tracking: its state, the
+routine last fired for it and which attempt that is, whether a watched run
+is out now, the run's last heartbeat step, and its CI-fix reworks.
+
+- **Open it:** `<worker_url>/status`, and sign in with GitHub. Only a
+  GitHub account with a verified `@umbraco.com` or `@umbraco.dk` email gets
+  in (`sign_in_domains`). The session lasts 7 days; "Sign out" is in the top
+  bar.
+- **Pages:**
+  - `/status`: one list of every issue and PR the Worker has a log for,
+    open or closed, across the attached repos (`repo_routines` plus the
+    sandbox). Running first, then needing attention, then open, then the
+    rest by latest activity. Pills filter it by type (issues, pull
+    requests), status (open, running, needs attention, closed) and repo,
+    each with its count; a box finds a number. Selecting one opens its
+    whole D1 transition log beside the list (under it on a narrow screen):
+    time, event, from, who caused it (`actor`, migration 0008: the
+    webhook's sender, highlighted when it's a person, or "the watchdog" /
+    "the sweep"), effect, routine, mode, delivery, dropped reason,
+    newest first, under its live status. Every filter and the selection
+    are in the URL (`?type= &status= &repo= &n= &open=owner/repo/N`), so a
+    view can be shared, and survives the 5-minute refresh
+  - `/status/repo?repo=…`: the repo's controls (below) and its
+    repository-level activity (`control_changed` rows)
+- **Kind and title:** `items` in D1 (`migrations/0006_items.sql`), filled
+  from every webhook that carries an issue or PR: whether it's an issue or
+  a PR, its title, its GitHub state. Display only. An item with no title
+  yet (its webhooks all came before the table) is looked up on GitHub
+  after a page load that shows it, up to 20 a load; until then it counts as
+  a PR if it logged a PR-only event, else as an issue.
+- **What a load reads (D1's free plan allows 5M rows read a day):** one
+  `items` row per item, never the transition log. Each item's row carries
+  a summary of its log (`migrations/0007_items_summary.sql`: newest event
+  and time, event count, PR-only flag), which the issue DO updates as it
+  writes each log row. Only the open log panel reads `transitions`, and
+  only that item's rows. Before this the list read the whole log on every
+  load, and a tab left open on the 30-second refresh used three quarters of
+  a day's allowance (03-10-2026).
+- **Scripts:** `Authorization: Bearer <tofu output -raw status_secret>`,
+  and `?format=json` gives the rows.
+- **Per-repo controls:** `repo_controls` in D1
+  (`migrations/0005_repo_controls.sql`, `src/controls.ts`), switched on a
+  repo's settings page. No row means on. Each change records who and when,
+  and logs a `control_changed` row (issue 0) to `transitions`. A change
+  must be a POST from the dashboard's own origin, by a signed-in person or
+  the Bearer key.
+  - **`sweep`:** off, and the Scheduler skips that repo
+    (`SweepSummary.paused`). If it can't read the switches it sweeps
+    nothing that time, rather than a repo someone turned off.
+  - More controls (an agent or routine each) are one entry in `CONTROLS`
+    plus the place that reads it.
+- **Setting up sign-in:** it goes through the Worker's GitHub App
+  (`src/auth.ts`), so there's no second OAuth app. In the App's settings:
+  1. General -> Callback URL: `tofu output -raw sign_in_callback_url`.
+  2. Permissions -> Account permissions -> Email addresses: Read-only (how
+     the Worker reads a person's verified emails).
+  3. General -> Client secrets -> Generate a new client secret.
+  4. Set `github_app_client_id` (General -> Client ID) and
+     `github_app_client_secret` in `terraform.tfvars`, and apply.
+
+  The Worker checks the domain itself, on its own server, then signs its own
+  session cookie (`SESSION_SECRET`, generated by tofu); the GitHub token is
+  used once and dropped. The same shape as the Umbraco AI Academy's gate,
+  which does it with Google.
+- **The table:** `issue_status` in D1 (`migrations/0004_issue_status.sql`),
+  one row per open issue, written by each issue's DO:
+  - an enforced rule that applies, or a sweep re-fire, upserts it. A fire
+    starts a new run (step cleared), and the attempt counts on while it's
+    the same routine as last time
+  - a heartbeat sets the step; a completion signal marks it not running
+  - a CI-fix rework sets the count
+  - a close (the Worker's, a person's, a PR's `Closes #`) deletes it, as
+    does a rule that leaves no tracked label and fires nothing
+- **Side effect only:** nothing reads it to decide anything, and a failed
+  write is logged, never failing the transition. Shadow events don't write
+  it (their labels never moved), so a shadow repo has no rows.
+- **Refreshes itself every 5 minutes** (a meta refresh), no push, with an
+  "Updated HH:MM · Refresh" link for sooner. An issue the Worker
+  first sees after this deploy gets its row on its next transition.
+
 ## The watchdog is a real event
 
 A watched routine that never reports back now moves the issue through the
 reducer like any other fact, rather than only leaving a comment. When the
-alarm fires, `coordinate.ts`'s `coordinateWatchdogExpired` raises
+alarm fires, `coordinate/watchdog.ts`'s `coordinateWatchdogExpired` raises
 `watchdog_expired` against the live labels, and `graph.ts`'s table moves
 the issue to **`ai-stuck`** from any state a watched routine can leave it
 in (`ready-for-ai`, `auto-release`, `auto-rework`, `auto-merge`, plus
@@ -494,7 +608,7 @@ step if there was one) and logs the transition to D1.
 
 `MODE` (a `wrangler.toml` var, `"shadow"` by default) decides whether the
 Worker writes anything. Only the exact string `"enforce"` does; unset or a
-typo is shadow (`coordinate.ts`'s `resolveMode`), so the Worker can't start
+typo is shadow (`coordinate/types.ts`'s `resolveMode`), so the Worker can't start
 writing labels next to loops that still swap their own.
 
 In shadow, `shadowDeps()` makes `addLabel`/`removeLabel`/`closeIssue`/
@@ -533,7 +647,7 @@ Webhooks `translate()` doesn't recognise at all leave no row. Neither do
 comments, closes and trigger-label removals) outside the states where they
 mean something. A push to a PR that isn't in `auto-rework` is ordinary
 activity, not a gap. The watchdog's timeout is per routine
-(`coordinate.ts`'s `watchdogMinutesFor`: release 60 min, build 60,
+(`coordinate/types.ts`'s `watchdogMinutesFor`: release 60 min, build 60,
 others 30, set from real run times by `queries/routine-durations.sql`). Run 1's numbers and the fixes they led to are in
 [13-shadow-results.md](../docs/agent-orchestration/13-shadow-results.md).
 
@@ -543,7 +657,7 @@ others 30, set from real run times by `queries/routine-durations.sql`). Run 1's 
 repo's loop-dispatch routine (`REPO_ROUTINES_JSON`) and applies its label
 writes. The one exception is the watchdog, which has its own `WATCHDOG`
 switch (tofu `watchdog`, default shadow) because its timeouts are still
-guesses (`coordinate.ts`'s `resolveEnforced`). Each D1 row records its own
+guesses (`coordinate/types.ts`'s `resolveEnforced`). Each D1 row records its own
 `mode`, so watchdog rows stay `shadow` until it's switched on.
 
 A repo moved to the Worker is a clean break: its old edge (the loop-dispatch

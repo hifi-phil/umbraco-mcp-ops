@@ -207,7 +207,7 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
     // MERGE_GATE_FAILED_SOFT/HARD needs facts this pure function structurally
     // can't have (the full check-run list for the SHA, review state,
     // mergeability — not just this one payload) — that's I/O. Falls to
-    // `default` below; worker/src/coordinate.ts's coordinateWebhook
+    // `default` below; worker/src/coordinate/webhook.ts's coordinateWebhook
     // intercepts this action BEFORE translate() is ever called for it, and
     // does the real, independently-fetched aggregation itself — see
     // graph/github/merge-gate.ts.

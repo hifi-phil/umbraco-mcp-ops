@@ -139,7 +139,7 @@ to be true before it's deleted:
 | `auto-release-loop` Step 2.5 | remove `auto-release` on BLOCK | same, for `release_blocked` |
 | `auto-release-loop` Step 4 | close the issue on publish | same, for `release_published` |
 | `rework-loop` Step 5 | remove `auto-rework` | same, for `rework_pushed` — already sourced from a native signal, so this one only needs the DO live, not a new artifact |
-| `merge-flow` Step 4 (hard block) | remove `auto-merge` | same, for `merge_gate_failed_hard` — the live gate re-check this event needs now exists for real (`worker/src/coordinate.ts`'s `handleCheckSuiteCompleted` + `graph/github/merge-gate.ts`, see 11-outcome-artifact.md and `worker/README.md`), so this row now only needs the DO live and shadow-verified, same bar as every other row — no longer blocked on infrastructure that doesn't exist |
+| `merge-flow` Step 4 (hard block) | remove `auto-merge` | same, for `merge_gate_failed_hard` — the live gate re-check this event needs now exists for real (`worker/src/coordinate/webhook.ts`'s `handleCheckSuiteCompleted` + `graph/github/merge-gate.ts`, see 11-outcome-artifact.md and `worker/README.md`), so this row now only needs the DO live and shadow-verified, same bar as every other row — no longer blocked on infrastructure that doesn't exist |
 
 **Exit:** Every row above deleted, one at a time as its precondition
 clears — not "removed everywhere" as a single cutover, and never left
@@ -274,6 +274,21 @@ transition log is the historical complement to it).
 
 **Exit:** One place shows every open issue's current state, current routine
 and attempt, and last-known step, without querying GitHub or a DO directly.
+
+**Status (02-10-2026):**
+- **Built:** the `issue_status` table and `GET /status`, a read-only page
+  styled to the Umbraco Cloud Portal design system, behind "Sign in with
+  GitHub" for verified `@umbraco.com` / `@umbraco.dk` emails. Each issue's DO upserts its row on
+  enforced transitions, sweep re-fires, heartbeats and completions, and
+  deletes it when the issue closes. The worker README's "The live-status
+  dashboard" has the detail.
+- **Shadow repos show nothing:** only enforced events write it, since a
+  shadow event's labels never moved.
+- **Also on the dashboard:** one list of every issue and PR the Worker
+  has logged, filtered by pills (type, status, repo), with the selected
+  one's D1 transition log beside it, and per-repo controls (`repo_controls`),
+  starting with switching a repo's sweep off: the start of turning agents
+  on and off per repo, as the target graph needs.
 
 ## Phase 9 — Harden against loss and loops
 

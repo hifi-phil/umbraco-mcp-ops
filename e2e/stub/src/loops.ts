@@ -4,7 +4,7 @@
 // that's the orchestrator's job, and a stub that swapped them would hide
 // exactly the bugs the suite is for.
 
-import type { Outcome } from "../../../graph/outcomes";
+import type { Outcome } from "@orchestrator/graph/outcomes";
 
 export type Gh = (method: string, path: string, body?: unknown) => Promise<unknown>;
 

@@ -107,6 +107,30 @@ variable "github_app_private_key" {
   }
 }
 
+variable "github_app_client_id" {
+  type        = string
+  default     = ""
+  description = "The GitHub App's Client ID (its settings page, under About), for the status dashboard's \"Sign in with GitHub\". Empty: sign-in is off and only the Bearer key reads /status."
+}
+
+variable "github_app_client_secret" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "A client secret for that App (App settings -> Client secrets -> Generate a new client secret). Needed whenever github_app_client_id is set."
+
+  validation {
+    condition     = var.github_app_client_id == "" || var.github_app_client_secret != ""
+    error_message = "github_app_client_secret is needed when github_app_client_id is set."
+  }
+}
+
+variable "sign_in_domains" {
+  type        = string
+  default     = "umbraco.com,umbraco.dk"
+  description = "Comma-separated email domains let into the dashboard: a GitHub account needs a verified email at one of them."
+}
+
 variable "repo_routines" {
   type = map(object({
     fire_url = string

@@ -8,7 +8,7 @@
 // that triggered the webhook; review state; mergeability), not a single
 // webhook field. That's I/O, so it can't live in translate() (deliberately
 // pure) — this file is the pure DECISION over already-fetched facts;
-// worker/src/coordinate.ts's handleCheckSuiteCompleted does the fetching
+// worker/src/coordinate/webhook.ts's handleCheckSuiteCompleted does the fetching
 // and calls this.
 //
 // Mirrors merge-flow/SKILL.md's real Step 2/Step 4 exactly for the three

@@ -22,6 +22,19 @@ output "routine_signal_secret" {
   sensitive = true
 }
 
+# The live-status dashboard is <worker_url>/status, behind GitHub sign-in.
+# Set this as the GitHub App's Callback URL (App settings -> General).
+output "sign_in_callback_url" {
+  value = "${local.worker_url}/auth/callback"
+}
+
+# The dashboard's key for scripts: `Authorization: Bearer <this>`. Read with
+# `tofu output -raw status_secret`.
+output "status_secret" {
+  value     = random_password.status_secret.result
+  sensitive = true
+}
+
 # The e2e driver's key to GET /transitions. It reads this itself (tofu
 # output -raw e2e_log_read_secret) unless E2E_LOG_SECRET is set.
 output "e2e_log_read_secret" {

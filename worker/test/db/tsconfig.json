@@ -1,0 +1,9 @@
+{
+  // The db tests run in Node (node:sqlite), not the Workers runtime, so they
+  // typecheck against Node's types, kept apart from the Worker's own.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "@cloudflare/workers-types", "vitest/globals"]
+  },
+  "include": ["./**/*.ts", "../dashboard/**/*.ts", "../../src/**/*.ts", "../../src/**/*.tsx"]
+}

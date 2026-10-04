@@ -1,17 +1,17 @@
 // The Durable Object: one instance per issue/PR (addressed by
 // `${owner}/${repo}#${number}` — see index.ts), serializing every webhook
 // for that entity and owning its watchdog alarm. Thin on purpose — all the
-// actual decision logic lives in coordinate.ts (dependency-injected, unit
+// actual decision logic lives in coordinate/ (dependency-injected, unit
 // tested); this class only wires that logic to real ctx.storage, D1, and
 // the GitHub/routines API clients. Two request shapes reach fetch(): the
 // default path is a GitHub webhook (coordinateWebhook, authoritative);
 // POST .../routine-signal is the direct routine-to-DO heartbeat channel
 // (coordinateRoutineSignal, never authoritative — see
-// graph/routines/from-routine.ts and coordinate.ts's doc comment on it).
+// graph/routines/from-routine.ts and coordinate/routine-signal.ts's doc comment on it).
 //
 // This class's own wiring is covered by test/issue-coordinator.test.ts —
 // a fake ctx.storage/D1 plus a stubbed global fetch, same fake-deps shape
-// as coordinate.test.ts, deliberately not @cloudflare/vitest-pool-workers
+// as coordinate/*.test.ts, deliberately not @cloudflare/vitest-pool-workers
 // (see README.md for why). Covers: dedup, a real rule applying + logging
 // to D1 + scheduling the alarm, the alarm actually *firing* (not just
 // being set), and that two instances (standing in for two issues' real
@@ -30,29 +30,34 @@ import {
   type CiFix,
   type CoordinateInput,
   type Deps,
+  type IssueRef,
   type PendingFire,
+  type StatusUpdate,
   type RoutineSignalInput,
   type TransitionRow,
   watchdogMinutesFor,
 } from "./coordinate";
 import * as githubClient from "./github-client";
+import { recordLogged } from "./db/items";
+import * as issueStatus from "./db/issue-status";
+import * as transitions from "./db/transitions";
 import { appBotLogin, appConfigured } from "./github-app";
 import { fireRoutine } from "./routines-client";
 import type { GitHubEnv } from "./github-client";
 import type { RoutinesEnv } from "./routines-client";
-import type { MergeGateFacts } from "../../graph/github/merge-gate";
+import type { MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 
 export type IssueCoordinatorEnv = GitHubEnv &
   RoutinesEnv & {
     DB: D1Database;
     // "enforce" to write labels / fire routines for real; anything else
-    // (including unset) is shadow — see coordinate.ts's resolveEnforced.
+    // (including unset) is shadow — see coordinate/types.ts's resolveEnforced.
     MODE?: string;
     // The watchdog's own switch, only honoured under MODE=enforce: "enforce"
     // makes expiries move issues to ai-stuck and comment; else they only log.
     WATCHDOG?: string;
     // {"owner/repo": {"mode"?, "minutes"?}}: a repo's own watchdog switch and
-    // timeout, over WATCHDOG and watchdogMinutesFor. See coordinate.ts.
+    // timeout, over WATCHDOG and watchdogMinutesFor. See coordinate/.
     WATCHDOG_OVERRIDES_JSON?: string;
   };
 
@@ -79,6 +84,7 @@ const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
+const CLOSED_KEY = "closedOnGitHub"; // its status row stays gone until reopened
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
 
 export class IssueCoordinator {
@@ -142,7 +148,7 @@ export class IssueCoordinator {
   /** The watchdog: fires watchdogMinutesFor(run) after a watched routine was fired
    * (or after its last heartbeat), unless a later event for the same issue
    * cancelled it first. The expiry itself is a real event through the
-   * reducer — see coordinate.ts's coordinateWatchdogExpired, which also
+   * reducer — see coordinate/watchdog.ts's coordinateWatchdogExpired, which also
    * owns the retry-safe ordering (no pendingFire -> a harmless race). */
   async alarm(): Promise<void> {
     // The repo comes from the pending fire; no pending fire, nothing to do
@@ -153,7 +159,7 @@ export class IssueCoordinator {
     });
   }
 
-  /** Real I/O; coordinate.ts switches each event to shadow writes unless
+  /** Real I/O; coordinate/ switches each event to shadow writes unless
    * `enforced` says otherwise. `ref` is the issue's repo, for its watchdog
    * override (a DO is one issue, so every call for it names the same repo). */
   private deps(ref?: { owner: string; repo: string; issueNumber?: number }): Deps {
@@ -174,19 +180,7 @@ export class IssueCoordinator {
       setReconcileReported: async (lastActivity: string) => {
         await this.ctx.storage.put(RECONCILE_REPORTED_KEY, lastActivity);
       },
-      lastActivityAt: async () => {
-        if (!ref) return null;
-        const row = await this.env.DB.prepare(
-          // A shadow reconcile row only records what a sweep saw; it isn't
-          // activity on the issue, so it mustn't reset its idle clock.
-          `SELECT MAX(created_at) AS at FROM transitions
-            WHERE LOWER(owner) = LOWER(?) AND LOWER(repo) = LOWER(?) AND issue_number = ?
-              AND NOT (event = 'reconcile_refire' AND mode = 'shadow')`,
-        )
-          .bind(ref.owner, ref.repo, ref.issueNumber ?? -1)
-          .first<{ at: string | null }>();
-        return row?.at ?? null;
-      },
+      lastActivityAt: async () => (ref ? transitions.lastActivityAt(this.env.DB, ref.owner, ref.repo, ref.issueNumber ?? -1) : null),
       getLabels: (owner: string, repo: string, issueNumber: number) =>
         githubClient.getLabels(this.env, owner, repo, issueNumber),
       addLabel: (owner: string, repo: string, issueNumber: number, label: string) =>
@@ -201,6 +195,14 @@ export class IssueCoordinator {
         fireRoutine(this.env, owner, repo, issueNumber, routine),
       logTransition: async (row: TransitionRow) => {
         await this.insertTransition(row);
+      },
+      recordStatus: async (ref: IssueRef, update: StatusUpdate) => {
+        // The dashboard's table is a side effect: never fail a transition on it.
+        try {
+          await this.writeStatus(ref, update);
+        } catch (e) {
+          console.error("status write failed:", e instanceof Error ? e.message : e);
+        }
       },
       hasSeenDelivery: async (deliveryId: string) => {
         const seen = await this.ctx.storage.get<boolean>(seenKeyFor(deliveryId));
@@ -246,24 +248,40 @@ export class IssueCoordinator {
     };
   }
 
+  /** The issue's live-status row (db/issue-status.ts). */
+  private async writeStatus(ref: IssueRef, update: StatusUpdate): Promise<void> {
+    const db = this.env.DB;
+    switch (update.kind) {
+      case "gone":
+        if (update.closed) await this.ctx.storage.put(CLOSED_KEY, true);
+        return issueStatus.remove(db, ref);
+      case "reopened":
+        await this.ctx.storage.delete(CLOSED_KEY);
+        return;
+      case "step":
+        return issueStatus.setStep(db, ref, update.step, update.at);
+      case "done":
+        return issueStatus.setDone(db, ref);
+      case "rework":
+        return issueStatus.setRework(db, ref, update.count);
+      case "transition": {
+        if (await this.ctx.storage.get<boolean>(CLOSED_KEY)) return;
+        const reworkCount = (await this.ctx.storage.get<CiFix>(CI_FIX_KEY))?.attempts ?? 0;
+        return issueStatus.upsertTransition(db, ref, { state: update.state, run: update.run, running: update.running, reworkCount });
+      }
+    }
+  }
+
+  /** A log row, and its item's summary (what the dashboard reads instead of
+   * the log). The summary is display only: never fails the transition. */
   private async insertTransition(row: TransitionRow): Promise<void> {
-    await this.env.DB.prepare(
-      `INSERT INTO transitions
-         (delivery_id, owner, repo, issue_number, from_state, event, to_effect, run, dropped_reason, mode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(
-        row.deliveryId,
-        row.owner,
-        row.repo,
-        row.issueNumber,
-        row.fromState,
-        row.event,
-        row.toEffect,
-        row.run,
-        row.droppedReason,
-        row.mode, // per event since Phase 4, not per Worker
-      )
-      .run();
+    await transitions.insert(this.env.DB, row);
+    if (row.issueNumber > 0) {
+      try {
+        await recordLogged(this.env.DB, row.owner, row.repo, row.issueNumber, row.event);
+      } catch (e) {
+        console.error("item summary write failed:", e instanceof Error ? e.message : e);
+      }
+    }
   }
 }

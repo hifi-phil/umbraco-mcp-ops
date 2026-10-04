@@ -184,7 +184,7 @@ export const rules: Rule[] = [
     // CI failed under auto-merge (retryable, not a human block): hand the PR
     // to rework-loop. The rule fires it itself: the Worker writes as its
     // GitHub App's bot, and translate() drops the bot's own label echoes
-    // (the self-trigger guard), so the echo no longer would. coordinate.ts
+    // (the self-trigger guard), so the echo no longer would. coordinate/
     // caps the cycle at MAX_CI_FIX_ATTEMPTS, then merge-blocked.
     to: label(LABELS.AUTO_REWORKING),
     run: ROUTINES.REWORK_LOOP,
@@ -193,7 +193,7 @@ export const rules: Rule[] = [
   {
     // That CI-fix rework pushed: back to auto-merge, and merge-flow fired
     // directly for the same reason. A conflict is still caught when its CI
-    // finishes (coordinate.ts's check_suite path).
+    // finishes (coordinate/webhook.ts's check_suite path).
     from: LABELS.AUTO_REWORKING,
     on: EVENTS.CI_FIX_PUSHED,
     to: label(LABELS.AUTO_MERGING),
@@ -202,7 +202,7 @@ export const rules: Rule[] = [
   },
   {
     // Needs a human: a merge conflict or requested changes. Checked when
-    // auto-merge is added and whenever CI finishes (coordinate.ts). The
+    // auto-merge is added and whenever CI finishes (coordinate/). The
     // swap auto-merge -> merge-blocked stops retries and says why it stopped.
     from: LABELS.AUTO_MERGING,
     on: EVENTS.MERGE_GATE_FAILED_HARD,
@@ -211,7 +211,7 @@ export const rules: Rule[] = [
   },
   {
     // A human fixed the block and re-added auto-merge: clear merge-blocked
-    // and try again (coordinate.ts re-checks the gate first).
+    // and try again (coordinate/ re-checks the gate first).
     from: LABELS.MERGE_BLOCKED,
     on: EVENTS.LABELLED_AUTO_MERGING,
     to: label(LABELS.AUTO_MERGING),
@@ -249,7 +249,7 @@ export const rules: Rule[] = [
   // generated-by-ai / ai-blocked: a build that swapped to those has
   // finished, whether or not it posted its outcome comment (shadow run 1
   // would have marked finished build #116 stuck). The table doubles as the
-  // watch list — coordinate.ts only arms the watchdog for a fired routine
+  // watch list — coordinate/ only arms the watchdog for a fired routine
   // whose target state has a watchdog_expired rule here, so ai-discuss
   // (issue-discuss-loop posts no outcome artifact, ever) is deliberately
   // absent rather than raising a false alarm on every discussion.
@@ -272,7 +272,7 @@ export const rules: Rule[] = [
   // its authoritative outcome still wins — same verifiedBy as the normal
   // rule for that outcome. The routine's own label swap will usually have
   // landed first, leaving e.g. ai-stuck + generated-by-ai together;
-  // coordinate.ts's deriveState() reads that specific pair as ai-stuck, and
+  // coordinate/apply.ts's deriveState() reads that specific pair as ai-stuck, and
   // labelOps() then just removes ai-stuck. (2) A human retry: re-adding the
   // trigger label on a stuck issue re-fires its loop, exactly as from "none".
   {
@@ -325,7 +325,7 @@ export const rules: Rule[] = [
  * Events that only mean something in a few states. A push is a rework only
  * on an auto-rework PR, a merge matters only under auto-merge, a comment
  * is a round only on an ai-discuss issue. Anywhere else they're ordinary
- * activity, not a missing rule, so coordinate.ts ignores them silently when
+ * activity, not a missing rule, so coordinate/ ignores them silently when
  * no rule matches instead of logging a "gap" (shadow run 1: 8 of 26 rows
  * were this noise).
  */

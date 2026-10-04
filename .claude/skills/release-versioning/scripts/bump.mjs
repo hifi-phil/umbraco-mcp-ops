@@ -100,6 +100,15 @@ if (!tag) {
       if (lock.packages?.[""]) lock.packages[""].version = next;
       writeJson("worker/package-lock.json", lock);
     }
+    // npm workspaces: the root lockfile records each workspace's version
+    // too, and `npm ci` refuses a lockfile that disagrees with package.json.
+    if (existsSync(join(repo, "package-lock.json"))) {
+      const lock = readJson("package-lock.json");
+      if (lock.packages?.worker) {
+        lock.packages.worker.version = next;
+        writeJson("package-lock.json", lock);
+      }
+    }
   } else {
     console.log("worker: unchanged");
   }

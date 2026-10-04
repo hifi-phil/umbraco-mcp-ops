@@ -3,7 +3,7 @@
 // actually touches: env.ISSUE_COORDINATOR (idFromName + get().fetch()).
 // Avoids @cloudflare/vitest-pool-workers (which would force a vitest 2->4
 // major bump — see worker/README.md) in favor of the same fake-deps
-// pattern coordinate.test.ts already established for this codebase.
+// pattern coordinate/*.test.ts already established for this codebase.
 
 import { describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
@@ -271,7 +271,7 @@ describe("index.ts fetch() — GET /transitions (the sandbox's log read)", () =>
     const res = await worker.fetch(get("owner=Hifi-Phil&repo=mcp-ops-e2e-testing&issue=7"), env);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ rows });
-    expect(bind).toHaveBeenCalledWith("Hifi-Phil", "mcp-ops-e2e-testing", 7);
+    expect(bind).toHaveBeenCalledWith("Hifi-Phil", "mcp-ops-e2e-testing", 7, 1000);
   });
 
   it("any repo not in LOG_READ_REPOS -> 403, the DB never read", async () => {
