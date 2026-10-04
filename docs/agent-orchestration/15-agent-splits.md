@@ -255,8 +255,26 @@ and is reviewed again once its CI is green.
 - Where the export goes when a PR merges.
 
 **Skills**
-- `issue-build-loop` stops once the PR is open.
+- `issue-build-loop` stops once the PR is open, with `ai-review` on it.
 - Every routine reads and writes the logs through the MCP.
+- **`review-loop` posts its findings as a real PR review**, with inline
+  comments on the lines concerned. `rework-loop` only reads a PR's reviews
+  and review comments (its Step 1), so findings left in an ordinary
+  comment would look like "nothing actionable": it would clear the label
+  without fixing anything, and three such rounds end in `ai-stuck`.
+  - GitHub won't let a PR's author request changes on their own PR. If the
+    routines act as the account that opened it, the review is a plain
+    "comment" review. That still creates inline threads, which
+    `rework-loop` reads.
+  - The outcome marker for the Worker goes in the review's body, or in a
+    separate comment.
+- **`rework-loop` reads the decision log**, so it can weigh a finding that
+  challenges a deliberate choice instead of undoing it.
+- **`rework-loop` rereads the issue** (optional), so a fix doesn't drift
+  from what the issue asked for.
+- The e2e stub hides the findings gap (its rework pushes whatever the hint
+  says), so the stub's `review-loop` should post a real review too, and
+  its `rework-loop` should fail if it finds no review to act on.
 
 **Account**
 - Whether the orchestrator moves to an Umbraco-owned Cloudflare account
