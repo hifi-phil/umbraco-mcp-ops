@@ -167,7 +167,7 @@ export async function verifySignature(secret: string, rawBody: string, header: s
   return diff === 0;
 }
 
-/** CI finished on a sandbox PR: if it carries auto-merge, run merge-flow's
+/** CI finished on a sandbox PR: if it carries AUTO_MERGING, run merge-flow's
  * gate again, as the real merge-flow's polling would. */
 /** How often, and how long apart, the webhook re-checks a gate that still
  * reads "CI running": a commit here gets two CI runs, and the first one's

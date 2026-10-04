@@ -57,7 +57,7 @@ export type IssueCoordinatorEnv = GitHubEnv &
     // (including unset) is shadow — see coordinate/types.ts's resolveEnforced.
     MODE?: string;
     // The watchdog's own switch, only honoured under MODE=enforce: "enforce"
-    // makes expiries move issues to ai-stuck and comment; else they only log.
+    // makes expiries move issues to AI_STUCK and comment; else they only log.
     WATCHDOG?: string;
     // {"owner/repo": {"mode"?, "minutes"?}}: a repo's own watchdog switch and
     // timeout, over WATCHDOG and watchdogMinutesFor. See coordinate/.
@@ -104,7 +104,7 @@ export class IssueCoordinator {
    * One request at a time for this issue, start to finish. Cloudflare only
    * holds back the next request while a DO awaits its own storage, not while
    * it awaits GitHub or a routine, so two webhooks for one PR (say its
-   * auto-merge label and its CI finishing red) used to interleave mid-run:
+   * AUTO_MERGING label and its CI finishing red) used to interleave mid-run:
    * one read labels the other was halfway through swapping (found by e2e on
    * sandbox PR #168). In memory is enough: a DO instance is the only one for
    * its issue, and an evicted instance has nothing in flight.

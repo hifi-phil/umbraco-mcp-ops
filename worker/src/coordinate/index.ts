@@ -4,8 +4,8 @@
 //   types.ts           Deps, rows, results, the shadow/enforce switches
 //   apply.ts           the shared reduce -> labels -> fire -> log tail
 //   webhook.ts         a GitHub webhook (and manual_override, check_suite)
-//   merge-gate.ts      auto-merge's hard block and CI-fix hand-off
-//   review-gate.ts     ai-review's CI gate, and the review's caps
+//   merge-gate.ts      AUTO_MERGING's hard block and CI-fix hand-off
+//   review-gate.ts     AI_REVIEWING's CI gate, and the review's caps
 //   routine-signal.ts  a routine's heartbeat or completion
 //   watchdog.ts        the watchdog's expiry
 //   reconcile.ts       the sweep's left-behind check

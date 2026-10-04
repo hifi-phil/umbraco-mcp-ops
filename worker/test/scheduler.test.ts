@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Scheduler, type SchedulerEnv } from "../src/scheduler";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -53,10 +54,10 @@ function fakeEnv(
   return { env, inserted, asked };
 }
 
-/** GitHub: issue #7 has ready-for-ai on the ops repo; nothing else anywhere. */
+/** GitHub: issue #7 has AI_READY on the ops repo; nothing else anywhere. */
 const github = () =>
   vi.fn(async (url: string) => {
-    if (url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ready-for-ai")) {
+    if (url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes(`labels=${LABELS.AI_READY}`)) {
       return Response.json([{ number: 7 }]);
     }
     return Response.json([]);
@@ -91,7 +92,7 @@ describe("Scheduler", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
-        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ready-for-ai")
+        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes(`labels=${LABELS.AI_READY}`)
           ? Response.json([{ number: 1 }, { number: 2 }, { number: 3 }])
           : Response.json([]),
       ),
@@ -103,7 +104,7 @@ describe("Scheduler", () => {
         ? { outcome: "completed" }
         : b.issueNumber === 2
           ? { outcome: "would_refire", run: "issue-build-loop", idleMinutes: 90, alreadyLogged: true }
-          : { outcome: "not_triggered", state: "ai-stuck" },
+          : { outcome: "not_triggered", state: LABELS.AI_STUCK },
     );
     await new Scheduler(ctx, env).alarm();
     expect(Math.round(((await storage.getAlarm())! - before) / 60_000)).toBe(60);
@@ -200,7 +201,7 @@ describe("Scheduler", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
-        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ready-for-ai")
+        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes(`labels=${LABELS.AI_READY}`)
           ? Response.json([{ number: 1 }, { number: 2 }, { number: 3 }])
           : Response.json([]),
       ),
@@ -220,7 +221,7 @@ describe("Scheduler", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
-        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes("labels=ready-for-ai")
+        url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes(`labels=${LABELS.AI_READY}`)
           ? Response.json([{ number: 1 }, { number: 2 }])
           : Response.json([]),
       ),

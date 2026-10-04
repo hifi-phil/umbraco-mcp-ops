@@ -154,15 +154,15 @@ export function deriveState(labels: readonly string[]): State | "ambiguous" {
   const tracked = labels.filter((l) => trackedSet.includes(l)) as Label[];
   if (tracked.length === 0) return "none";
   if (tracked.length === 1) return tracked[0]!;
-  // The one expected pairing: ai-stuck plus a label a late routine swapped
-  // in itself after the watchdog had already fired (e.g. ai-stuck +
-  // generated-by-ai, just before its outcome comment arrives). A known race
-  // with a defined answer — the issue is still ai-stuck, and graph.ts's
-  // "leaving ai-stuck" rules decide what the late outcome does with it.
+  // The one expected pairing: AI_STUCK plus a label a late routine swapped
+  // in itself after the watchdog had already fired (e.g. AI_STUCK +
+  // AI_GENERATED, just before its outcome comment arrives). A known race
+  // with a defined answer — the issue is still AI_STUCK, and graph.ts's
+  // "leaving AI_STUCK" rules decide what the late outcome does with it.
   if (tracked.length === 2 && tracked.includes(LABELS.AI_STUCK)) return LABELS.AI_STUCK;
-  // A human re-added auto-merge to a merge-blocked PR that's still blocked:
-  // read it as auto-merge, so the hard-block rule swaps it back to
-  // merge-blocked (which is already there, so only auto-merge comes off).
+  // A human re-added AUTO_MERGING to a MERGE_BLOCKED PR that's still blocked:
+  // read it as AUTO_MERGING, so the hard-block rule swaps it back to
+  // MERGE_BLOCKED (which is already there, so only AUTO_MERGING comes off).
   if (tracked.length === 2 && tracked.includes(LABELS.MERGE_BLOCKED) && tracked.includes(LABELS.AUTO_MERGING)) {
     return LABELS.AUTO_MERGING;
   }

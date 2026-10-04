@@ -82,7 +82,7 @@ async function trackedPr(t: Track, opts: Parameters<typeof openPr>[0]) {
   return pr;
 }
 
-/** A loop that never reports: the trigger goes on, and the watchdog moves it to ai-stuck. */
+/** A loop that never reports: the trigger goes on, and the watchdog moves it to AI_STUCK. */
 async function expectStuck(n: number, trigger: string): Promise<Snapshot> {
   await addLabel(n, trigger);
   const s = await waitFor(n, labelsAre(LABELS.AI_STUCK), STUCK_WAIT);
@@ -134,7 +134,7 @@ const lateOutcome = (n: number, loop: string, outcome: Outcome) => comment(n, ou
 export const scenarios: Scenario[] = [
   // --- The lane --------------------------------------------------------------
   {
-    name: "full lane: build -> PR -> auto-merge -> merged, then release -> published",
+    name: `full lane: build -> PR -> ${LABELS.AUTO_MERGING} -> merged, then release -> published`,
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -179,7 +179,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "build blocked: ready-for-ai -> ai-blocked",
+    name: `build blocked: ${LABELS.AI_READY} -> ${LABELS.AI_BLOCKED}`,
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -200,11 +200,11 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "live status: a release closed by hand with auto-release still on -> its row goes",
+    name: `live status: a release closed by hand with ${LABELS.AUTO_RELEASING} still on -> its row goes`,
     timeoutMs: 2 * MIN,
     run: () =>
       scoped(async (t) => {
-        // issue_closed from auto-release is a noop rule that applies; the
+        // issue_closed from AUTO_RELEASING is a noop rule that applies; the
         // row must still go, whatever order the close's webhooks land in.
         const issue = t.n(await openIssue("Close me mid-release", "A person closes this while it's releasing.", "silent"));
         await addLabel(issue, LABELS.AUTO_RELEASING);
@@ -222,7 +222,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "manual override: a human clears ai-blocked -> logged as manual_override, nothing else done",
+    name: `manual override: a human clears ${LABELS.AI_BLOCKED} -> logged as manual_override, nothing else done`,
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -241,7 +241,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "release blocked: auto-release removed, issue stays open",
+    name: `release blocked: ${LABELS.AUTO_RELEASING} removed, issue stays open`,
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -255,7 +255,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "review rework: auto-rework -> push -> label cleared",
+    name: `review rework: ${LABELS.AUTO_REWORKING} -> push -> label cleared`,
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -269,7 +269,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "discussion: ai-discuss -> a round, a human reply -> the next round; '//' replies are ignored",
+    name: `discussion: ${LABELS.AI_DISCUSSING} -> a round, a human reply -> the next round; '//' replies are ignored`,
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -297,7 +297,7 @@ export const scenarios: Scenario[] = [
 
   // --- The merge gate ------------------------------------------------------------
   {
-    name: "CI red before auto-merge: auto-rework at label time -> fix -> auto-merge -> merged",
+    name: `CI red before ${LABELS.AUTO_MERGING}: ${LABELS.AUTO_REWORKING} at label time -> fix -> ${LABELS.AUTO_MERGING} -> merged`,
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -312,7 +312,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "CI red after auto-merge: the check_suite path -> auto-rework -> fix -> merged",
+    name: `CI red after ${LABELS.AUTO_MERGING}: the check_suite path -> ${LABELS.AUTO_REWORKING} -> fix -> merged`,
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -339,7 +339,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "CI-fix limit: fixes that don't fix it, up to the cap -> merge-blocked",
+    name: `CI-fix limit: fixes that don't fix it, up to the cap -> ${LABELS.MERGE_BLOCKED}`,
     timeoutMs: (4 + 3 * CAP) * MIN,
     run: () =>
       scoped(async (t) => {
@@ -357,7 +357,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "merge conflict -> merge-blocked; fixed and auto-merge re-added -> merged",
+    name: `merge conflict -> ${LABELS.MERGE_BLOCKED}; fixed and ${LABELS.AUTO_MERGING} re-added -> merged`,
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -397,7 +397,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "requested changes -> merge-blocked; approved and auto-merge re-added -> merged",
+    name: `requested changes -> ${LABELS.MERGE_BLOCKED}; approved and ${LABELS.AUTO_MERGING} re-added -> merged`,
     timeoutMs: 6 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -436,9 +436,9 @@ export const scenarios: Scenario[] = [
       }),
   },
 
-  // --- The watchdog and ai-stuck (the sandbox's watchdog is real, short) --------
+  // --- The watchdog and AI_STUCK (the sandbox's watchdog is real, short) --------
   {
-    name: "watchdog: silent build -> ai-stuck; late build_succeeded -> generated-by-ai",
+    name: `watchdog: silent build -> ${LABELS.AI_STUCK}; late build_succeeded -> ${LABELS.AI_GENERATED}`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -450,7 +450,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: a heartbeat is quoted by the expiry; late build_blocked -> ai-blocked",
+    name: `watchdog: a heartbeat is quoted by the expiry; late build_blocked -> ${LABELS.AI_BLOCKED}`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -470,7 +470,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: a completion signal cancels the watchdog (no ai-stuck)",
+    name: `watchdog: a completion signal cancels the watchdog (no ${LABELS.AI_STUCK})`,
     timeoutMs: STUCK_WAIT + MIN,
     run: () =>
       scoped(async (t) => {
@@ -551,7 +551,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck build, ready-for-ai re-added -> retried -> ai-blocked",
+    name: `watchdog: stuck build, ${LABELS.AI_READY} re-added -> retried -> ${LABELS.AI_BLOCKED}`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -574,7 +574,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck release; late release_blocked -> ai-stuck cleared",
+    name: `watchdog: stuck release; late release_blocked -> ${LABELS.AI_STUCK} cleared`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -587,7 +587,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck release, auto-release re-added -> retried -> published",
+    name: `watchdog: stuck release, ${LABELS.AUTO_RELEASING} re-added -> retried -> published`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -599,7 +599,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck rework; a late push -> ai-stuck cleared",
+    name: `watchdog: stuck rework; a late push -> ${LABELS.AI_STUCK} cleared`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -610,7 +610,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck rework, auto-rework re-added -> retried -> pushed and cleared",
+    name: `watchdog: stuck rework, ${LABELS.AUTO_REWORKING} re-added -> retried -> pushed and cleared`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -622,7 +622,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck merge-flow, auto-merge re-added -> retried -> merged",
+    name: `watchdog: stuck merge-flow, ${LABELS.AUTO_MERGING} re-added -> retried -> merged`,
     timeoutMs: STUCK_WAIT + 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -648,7 +648,7 @@ export const scenarios: Scenario[] = [
   },
   // --- The review (15-agent-splits.md) ---------------------------------------
   {
-    name: "review: ai-review on a green PR -> review-loop -> passed -> unlabelled; re-added -> reviewed again",
+    name: `review: ${LABELS.AI_REVIEWING} on a green PR -> review-loop -> passed -> unlabelled; re-added -> reviewed again`,
     timeoutMs: 6 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -697,7 +697,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "review: blocked -> ai-blocked, waits; a person re-adds ai-review -> reviewed again -> passed",
+    name: `review: blocked -> ${LABELS.AI_BLOCKED}, waits; a person re-adds ${LABELS.AI_REVIEWING} -> reviewed again -> passed`,
     timeoutMs: 6 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -715,7 +715,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "review: CI red under ai-review -> CI fix -> back to ai-review -> passed",
+    name: `review: CI red under ${LABELS.AI_REVIEWING} -> CI fix -> back to ${LABELS.AI_REVIEWING} -> passed`,
     timeoutMs: 9 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -734,7 +734,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "review: findings every round -> ai-stuck once past the cap",
+    name: `review: findings every round -> ${LABELS.AI_STUCK} once past the cap`,
     timeoutMs: (5 + 3 * CAP) * MIN,
     run: () =>
       scoped(async (t) => {
@@ -745,7 +745,7 @@ export const scenarios: Scenario[] = [
         expect(hasComment(s, `asked for changes ${CAP} times`)).toBe(true);
         const rows = await expectLogged(pr.number, { event: "rework_cap_reached", effect: LABELS.AI_STUCK });
         expect(rows.filter((r) => r.event === "review_findings"), "a counted round per finding, up to the cap").toHaveLength(CAP);
-        expect(rows.filter((r) => r.event === "review_fix_pushed"), "a push back to ai-review per round").toHaveLength(CAP);
+        expect(rows.filter((r) => r.event === "review_fix_pushed"), `a push back to ${LABELS.AI_REVIEWING} per round`).toHaveLength(CAP);
       }),
   },
 ];

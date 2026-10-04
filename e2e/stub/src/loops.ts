@@ -5,6 +5,7 @@
 // exactly the bugs the suite is for.
 
 import type { Outcome } from "@orchestrator/graph/outcomes";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 
 export type Gh = (method: string, path: string, body?: unknown) => Promise<unknown>;
 
@@ -170,7 +171,7 @@ export async function mergeIfGreen(gh: Gh, f: Fire, mergeRetryMs = MERGE_RETRY_M
     head: { sha: string };
     labels: { name: string }[];
   };
-  if (pr.state !== "open" || !pr.labels.some((l) => l.name === "auto-merge")) return "none";
+  if (pr.state !== "open" || !pr.labels.some((l) => l.name === LABELS.AUTO_MERGING)) return "none";
 
   const { check_runs: runs } = (await gh("GET", `${base(f)}/commits/${pr.head.sha}/check-runs`)) as {
     check_runs: { name: string; status: string; conclusion: string | null }[];

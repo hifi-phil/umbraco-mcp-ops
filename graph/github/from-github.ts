@@ -74,7 +74,7 @@ function hasOwnSignatureMarker(body: string | undefined): boolean {
 
 // loop-dispatch's discussion-round gates 2–7 (route-event.sh's
 // issue_comment case), all fail-closed. Gate 1, "the issue carries
-// ai-discuss", is the reducer's: DISCUSSION_REPLY only has a rule from
+// AI_DISCUSSING", is the reducer's: DISCUSSION_REPLY only has a rule from
 // that state. The self-marker gate (2) is checked by the caller first.
 const TRUSTED_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"];
 function isDiscussionReply(payload: WebhookPayload): boolean {
@@ -115,7 +115,7 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
           return EVENTS.LABELLED_AI_DISCUSSING;
         // issue-build-loop's own Step 3 swap. The same fact its outcome
         // comment carries, but native and reliably present (the comment
-        // wasn't, in shadow run 1). Also how a late build leaves ai-stuck.
+        // wasn't, in shadow run 1). Also how a late build leaves AI_STUCK.
         case LABELS.AI_GENERATED:
           return EVENTS.BUILD_SUCCEEDED;
         case LABELS.AI_BLOCKED:
@@ -169,7 +169,7 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
         }
       }
 
-      // A discussion round. Whether the issue is actually in ai-discuss is
+      // A discussion round. Whether the issue is actually in AI_DISCUSSING is
       // the reducer's call (see isDiscussionReply above).
       if (isDiscussionReply(payload)) return EVENTS.DISCUSSION_REPLY;
       return null;
@@ -208,7 +208,7 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
     // no outcome artifact, no loop change: rework-loop already pushes in
     // its own Step 4; this just reads the webhook that action already
     // produces. Every push maps here; reduce() only acts on it when the PR
-    // is in auto-rework, and elsewhere it's a CONTEXTUAL_EVENT that the
+    // is in AUTO_REWORKING, and elsewhere it's a CONTEXTUAL_EVENT that the
     // coordinator ignores without logging (see graph.ts).
     case "pull_request.synchronize":
       return EVENTS.REWORK_PUSHED;

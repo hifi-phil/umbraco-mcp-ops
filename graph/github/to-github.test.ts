@@ -5,12 +5,12 @@ import { reduce } from "../graph";
 import { labelOps } from "./to-github";
 
 describe("labelOps — the concrete GitHub calls a rule requires", () => {
-  it("build_succeeded is a noop — issue-build-loop's own Step 3 already did the ready-for-ai -> generated-by-ai swap before this event reaches the reducer", () => {
+  it(`build_succeeded is a noop — issue-build-loop's own Step 3 already did the ${LABELS.AI_READY} -> ${LABELS.AI_GENERATED} swap before this event reaches the reducer`, () => {
     const rule = reduce(LABELS.AI_GENERATED, EVENTS.BUILD_SUCCEEDED)!;
     expect(labelOps([LABELS.AI_GENERATED], rule)).toEqual([]);
   });
 
-  it("build_blocked is a noop — same reasoning, keyed on the post-swap ai-blocked state", () => {
+  it(`build_blocked is a noop — same reasoning, keyed on the post-swap ${LABELS.AI_BLOCKED} state`, () => {
     const rule = reduce(LABELS.AI_BLOCKED, EVENTS.BUILD_BLOCKED)!;
     expect(labelOps([LABELS.AI_BLOCKED], rule)).toEqual([]);
   });
@@ -20,19 +20,19 @@ describe("labelOps — the concrete GitHub calls a rule requires", () => {
     expect(labelOps([LABELS.AI_READY], rule)).toEqual([]);
   });
 
-  it("release_blocked is a noop — auto-release-loop's own Step 2.5 already removed auto-release before this event reaches the reducer", () => {
+  it(`release_blocked is a noop — auto-release-loop's own Step 2.5 already removed ${LABELS.AUTO_RELEASING} before this event reaches the reducer`, () => {
     const rule = reduce("none", EVENTS.RELEASE_BLOCKED)!;
     expect(labelOps([], rule)).toEqual([]);
   });
 
-  it("rework_pushed removes auto-rework with nothing added", () => {
+  it(`rework_pushed removes ${LABELS.AUTO_REWORKING} with nothing added`, () => {
     const rule = reduce(LABELS.AUTO_REWORKING, EVENTS.REWORK_PUSHED)!;
     expect(labelOps([LABELS.AUTO_REWORKING], rule)).toEqual([
       { op: "remove", label: LABELS.AUTO_REWORKING },
     ]);
   });
 
-  it("merge_gate_failed_soft (CI failed) swaps auto-merge -> auto-rework", () => {
+  it(`merge_gate_failed_soft (CI failed) swaps ${LABELS.AUTO_MERGING} -> ${LABELS.AUTO_REWORKING}`, () => {
     const rule = reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_FAILED_SOFT)!;
     expect(labelOps([LABELS.AUTO_MERGING], rule)).toEqual([
       { op: "remove", label: LABELS.AUTO_MERGING },

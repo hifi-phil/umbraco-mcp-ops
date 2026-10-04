@@ -20,18 +20,18 @@ describe("review rework rounds are capped (MAX_REVIEW_REWORKS)", () => {
     expect(await deps.getReviewReworks()).toBe(MAX_REVIEW_REWORKS);
   });
 
-  it("one more: ai-stuck instead, nothing fired, and a comment saying why and how to retry", async () => {
+  it(`one more: ${LABELS.AI_STUCK} instead, nothing fired, and a comment saying why and how to retry`, async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_REWORKING]), getReviewReworks: vi.fn(async () => MAX_REVIEW_REWORKS) });
     const result = await coordinateWebhook(deps, reworkLabel("d-over"));
     expect(result).toMatchObject({ outcome: "applied", event: EVENTS.REWORK_CAP_REACHED });
     expect(deps.fireRoutine).not.toHaveBeenCalled();
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AUTO_REWORKING);
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
-    expect(deps.commentOnIssue).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, expect.stringMatching(/3 review rework rounds.*ai-stuck.*fresh count/));
+    expect(deps.commentOnIssue).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, expect.stringMatching(new RegExp(`3 review rework rounds.*${LABELS.AI_STUCK}.*fresh count`)));
     expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.REWORK_CAP_REACHED, actor: "reviewer" }));
   });
 
-  it("a person retrying from ai-stuck starts a fresh count, and it fires", async () => {
+  it(`a person retrying from ${LABELS.AI_STUCK} starts a fresh count, and it fires`, async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK, LABELS.AUTO_REWORKING]), getReviewReworks: vi.fn(async () => MAX_REVIEW_REWORKS) });
     expect(await coordinateWebhook(deps, reworkLabel("d-retry"))).toMatchObject({ outcome: "applied", event: EVENTS.LABELLED_AUTO_REWORKING });
     expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.REWORK_LOOP);

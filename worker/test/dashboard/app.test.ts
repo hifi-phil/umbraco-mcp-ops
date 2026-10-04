@@ -10,6 +10,7 @@ import * as items from "../../src/db/items";
 import * as transitions from "../../src/db/transitions";
 import type { TransitionRow } from "../../src/coordinate";
 import { testDb, type TestDb } from "../db/sqlite-d1";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -96,11 +97,11 @@ describe("GET /status — the list", () => {
   async function seeded() {
     const db = testDb();
     await log(db, 1, "labelled_ai_ready", { run: "issue-build-loop" });
-    await issueStatus.upsertTransition(db, { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 1 }, { state: "ready-for-ai", run: "issue-build-loop", running: true, reworkCount: 0 });
+    await issueStatus.upsertTransition(db, { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 1 }, { state: LABELS.AI_READY, run: "issue-build-loop", running: true, reworkCount: 0 });
     await items.upsertMeta(db, "hifi-phil", "umbraco-mcp-ops", 1, { kind: "issue", title: "Build <the> thing", state: "open" });
     await log(db, 2, "labelled_auto_merging");
     await log(db, 3, "watchdog_expired", { actor: "watchdog" });
-    await issueStatus.upsertTransition(db, { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 3 }, { state: "ai-stuck", run: null, running: false, reworkCount: 0 });
+    await issueStatus.upsertTransition(db, { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 3 }, { state: LABELS.AI_STUCK, run: null, running: false, reworkCount: 0 });
     await log(db, 9, "build_blocked", {}, "mcp-ops-e2e-testing");
     return db;
   }
@@ -189,7 +190,7 @@ describe("GET /status — the list", () => {
 
   it("?format=json: the issue_status rows (scripts, e2e)", async () => {
     const db = testDb();
-    await issueStatus.upsertTransition(db, { owner: "o", repo: "r", issueNumber: 1 }, { state: "ready-for-ai", run: "x", running: true, reworkCount: 0 });
+    await issueStatus.upsertTransition(db, { owner: "o", repo: "r", issueNumber: 1 }, { state: LABELS.AI_READY, run: "x", running: true, reworkCount: 0 });
     expect(await (await get(db, "/status?format=json")).json()).toMatchObject({ rows: [{ owner: "o", issue_number: 1 }] });
   });
 
