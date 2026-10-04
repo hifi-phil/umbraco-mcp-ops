@@ -160,6 +160,12 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
             return EVENTS.RELEASE_BLOCKED;
           case "release_published":
             return EVENTS.RELEASE_PUBLISHED;
+          case "review_passed":
+            return EVENTS.REVIEW_PASSED;
+          case "review_findings":
+            return EVENTS.REVIEW_FINDINGS;
+          case "review_blocked":
+            return EVENTS.REVIEW_BLOCKED;
         }
       }
 
@@ -177,6 +183,8 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
           return EVENTS.LABELLED_AUTO_REWORKING;
         case LABELS.AUTO_MERGING:
           return EVENTS.LABELLED_AUTO_MERGING;
+        case LABELS.AI_REVIEWING:
+          return EVENTS.LABELLED_AI_REVIEWING;
         default:
           return null;
       }
@@ -188,6 +196,8 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
           return EVENTS.UNLABELLED_AUTO_REWORKING;
         case LABELS.AUTO_MERGING:
           return EVENTS.UNLABELLED_AUTO_MERGING;
+        case LABELS.AI_REVIEWING:
+          return EVENTS.UNLABELLED_AI_REVIEWING;
         default:
           return null;
       }

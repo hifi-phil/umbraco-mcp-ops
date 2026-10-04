@@ -207,6 +207,34 @@ describe("translate — PR labels", () => {
   });
 });
 
+describe("translate — the review", () => {
+  it("pull_request.labeled / unlabeled ai-review -> labelled_ai_reviewing / unlabelled_ai_reviewing", () => {
+    expect(translate(payload({ action: "pull_request.labeled", label: { name: LABELS.AI_REVIEWING } }))).toBe(
+      EVENTS.LABELLED_AI_REVIEWING,
+    );
+    expect(translate(payload({ action: "pull_request.unlabeled", label: { name: LABELS.AI_REVIEWING } }))).toBe(
+      EVENTS.UNLABELLED_AI_REVIEWING,
+    );
+  });
+
+  it("the Worker's own ai-review changes are dropped (self-trigger guard)", () => {
+    const sender = { login: BOT_LOGIN, type: "Bot" as const };
+    expect(translate(payload({ action: "pull_request.labeled", label: { name: LABELS.AI_REVIEWING }, sender }))).toBeNull();
+  });
+
+  it("review-loop's three outcome artifacts", () => {
+    const cases = [
+      [{ outcome: "review_passed" }, EVENTS.REVIEW_PASSED],
+      [{ outcome: "review_findings", findings: 2 }, EVENTS.REVIEW_FINDINGS],
+      [{ outcome: "review_blocked", reason: "wrong approach" }, EVENTS.REVIEW_BLOCKED],
+    ] as const;
+    for (const [json, event] of cases) {
+      const body = outcomeComment(ROUTINES.REVIEW_LOOP, json);
+      expect(translate(payload({ action: "issue_comment.created", comment: { body } })), json.outcome).toBe(event);
+    }
+  });
+});
+
 describe("translate — rework push (native signal, not an outcome artifact)", () => {
   it("pull_request.synchronize -> rework_pushed unconditionally", () => {
     expect(translate(payload({ action: "pull_request.synchronize" }))).toBe(

@@ -1,12 +1,14 @@
 // The reconciliation sweep's question for one issue: was it left behind?
 
 import { LABELS, type Label } from "@orchestrator/graph/constants/labels";
+import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { reduce } from "@orchestrator/graph/graph";
 import { deriveMergeGateOutcome, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
 import { type CoordinateResult, type Deps, type IssueRef } from "./types";
 import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
+import { reviewGate } from "./review-gate";
 
 // getAlarm() is null from the moment the watchdog alarm is invoked (even
 // while it waits its turn in serial()) and again once its retries are spent.
@@ -21,6 +23,7 @@ const TRIGGER_EVENTS: Partial<Record<Label, Event>> = {
   [LABELS.AUTO_RELEASING]: EVENTS.LABELLED_AUTO_RELEASING,
   [LABELS.AUTO_REWORKING]: EVENTS.LABELLED_AUTO_REWORKING,
   [LABELS.AUTO_MERGING]: EVENTS.LABELLED_AUTO_MERGING,
+  [LABELS.AI_REVIEWING]: EVENTS.LABELLED_AI_REVIEWING,
 };
 export const TRIGGER_LABELS = Object.keys(TRIGGER_EVENTS) as Label[];
 
@@ -73,7 +76,9 @@ export async function coordinateReconcile(
   const labels = await deps.getLabels(ref.owner, ref.repo, ref.issueNumber);
   const state = deriveState(labels);
   const event = state === "ambiguous" || state === "none" ? undefined : TRIGGER_EVENTS[state as Label];
-  const run = event ? reduce("none", event)?.run : undefined;
+  // ai-review fires nothing itself (its CI gate does), so it's swept by the
+  // routine the gate would fire.
+  const run = state === LABELS.AI_REVIEWING ? ROUTINES.REVIEW_LOOP : event ? reduce("none", event)?.run : undefined;
   if (!run) return { outcome: "not_triggered", state };
 
   // Activity is the later of its last real log row and GitHub's updated_at:
@@ -137,6 +142,12 @@ export async function coordinateReconcile(
       }
       return { outcome: "gated", result };
     }
+  }
+
+  // A PR left in ai-review (a lost check_suite webhook, or a lost review
+  // fire): the CI gate again, as when the label went on.
+  if (enforced && state === LABELS.AI_REVIEWING) {
+    return { outcome: "gated", result: await reviewGate(deps, { ...ref, actor: "sweep" }, labels) };
   }
 
   if (enforced) {

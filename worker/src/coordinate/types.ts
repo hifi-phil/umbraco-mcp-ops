@@ -31,6 +31,7 @@ export const LABEL_JUST_ADDED_BY: Partial<Record<Event, Label>> = {
   [EVENTS.LABELLED_AI_DISCUSSING]: LABELS.AI_DISCUSSING,
   [EVENTS.LABELLED_AUTO_REWORKING]: LABELS.AUTO_REWORKING,
   [EVENTS.LABELLED_AUTO_MERGING]: LABELS.AUTO_MERGING,
+  [EVENTS.LABELLED_AI_REVIEWING]: LABELS.AI_REVIEWING,
 };
 
 export type TransitionRow = {
@@ -67,7 +68,13 @@ export type PendingFire = {
   dueAt?: number;
 };
 
-export type CiFix = { attempts: number; pending: boolean };
+// returnTo: where the fix's push goes back to, auto-merge (the default) or
+// ai-review (CI red before the review).
+export type CiFix = { attempts: number; pending: boolean; returnTo?: Label };
+
+// The review's own rounds on this PR: how many times review-loop has asked
+// for changes, and whether rework-loop is out fixing them now.
+export type ReviewLoop = { botRounds: number; fixPending: boolean };
 
 /**
  * A change to the issue's live-status row (03-components.md §3.6, the
@@ -93,9 +100,14 @@ export type StatusUpdate =
 export const MAX_CI_FIX_ATTEMPTS = 3;
 
 /** After this many review rework rounds on one PR (auto-rework added by a
- * reviewer, person or bot), the next goes to ai-stuck instead of looping
- * (Phase 9, 05-technical-elements.md's default). Tune from real data. */
+ * reviewer outside the orchestrator: a person, or another bot), the next
+ * goes to ai-stuck instead of looping (Phase 9, 05-technical-elements.md's
+ * default). Tune from real data. */
 export const MAX_REVIEW_REWORKS = 3;
+
+/** The same cap for review-loop's own findings, counted separately so the
+ * bot can't use up a person's rounds (15-agent-splits.md). */
+export const MAX_BOT_REVIEW_REWORKS = 3;
 
 export type Deps = {
   getLabels(owner: string, repo: string, issueNumber: number): Promise<string[]>;
@@ -127,6 +139,9 @@ export type Deps = {
   // How many review rework rounds this PR has had (DO storage).
   getReviewReworks(): Promise<number>;
   setReviewReworks(rounds: number): Promise<void>;
+  // review-loop's own rounds on this PR (DO storage).
+  getReviewLoop(): Promise<ReviewLoop | null>;
+  setReviewLoop(state: ReviewLoop | null): Promise<void>;
   // Phase 4: whether this event's writes and fire are real. Everything not
   // enforced runs in shadow (see resolveEnforced).
   enforced(event: Event): boolean;

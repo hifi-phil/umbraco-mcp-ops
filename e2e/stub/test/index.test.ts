@@ -101,6 +101,9 @@ describe("act — rework-loop", () => {
     ["rework", "rework/7.txt"],
     ["ci_never_fixed", "rework/7.txt"],
     ["ci_fail", "ci-state"],
+    ["review_ci_fail", "ci-state"],
+    ["review_findings_once", "rework/7.txt"],
+    ["review_findings_always", "rework/7.txt"],
   ])("%s -> one push to the PR's branch (%s), labels untouched", async (hint, path) => {
     const gh = fakeGh({ ...pr, [`GET ${R}/contents/`]: { sha: "old" } });
     expect(await act(gh, fireFor("rework-loop"), hint)).toBe("pushed");
@@ -113,6 +116,33 @@ describe("act — rework-loop", () => {
     await act(gh, fireFor("rework-loop"), "ci_fail");
     const put = gh.mock.calls.find(([m]) => m === "PUT")!;
     expect(atob((put[2] as { content: string }).content)).toBe("pass\n");
+  });
+});
+
+describe("act — review-loop", () => {
+  const verdictOf = (gh: ReturnType<typeof fakeGh>) => {
+    const post = gh.mock.calls.find(([m, p]) => m === "POST" && p.endsWith("/comments"))!;
+    return JSON.parse((post[2] as { body: string }).body.match(/```json\n(.*)\n```/)![1]!);
+  };
+
+  it.each([
+    ["review_pass", { outcome: "review_passed" }],
+    ["review_ci_fail", { outcome: "review_passed" }],
+    ["review_block", { outcome: "review_blocked", reason: "e2e stub: scripted block" }],
+    ["review_findings_always", { outcome: "review_findings", findings: 1 }],
+  ])("%s -> its verdict as a review-loop outcome comment, labels untouched", async (hint, outcome) => {
+    const gh = fakeGh();
+    expect(await act(gh, fireFor("review-loop"), hint)).toBe(outcome.outcome);
+    expect(verdictOf(gh)).toEqual(outcome);
+    expect(calls(gh).some((c) => c.includes("/labels"))).toBe(false);
+  });
+
+  it("review_findings_once -> findings on the first round, a pass once it has asked", async () => {
+    const first = fakeGh({ [`GET ${R}/issues/7/comments`]: [] });
+    expect(await act(first, fireFor("review-loop"), "review_findings_once")).toBe("review_findings");
+    const asked = outcomeComment("review-loop", { outcome: "review_findings", findings: 1 });
+    const second = fakeGh({ [`GET ${R}/issues/7/comments`]: [{ body: asked }] });
+    expect(await act(second, fireFor("review-loop"), "review_findings_once")).toBe("review_passed");
   });
 });
 

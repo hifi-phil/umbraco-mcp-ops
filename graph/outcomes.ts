@@ -17,7 +17,10 @@ export type Outcome =
   | { outcome: "build_succeeded"; pr: number }
   | { outcome: "build_blocked"; reason: string }
   | { outcome: "release_blocked"; reason: string }
-  | { outcome: "release_published"; version: string };
+  | { outcome: "release_published"; version: string }
+  | { outcome: "review_passed" }
+  | { outcome: "review_findings"; findings: number }
+  | { outcome: "review_blocked"; reason: string };
 
 export function parseOutcomeShape(value: unknown): Outcome | null {
   if (typeof value !== "object" || value === null) return null;
@@ -34,6 +37,13 @@ export function parseOutcomeShape(value: unknown): Outcome | null {
   }
   if (v.outcome === "release_published" && typeof v.version === "string") {
     return { outcome: "release_published", version: v.version };
+  }
+  if (v.outcome === "review_passed") return { outcome: "review_passed" };
+  if (v.outcome === "review_findings" && typeof v.findings === "number") {
+    return { outcome: "review_findings", findings: v.findings };
+  }
+  if (v.outcome === "review_blocked" && typeof v.reason === "string") {
+    return { outcome: "review_blocked", reason: v.reason };
   }
   return null;
 }

@@ -41,6 +41,20 @@ export const EVENTS = {
   MERGE_GATE_FAILED_HARD: "merge_gate_failed_hard",
   UNLABELLED_AUTO_MERGING: "unlabelled_auto_merging",
   MERGED: "merged",
+  // The review (15-agent-splits.md). ai-review added (by the build or a
+  // person) or removed; then the Worker's own reading of the PR's CI:
+  // green fires review-loop, red hands the PR to rework-loop first.
+  LABELLED_AI_REVIEWING: "labelled_ai_reviewing",
+  UNLABELLED_AI_REVIEWING: "unlabelled_ai_reviewing",
+  REVIEW_CI_PASSED: "review_ci_passed",
+  REVIEW_CI_FAILED: "review_ci_failed",
+  // A push by a rework started from ai-review (a CI fix or the review's
+  // findings): back to ai-review, to wait for CI and be reviewed again.
+  REVIEW_FIX_PUSHED: "review_fix_pushed",
+  // review-loop's outcomes (agent-outcomes artifacts).
+  REVIEW_PASSED: "review_passed",
+  REVIEW_FINDINGS: "review_findings",
+  REVIEW_BLOCKED: "review_blocked",
   // the watchdog — the one event NOT sourced from GitHub. The DO raises it
   // itself when a routine it fired hasn't produced an outcome within the
   // watchdog window (worker/src/coordinate/watchdog.ts's coordinateWatchdogExpired).
