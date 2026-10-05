@@ -96,6 +96,16 @@ describe(`${LABELS.AI_REVIEWING} added: the label, then the CI gate`, () => {
   });
 });
 
+describe("the label and its check suite, handled in either order", () => {
+  it("the check suite first fired the review: the label's webhook then fires nothing more (e2e #729)", async () => {
+    const d = deps([LABELS.AI_REVIEWING]);
+    expect(await coordinateWebhook(d, checkSuite("s-first"))).toMatchObject({ event: EVENTS.REVIEW_CI_PASSED });
+    expect(await coordinateWebhook(d, labelled(LABELS.AI_REVIEWING, "d-label-second"))).toMatchObject({ outcome: "stale_label" });
+    expectFiredOnce(d, ROUTINES.REVIEW_LOOP);
+    expect(await d.getPendingFire()).toMatchObject({ run: ROUTINES.REVIEW_LOOP });
+  });
+});
+
 describe(`a check suite finishing on an ${LABELS.AI_REVIEWING} PR`, () => {
   it("green: fires review-loop once, however many suites report after it", async () => {
     const d = deps([LABELS.AI_REVIEWING]);
