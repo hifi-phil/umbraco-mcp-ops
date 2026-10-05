@@ -5,8 +5,8 @@
 // major bump — see worker/README.md) in favor of the same fake-deps
 // pattern coordinate/*.test.ts already established for this codebase.
 
-import { describe, expect, it, vi } from "vitest";
-import worker, { type Env } from "../src/index";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import worker, { ANSWER_WITHIN_MS, type Env } from "../src/index";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 
 function fakeEnv(overrides: Partial<Env> = {}): {
@@ -84,6 +84,52 @@ describe("index.ts fetch() — basic request validation", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, dropped: "no routable issue/PR number" });
     expect(get).not.toHaveBeenCalled();
+  });
+});
+
+describe("index.ts fetch() — answering GitHub within its 10 s", () => {
+  afterEach(() => vi.useRealTimers());
+  const ctx = () => {
+    const waitUntil = vi.fn();
+    return { ctx: { waitUntil, passThroughOnException() {} } as unknown as ExecutionContext, waitUntil };
+  };
+
+  it("work done in time: the coordinator's own answer, nothing left running", async () => {
+    const { env } = fakeEnv();
+    const { ctx: c, waitUntil } = ctx();
+    const res = await worker.fetch(request(labeledIssuePayload()), env, c);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ outcome: "no_event" });
+    expect(waitUntil).not.toHaveBeenCalled();
+  });
+
+  it("work still running at the deadline: 202 at once, and the work goes on (waitUntil) to finish", async () => {
+    vi.useFakeTimers();
+    let finish!: (r: Response) => void;
+    const { env, stubFetch } = fakeEnv();
+    stubFetch.mockImplementationOnce(() => new Promise<Response>((r) => (finish = r)));
+    const { ctx: c, waitUntil } = ctx();
+    const pending = worker.fetch(request(labeledIssuePayload()), env, c);
+    await vi.advanceTimersByTimeAsync(ANSWER_WITHIN_MS);
+    const res = await pending;
+    expect(res.status).toBe(202);
+    expect(waitUntil).toHaveBeenCalledOnce();
+    finish(Response.json({ outcome: "applied" }));
+    await waitUntil.mock.calls[0]![0];
+  });
+
+  it("the deadline is under GitHub's 10 s", () => {
+    expect(ANSWER_WITHIN_MS).toBeLessThan(10_000);
+  });
+
+  it("work that fails in time still fails the delivery (GitHub's log shows it; it can be redelivered)", async () => {
+    const { env, stubFetch } = fakeEnv();
+    stubFetch.mockImplementationOnce(async () => {
+      throw new Error("DO exploded");
+    });
+    const { ctx: c } = ctx();
+    const res = await worker.fetch(request(labeledIssuePayload()), env, c);
+    expect(res.status).toBe(500);
   });
 });
 
