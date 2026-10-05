@@ -15,7 +15,7 @@ import { openPullsForCommit } from "./github-client";
 import type { CoordinateInput, RoutineSignalInput } from "./coordinate";
 
 import { Scheduler } from "./scheduler";
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import { dashboard } from "./dashboard/app";
 import { upsertMeta } from "./db/items";
 import * as transitions from "./db/transitions";
@@ -74,35 +74,30 @@ app.post("/sweep", (c) => handleSweep(c.req.raw, c.env));
 app.get("/transitions", (c) => handleTransitions(c.req.raw, c.env, new URL(c.req.url)));
 app.post("/routine-signal", (c) => handleRoutineSignal(c.req.raw, c.env));
 // GitHub delivers webhooks to the Worker's root; any other POST is read as one.
-app.post("*", (c) => handleWebhook(c.req.raw, c.env, executionCtx(c)));
+app.post("*", (c) => answerInTime(handleWebhook(c.req.raw, c.env), c.executionCtx));
 app.all("*", (c) => c.text("method not allowed", 405));
 
+// A plain call (the tests) has no ExecutionContext; give it one that does nothing.
+const noCtx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
+
 export default {
-  fetch: (request: Request, env: Env, ctx?: ExecutionContext) => app.fetch(request, env, ctx),
+  fetch: (request: Request, env: Env, ctx?: ExecutionContext) => app.fetch(request, env, ctx ?? noCtx),
 };
 
-/** Hono's context throws when there's no ExecutionContext (a plain call in
- * tests); without one, a webhook is answered when its work is done. */
-function executionCtx(c: Context): ExecutionContext | undefined {
-  try {
-    return c.executionCtx as ExecutionContext;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * GitHub gives a webhook 10 seconds, records it failed if there's no answer
- * by then, and never retries a timeout. Found 05-10-2026 (e2e #689): two
- * deliveries took over 10 s and the label was lost for good. So past this
- * long the Worker answers 202 and lets the work finish in the background;
- * the usual answer, with the coordinator's decision in it, is kept whenever
- * the work is quicker (nearly always).
- */
 export const ANSWER_WITHIN_MS = 8_000;
 
-/** A GitHub webhook: verify, parse, then route it (in time for GitHub). */
-async function handleWebhook(request: Request, env: Env, ctx?: ExecutionContext, answerWithinMs = ANSWER_WITHIN_MS): Promise<Response> {
+// GitHub drops a webhook it gets no answer to within 10 s, and never retries
+// it (e2e #689, 05-10-2026). So answer by 8 s: the work's own answer if it's
+// done, else 202 while it finishes in the background.
+async function answerInTime(work: Promise<Response>, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
+  const late = Response.json({ accepted: true }, { status: 202 });
+  const res = await Promise.race([work, new Promise<Response>((r) => setTimeout(() => r(late), ANSWER_WITHIN_MS))]);
+  if (res === late) ctx.waitUntil(work);
+  return res;
+}
+
+/** A GitHub webhook: verify, parse, route to the issue's (or each PR's) DO. */
+async function handleWebhook(request: Request, env: Env): Promise<Response> {
   const rawBody = await request.text();
 
   if (env.GITHUB_WEBHOOK_SECRET) {
@@ -123,32 +118,6 @@ async function handleWebhook(request: Request, env: Env, ctx?: ExecutionContext,
     return new Response("invalid JSON body", { status: 400 });
   }
 
-  const work = routeWebhook(env, eventType, deliveryId, body);
-  return ctx ? answerInTime(work, ctx, answerWithinMs) : work;
-}
-
-/** The work's own answer if it's done within `ms`; else 202, with the work
- * left to finish (waitUntil) and its result logged. A failure inside `ms`
- * still fails the delivery, so GitHub's log shows it and it can be
- * redelivered. */
-async function answerInTime(work: Promise<Response>, ctx: ExecutionContext, ms: number): Promise<Response> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), ms);
-  });
-  const first = await Promise.race([work, deadline]).finally(() => clearTimeout(timer));
-  if (first) return first;
-  ctx.waitUntil(
-    work.then(
-      (res) => console.warn(`webhook finished after its ${ms} ms answer: ${res.status}`),
-      (e) => console.error("webhook failed after its 202:", e instanceof Error ? e.message : e),
-    ),
-  );
-  return Response.json({ accepted: true, processing: `in the background (longer than ${ms} ms)` }, { status: 202 });
-}
-
-/** Route a parsed webhook to the issue's (or each PR's) DO. */
-async function routeWebhook(env: Env, eventType: string, deliveryId: string, body: Record<string, unknown>): Promise<Response> {
   await ensureScheduler(env);
   const routing = extractRoutingInfo(body) ?? (eventType === "check_suite" ? await routeByCommit(env, body) : null);
   if (!routing) return Response.json({ ok: true, dropped: "no routable issue/PR number" });
