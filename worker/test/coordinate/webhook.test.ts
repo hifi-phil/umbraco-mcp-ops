@@ -83,12 +83,12 @@ describe("coordinateWebhook — no event / no rule", () => {
   });
 
   it("a legal event with no rule for the current state -> dropped, logged", async () => {
-    // LABELS.AI_GENERATED added while the issue is in LABELS.AI_DISCUSSING: build_succeeded
+    // LABELS.PR_OPEN added while the issue is in LABELS.AI_DISCUSSING: build_succeeded
     // has no rule from there, and it isn't a contextual event, so it's a gap.
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
     const result = await coordinateWebhook(
       deps,
-      input({ payload: { action: "issues.labeled", label: { name: LABELS.AI_GENERATED }, sender: { login: "phil", type: "User" } } }),
+      input({ payload: { action: "issues.labeled", label: { name: LABELS.PR_OPEN }, sender: { login: "phil", type: "User" } } }),
     );
     expect(result).toEqual({ outcome: "dropped_no_rule", from: LABELS.AI_DISCUSSING, event: EVENTS.BUILD_SUCCEEDED });
     expect(deps.logTransition).toHaveBeenCalledWith(
@@ -109,13 +109,13 @@ describe("coordinateWebhook — no event / no rule", () => {
   });
 
   it("the build loop swapping its own label (no outcome comment) clears the watchdog", async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.PR_OPEN]) });
     await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.ISSUE_BUILD_LOOP });
     const result = await coordinateWebhook(
       deps,
-      input({ payload: { action: "issues.labeled", label: { name: LABELS.AI_GENERATED }, sender: { login: "phil", type: "User" } } }),
+      input({ payload: { action: "issues.labeled", label: { name: LABELS.PR_OPEN }, sender: { login: "phil", type: "User" } } }),
     );
-    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_GENERATED, event: EVENTS.BUILD_SUCCEEDED });
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.PR_OPEN, event: EVENTS.BUILD_SUCCEEDED });
     expect(await deps.getPendingFire()).toBeNull();
     expect(deps.addLabel).not.toHaveBeenCalled();
     expect(deps.removeLabel).not.toHaveBeenCalled();
@@ -232,8 +232,8 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
     expect(deps.clearPendingFire).not.toHaveBeenCalled();
   });
 
-  it(`build_succeeded outcome artifact, realistic ordering (issue-build-loop's own Step 3 already swapped ${LABELS.AI_READY} -> ${LABELS.AI_GENERATED} before commenting): applied as a noop confirm, no GitHub write, clears pendingFire`, async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
+  it(`build_succeeded outcome artifact, realistic ordering (issue-build-loop's own Step 3 already swapped ${LABELS.AI_READY} -> ${LABELS.PR_OPEN} before commenting): applied as a noop confirm, no GitHub write, clears pendingFire`, async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.PR_OPEN]) });
     const body = [
       "PR opened.",
       "",
@@ -273,7 +273,7 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
     );
     expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_READY, event: EVENTS.BUILD_SUCCEEDED });
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_READY);
-    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_GENERATED);
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.PR_OPEN);
     expect(deps.fireRoutine).not.toHaveBeenCalled();
     expect(await deps.getPendingFire()).toBeNull(); // the outcome ends the watch
   });
@@ -320,15 +320,15 @@ describe(`coordinateWebhook — leaving ${LABELS.AI_STUCK}`, () => {
   const outcomeComment = (outcome: Record<string, unknown>) =>
     [`<!-- agent-outcome:${ROUTINES.ISSUE_BUILD_LOOP} -->`, "```json", JSON.stringify(outcome), "```"].join("\n");
 
-  it(`a late build_succeeded after the routine's own swap landed (${LABELS.AI_STUCK} + ${LABELS.AI_GENERATED}): read as ${LABELS.AI_STUCK}, only ${LABELS.AI_STUCK} removed`, async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK, LABELS.AI_GENERATED]) });
+  it(`a late build_succeeded after the routine's own swap landed (${LABELS.AI_STUCK} + ${LABELS.PR_OPEN}): read as ${LABELS.AI_STUCK}, only ${LABELS.AI_STUCK} removed`, async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK, LABELS.PR_OPEN]) });
     const result = await coordinateWebhook(
       deps,
       input({ payload: { action: "issue_comment.created", comment: { body: outcomeComment({ outcome: "build_succeeded", pr: 123 }) } } }),
     );
     expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_STUCK, event: EVENTS.BUILD_SUCCEEDED });
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
-    expect(deps.addLabel).not.toHaveBeenCalled(); // LABELS.AI_GENERATED already there
+    expect(deps.addLabel).not.toHaveBeenCalled(); // LABELS.PR_OPEN already there
   });
 
   it(`a late build_blocked with no swap visible yet (only ${LABELS.AI_STUCK}): swaps ${LABELS.AI_STUCK} -> ${LABELS.AI_BLOCKED} itself`, async () => {
@@ -355,7 +355,7 @@ describe(`coordinateWebhook — leaving ${LABELS.AI_STUCK}`, () => {
   });
 
   it(`${LABELS.AI_STUCK} plus two other tracked labels is still genuinely ambiguous`, () => {
-    expect(deriveState([LABELS.AI_STUCK, LABELS.AI_GENERATED, LABELS.AUTO_MERGING])).toBe("ambiguous");
+    expect(deriveState([LABELS.AI_STUCK, LABELS.PR_OPEN, LABELS.AUTO_MERGING])).toBe("ambiguous");
   });
 });
 

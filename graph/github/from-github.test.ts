@@ -272,8 +272,8 @@ describe("translate — unmapped events", () => {
 });
 
 describe("translate — a loop's own label swap (native completion signal)", () => {
-  it(`issues.labeled ${LABELS.AI_GENERATED} / ${LABELS.AI_BLOCKED} -> build_succeeded / build_blocked`, () => {
-    expect(translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_GENERATED } }))).toBe(EVENTS.BUILD_SUCCEEDED);
+  it(`issues.labeled ${LABELS.PR_OPEN} / ${LABELS.AI_BLOCKED} -> build_succeeded / build_blocked`, () => {
+    expect(translate(payload({ action: "issues.labeled", label: { name: LABELS.PR_OPEN } }))).toBe(EVENTS.BUILD_SUCCEEDED);
     expect(translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_BLOCKED } }))).toBe(EVENTS.BUILD_BLOCKED);
   });
 

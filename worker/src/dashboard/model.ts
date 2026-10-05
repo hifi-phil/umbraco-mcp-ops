@@ -212,7 +212,7 @@ export function when(at: string): string {
 export function tone(state: string): string {
   if (state === LABELS.AI_STUCK || state === LABELS.MERGE_BLOCKED) return "danger";
   if (state === LABELS.AI_BLOCKED) return "warning";
-  if (state === LABELS.AI_GENERATED) return "positive";
+  if (state === LABELS.PR_OPEN) return "positive";
   return "default";
 }
 

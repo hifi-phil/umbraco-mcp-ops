@@ -5,9 +5,9 @@ import { reduce } from "../graph";
 import { labelOps } from "./to-github";
 
 describe("labelOps — the concrete GitHub calls a rule requires", () => {
-  it(`build_succeeded is a noop — issue-build-loop's own Step 3 already did the ${LABELS.AI_READY} -> ${LABELS.AI_GENERATED} swap before this event reaches the reducer`, () => {
-    const rule = reduce(LABELS.AI_GENERATED, EVENTS.BUILD_SUCCEEDED)!;
-    expect(labelOps([LABELS.AI_GENERATED], rule)).toEqual([]);
+  it(`build_succeeded is a noop — issue-build-loop's own Step 3 already did the ${LABELS.AI_READY} -> ${LABELS.PR_OPEN} swap before this event reaches the reducer`, () => {
+    const rule = reduce(LABELS.PR_OPEN, EVENTS.BUILD_SUCCEEDED)!;
+    expect(labelOps([LABELS.PR_OPEN], rule)).toEqual([]);
   });
 
   it(`build_blocked is a noop — same reasoning, keyed on the post-swap ${LABELS.AI_BLOCKED} state`, () => {

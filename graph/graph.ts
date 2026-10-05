@@ -56,7 +56,7 @@ export const rules: Rule[] = [
     // gone — a rule keyed on LABELS.AI_READY can never fire. `to: noop` because
     // there's nothing left to write; this rule exists to confirm the swap
     // already happened, same idempotent-confirm shape as MERGED below.
-    from: LABELS.AI_GENERATED,
+    from: LABELS.PR_OPEN,
     on: EVENTS.BUILD_SUCCEEDED,
     to: noop,
     verifiedBy: "external-judgment", // composite fact includes mcp-review's judgment, not just CI
@@ -78,7 +78,7 @@ export const rules: Rule[] = [
   {
     from: LABELS.AI_READY,
     on: EVENTS.BUILD_SUCCEEDED,
-    to: label(LABELS.AI_GENERATED),
+    to: label(LABELS.PR_OPEN),
     verifiedBy: "external-judgment",
   },
   {
@@ -240,7 +240,7 @@ export const rules: Rule[] = [
   // (re-)run the review. Nothing fires yet: coordinate/review-gate.ts reads
   // the PR's CI (now, and each time a check suite finishes) and raises
   // review_ci_passed or review_ci_failed, the same live re-check LABELS.AUTO_MERGING
-  // uses. The review's state lives on the PR; the issue's LABELS.AI_GENERATED
+  // uses. The review's state lives on the PR; the issue's LABELS.PR_OPEN
   // still marks "the build opened a PR".
   {
     from: "none",
@@ -318,7 +318,7 @@ export const rules: Rule[] = [
   // outcome labels (if they landed first), and LABELS.AI_STUCK (a late loop).
   ...(
     [
-      [EVENTS.UNLABELLED_AI_READY, ["none", LABELS.AI_GENERATED, LABELS.AI_BLOCKED, LABELS.AI_STUCK]],
+      [EVENTS.UNLABELLED_AI_READY, ["none", LABELS.PR_OPEN, LABELS.AI_BLOCKED, LABELS.AI_STUCK]],
       [EVENTS.UNLABELLED_AUTO_RELEASING, ["none", LABELS.AI_STUCK]],
       [EVENTS.UNLABELLED_AUTO_REWORKING, ["none", LABELS.AI_STUCK]],
       [EVENTS.UNLABELLED_AUTO_MERGING, ["none", LABELS.AI_STUCK]],
@@ -331,7 +331,7 @@ export const rules: Rule[] = [
   // --- the watchdog: a fired routine that never reported back ---
   // 03-components.md §3.4: "Alarm fires instead, the agent died — move to
   // state:stuck." Keyed on the in-flight trigger labels only. Not
-  // LABELS.AI_GENERATED / LABELS.AI_BLOCKED: a build that swapped to those has
+  // LABELS.PR_OPEN / LABELS.AI_BLOCKED: a build that swapped to those has
   // finished, whether or not it posted its outcome comment (shadow run 1
   // would have marked finished build #116 stuck). The table doubles as the
   // watch list — coordinate/ only arms the watchdog for a fired routine
@@ -356,14 +356,14 @@ export const rules: Rule[] = [
   // Two ways out. (1) A late outcome: the routine was slow, not dead, and
   // its authoritative outcome still wins — same verifiedBy as the normal
   // rule for that outcome. The routine's own label swap will usually have
-  // landed first, leaving e.g. LABELS.AI_STUCK + LABELS.AI_GENERATED together;
+  // landed first, leaving e.g. LABELS.AI_STUCK + LABELS.PR_OPEN together;
   // coordinate/apply.ts's deriveState() reads that specific pair as LABELS.AI_STUCK, and
   // labelOps() then just removes LABELS.AI_STUCK. (2) A human retry: re-adding the
   // trigger label on a stuck issue re-fires its loop, exactly as from "none".
   {
     from: LABELS.AI_STUCK,
     on: EVENTS.BUILD_SUCCEEDED,
-    to: label(LABELS.AI_GENERATED),
+    to: label(LABELS.PR_OPEN),
     verifiedBy: "external-judgment",
   },
   {

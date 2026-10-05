@@ -9,7 +9,7 @@
 ## Summary
 
 - **Build and review become separate routines.** The build routine stops
-  once the PR is open. A new `ai-review` routine reviews the PR with fresh
+  once the PR is open. A new `ai-reviewing` routine reviews the PR with fresh
   eyes. `rework-loop` makes the fixes.
 - **Every routine records its decisions and what it verified** in two
   logs, kept in D1 next to the label history.
@@ -40,11 +40,11 @@ these two.
 
 ```mermaid
 flowchart LR
-  ready[ready-for-ai] --> build[build]
+  ready[ai-ready] --> build[build]
   build -- PR opened --> ci{CI}
   ci -. red .-> rework[rework-loop]
-  ci -- green --> review[ai-review]
-  review -- pass --> done[generated-by-ai]
+  ci -- green --> review[ai-reviewing]
+  review -- pass --> done[pr-open]
   review -. findings .-> rework
   rework -- pushed --> ci
   review -- block --> blocked[ai-blocked: waits for a person]
@@ -59,26 +59,26 @@ does. It:
 2. runs a **self-review subagent** that has the builder's context and
    rereads the diff with a clear head;
 3. writes its decisions and build entry to the logs (below);
-4. opens the PR with `ai-review` on it, and stops.
+4. opens the PR with `ai-reviewing` on it, and stops.
 
 It no longer drives CI or runs `mcp-review`.
 
 ### CI
 
-The Worker watches CI, not the build routine. `ai-review` goes on when the
+The Worker watches CI, not the build routine. `ai-reviewing` goes on when the
 PR opens, but the review only fires once CI has finished. The Worker reads
 the PR's checks when the label is added and each time a check suite
-finishes, the same live re-check `auto-merge` uses.
+finishes, the same live re-check `auto-merging` uses.
 
 - **Still running, or not started:** wait for the next check suite.
-- **Red:** `ai-review` is swapped for `auto-rework` and the Worker fires
-  `rework-loop` with the failing checks. Its push brings `ai-review` back.
+- **Red:** `ai-reviewing` is swapped for `auto-reworking` and the Worker fires
+  `rework-loop` with the failing checks. Its push brings `ai-reviewing` back.
   Capped at `MAX_CI_FIX_ATTEMPTS`, then `ai-stuck`.
 - **Green:** the Worker fires `review-loop`.
 
 ### Review
 
-A new routine, `review-loop`, on its own label, `ai-review`, running on a
+A new routine, `review-loop`, on its own label, `ai-reviewing`, running on a
 **stronger model than the builder**. It's adversarial: it starts with nothing but the PR.
 
 1. It forms its findings **without** reading the decision log.
@@ -89,19 +89,19 @@ A new routine, `review-loop`, on its own label, `ai-review`, running on a
 
 | Outcome | What happens |
 |---|---|
-| **pass** | `ai-review` comes off. The PR is ready for a person. |
-| **findings** | `auto-rework`, with the findings in the comment. |
+| **pass** | `ai-reviewing` comes off. The PR is ready for a person. |
+| **findings** | `auto-reworking`, with the findings in the comment. |
 | **block** ("the approach is wrong") | `ai-blocked`. It **waits for a person**; nothing rebuilds automatically. |
 
 **The review's state lives on the PR, not the issue.** The issue still gets
-`generated-by-ai` when the build opens the PR, as today. Changing the
+`pr-open` when the build opens the PR, as today. Changing the
 issue's label from a verdict on the PR would be the first effect that
 crosses from one issue to another, which the design doesn't cover yet
 ([12-target-graph.md](12-target-graph.md), edge type 1). So
-`generated-by-ai` means "the build opened a PR", and whether that PR passed
+`pr-open` means "the build opened a PR", and whether that PR passed
 review is read from the PR.
 
-The PR shows `ai-review` while it waits for CI and while the review runs. A
+The PR shows `ai-reviewing` while it waits for CI and while the review runs. A
 person can add the label to any PR to run the review again, for example
 after editing it by hand, or after a block.
 This answers [12-target-graph.md](12-target-graph.md)'s "labels as state"
@@ -112,14 +112,14 @@ question for this split: the step is a label, visible on the board.
 **`rework-loop` makes every fix.** The reviewer never fixes its own
 findings. `rework-loop` reads the decision log, so it can weigh a challenge
 instead of blindly undoing a deliberate choice. Its push goes back through
-CI, then `ai-review`.
+CI, then `ai-reviewing`.
 
 ### Caps
 
 Review rework rounds are counted **separately for bots and for people**,
 3 each to start. Each transition already records who made it, so the two
 can be told apart. Today `MAX_REVIEW_REWORKS` counts both together. A
-person re-adding `auto-rework` from `ai-stuck` resets both counts, as now.
+person re-adding `auto-reworking` from `ai-stuck` resets both counts, as now.
 
 ## The decision log and build log
 
@@ -158,7 +158,7 @@ in files.
 | Routine | Decision log | Build log |
 |---|---|---|
 | build | Writes its decisions, including the self-review subagent's | Writes its entry |
-| `ai-review` | Reads it, after forming its findings | Writes its verdict, round and findings |
+| `ai-reviewing` | Reads it, after forming its findings | Writes its verdict, round and findings |
 | `rework-loop` | Reads it, and adds its own decisions | Writes its entry |
 | Worker | — | — (`transitions` is its log) |
 
@@ -230,7 +230,7 @@ This needs exploring before split 2 is built.
 1. **Sandbox** (`hifi-phil/mcp-ops-e2e-testing`). The e2e suite gains
    scenarios for:
    - review pass, findings and block;
-   - a person re-running `ai-review`;
+   - a person re-running `ai-reviewing`;
    - the separate bot and human counts.
 
    Stub agents stand in for the routines, as for the other loops.
@@ -246,7 +246,7 @@ This needs exploring before split 2 is built.
 Settled in the graph and Worker change: the routine is `review-loop`; its
 outcomes are `review_passed`, `review_findings` (with a count) and
 `review_blocked` (with a reason); and any push from a rework started under
-`ai-review`, a CI fix or the review's findings, goes back to `ai-review`
+`ai-reviewing`, a CI fix or the review's findings, goes back to `ai-reviewing`
 and is reviewed again once its CI is green.
 
 **Logs**
@@ -255,7 +255,7 @@ and is reviewed again once its CI is green.
 - Where the export goes when a PR merges.
 
 **Skills**
-- `issue-build-loop` stops once the PR is open, with `ai-review` on it.
+- `issue-build-loop` stops once the PR is open, with `ai-reviewing` on it.
 - Every routine reads and writes the logs through the MCP.
 - **`review-loop` posts its findings as a real PR review**, with inline
   comments on the lines concerned. `rework-loop` only reads a PR's reviews

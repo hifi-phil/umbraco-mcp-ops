@@ -140,8 +140,8 @@ export const scenarios: Scenario[] = [
       scoped(async (t) => {
         const issue = t.n(await openIssue("Add a build note", "Add a file under builds/ for this issue.", "success"));
         await addLabel(issue, LABELS.AI_READY);
-        const built = await waitFor(issue, labelsAre(LABELS.AI_GENERATED), 2 * MIN);
-        expectLabels(built, issue, LABELS.AI_GENERATED);
+        const built = await waitFor(issue, labelsAre(LABELS.PR_OPEN), 2 * MIN);
+        expectLabels(built, issue, LABELS.PR_OPEN);
         expect(hasMarker(built, "issue-build-loop", "build_succeeded"), `#${issue} build_succeeded marker`).toBe(true);
         const pr = t.n(Number(built.comments.join("\n").match(/"outcome":"build_succeeded","pr":(\d+)/)?.[1]));
 
@@ -158,7 +158,7 @@ export const scenarios: Scenario[] = [
         await expectLogged(
           issue,
           { event: "labelled_ai_ready", run: "issue-build-loop" },
-          { event: "build_succeeded", effect: LABELS.AI_GENERATED },
+          { event: "build_succeeded", effect: LABELS.PR_OPEN },
         );
         await expectLogged(pr, { event: "labelled_auto_merging", run: "merge-flow" }, { event: "merged", effect: "close" });
         await expectLogged(release, { event: "labelled_auto_releasing", run: "auto-release-loop" }, { event: "release_published", effect: "close" });
@@ -166,7 +166,7 @@ export const scenarios: Scenario[] = [
         // The live-status view: the built issue shows its last run; a closed
         // PR or release has no row.
         expect(await statusOf(issue), `#${issue} status`).toMatchObject({
-          state: LABELS.AI_GENERATED,
+          state: LABELS.PR_OPEN,
           routine: "issue-build-loop",
           attempt: 1,
           running: 0,
@@ -438,7 +438,7 @@ export const scenarios: Scenario[] = [
 
   // --- The watchdog and LABELS.AI_STUCK (the sandbox's watchdog is real, short) --------
   {
-    name: `watchdog: silent build -> ${LABELS.AI_STUCK}; late build_succeeded -> ${LABELS.AI_GENERATED}`,
+    name: `watchdog: silent build -> ${LABELS.AI_STUCK}; late build_succeeded -> ${LABELS.PR_OPEN}`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -446,7 +446,7 @@ export const scenarios: Scenario[] = [
         const stuck = await expectStuck(issue, LABELS.AI_READY);
         expect(hasComment(stuck, "No progress step was ever reported")).toBe(true);
         await lateOutcome(issue, "issue-build-loop", { outcome: "build_succeeded", pr: 1 });
-        expectLabels(await waitFor(issue, labelsAre(LABELS.AI_GENERATED), MIN), issue, LABELS.AI_GENERATED);
+        expectLabels(await waitFor(issue, labelsAre(LABELS.PR_OPEN), MIN), issue, LABELS.PR_OPEN);
       }),
   },
   {

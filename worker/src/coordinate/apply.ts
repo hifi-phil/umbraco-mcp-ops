@@ -156,7 +156,7 @@ export function deriveState(labels: readonly string[]): State | "ambiguous" {
   if (tracked.length === 1) return tracked[0]!;
   // The one expected pairing: LABELS.AI_STUCK plus a label a late routine swapped
   // in itself after the watchdog had already fired (e.g. LABELS.AI_STUCK +
-  // LABELS.AI_GENERATED, just before its outcome comment arrives). A known race
+  // LABELS.PR_OPEN, just before its outcome comment arrives). A known race
   // with a defined answer — the issue is still LABELS.AI_STUCK, and graph.ts's
   // "leaving LABELS.AI_STUCK" rules decide what the late outcome does with it.
   if (tracked.length === 2 && tracked.includes(LABELS.AI_STUCK)) return LABELS.AI_STUCK;

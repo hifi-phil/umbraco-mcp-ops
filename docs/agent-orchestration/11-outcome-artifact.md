@@ -46,7 +46,7 @@ a reason to post.
 ## Additive, not a replacement — on purpose, for now
 
 `issue-build-loop`'s real Step 3 still does the label swap itself (`remove
-ready-for-ai, add generated-by-ai/ai-blocked`) exactly as before. The
+ai-ready, add pr-open/ai-blocked`) exactly as before. The
 artifact is new output alongside it, not instead of it. This matters
 because **nothing today actually reads this artifact and acts on it** — a
 Worker + Durable Object exists now (`worker/`) and can, but nothing is

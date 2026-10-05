@@ -1,6 +1,6 @@
 # The lightweight build playbook
 
-Completing one `ready-for-ai` issue on a **content repo** — no Umbraco toolchain. This is
+Completing one `ai-ready` issue on a **content repo** — no Umbraco toolchain. This is
 the per-issue prompt substituted into each build subagent, in place of the MCP shape's
 [`mcp-playbook.md`](mcp-playbook.md).
 

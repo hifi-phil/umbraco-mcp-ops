@@ -25,7 +25,7 @@ and the loop talks to itself.
 
 ## `//` means "this one's for a person, not you"
 
-An `ai-discuss` issue is often a shared issue, and people need to talk to **each other** on it
+An `ai-discussing` issue is often a shared issue, and people need to talk to **each other** on it
 without you answering.
 
 - **A comment is addressed to you by default.** No prefix needed — the normal case.
@@ -78,12 +78,12 @@ shape and stop:
 
 ```
 We've been round this 10 times without landing it — worth talking through directly.
-Re-add `ai-discuss` when you want to pick it back up.
+Re-add `ai-discussing` when you want to pick it back up.
 
 <!-- issue-discuss-loop:capped -->
 ```
 
-Then **remove `ai-discuss`** (github-ops → *Add / remove a label on an issue*). This is the
+Then **remove `ai-discussing`** (github-ops → *Add / remove a label on an issue*). This is the
 **one** exception to "never clear the label". With the label gone nothing fires, so the cap can't
 re-post on every later comment — and because the count only looks at marked comments *after* the
 cap marker, re-adding the label genuinely restarts at zero.

@@ -116,7 +116,7 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
         // issue-build-loop's own Step 3 swap. The same fact its outcome
         // comment carries, but native and reliably present (the comment
         // wasn't, in shadow run 1). Also how a late build leaves LABELS.AI_STUCK.
-        case LABELS.AI_GENERATED:
+        case LABELS.PR_OPEN:
           return EVENTS.BUILD_SUCCEEDED;
         case LABELS.AI_BLOCKED:
           return EVENTS.BUILD_BLOCKED;
