@@ -12,24 +12,34 @@ import { runItems, runLog, scenarios } from "./scenarios";
 const only = process.env.E2E_ONLY?.toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
 const runStart = new Date(Date.now() - 5_000).toISOString().replace(/\.\d+Z$/, "Z");
 
+/**
+ * Each scenario gets one retry: real GitHub has slow moments (05-10-2026:
+ * Actions took 2 min on one PR, so the sandbox's 2-minute watchdog expired
+ * as CI went green). A retry can't hide a real fault: every attempt's
+ * issues and PRs stay in the audit (runItems), and a retry is announced.
+ */
+const RETRIES = 1;
+
 describe.concurrent("scenarios", () => {
   for (const s of scenarios) {
     const run = !only || only.some((o) => s.name.toLowerCase().includes(o)) ? it : it.skip;
+    let attempt = 0;
     run(
       s.name,
       () =>
         inScenario(s.name, async () => {
+          attempt++;
           const start = Date.now();
-          progress("start");
+          progress(attempt === 1 ? "start" : `RETRY ${attempt}/${RETRIES + 1}`);
           try {
             await s.run();
-            progress(`PASSED in ${Math.round((Date.now() - start) / 1000)}s`);
+            progress(`PASSED in ${Math.round((Date.now() - start) / 1000)}s${attempt > 1 ? ` (on attempt ${attempt})` : ""}`);
           } catch (e) {
             progress(`FAILED after ${Math.round((Date.now() - start) / 1000)}s: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
             throw e;
           }
         }),
-      s.timeoutMs,
+      { timeout: s.timeoutMs, retry: RETRIES },
     );
   }
 });
