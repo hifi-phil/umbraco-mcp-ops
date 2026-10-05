@@ -26,7 +26,9 @@ E2E_ONLY=conflict,watchdog npm run e2e   # just the scenarios whose name contain
 `npm run e2e` uses your `gh` login (or `GITHUB_TOKEN`). It prints progress
 as it goes, one tagged line per step and per label change
 (`06:18:23 [CI-fix limit] #122 open [auto-merging] -> open [auto-reworking]`);
-`E2E_QUIET=1` turns that off. Scenarios run five at a time.
+`E2E_QUIET=1` turns that off. Scenarios run five at a time, and a failed
+scenario is retried once (announced as `RETRY 2/2`), for slow moments on
+real GitHub; every attempt's issues and PRs still go through the audit.
 
 The Worker and the stub must be deployed with `e2e_repo` set in
 `worker/terraform/`. That also makes the sandbox's watchdog real, with a
