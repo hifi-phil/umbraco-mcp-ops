@@ -39,6 +39,10 @@ export const EVENTS = {
   LABELLED_AUTO_MERGING: "labelled_auto_merging",
   MERGE_GATE_FAILED_SOFT: "merge_gate_failed_soft",
   MERGE_GATE_FAILED_HARD: "merge_gate_failed_hard",
+  // CI finished green on a LABELS.AUTO_MERGING PR (the Worker's own re-check):
+  // merge-flow is fired again, since one that ran while a check was still
+  // queued finished without merging (PR #228, 05-10-2026).
+  MERGE_GATE_PASSED: "merge_gate_passed",
   UNLABELLED_AUTO_MERGING: "unlabelled_auto_merging",
   MERGED: "merged",
   // The review (15-agent-splits.md). LABELS.AI_REVIEWING added (by the build or a

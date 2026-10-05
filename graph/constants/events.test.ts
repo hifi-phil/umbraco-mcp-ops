@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ALL_EVENTS, EVENTS } from "./events";
 
 describe("EVENTS — the absolute list", () => {
-  it("has exactly the thirty domain events, none blank or duplicated", () => {
-    expect(ALL_EVENTS).toHaveLength(30);
-    expect(new Set(ALL_EVENTS).size).toBe(30);
+  it("has exactly the thirty-one domain events, none blank or duplicated", () => {
+    expect(ALL_EVENTS).toHaveLength(31);
+    expect(new Set(ALL_EVENTS).size).toBe(31);
     expect(ALL_EVENTS.every((e) => e.length > 0)).toBe(true);
   });
 

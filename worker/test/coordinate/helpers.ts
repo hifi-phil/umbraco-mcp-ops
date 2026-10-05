@@ -27,6 +27,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   let ciFix: CiFix | null = null;
   let reviewReworks = 0;
   let reviewLoop: ReviewLoop | null = null;
+  let mergeFiredFor: string | null = null;
   let reconcileReported: string | null = null;
   let completed: string | null = null;
   return {
@@ -61,6 +62,10 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     }),
     setCiFix: vi.fn(async (state: CiFix | null) => {
       ciFix = state;
+    }),
+    getMergeFiredFor: vi.fn(async () => mergeFiredFor),
+    setMergeFiredFor: vi.fn(async (sha: string) => {
+      mergeFiredFor = sha;
     }),
     getReviewLoop: vi.fn(async () => reviewLoop),
     setReviewLoop: vi.fn(async (state: ReviewLoop | null) => {

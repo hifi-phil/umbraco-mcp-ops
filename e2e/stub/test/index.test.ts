@@ -407,53 +407,16 @@ describe("handleWebhook (the stub's own check_suite webhook)", () => {
   });
 
   it("bad signature -> 401", async () => {
-    const defer = vi.fn();
-    expect((await handleWebhook(await hook(suite(), "sha256=00"), env, defer)).status).toBe(401);
-    expect(defer).not.toHaveBeenCalled();
+    expect((await handleWebhook(await hook(suite(), "sha256=00"), env)).status).toBe(401);
   });
 
-  it("a completed suite on a sandbox PR -> merge-flow's gate runs for that PR", async () => {
-    let work: Promise<unknown> | undefined;
-    const gh = fakeGh({ [`GET ${R}/pulls/7`]: { state: "open", mergeable: true, head: { sha: "h" }, labels: [] } });
-    const res = await handleWebhook(await hook(suite()), env, (w) => (work = w), gh);
-    expect(await res.json()).toEqual({ prs: [7] });
-    await work;
-    expect(gh).toHaveBeenCalledWith("GET", `${R}/pulls/7`);
-  });
-
-  it("a suite GitHub sent with no pull_requests -> its PRs are found by head_sha", async () => {
-    const body = JSON.stringify({
-      action: "completed",
-      repository: { name: "mcp-ops-e2e-testing", owner: { login: "hifi-phil" } },
-      check_suite: { head_sha: "h", pull_requests: [] },
-    });
-    const gh = fakeGh({ [`GET ${R}/commits/h/pulls`]: [{ number: 7, state: "open" }, { number: 8, state: "closed" }] });
-    const res = await handleWebhook(await hook(body), env, vi.fn(), gh);
-    expect(await res.json()).toEqual({ prs: [7] });
-  });
-
-  it("the gate still reads 'CI running' -> re-checked, then merged once it's green", async () => {
-    let work: Promise<unknown> | undefined;
-    let checks = 0;
-    const gh = vi.fn<Gh>(async (method, path) => {
-      if (path.endsWith("/issues/7")) return { body: "<!-- e2e: merge -->" };
-      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: LABELS.AUTO_MERGING }] };
-      if (path.endsWith("/check-runs")) {
-        checks++;
-        return { check_runs: [{ name: "ci", status: checks < 2 ? "in_progress" : "completed", conclusion: checks < 2 ? null : "success" }] };
-      }
-      return {};
-    });
-    await handleWebhook(await hook(suite()), env, (w) => (work = w), gh, 0);
-    await work;
-    expect(checks).toBe(2);
-    expect(gh).toHaveBeenCalledWith("PUT", `${R}/pulls/7/merge`, { merge_method: "squash" });
-  });
-
-  it("another repo, or another event -> ignored", async () => {
-    const defer = vi.fn();
-    await handleWebhook(await hook(suite("umbraco-mcp-ops")), env, defer);
-    await handleWebhook(await hook(suite(), undefined, "issues"), env, defer);
-    expect(defer).not.toHaveBeenCalled();
+  it("a completed suite -> ignored, nothing merged: the orchestrator re-fires merge-flow on green CI itself", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const res = await handleWebhook(await hook(suite()), env);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ignored: expect.any(String) });
+    expect(fetch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

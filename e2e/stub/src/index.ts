@@ -7,9 +7,8 @@
 //
 // Two routes:
 // - POST /         a fire from the orchestrator (bearer FIRE_TOKEN)
-// - POST /webhook  the sandbox's check_suite webhook (HMAC HOOK_SECRET), so
-//                  merge-flow can merge once CI goes green, as the real one
-//                  does by polling
+// - POST /webhook  the sandbox's check_suite webhook (HMAC HOOK_SECRET),
+//                  signature-checked and ignored (see handleWebhook)
 //
 // Only the sandbox repo (E2E_REPO) is ever acted on, whatever a request says.
 
@@ -168,61 +167,20 @@ export async function verifySignature(secret: string, rawBody: string, header: s
   return diff === 0;
 }
 
-/** CI finished on a sandbox PR: if it carries {@link LABELS.AUTO_MERGING}, run merge-flow's
- * gate again, as the real merge-flow's polling would. */
-/** How often, and how long apart, the webhook re-checks a gate that still
- * reads "CI running": a commit here gets two CI runs, and the first one's
- * suite can land while the second still reads unfinished. */
-export const WAIT_RETRIES = 3;
-export const WAIT_RETRY_MS = 6000; // 3 × 6 s fits inside a Worker's 30 s waitUntil
-
-export async function handleWebhook(
-  request: Request,
-  env: StubEnv,
-  defer: (work: Promise<unknown>) => void,
-  gh: Gh = stubGitHub(env),
-  retryMs = WAIT_RETRY_MS,
-): Promise<Response> {
+/**
+ * The sandbox's check_suite webhook. It used to run merge-flow's gate again
+ * when CI finished, which hid a gap in the orchestrator: a merge-flow that
+ * ran while a check was queued finished without merging, and nothing else
+ * retried (PR #228, 05-10-2026). The orchestrator now fires merge-flow again
+ * on green CI itself, so this only checks the signature and ignores the
+ * event. The hook stays: the e2e driver finds the stub by its URL.
+ */
+export async function handleWebhook(request: Request, env: StubEnv): Promise<Response> {
   const raw = await request.text();
   if (!(await verifySignature(env.HOOK_SECRET, raw, request.headers.get("X-Hub-Signature-256")))) {
     return new Response("invalid signature", { status: 401 });
   }
-  if (request.headers.get("X-GitHub-Event") !== "check_suite") return Response.json({ ignored: "not check_suite" });
-  const body = JSON.parse(raw) as {
-    action?: string;
-    repository?: { name: string; owner: { login: string } };
-    check_suite?: { head_sha?: string; pull_requests?: { number: number }[] };
-  };
-  const owner = body.repository?.owner.login ?? "";
-  const repo = body.repository?.name ?? "";
-  if (body.action !== "completed" || !isSandbox(env, owner, repo)) return Response.json({ ignored: true });
-
-  let prs = (body.check_suite?.pull_requests ?? []).map((p) => p.number);
-  // GitHub sometimes sends a suite with no pull_requests; find them by commit.
-  if (prs.length === 0 && body.check_suite?.head_sha) {
-    const open = (await gh("GET", `/repos/${owner}/${repo}/commits/${body.check_suite.head_sha}/pulls`)) as {
-      number: number;
-      state: string;
-    }[];
-    prs = open.filter((p) => p.state === "open").map((p) => p.number);
-  }
-  for (const number of prs) {
-    defer(
-      logged(`check_suite -> merge-flow #${number}`, async () => {
-        // A silent merge-flow stays silent here too (the watchdog scenarios).
-        const { body: prBody } = (await gh("GET", `/repos/${owner}/${repo}/issues/${number}`)) as { body: string | null };
-        if (parseHint(prBody) === "silent") return "none";
-        const fire = { route: "merge-flow", owner, repo, number };
-        let result = await mergeIfGreen(gh, fire);
-        for (let i = 0; i < WAIT_RETRIES && result === "waiting_for_ci"; i++) {
-          await new Promise((r) => setTimeout(r, retryMs));
-          result = await mergeIfGreen(gh, fire);
-        }
-        return result;
-      }),
-    );
-  }
-  return Response.json({ prs });
+  return Response.json({ ignored: "the orchestrator fires merge-flow again when CI finishes green" });
 }
 
 export type ReviewEvent = "REQUEST_CHANGES" | "APPROVE";
@@ -265,7 +223,7 @@ export default {
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
     const defer = (work: Promise<unknown>) => ctx.waitUntil(work);
     const path = new URL(request.url).pathname;
-    if (path === "/webhook") return handleWebhook(request, env, defer);
+    if (path === "/webhook") return handleWebhook(request, env);
     if (path === "/review") return handleReview(request, env);
     return handleFire(request, env, defer);
   },

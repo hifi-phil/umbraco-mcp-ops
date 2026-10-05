@@ -182,6 +182,14 @@ describe("reduce — the review (15-agent-splits.md)", () => {
   });
 });
 
+describe(`reduce — CI green under ${LABELS.AUTO_MERGING}`, () => {
+  it(`${LABELS.AUTO_MERGING} + merge_gate_passed -> stays put, fires merge-flow again (PR #228)`, () => {
+    const rule = reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_GATE_PASSED);
+    expect(rule?.to).toEqual(noop);
+    expect(rule?.run).toBe(ROUTINES.MERGE_FLOW);
+  });
+});
+
 describe("reduce — illegal moves are dropped, not errors", () => {
   it("an event with no matching rule for the current state returns null", () => {
     expect(reduce(LABELS.PR_OPEN, EVENTS.LABELLED_AI_READY)).toBeNull();

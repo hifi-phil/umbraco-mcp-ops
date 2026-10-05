@@ -45,6 +45,9 @@ export type CheckRun = { status: CheckRunStatus; conclusion: CheckRunConclusion;
 export type LatestReviewState = "approved" | "changes_requested" | "commented" | "none";
 
 export type MergeGateFacts = {
+  // The commit the check runs are for, so a green re-fire happens once per
+  // commit. Absent in older fakes; nothing is re-fired without it.
+  headSha?: string;
   checkRuns: readonly CheckRun[];
   latestReviewState: LatestReviewState;
   mergeable: boolean | null; // null = GitHub is still computing it
