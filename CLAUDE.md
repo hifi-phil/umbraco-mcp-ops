@@ -29,7 +29,7 @@ bumped only when files under their folder changed since the last `v*` tag.
 - **Build/test**: `cd worker && npm test && npm run typecheck`, and
   `node .claude/skills/release-versioning/scripts/bump.test.mjs`.
 - **Trigger**: an issue titled `release <version>`, labelled
-  `auto-release` — see `auto-release-loop`'s `SKILL.md`.
+  `auto-releasing` — see `auto-release-loop`'s `SKILL.md`.
 - Tag + GitHub Release: `.github/workflows/release-tag.yml`, fires on
   push to `main`, tags `v<marketplace version>`. No per-component tags.
 - Sync back: `.github/workflows/sync-main-to-dev.yml` opens a PR merging

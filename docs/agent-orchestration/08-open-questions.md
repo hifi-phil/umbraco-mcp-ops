@@ -143,13 +143,13 @@
   straight to `state:rework`, the log needs to record that jump even though
   no rule in the table permits it — worth deciding whether `verifiedBy` even
   applies to a row the reducer didn't produce. *Narrowed:* the most common
-  exit from stuck (re-adding a trigger label, e.g. `auto-rework` on an
+  exit from stuck (re-adding a trigger label, e.g. `auto-reworking` on an
   `ai-stuck` PR) is now a real rule in `graph/graph.ts`, not an override.
   The question still stands for relabels no rule covers.
 - **Does a late routine's own label removal tolerate a label that's already
-  gone?** Once the watchdog has swapped `ready-for-ai` → `ai-stuck`, a slow
-  `issue-build-loop` still tries to remove `ready-for-ai` before adding
-  `generated-by-ai` and posting its outcome. The Worker's own
+  gone?** Once the watchdog has swapped `ai-ready` → `ai-stuck`, a slow
+  `issue-build-loop` still tries to remove `ai-ready` before adding
+  `pr-open` and posting its outcome. The Worker's own
   `github-client.ts` treats that 404 as fine, but nobody has checked
   whether the loops' `gh issue edit --remove-label` / GitHub MCP calls do.
   If one aborts on it, the late outcome never arrives and the issue stays
@@ -164,7 +164,7 @@
   they're migrated.
 - ~~The outcome artifact's reducer rule fires inconsistently~~ — **resolved**:
   `build_succeeded`/`build_blocked`/`release_blocked` are now keyed on their
-  post-swap state (`AI_GENERATED`/`AI_BLOCKED`/`"none"`), matching
+  post-swap state (`PR_OPEN`/`AI_BLOCKED`/`"none"`), matching
   `release_published`'s shape, each firing an idempotent `noop` confirm.
   See `graph/graph.ts`'s comments on each rule and `worker/README.md`'s
   "black-box shape" section for how the inconsistency was found.

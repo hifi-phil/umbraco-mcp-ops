@@ -77,11 +77,11 @@ describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
     );
   });
 
-  it(`a build that already swapped to ${LABELS.AI_GENERATED} is finished, never moved to ${LABELS.AI_STUCK} (shadow run 1, #116)`, async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
+  it(`a build that already swapped to ${LABELS.PR_OPEN} is finished, never moved to ${LABELS.AI_STUCK} (shadow run 1, #116)`, async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.PR_OPEN]) });
     await deps.setPendingFire(pending);
     const result = await coordinateWatchdogExpired(deps);
-    expect(result).toMatchObject({ outcome: "dropped_no_rule", from: LABELS.AI_GENERATED });
+    expect(result).toMatchObject({ outcome: "dropped_no_rule", from: LABELS.PR_OPEN });
     expect(deps.addLabel).not.toHaveBeenCalled();
   });
 

@@ -9,13 +9,13 @@
 # workflow from the PR's BASE branch, and our loop PRs target `dev` (a non-default
 # branch), where GitHub does not fire the `labeled` trigger. `pull_request_target` always
 # runs from the base repo's DEFAULT branch, WITH secrets, regardless of the PR's base — so
-# `auto-merge` / `auto-rework` fire on dev-based PRs. It's safe here because this caller
+# `auto-merging` / `auto-reworking` fire on dev-based PRs. It's safe here because this caller
 # never checks out or executes PR head code — it only forwards event metadata to the
 # reusable workflow, which routes on the payload and checks out trusted mcp-ops.
 #
 # `issue_comment` is the one trigger that isn't label-driven: it carries the next round of an
-# `ai-discuss` conversation. It fires on EVERY comment on every issue and PR in the repo, and
-# the gating happens at the edge in route-event.sh (issue carries `ai-discuss` and is open, the
+# `ai-discussing` conversation. It fires on EVERY comment on every issue and PR in the repo, and
+# the gating happens at the edge in route-event.sh (issue carries `ai-discussing` and is open, the
 # comment is neither the loop's own nor `//`-prefixed, the author is trusted, not a PR) — so a
 # normal comment costs one short Actions job and wakes no routine.
 #

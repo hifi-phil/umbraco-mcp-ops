@@ -80,7 +80,7 @@ describe("the live-status row (recordStatus): what each step tells the dashboard
   });
 
   it("an issue closed by anyone (a person, a PR's 'Closes #') -> gone, last", async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.PR_OPEN]) });
     await coordinateWebhook(deps, input({ payload: { action: "issues.closed" } }));
     expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "gone", closed: true });
   });

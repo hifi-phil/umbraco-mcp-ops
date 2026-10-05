@@ -39,8 +39,8 @@ Never use `fable`. Never put secrets in the prompt or config.
 ## Procedure
 
 **Preconditions (once per repo):**
-1. **Labels exist**: `ready-for-ai`, `generated-by-ai`, `ai-blocked`, `auto-merge`,
-   `ai-discuss` (see `self-learning-system.md`'s "Setup § 2. Labels"); `auto-release` and
+1. **Labels exist**: `ai-ready`, `pr-open`, `ai-blocked`, `auto-merging`,
+   `ai-discussing` (see `self-learning-system.md`'s "Setup § 2. Labels"); `auto-releasing` and
    `release-blocked` are `auto-release-loop`'s own (see that skill's `SKILL.md`).
 2. **Skills reach the env** — `loop-dispatch` (and the loops) are in the
    `cloud-skill-sync` `SKILLS` list and the env has been rebuilt (bump `VERSION`, re-paste).
@@ -106,7 +106,7 @@ step: …`) instead of "No progress step was ever reported".
    (`umbraco-mcp-ops` today): instead, install the Worker's GitHub App on the repo and add
    the repo's Fire URL + token to the Worker's `repo_routines` (`worker/README.md`,
    "Deploying"). The App's webhook then routes its events; there's no caller or secrets.
-5. **Smoke-test** — label a throwaway issue `ready-for-ai` (Action fires → routine builds
+5. **Smoke-test** — label a throwaway issue `ai-ready` (Action fires → routine builds
    a PR), and label a PR `dependencies` (Action computes `route=none` → routine never fires).
 
 **When the caller template itself changes** (a new event added to

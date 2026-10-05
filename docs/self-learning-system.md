@@ -11,29 +11,29 @@ How one unit of work flows from an issue to a shipped release — the forward pa
 
 ```mermaid
 flowchart LR
-    STUB["rough issue<br/>(title + a line)"] -->|"label ai-discuss"| DISCUSS["issue-discuss-loop<br/>(question · critique ·<br/>write the issue)"]
-    DISCUSS -->|"agreed → label ready-for-ai"| ISSUE
-    ISSUE["ready-for-ai<br/>issue"] --> CODE["issue-build-loop<br/>(code the change,<br/>any repo shape)"]
+    STUB["rough issue<br/>(title + a line)"] -->|"label ai-discussing"| DISCUSS["issue-discuss-loop<br/>(question · critique ·<br/>write the issue)"]
+    DISCUSS -->|"agreed → label ai-ready"| ISSUE
+    ISSUE["ai-ready<br/>issue"] --> CODE["issue-build-loop<br/>(code the change,<br/>any repo shape)"]
     CODE --> PR["PR<br/>CI green"]
     PR --> REVIEW{"human<br/>review"}
-    REVIEW -->|"label auto-rework"| REWORK["rework-loop<br/>(address feedback)"]
+    REVIEW -->|"label auto-reworking"| REWORK["rework-loop<br/>(address feedback)"]
     REWORK --> PR
-    REVIEW -->|"label auto-merge"| MERGE["merge-flow<br/>(gated merge)"]
+    REVIEW -->|"label auto-merging"| MERGE["merge-flow<br/>(gated merge)"]
     MERGE --> MERGED["merged to dev"]
-    MERGED --> REL["auto-release-loop<br/>(label an issue auto-release)"]
+    MERGED --> REL["auto-release-loop<br/>(label an issue auto-releasing)"]
     REL --> SHIP["release on main<br/>+ tag + GitHub Release"]
 ```
 
-**Human gates on this path:** the **`auto-merge` label** before merge (`merge-flow`
-won't merge a PR that isn't labelled + green + clean), and the **`auto-release` label**
+**Human gates on this path:** the **`auto-merging` label** before merge (`merge-flow`
+won't merge a PR that isn't labelled + green + clean), and the **`auto-releasing` label**
 to start a release (`auto-release-loop` then ships it once CI is green — the deliberate
 label is the decision; there's no separate publish pause). The loops automate the
 mistake-prone mechanics; you keep the "ship this" decisions.
 
-**The optional step in front:** `ai-discuss` (`issue-discuss-loop`). A rough issue gets
+**The optional step in front:** `ai-discussing` (`issue-discuss-loop`). A rough issue gets
 questioned, critiqued, and written up properly before it's worth building — the aim is
 agreement on the smallest change that solves the problem. It never writes code and never adds
-`ready-for-ai`; you do that when you're happy, which is also when you remove `ai-discuss`.
+`ai-ready`; you do that when you're happy, which is also when you remove `ai-discussing`.
 Skip it for issues that are already clear.
 
 ## 2. The self-learning loop
@@ -48,8 +48,8 @@ flowchart TD
     TRIAGE -->|domain-specific| MREPO["issue on that MCP repo"]
     TRIAGE -->|generalizable| SHARED["PR to Umbraco-MCP-Base<br/>(shared umbraco-mcp-skills)"]
     TRIAGE -->|about the loop| LOOPIMP["loop-improvement issue<br/>(umbraco-mcp-ops)"]
-    MREPO -. "human adds ready-for-ai" .-> BACK(["← re-enters the development process<br/>as a ready-for-ai issue"])
-    LOOPIMP -. "human adds ready-for-ai" .-> BACK
+    MREPO -. "human adds ai-ready" .-> BACK(["← re-enters the development process<br/>as an ai-ready issue"])
+    LOOPIMP -. "human adds ai-ready" .-> BACK
 ```
 
 **Capture covers every loop in this repo, and lives in its own plugin.** The
@@ -86,7 +86,7 @@ replaced the GitHub path rather than supplementing it. See the
 for the exact row shape.
 
 **The compounding gate:** an `mcp-repo` or `loop-improvement` issue routed out of
-triage only re-enters the development process when a **human adds `ready-for-ai`**
+triage only re-enters the development process when a **human adds `ai-ready`**
 — nothing self-triggers. Generalizable lessons instead become a drafted PR to the shared skills, so every MCP
 repo benefits next time.
 
@@ -94,13 +94,13 @@ repo benefits next time.
 
 | Loop | Plugin | What it does | Where it runs | Trigger |
 |------|--------|--------------|---------------|---------|
-| `issue-discuss-loop` | mcp-issue-loop | Talks an issue into shape *before* it's built — writes a stub issue properly, asks questions when it can't, or critiques a written issue antagonistically. One comment per fire; your reply fires the next round. Never writes code | Cloud routine (Issue: Labeled `ai-discuss`, or a comment on one) or local | label `ai-discuss` |
-| `issue-build-loop` | mcp-issue-loop | Works `ready-for-ai` issues on **any repo** → CI-green PR, detecting whether it's an MCP repo (full toolchain) or a content repo (no toolchain — this repo, docs/plugin repos; *not* `Umbraco-MCP-Base`, which is a full MCP repo) and using the matching build playbook. *Local:* worktrees + parallel subagents + local tests + review loop. *Cloud:* one session/issue, CI-driven (no local Umbraco), stop at green PR | Dev machine **or** cloud routine (Issue: Labeled `ready-for-ai`) | label `ready-for-ai` / "work the ready ops issues" |
-| `rework-loop` | mcp-issue-loop | Address a PR's review feedback → re-green CI → re-request review (never merges) | Cloud routine (PR: Labeled `auto-rework`) or local | label a PR `auto-rework` |
+| `issue-discuss-loop` | mcp-issue-loop | Talks an issue into shape *before* it's built — writes a stub issue properly, asks questions when it can't, or critiques a written issue antagonistically. One comment per fire; your reply fires the next round. Never writes code | Cloud routine (Issue: Labeled `ai-discussing`, or a comment on one) or local | label `ai-discussing` |
+| `issue-build-loop` | mcp-issue-loop | Works `ai-ready` issues on **any repo** → CI-green PR, detecting whether it's an MCP repo (full toolchain) or a content repo (no toolchain — this repo, docs/plugin repos; *not* `Umbraco-MCP-Base`, which is a full MCP repo) and using the matching build playbook. *Local:* worktrees + parallel subagents + local tests + review loop. *Cloud:* one session/issue, CI-driven (no local Umbraco), stop at green PR | Dev machine **or** cloud routine (Issue: Labeled `ai-ready`) | label `ai-ready` / "work the ready ops issues" |
+| `rework-loop` | mcp-issue-loop | Address a PR's review feedback → re-green CI → re-request review (never merges) | Cloud routine (PR: Labeled `auto-reworking`) or local | label a PR `auto-reworking` |
 | capture hooks | self-learning | After each subagent, analyze the transcript and append a row to the MCP Loop Learnings canvas — for any loop above, not just this one | Wherever any loop runs (if `self-learning` is installed) | automatic (`SubagentStop`/`SessionEnd`) |
 | `triage-learnings` | self-learning | Route proto-learnings (canvas) → MCP-repo issue / shared-skills PR / loop-improvement issue | Web runner (scheduled) | "triage the learnings" |
-| `merge-flow` | merge-flow | Merge PRs labelled `auto-merge` once green + conflict-free (the label is the approval) | Cloud routine (weekdays) | label `auto-merge` |
-| `auto-release-loop` | release-flow | Cut branch, drive CI green, publish + tag + Release, sync `dev` — CI-gated, no approval pause | Cloud routine (Issue: Labeled) | label an issue `auto-release` |
+| `merge-flow` | merge-flow | Merge PRs labelled `auto-merging` once green + conflict-free (the label is the approval) | Cloud routine (weekdays) | label `auto-merging` |
+| `auto-release-loop` | release-flow | Cut branch, drive CI green, publish + tag + Release, sync `dev` — CI-gated, no approval pause | Cloud routine (Issue: Labeled) | label an issue `auto-releasing` |
 | `loop-dispatch` | loop-dispatch | Front door that routes a triggering event → the matching loop above. Lets **one routine per repo** handle every loop event | Cloud routine (all loop events) or manual | any loop event on the repo |
 
 Not a loop itself, but every loop above depends on it: **`github-ops`** — the shared
@@ -175,28 +175,28 @@ The system is label-driven. Create the labels on the repos that need them:
 
 | Label | On which repo(s) | Purpose |
 |-------|------------------|---------|
-| `ai-discuss` | any repo where you want issues talked through first — it only *fires by itself* on repos that have the caller workflow committed (see below) | Discussion is open on this issue — question it, critique it, write it up. Comments address the loop by default; start one with `//` to talk to a colleague instead. **You** remove the label when satisfied; the loop never does |
-| `ready-for-ai` | every MCP repo (and any repo a loop should work) | The only gate a loop acts on |
-| `generated-by-ai` | every MCP repo a loop works | Set by `issue-build-loop` on success (replaces `ready-for-ai` when the CI-green PR opens) |
-| `ai-blocked` | every MCP repo a loop works | Set by `issue-build-loop` when a backstop trips (replaces `ready-for-ai`; comment says why). Re-add `ready-for-ai` to retry |
+| `ai-discussing` | any repo where you want issues talked through first — it only *fires by itself* on repos that have the caller workflow committed (see below) | Discussion is open on this issue — question it, critique it, write it up. Comments address the loop by default; start one with `//` to talk to a colleague instead. **You** remove the label when satisfied; the loop never does |
+| `ai-ready` | every MCP repo (and any repo a loop should work) | The only gate a loop acts on |
+| `pr-open` | every MCP repo a loop works | Set by `issue-build-loop` on success (replaces `ai-ready` when the CI-green PR opens) |
+| `ai-blocked` | every MCP repo a loop works | Set by `issue-build-loop` when a backstop trips (replaces `ai-ready`; comment says why). Re-add `ai-ready` to retry |
 | `loop-improvement` | `hifi-phil/umbraco-mcp-ops` | A change to the loop itself, promoted from a learning (Loop B's routed output — the capture inbox itself is the Slack canvas, not a label) |
-| `auto-merge` | any repo where `merge-flow` runs | Merge me once approved + green |
-| `auto-rework` | every MCP repo a loop works | On a PR: address the review feedback (rework-loop). Add it after leaving your comments |
+| `auto-merging` | any repo where `merge-flow` runs | Merge me once approved + green |
+| `auto-reworking` | every MCP repo a loop works | On a PR: address the review feedback (rework-loop). Add it after leaving your comments |
 
 ```bash
 # ops repo (inbox + loop bookkeeping)
-gh label create ready-for-ai     --repo hifi-phil/umbraco-mcp-ops --color 0e8a16
+gh label create ai-ready     --repo hifi-phil/umbraco-mcp-ops --color 0e8a16
 gh label create loop-improvement --repo hifi-phil/umbraco-mcp-ops --color 5319e7
-gh label create auto-merge       --repo hifi-phil/umbraco-mcp-ops --color 0e8a16
-gh label create ai-discuss       --repo hifi-phil/umbraco-mcp-ops --color d876e3
+gh label create auto-merging       --repo hifi-phil/umbraco-mcp-ops --color 0e8a16
+gh label create ai-discussing       --repo hifi-phil/umbraco-mcp-ops --color d876e3
 
 # each MCP repo you want the loop to work
-gh label create ready-for-ai    --repo umbraco/<MCP-repo> --color 0e8a16
-gh label create generated-by-ai --repo umbraco/<MCP-repo> --color c5def5
+gh label create ai-ready    --repo umbraco/<MCP-repo> --color 0e8a16
+gh label create pr-open --repo umbraco/<MCP-repo> --color c5def5
 gh label create ai-blocked      --repo umbraco/<MCP-repo> --color d93f0b
-gh label create auto-rework     --repo umbraco/<MCP-repo> --color fbca04
-gh label create auto-merge      --repo umbraco/<MCP-repo> --color 0e8a16
-gh label create ai-discuss      --repo umbraco/<MCP-repo> --color d876e3
+gh label create auto-reworking     --repo umbraco/<MCP-repo> --color fbca04
+gh label create auto-merging      --repo umbraco/<MCP-repo> --color 0e8a16
+gh label create ai-discussing      --repo umbraco/<MCP-repo> --color d876e3
 ```
 
 (The ops-repo labels already exist; the per-MCP-repo ones are created as you enable
@@ -237,25 +237,25 @@ scheduling (a GitHub-App-installation decision, not a per-user token).
 
 ## Using the loops
 
-- **Think an issue through first (optional):** label it `ai-discuss`. The loop questions,
+- **Think an issue through first (optional):** label it `ai-discussing`. The loop questions,
   critiques, or writes it up, one comment at a time — reply and it fires again. When you agree
-  it's right, remove `ai-discuss` and add `ready-for-ai`.
+  it's right, remove `ai-discussing` and add `ai-ready`.
   **To ask a colleague something instead, start the comment with `//`** — that one never wakes
   the loop, so people can talk to each other on a watched issue. Everything else is treated as
   addressed to the loop (`/discuss …` or `@claude …` if you like being explicit).
   **Firing needs the caller workflow** (`.github/workflows/loop-dispatch.yml`) on the repo's
   default branch, plus the routine and its two secrets. The already-onboarded repos need the
   template **re-committed** to pick up the new `issue_comment` trigger — see `new-loop-routine`.
-- **Complete issues:** label issues `ready-for-ai`, then run `issue-build-loop` — it
+- **Complete issues:** label issues `ai-ready`, then run `issue-build-loop` — it
   detects the repo's shape itself, whether that's an MCP repo (including
   `Umbraco-MCP-Base`) or a content repo (this repo, docs/plugin repos). Opens a PR and
   waits for your review. Capture is automatic.
-- **Merge:** approve a PR and add `auto-merge`; `merge-flow` merges it once CI is
+- **Merge:** approve a PR and add `auto-merging`; `merge-flow` merges it once CI is
   green and it's conflict-free (it never merges on a red or unapproved PR).
 - **Triage learnings:** run `triage-learnings` (or let the weekly routine do it).
   It files issues to owning repos and drafts PRs only for the shared skills. You
-  then decide which of its issues to promote to `ready-for-ai`.
-- **Release:** open an issue titled `release <version>` and label it `auto-release`.
+  then decide which of its issues to promote to `ai-ready`.
+- **Release:** open an issue titled `release <version>` and label it `auto-releasing`.
   `auto-release-loop` cuts the branch, bumps, drives CI green, then (CI is the gate —
   no approval pause) publishes + tags + Release and syncs `main`→`dev`, pushing you at
   start + completion.
@@ -287,13 +287,13 @@ Full inventory of cross-repo routines in this repo:
 | Routine | Cadence | Status |
 |---------|---------|--------|
 | `branch-housekeeping` (skill) | weekly | **report-only**, runs **cloud or local** — one routine covers every repo in `repos.conf` and posts one digest. Deletes nothing ever, so it needs no authorisation and is safe to schedule. Cleanup is the separate **local-only** `/clean-branches` command, run by hand — never scheduled |
-| `merge-flow` | on `auto-merge` label (event) | **to wire** |
-| `auto-release-loop` | on `auto-release` label (event) | **to wire** |
+| `merge-flow` | on `auto-merging` label (event) | **to wire** |
+| `auto-release-loop` | on `auto-releasing` label (event) | **to wire** |
 | `dependabot-rollup` (skill) | weekly | **local-only** (cloud impossible — Claude GitHub App can't read Dependabot alerts) |
 | `triage-learnings` | weekly | **to wire** — attach the Slack connector alongside `github-ops`, or the (only) inbox reads as empty |
 
 `issue-build-loop` is human-initiated and not scheduled.
-`auto-release-loop` is **event-triggered** (a routine on Issue: Labeled → `auto-release`),
+`auto-release-loop` is **event-triggered** (a routine on Issue: Labeled → `auto-releasing`),
 not on a cron. Every web routine does its GitHub work via the GitHub MCP server (see
 `github-ops`) — there are no exceptions left.
 
@@ -314,7 +314,7 @@ workflow: GitHub sends its events to the Worker's webhook, and the Worker fires 
 `loop-dispatch-caller.yml`, was deleted as a clean break. The other repos still use a caller
 workflow until they move over too. Every loop skill can still be run by hand here.
 
-One thing to know: `ready-for-ai` on this repo routes to **`issue-build-loop`**'s
+One thing to know: `ai-ready` on this repo routes to **`issue-build-loop`**'s
 content-repo shape — there's no Umbraco toolchain here to build against, so it uses the
 lightweight playbook instead of the MCP one.
 

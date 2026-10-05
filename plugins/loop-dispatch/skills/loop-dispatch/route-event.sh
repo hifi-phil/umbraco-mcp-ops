@@ -121,17 +121,17 @@ route="none"
 case "$event/$action" in
   issues/labeled)
     case "$label" in
-      ready-for-ai) route="issue-build-loop" ;;
-      auto-release) route="auto-release-loop" ;;
-      ai-discuss)   route="issue-discuss-loop" ;;
+      ai-ready) route="issue-build-loop" ;;
+      auto-releasing) route="auto-release-loop" ;;
+      ai-discussing)   route="issue-discuss-loop" ;;
     esac ;;
   pull_request/labeled)
     case "$label" in
-      auto-merge)  route="merge-flow" ;;
-      auto-rework) route="rework-loop" ;;
+      auto-merging)  route="merge-flow" ;;
+      auto-reworking) route="rework-loop" ;;
     esac ;;
   issue_comment/created)
-    # A discussion round — the next reply in an `ai-discuss` conversation.
+    # A discussion round — the next reply in an `ai-discussing` conversation.
     #
     # THE LOOP POSTS AS THE MAINTAINER'S OWN ACCOUNT. Verified: every loop-authored issue and
     # comment on the ops repo is `hifi-phil`, `type: "User"`, `OWNER` — the same thing
@@ -142,7 +142,7 @@ case "$event/$action" in
     # comments. That works the same in cloud and local runs, whoever the account is.
     #
     # Seven gates, all required, all fail-closed (a missing/unknown field routes nowhere):
-    #   1. the issue carries `ai-discuss` — the label IS "the conversation is open"
+    #   1. the issue carries `ai-discussing` — the label IS "the conversation is open"
     #   2. the comment is NOT signed by the loop — the anti-self-reply guard
     #   3. the comment does NOT start with `//` — that prefix means "I'm talking to a
     #      colleague, not the loop". Comments are for the loop by default; `//` opts out, so
@@ -154,7 +154,7 @@ case "$event/$action" in
     #      #4: a trusted-looking association doesn't rule out an automated/bot author.
     #   6. the issue is still open
     #   7. it's an issue, not a PR (GitHub sends PR conversation comments as issue_comment)
-    if labels_include "$issue_labels" ai-discuss \
+    if labels_include "$issue_labels" ai-discussing \
        && [ -z "$self_marked" ] \
        && [ -z "$human_only" ] \
        && is_trusted "$author_assoc" \

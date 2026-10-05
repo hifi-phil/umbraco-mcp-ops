@@ -76,9 +76,9 @@ describe("addLabel / removeLabel", () => {
       new Response("[]", { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    await addLabel(env, "hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_GENERATED);
+    await addLabel(env, "hifi-phil", "umbraco-mcp-ops", 412, LABELS.PR_OPEN);
     const [, options] = fetchMock.mock.calls[0]!;
-    expect(JSON.parse(options!.body as string)).toEqual({ labels: [LABELS.AI_GENERATED] });
+    expect(JSON.parse(options!.body as string)).toEqual({ labels: [LABELS.PR_OPEN] });
   });
 
   it("addLabel throws on a 404 (e.g. no access to the repo) instead of silently doing nothing", async () => {

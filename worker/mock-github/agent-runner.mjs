@@ -151,11 +151,11 @@ const OUTCOME_CONFIGS = {
       const comment = toolCalls.find((c) => c.name.endsWith("post_comment"));
       const marker = markerCheck(comment?.input?.body ?? "", { routine: "issue-build-loop" }, (j) => j.outcome === "build_succeeded");
       return {
-        removedAiReady: toolCalls.some((c) => c.name.endsWith("remove_label") && c.input?.label === "ready-for-ai"),
-        addedAiGenerated: toolCalls.some((c) => c.name.endsWith("add_label") && c.input?.label === "generated-by-ai"),
+        removedAiReady: toolCalls.some((c) => c.name.endsWith("remove_label") && c.input?.label === "ai-ready"),
+        addedAiGenerated: toolCalls.some((c) => c.name.endsWith("add_label") && c.input?.label === "pr-open"),
         posted: Boolean(comment),
         ...marker,
-        finalLabelsCorrect: !issue.labels.has("ready-for-ai") && issue.labels.has("generated-by-ai"),
+        finalLabelsCorrect: !issue.labels.has("ai-ready") && issue.labels.has("pr-open"),
       };
     },
   },
@@ -170,11 +170,11 @@ const OUTCOME_CONFIGS = {
       const comment = toolCalls.find((c) => c.name.endsWith("post_comment"));
       const marker = markerCheck(comment?.input?.body ?? "", { routine: "issue-build-loop" }, (j) => j.outcome === "build_blocked" && typeof j.reason === "string");
       return {
-        removedAiReady: toolCalls.some((c) => c.name.endsWith("remove_label") && c.input?.label === "ready-for-ai"),
+        removedAiReady: toolCalls.some((c) => c.name.endsWith("remove_label") && c.input?.label === "ai-ready"),
         addedAiBlocked: toolCalls.some((c) => c.name.endsWith("add_label") && c.input?.label === "ai-blocked"),
         posted: Boolean(comment),
         ...marker,
-        finalLabelsCorrect: !issue.labels.has("ready-for-ai") && issue.labels.has("ai-blocked"),
+        finalLabelsCorrect: !issue.labels.has("ai-ready") && issue.labels.has("ai-blocked"),
       };
     },
   },
@@ -193,10 +193,10 @@ const OUTCOME_CONFIGS = {
       const marker = markerCheck(comment?.input?.body ?? "", { routine: "auto-release-loop" }, (j) => j.outcome === "release_blocked" && typeof j.reason === "string");
       return {
         createdBlockedIssue: Boolean(created),
-        removedAutoReleasing: toolCalls.some((c) => c.name.endsWith("remove_label") && c.input?.label === "auto-release"),
+        removedAutoReleasing: toolCalls.some((c) => c.name.endsWith("remove_label") && c.input?.label === "auto-releasing"),
         posted: Boolean(comment),
         ...marker,
-        finalLabelRemoved: !issue.labels.has("auto-release"),
+        finalLabelRemoved: !issue.labels.has("auto-releasing"),
       };
     },
   },
