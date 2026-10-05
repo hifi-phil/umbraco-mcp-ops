@@ -6,6 +6,7 @@ import { ALL_LABELS, LABELS } from "@orchestrator/graph/constants/labels";
 import { translate } from "@orchestrator/graph/github/from-github";
 import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
+import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
 import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
@@ -117,6 +118,11 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // the review's counts start fresh.
   if (event === EVENTS.LABELLED_AI_REVIEWING) {
     if (!currentLabels.includes(LABELS.AI_REVIEWING)) return { outcome: "stale_label", event };
+    // The label's check suite can be handled first (CI finishing as it went
+    // on) and have fired the review already. Applying the label's rule now
+    // would clear that pending fire and fire a second review (e2e #729,
+    // 05-10-2026), so the label is already handled.
+    if ((await deps.getPendingFire())?.run === ROUTINES.REVIEW_LOOP) return { outcome: "stale_label", event };
     if (deriveState(currentLabels.filter((l) => l !== LABELS.AI_REVIEWING)) === LABELS.AI_STUCK) {
       await deps.setReviewLoop(null);
       await deps.setCiFix(null);
