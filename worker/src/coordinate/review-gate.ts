@@ -1,7 +1,7 @@
-// The review's gate (15-agent-splits.md): a PR in ai-review gets review-loop
+// The review's gate (15-agent-splits.md): a PR in LABELS.AI_REVIEWING gets review-loop
 // once its CI is green, rework-loop first if it's red. And the caps: CI
 // fixes at caps.ciFixAttempts, the review's own findings at
-// caps.botReviewReworks, then ai-stuck.
+// caps.botReviewReworks, then LABELS.AI_STUCK.
 
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
@@ -13,7 +13,7 @@ import { applyEvent } from "./apply";
 /**
  * Reads the PR's CI and moves it on: green fires review-loop, red hands it to
  * rework-loop, still running (or nothing reported yet) waits for the next
- * check suite to finish. Called when ai-review is added, each time a check
+ * check suite to finish. Called when {@link LABELS.AI_REVIEWING} is added, each time a check
  * suite finishes, and by the sweep. A review already out leaves CI alone:
  * its verdict decides what's next.
  */
@@ -27,8 +27,8 @@ export async function reviewGate(deps: Deps, input: IssueRef & Acting, currentLa
   return applyEvent(deps, input, EVENTS.REVIEW_CI_PASSED, currentLabels);
 }
 
-/** CI red under ai-review: rework-loop fixes it (its push comes back to
- * ai-review), up to caps.ciFixAttempts, then ai-stuck. */
+/** CI red under {@link LABELS.AI_REVIEWING}: rework-loop fixes it (its push comes back to
+ * {@link LABELS.AI_REVIEWING}), up to caps.ciFixAttempts, then {@link LABELS.AI_STUCK}. */
 async function handReviewToRework(
   deps: Deps,
   input: IssueRef & Acting,
@@ -56,7 +56,7 @@ async function handReviewToRework(
 }
 
 /** review-loop found things to fix: a round for rework-loop, counted per PR,
- * up to caps.botReviewReworks, then ai-stuck. */
+ * up to caps.botReviewReworks, then {@link LABELS.AI_STUCK}. */
 export async function reviewFindings(deps: Deps, input: IssueRef & Acting, currentLabels: string[]): Promise<CoordinateResult> {
   const rounds = ((await deps.getReviewLoop())?.botRounds ?? 0) + 1;
   const cap = deps.caps.botReviewReworks;
@@ -77,7 +77,7 @@ export async function reviewFindings(deps: Deps, input: IssueRef & Acting, curre
   return result;
 }
 
-/** ai-review -> ai-stuck (the table's REWORK_CAP_REACHED rule), saying why. */
+/** {@link LABELS.AI_REVIEWING} -> {@link LABELS.AI_STUCK} (the table's REWORK_CAP_REACHED rule), saying why. */
 async function capReview(deps: Deps, input: IssueRef & Acting, currentLabels: string[], why: string): Promise<CoordinateResult> {
   const result = await applyEvent(deps, input, EVENTS.REWORK_CAP_REACHED, currentLabels);
   if (result.outcome === "applied") {

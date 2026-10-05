@@ -78,7 +78,7 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       // The D1 log agrees, delivery by delivery: every issue/PR in the run
       // logged only enforced, applied rows (the sandbox Worker enforces, and
       // nothing was dropped); every delivery the Worker applied has exactly
-      // one row, carrying its delivery id and event (bar one case: ai-review
+      // one row, carrying its delivery id and event (bar one case: LABELS.AI_REVIEWING
       // added applies its label rule, then the CI gate's, two rows ending
       // in the event it answered); and the only rows no delivery caused are
       // the watchdog's own expiries.

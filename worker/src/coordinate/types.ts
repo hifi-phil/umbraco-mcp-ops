@@ -68,8 +68,8 @@ export type PendingFire = {
   dueAt?: number;
 };
 
-// returnTo: where the fix's push goes back to, auto-merge (the default) or
-// ai-review (CI red before the review).
+// returnTo: where the fix's push goes back to, LABELS.AUTO_MERGING (the default) or
+// LABELS.AI_REVIEWING (CI red before the review).
 export type CiFix = { attempts: number; pending: boolean; returnTo?: Label };
 
 // The review's own rounds on this PR: how many times review-loop has asked
@@ -99,9 +99,9 @@ export type StatusUpdate =
 /** After this many CI-fix reworks on one PR, stop and ask a human. */
 export const MAX_CI_FIX_ATTEMPTS = 3;
 
-/** After this many review rework rounds on one PR (auto-rework added by a
+/** After this many review rework rounds on one PR ({@link LABELS.AUTO_REWORKING} added by a
  * reviewer outside the orchestrator: a person, or another bot), the next
- * goes to ai-stuck instead of looping (Phase 9, 05-technical-elements.md's
+ * goes to {@link LABELS.AI_STUCK} instead of looping (Phase 9, 05-technical-elements.md's
  * default). Tune from real data. */
 export const MAX_REVIEW_REWORKS = 3;
 
@@ -226,7 +226,7 @@ export function resolveMode(raw: string | undefined): Mode {
  * Phase 4: MODE=enforce makes every event real except the watchdog, which
  * has its own WATCHDOG switch (shadow unless exactly "enforce"). Its
  * timeouts are still guesses, and a wrong expiry would move a live issue to
- * ai-stuck, so it goes live separately.
+ * {@link LABELS.AI_STUCK}, so it goes live separately.
  */
 export function resolveEnforced(
   mode: string | undefined,
@@ -256,7 +256,7 @@ export function depsFor(deps: Deps, event: Event): { io: Deps; mode: Mode } {
 }
 
 /** How long a watched routine gets to report an outcome (or a heartbeat,
- * which re-arms it) before the watchdog moves the issue to ai-stuck. */
+ * which re-arms it) before the watchdog moves the issue to {@link LABELS.AI_STUCK}. */
 export const WATCHDOG_MINUTES = 30;
 
 // Per-routine overrides, from umbraco-mcp-ops's D1 log (01-10-2026, via

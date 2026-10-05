@@ -5,6 +5,7 @@
 import type { StatusRow } from "../db/issue-status";
 import type { GitHubEnv } from "../github-client";
 import type { AuthEnv } from "../auth";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 
 export type DashboardEnv = AuthEnv &
   Partial<GitHubEnv> & {
@@ -209,9 +210,9 @@ export function when(at: string): string {
 
 /** The portal's tag colour for a state: trouble, waiting on a person, or done. */
 export function tone(state: string): string {
-  if (state === "ai-stuck" || state === "merge-blocked") return "danger";
-  if (state === "ai-blocked") return "warning";
-  if (state === "generated-by-ai") return "positive";
+  if (state === LABELS.AI_STUCK || state === LABELS.MERGE_BLOCKED) return "danger";
+  if (state === LABELS.AI_BLOCKED) return "warning";
+  if (state === LABELS.AI_GENERATED) return "positive";
   return "default";
 }
 

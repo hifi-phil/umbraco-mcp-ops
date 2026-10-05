@@ -30,7 +30,7 @@ export const TRIGGER_LABELS = Object.keys(TRIGGER_EVENTS) as Label[];
 export type ReconcileResult =
   | { outcome: "watched" }
   | { outcome: "completed" } // its last run reported done; it's waiting, not lost
-  | { outcome: "gated"; result: CoordinateResult } // a lost auto-merge fire, gated first like the webhook path
+  | { outcome: "gated"; result: CoordinateResult } // a lost LABELS.AUTO_MERGING fire, gated first like the webhook path
   | { outcome: "not_triggered"; state: string }
   | { outcome: "recent"; idleMinutes: number }
   | {
@@ -53,7 +53,7 @@ const d1Time = (s: string) => Date.parse(`${s.replace(" ", "T")}Z`);
  * twice its routine's timeout: a fire that never got out, or a watchdog
  * that was lost. Then fire its routine again and watch it, as if the
  * trigger label had just been added. Bounded: if that run dies too, the
- * watchdog moves the issue to ai-stuck, which isn't a trigger state. That
+ * watchdog moves the issue to {@link LABELS.AI_STUCK}, which isn't a trigger state. That
  * bound only holds while this repo's watchdog enforces (a shadow one leaves
  * the label on, so the issue would be re-fired every sweep), and a real
  * fire needs MODE=enforce, so either one shadowed holds the re-fire to a
@@ -76,7 +76,7 @@ export async function coordinateReconcile(
   const labels = await deps.getLabels(ref.owner, ref.repo, ref.issueNumber);
   const state = deriveState(labels);
   const event = state === "ambiguous" || state === "none" ? undefined : TRIGGER_EVENTS[state as Label];
-  // ai-review fires nothing itself (its CI gate does), so it's swept by the
+  // LABELS.AI_REVIEWING fires nothing itself (its CI gate does), so it's swept by the
   // routine the gate would fire.
   const run = state === LABELS.AI_REVIEWING ? ROUTINES.REVIEW_LOOP : event ? reduce("none", event)?.run : undefined;
   if (!run) return { outcome: "not_triggered", state };
@@ -108,11 +108,11 @@ export async function coordinateReconcile(
         : undefined;
   if (enforced && held) enforced = false;
 
-  // A lost auto-merge fire goes through the same gate as a fresh label: a
-  // conflict or requested changes -> merge-blocked, red CI -> rework, else
+  // A lost LABELS.AUTO_MERGING fire goes through the same gate as a fresh label: a
+  // conflict or requested changes -> LABELS.MERGE_BLOCKED, red CI -> rework, else
   // merge-flow below.
   if (enforced && state === LABELS.AUTO_MERGING) {
-    // A person's lost retry of a merge-blocked PR (auto-merge re-added, both
+    // A person's lost retry of a LABELS.MERGE_BLOCKED PR (LABELS.AUTO_MERGING re-added, both
     // labels on): a fresh CI-fix count, as the webhook path starts.
     const retry = labels.includes(LABELS.MERGE_BLOCKED);
     if (retry) await deps.setCiFix(null);
@@ -121,8 +121,8 @@ export async function coordinateReconcile(
     const sweep = { ...ref, actor: "sweep" as const };
     if (reason) return { outcome: "gated", result: await blockMerge(deps, sweep, labels, reason) };
     if (deriveMergeGateOutcome(facts) === "soft") return { outcome: "gated", result: await handToRework(deps, sweep, labels, facts) };
-    // Gate passed: the retry's own rule (merge-blocked comes off, merge-flow
-    // fired and watched), not a bare re-fire that would leave merge-blocked on.
+    // Gate passed: the retry's own rule (LABELS.MERGE_BLOCKED comes off, merge-flow
+    // fired and watched), not a bare re-fire that would leave LABELS.MERGE_BLOCKED on.
     if (retry) {
       const result = await applyEvent(deps, sweep, EVENTS.LABELLED_AUTO_MERGING, labels);
       if (result.outcome === "applied") {
@@ -144,7 +144,7 @@ export async function coordinateReconcile(
     }
   }
 
-  // A PR left in ai-review (a lost check_suite webhook, or a lost review
+  // A PR left in LABELS.AI_REVIEWING (a lost check_suite webhook, or a lost review
   // fire): the CI gate again, as when the label went on.
   if (enforced && state === LABELS.AI_REVIEWING) {
     return { outcome: "gated", result: await reviewGate(deps, { ...ref, actor: "sweep" }, labels) };

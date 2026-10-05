@@ -13,7 +13,7 @@ import { fakeDeps, gateFacts, input } from "./helpers";
 describe("who caused each log row (actor)", () => {
   const ref = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 };
 
-  it("a webhook's row names its sender: a person removing auto-merge reads as them", async () => {
+  it(`a webhook's row names its sender: a person removing ${LABELS.AUTO_MERGING} reads as them`, async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => []) });
     await coordinateWebhook(deps, input({ payload: { action: "pull_request.unlabeled", label: { name: LABELS.AUTO_MERGING }, sender: { login: "hifi-phil", type: "User" } } }));
     expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.UNLABELLED_AUTO_MERGING, actor: "hifi-phil" }));
@@ -85,7 +85,7 @@ describe("the live-status row (recordStatus): what each step tells the dashboard
     expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "gone", closed: true });
   });
 
-  it("a closed release still labelled auto-release (issue_closed's noop rule applies) -> still gone (e2e #443)", async () => {
+  it(`a closed release still labelled ${LABELS.AUTO_RELEASING} (issue_closed's noop rule applies) -> still gone (e2e #443)`, async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]) });
     const result = await coordinateWebhook(deps, input({ payload: { action: "issues.closed" } }));
     expect(result).toMatchObject({ outcome: "applied" });
@@ -110,7 +110,7 @@ describe("the live-status row (recordStatus): what each step tells the dashboard
     expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "reopened" });
   });
 
-  it("a watchdog expiry -> ai-stuck, no routine fired, not running", async () => {
+  it(`a watchdog expiry -> ${LABELS.AI_STUCK}, no routine fired, not running`, async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
     await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP });
     await coordinateWatchdogExpired(deps);

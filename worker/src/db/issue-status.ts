@@ -2,6 +2,8 @@
 // open issue, for the dashboard. Every read and write of `issue_status` is
 // here. owner and repo are stored lowercased.
 
+import type { LABELS } from "@orchestrator/graph/constants/labels"; // for the {@link LABELS.…} references in its doc comments
+
 export type StatusRow = {
   owner: string;
   repo: string;
@@ -51,7 +53,7 @@ export async function setRework(db: D1Database, k: Key, count: number): Promise<
 /** A transition's row. A fire starts a new run: a fresh step, and the
  * attempt counts on while it's the same routine as last time (a retry or
  * re-fire). No fire: the state moves, and the last run's routine, attempt
- * and step stay, so an ai-stuck row still shows where it got to. */
+ * and step stay, so an {@link LABELS.AI_STUCK} row still shows where it got to. */
 export async function upsertTransition(
   db: D1Database,
   k: Key,

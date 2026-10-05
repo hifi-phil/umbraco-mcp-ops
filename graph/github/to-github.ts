@@ -7,6 +7,7 @@
 // output (concrete ops), not just "the same table split across two files".
 
 import type { Rule, State } from "../graph";
+import type { LABELS } from "../constants/labels"; // for the {@link LABELS.…} references in its doc comments
 
 export type Effect =
   | { kind: "label"; value: State }
@@ -32,7 +33,7 @@ export type LabelOp =
  * Diffing against the real current labels (not just assuming `rule.from`'s
  * label is still there) means a label a human already removed by hand isn't
  * redundantly removed again, and a label the *triggering* webhook itself
- * just added (e.g. a human labelling `ready-for-ai`) is never redundantly
+ * just added (e.g. a human labelling {@link LABELS.AI_READY}) is never redundantly
  * re-added — it's already in `currentLabels` by the time this runs.
  *
  * No mapping table needed here: `rule.from`/`rule.to.value` already *are*

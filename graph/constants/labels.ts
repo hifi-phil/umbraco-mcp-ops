@@ -2,7 +2,13 @@
 // place a label's spelling is written down — graph.ts's State, its rules
 // table, and github/from-github.ts's webhook matching all import from here rather
 // than retyping the string, so a rename is a one-line change in this file,
-// not a grep-and-hope across three files.
+// not a grep-and-hope across three files. The same goes for all of the
+// TypeScript: code and tests use LABELS, comments write LABELS.AUTO_MERGING
+// (doc comments {@link LABELS.AUTO_MERGING}, so a rename-symbol updates them
+// too), and worker/test/label-spellings.test.ts fails on a label spelled out
+// anywhere else. Only what can't import this (the skills,
+// loop-dispatch's route-event.sh, the docs, SQL, the .mjs scripts) spells
+// them.
 //
 // These are today's LIVE GitHub spellings, on purpose. A cleaner naming
 // scheme is proposed in 10-label-rename.md (ai-ready, ai-generated, and
@@ -12,7 +18,7 @@
 // until the basic lane works under the reducer, then done as one cutover
 // (live labels + routine triggers + this file + the skills together).
 //
-// The keys (AI_READY, AUTO_MERGING, …) already use the proposed names and
+// The keys (LABELS.AI_READY, LABELS.AUTO_MERGING, …) already use the proposed names and
 // stay as they are, so the eventual rename only changes the values below.
 //
 // ai-stuck has no older spelling: it's written by the DO's watchdog, never

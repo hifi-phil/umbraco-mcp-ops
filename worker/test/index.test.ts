@@ -7,6 +7,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 
 function fakeEnv(overrides: Partial<Env> = {}): {
   env: Env;
@@ -34,7 +35,7 @@ function labeledIssuePayload(overrides: Record<string, unknown> = {}) {
     action: "labeled",
     repository: { name: "umbraco-mcp-ops", owner: { login: "hifi-phil" } },
     issue: { number: 412 },
-    label: { name: "ready-for-ai" },
+    label: { name: LABELS.AI_READY },
     sender: { login: "phil", type: "User" },
     ...overrides,
   };

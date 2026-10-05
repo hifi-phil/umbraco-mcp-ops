@@ -21,6 +21,8 @@
 // re-checking; a PR on the wrong base was already wrong before any CI
 // ran, so it's out of scope for this specific event-triggered path.
 
+import type { LABELS } from "../constants/labels"; // for the {@link LABELS.…} references in its doc comments
+
 export type CheckRunStatus = "queued" | "in_progress" | "completed";
 export type CheckRunConclusion =
   | "success"
@@ -67,7 +69,7 @@ export type MergeGateOutcome = "still_pending" | "soft" | "hard" | null;
  */
 /**
  * The blocks that need a human, checked on their own, without waiting for
- * CI: used when auto-merge is added (CI is usually still running then) and
+ * CI: used when {@link LABELS.AUTO_MERGING} is added (CI is usually still running then) and
  * to word the block comment. null also covers "mergeable not computed yet":
  * too early to call a conflict, so it isn't treated as one.
  */

@@ -6,9 +6,9 @@
 // State is deliberately the literal GitHub label string (via LABELS in
 // constants/labels.ts), not a separate renamed internal concept — one
 // vocabulary throughout, not a translation at every layer. A separate
-// "building" name for the "ready-for-ai" label bought nothing but a mapping
+// "building" name for the "LABELS.AI_READY" label bought nothing but a mapping
 // table to keep in sync, and keeping two names for one thing is exactly
-// what let "remove ready-for-ai" go missing silently. See constants/labels.ts
+// what let "remove LABELS.AI_READY" go missing silently. See constants/labels.ts
 // for the spelling (today's live labels) and 10-label-rename.md for the
 // deferred rename.
 //
@@ -50,10 +50,10 @@ export const rules: Rule[] = [
     verifiedBy: "external-judgment", // a human decided this issue is ready
   },
   {
-    // Keyed on the POST-swap state, not AI_READY: issue-build-loop's own
+    // Keyed on the POST-swap state, not LABELS.AI_READY: issue-build-loop's own
     // Step 3 always swaps the label before posting this outcome comment,
-    // so by the time this event reaches the reducer, AI_READY is already
-    // gone — a rule keyed on AI_READY can never fire. `to: noop` because
+    // so by the time this event reaches the reducer, LABELS.AI_READY is already
+    // gone — a rule keyed on LABELS.AI_READY can never fire. `to: noop` because
     // there's nothing left to write; this rule exists to confirm the swap
     // already happened, same idempotent-confirm shape as MERGED below.
     from: LABELS.AI_GENERATED,
@@ -63,7 +63,7 @@ export const rules: Rule[] = [
   },
   {
     // Same reasoning as BUILD_SUCCEEDED above — issue-build-loop swaps to
-    // AI_BLOCKED before commenting, so key on the post-swap state.
+    // LABELS.AI_BLOCKED before commenting, so key on the post-swap state.
     from: LABELS.AI_BLOCKED,
     on: EVENTS.BUILD_BLOCKED,
     to: noop,
@@ -101,8 +101,8 @@ export const rules: Rule[] = [
     verifiedBy: "external-judgment", // a human decided to release
   },
   {
-    // Keyed on the POST-swap state, not AUTO_RELEASING: auto-release-loop's
-    // Step 2.5 removes AUTO_RELEASING before posting this outcome comment
+    // Keyed on the POST-swap state, not LABELS.AUTO_RELEASING: auto-release-loop's
+    // Step 2.5 removes LABELS.AUTO_RELEASING before posting this outcome comment
     // (creating a separate new issue for the block, which isn't a tracked
     // label on the triggering issue) — so by the time this event reaches
     // the reducer, state has already moved to "none". Same reasoning as
@@ -114,7 +114,7 @@ export const rules: Rule[] = [
   },
   {
     // Unlike the three rules above, auto-release-loop's Step 4 does NOT
-    // remove AUTO_RELEASING before commenting + closing — it just closes.
+    // remove LABELS.AUTO_RELEASING before commenting + closing — it just closes.
     // So this is the one outcome-artifact rule that was already correctly
     // keyed on the pre-comment state; kept as-is, and it's the reference
     // shape the other three now match.
@@ -140,7 +140,7 @@ export const rules: Rule[] = [
   },
   {
     // Each trusted reply fires the next round; the state doesn't change.
-    // Leaving ai-discuss stays human-owned: no outbound rule for that.
+    // Leaving LABELS.AI_DISCUSSING stays human-owned: no outbound rule for that.
     from: LABELS.AI_DISCUSSING,
     on: EVENTS.DISCUSSION_REPLY,
     to: noop,
@@ -174,8 +174,8 @@ export const rules: Rule[] = [
   {
     // Review rework asked for once too often (coordinate/webhook.ts counts
     // the rounds; MAX_REVIEW_REWORKS): stop and hand it to a person instead
-    // of looping. Re-adding auto-rework from ai-stuck retries, with a fresh
-    // count (the leaving-ai-stuck rules below).
+    // of looping. Re-adding LABELS.AUTO_REWORKING from LABELS.AI_STUCK retries, with a fresh
+    // count (the rules for leaving LABELS.AI_STUCK, below).
     from: LABELS.AUTO_REWORKING,
     on: EVENTS.REWORK_CAP_REACHED,
     to: label(LABELS.AI_STUCK),
@@ -186,22 +186,22 @@ export const rules: Rule[] = [
     on: EVENTS.LABELLED_AUTO_MERGING,
     to: label(LABELS.AUTO_MERGING),
     run: ROUTINES.MERGE_FLOW,
-    verifiedBy: "external-judgment", // the auto-merge label IS the human approval signal
+    verifiedBy: "external-judgment", // the LABELS.AUTO_MERGING label IS the human approval signal
   },
   {
     from: LABELS.AUTO_MERGING,
     on: EVENTS.MERGE_GATE_FAILED_SOFT,
-    // CI failed under auto-merge (retryable, not a human block): hand the PR
+    // CI failed under LABELS.AUTO_MERGING (retryable, not a human block): hand the PR
     // to rework-loop. The rule fires it itself: the Worker writes as its
     // GitHub App's bot, and translate() drops the bot's own label echoes
     // (the self-trigger guard), so the echo no longer would. coordinate/
-    // caps the cycle at MAX_CI_FIX_ATTEMPTS, then merge-blocked.
+    // caps the cycle at MAX_CI_FIX_ATTEMPTS, then LABELS.MERGE_BLOCKED.
     to: label(LABELS.AUTO_REWORKING),
     run: ROUTINES.REWORK_LOOP,
     verifiedBy: "deterministic", // the Worker's own re-fetched check runs
   },
   {
-    // That CI-fix rework pushed: back to auto-merge, and merge-flow fired
+    // That CI-fix rework pushed: back to LABELS.AUTO_MERGING, and merge-flow fired
     // directly for the same reason. A conflict is still caught when its CI
     // finishes (coordinate/webhook.ts's check_suite path).
     from: LABELS.AUTO_REWORKING,
@@ -212,15 +212,15 @@ export const rules: Rule[] = [
   },
   {
     // Needs a human: a merge conflict or requested changes. Checked when
-    // auto-merge is added and whenever CI finishes (coordinate/). The
-    // swap auto-merge -> merge-blocked stops retries and says why it stopped.
+    // LABELS.AUTO_MERGING is added and whenever CI finishes (coordinate/). The
+    // swap LABELS.AUTO_MERGING -> LABELS.MERGE_BLOCKED stops retries and says why it stopped.
     from: LABELS.AUTO_MERGING,
     on: EVENTS.MERGE_GATE_FAILED_HARD,
     to: label(LABELS.MERGE_BLOCKED),
     verifiedBy: "deterministic", // same real aggregation as MERGE_GATE_FAILED_SOFT above
   },
   {
-    // A human fixed the block and re-added auto-merge: clear merge-blocked
+    // A human fixed the block and re-added LABELS.AUTO_MERGING: clear LABELS.MERGE_BLOCKED
     // and try again (coordinate/ re-checks the gate first).
     from: LABELS.MERGE_BLOCKED,
     on: EVENTS.LABELLED_AUTO_MERGING,
@@ -236,11 +236,11 @@ export const rules: Rule[] = [
   },
 
   // --- the review (15-agent-splits.md) ---
-  // ai-review is added by the build when it opens the PR, or by a person to
+  // LABELS.AI_REVIEWING is added by the build when it opens the PR, or by a person to
   // (re-)run the review. Nothing fires yet: coordinate/review-gate.ts reads
   // the PR's CI (now, and each time a check suite finishes) and raises
-  // review_ci_passed or review_ci_failed, the same live re-check auto-merge
-  // uses. The review's state lives on the PR; the issue's generated-by-ai
+  // review_ci_passed or review_ci_failed, the same live re-check LABELS.AUTO_MERGING
+  // uses. The review's state lives on the PR; the issue's LABELS.AI_GENERATED
   // still marks "the build opened a PR".
   {
     from: "none",
@@ -264,7 +264,7 @@ export const rules: Rule[] = [
   },
   {
     // CI red before the review: rework-loop fixes it first (capped, like
-    // auto-merge's CI fixes, at MAX_CI_FIX_ATTEMPTS).
+    // LABELS.AUTO_MERGING's CI fixes, at MAX_CI_FIX_ATTEMPTS).
     from: LABELS.AI_REVIEWING,
     on: EVENTS.REVIEW_CI_FAILED,
     to: label(LABELS.AUTO_REWORKING),
@@ -273,7 +273,7 @@ export const rules: Rule[] = [
   },
   {
     // That rework (a CI fix, or the review's findings) pushed: back to
-    // ai-review, which waits for the new commit's CI and reviews again.
+    // LABELS.AI_REVIEWING, which waits for the new commit's CI and reviews again.
     from: LABELS.AUTO_REWORKING,
     on: EVENTS.REVIEW_FIX_PUSHED,
     to: label(LABELS.AI_REVIEWING),
@@ -287,7 +287,7 @@ export const rules: Rule[] = [
   },
   {
     // Fixes are rework-loop's, never the reviewer's own. coordinate/ counts
-    // these rounds per PR (MAX_BOT_REVIEW_REWORKS), then ai-stuck.
+    // these rounds per PR (MAX_BOT_REVIEW_REWORKS), then LABELS.AI_STUCK.
     from: LABELS.AI_REVIEWING,
     on: EVENTS.REVIEW_FINDINGS,
     to: label(LABELS.AUTO_REWORKING),
@@ -315,7 +315,7 @@ export const rules: Rule[] = [
   // what ends a run as far as the watchdog is concerned. to: noop (the label
   // is already gone); no `run`, so applying the rule clears pendingFire.
   // Keyed on every state the removal can leave behind: "none", the build's
-  // outcome labels (if they landed first), and ai-stuck (a late loop).
+  // outcome labels (if they landed first), and LABELS.AI_STUCK (a late loop).
   ...(
     [
       [EVENTS.UNLABELLED_AI_READY, ["none", LABELS.AI_GENERATED, LABELS.AI_BLOCKED, LABELS.AI_STUCK]],
@@ -331,11 +331,11 @@ export const rules: Rule[] = [
   // --- the watchdog: a fired routine that never reported back ---
   // 03-components.md §3.4: "Alarm fires instead, the agent died — move to
   // state:stuck." Keyed on the in-flight trigger labels only. Not
-  // generated-by-ai / ai-blocked: a build that swapped to those has
+  // LABELS.AI_GENERATED / LABELS.AI_BLOCKED: a build that swapped to those has
   // finished, whether or not it posted its outcome comment (shadow run 1
   // would have marked finished build #116 stuck). The table doubles as the
   // watch list — coordinate/ only arms the watchdog for a fired routine
-  // whose target state has a watchdog_expired rule here, so ai-discuss
+  // whose target state has a watchdog_expired rule here, so LABELS.AI_DISCUSSING
   // (issue-discuss-loop posts no outcome artifact, ever) is deliberately
   // absent rather than raising a false alarm on every discussion.
   ...(
@@ -352,13 +352,13 @@ export const rules: Rule[] = [
     }),
   ),
 
-  // --- leaving ai-stuck ---
+  // --- leaving LABELS.AI_STUCK ---
   // Two ways out. (1) A late outcome: the routine was slow, not dead, and
   // its authoritative outcome still wins — same verifiedBy as the normal
   // rule for that outcome. The routine's own label swap will usually have
-  // landed first, leaving e.g. ai-stuck + generated-by-ai together;
-  // coordinate/apply.ts's deriveState() reads that specific pair as ai-stuck, and
-  // labelOps() then just removes ai-stuck. (2) A human retry: re-adding the
+  // landed first, leaving e.g. LABELS.AI_STUCK + LABELS.AI_GENERATED together;
+  // coordinate/apply.ts's deriveState() reads that specific pair as LABELS.AI_STUCK, and
+  // labelOps() then just removes LABELS.AI_STUCK. (2) A human retry: re-adding the
   // trigger label on a stuck issue re-fires its loop, exactly as from "none".
   {
     from: LABELS.AI_STUCK,
@@ -417,8 +417,8 @@ export const rules: Rule[] = [
 
 /**
  * Events that only mean something in a few states. A push is a rework only
- * on an auto-rework PR, a merge matters only under auto-merge, a comment
- * is a round only on an ai-discuss issue. Anywhere else they're ordinary
+ * on an {@link LABELS.AUTO_REWORKING} PR, a merge matters only under {@link LABELS.AUTO_MERGING}, a comment
+ * is a round only on an {@link LABELS.AI_DISCUSSING} issue. Anywhere else they're ordinary
  * activity, not a missing rule, so coordinate/ ignores them silently when
  * no rule matches instead of logging a "gap" (shadow run 1: 8 of 26 rows
  * were this noise).
