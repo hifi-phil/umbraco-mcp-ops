@@ -16,7 +16,7 @@ const WATCHDOG_DUE_MARGIN_MS = 60_000;
 /**
  * The watchdog's expiry, as a real event through the same reduce() ->
  * labelOps() -> log path as any webhook — so a dead routine moves the issue
- * to AI_STUCK and leaves a D1 row, instead of only a comment.
+ * to {@link LABELS.AI_STUCK} and leaves a D1 row, instead of only a comment.
  *
  * Ordering is for the DO's at-least-once alarm retries (a throwing alarm()
  * is retried with backoff): pendingFire is cleared LAST, so a failure

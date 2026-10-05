@@ -82,7 +82,7 @@ async function trackedPr(t: Track, opts: Parameters<typeof openPr>[0]) {
   return pr;
 }
 
-/** A loop that never reports: the trigger goes on, and the watchdog moves it to AI_STUCK. */
+/** A loop that never reports: the trigger goes on, and the watchdog moves it to {@link LABELS.AI_STUCK}. */
 async function expectStuck(n: number, trigger: string): Promise<Snapshot> {
   await addLabel(n, trigger);
   const s = await waitFor(n, labelsAre(LABELS.AI_STUCK), STUCK_WAIT);
@@ -204,7 +204,7 @@ export const scenarios: Scenario[] = [
     timeoutMs: 2 * MIN,
     run: () =>
       scoped(async (t) => {
-        // issue_closed from AUTO_RELEASING is a noop rule that applies; the
+        // issue_closed from LABELS.AUTO_RELEASING is a noop rule that applies; the
         // row must still go, whatever order the close's webhooks land in.
         const issue = t.n(await openIssue("Close me mid-release", "A person closes this while it's releasing.", "silent"));
         await addLabel(issue, LABELS.AUTO_RELEASING);
@@ -436,7 +436,7 @@ export const scenarios: Scenario[] = [
       }),
   },
 
-  // --- The watchdog and AI_STUCK (the sandbox's watchdog is real, short) --------
+  // --- The watchdog and LABELS.AI_STUCK (the sandbox's watchdog is real, short) --------
   {
     name: `watchdog: silent build -> ${LABELS.AI_STUCK}; late build_succeeded -> ${LABELS.AI_GENERATED}`,
     timeoutMs: STUCK_WAIT + 2 * MIN,

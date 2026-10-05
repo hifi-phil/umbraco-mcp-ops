@@ -15,6 +15,7 @@
 
 import { act, mergeIfGreen, type Fire, type Gh, type Signal } from "./loops";
 import { forgetInstallationToken, installationToken } from "../../../worker/src/github-app";
+import type { LABELS } from "@orchestrator/graph/constants/labels"; // for the {@link LABELS.…} references in its doc comments
 
 export { outcomeComment, type Action, type Fire, type Gh, type Signal } from "./loops";
 
@@ -167,7 +168,7 @@ export async function verifySignature(secret: string, rawBody: string, header: s
   return diff === 0;
 }
 
-/** CI finished on a sandbox PR: if it carries AUTO_MERGING, run merge-flow's
+/** CI finished on a sandbox PR: if it carries {@link LABELS.AUTO_MERGING}, run merge-flow's
  * gate again, as the real merge-flow's polling would. */
 /** How often, and how long apart, the webhook re-checks a gate that still
  * reads "CI running": a commit here gets two CI runs, and the first one's

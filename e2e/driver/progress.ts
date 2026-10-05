@@ -1,6 +1,6 @@
 // Live progress lines while scenarios run, e.g.
-//   20:53:49 [CI red before AUTO_MERGING] PR #95 +AUTO_MERGING
-//   20:53:52 [CI red before AUTO_MERGING] PR #95 labels [AUTO_MERGING] -> [AUTO_REWORKING]
+//   20:53:49 [CI red before <merge label>] PR #95 +<LABELS.AUTO_MERGING>
+//   20:53:52 [CI red before <merge label>] PR #95 labels [<LABELS.AUTO_MERGING>] -> [<LABELS.AUTO_REWORKING>]
 // Each line is tagged with the scenario it belongs to (they run
 // concurrently). E2E_QUIET=1 turns it off.
 

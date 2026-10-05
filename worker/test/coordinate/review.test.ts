@@ -1,5 +1,5 @@
-// The review (15-agent-splits.md): AI_REVIEWING's CI gate, review-loop's
-// verdicts, the pushes that bring a PR back to AI_REVIEWING, and the caps.
+// The review (15-agent-splits.md): LABELS.AI_REVIEWING's CI gate, review-loop's
+// verdicts, the pushes that bring a PR back to LABELS.AI_REVIEWING, and the caps.
 import { describe, expect, it, vi } from "vitest";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { EVENTS } from "@orchestrator/graph/constants/events";

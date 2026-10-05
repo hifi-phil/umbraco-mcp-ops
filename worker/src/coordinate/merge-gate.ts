@@ -1,5 +1,5 @@
-// The merge gate's two outcomes when AUTO_MERGING is on: a hard block
-// (MERGE_BLOCKED) or CI failing, handed to rework-loop up to
+// The merge gate's two outcomes when LABELS.AUTO_MERGING is on: a hard block
+// (LABELS.MERGE_BLOCKED) or CI failing, handed to rework-loop up to
 // caps.ciFixAttempts times; and the settled facts both read.
 
 import { LABELS } from "@orchestrator/graph/constants/labels";
@@ -8,9 +8,9 @@ import { EVENTS } from "@orchestrator/graph/constants/events";
 import { depsFor, type Acting, type CoordinateResult, type Deps, type IssueRef } from "./types";
 import { applyEvent } from "./apply";
 
-/** CI failed under AUTO_MERGING: swap AUTO_MERGING -> AUTO_REWORKING so
- * rework-loop fixes it (its push swaps back to AUTO_MERGING), up to
- * caps.ciFixAttempts per PR, then MERGE_BLOCKED. */
+/** CI failed under {@link LABELS.AUTO_MERGING}: swap {@link LABELS.AUTO_MERGING} -> {@link LABELS.AUTO_REWORKING} so
+ * rework-loop fixes it (its push swaps back to {@link LABELS.AUTO_MERGING}), up to
+ * caps.ciFixAttempts per PR, then {@link LABELS.MERGE_BLOCKED}. */
 export async function handToRework(
   deps: Deps,
   input: IssueRef & Acting,
@@ -24,9 +24,9 @@ export async function handToRework(
   }
   const result = await applyEvent(deps, input, EVENTS.MERGE_GATE_FAILED_SOFT, currentLabels);
   if (result.outcome === "applied") {
-    // A MERGE_BLOCKED PR's retry (AUTO_MERGING re-added, read as AUTO_MERGING):
-    // the rule swaps only AUTO_MERGING, so MERGE_BLOCKED comes off here, or
-    // MERGE_BLOCKED + AUTO_REWORKING would read as ambiguous from then on.
+    // A LABELS.MERGE_BLOCKED PR's retry (LABELS.AUTO_MERGING re-added, read as LABELS.AUTO_MERGING):
+    // the rule swaps only LABELS.AUTO_MERGING, so LABELS.MERGE_BLOCKED comes off here, or
+    // LABELS.MERGE_BLOCKED + LABELS.AUTO_REWORKING would read as ambiguous from then on.
     if (currentLabels.includes(LABELS.MERGE_BLOCKED)) {
       await depsFor(deps, EVENTS.MERGE_GATE_FAILED_SOFT).io.removeLabel(input.owner, input.repo, input.issueNumber, LABELS.MERGE_BLOCKED);
     }
@@ -59,7 +59,7 @@ export async function settledGateFacts(deps: Deps, input: IssueRef): Promise<Mer
 export const MERGEABLE_RETRIES = 2;
 export const MERGEABLE_RETRY_MS = 1000;
 
-/** AUTO_MERGING -> MERGE_BLOCKED (the table's MERGE_GATE_FAILED_HARD rule),
+/** {@link LABELS.AUTO_MERGING} -> {@link LABELS.MERGE_BLOCKED} (the table's MERGE_GATE_FAILED_HARD rule),
  * plus a comment saying why, since the label alone doesn't. */
 export async function blockMerge(
   deps: Deps,

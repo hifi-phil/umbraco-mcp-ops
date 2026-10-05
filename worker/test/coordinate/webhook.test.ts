@@ -83,7 +83,7 @@ describe("coordinateWebhook — no event / no rule", () => {
   });
 
   it("a legal event with no rule for the current state -> dropped, logged", async () => {
-    // AI_GENERATED added while the issue is in AI_DISCUSSING: build_succeeded
+    // LABELS.AI_GENERATED added while the issue is in LABELS.AI_DISCUSSING: build_succeeded
     // has no rule from there, and it isn't a contextual event, so it's a gap.
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
     const result = await coordinateWebhook(
@@ -173,9 +173,9 @@ describe("coordinateWebhook — no event / no rule", () => {
   });
 
   it("a labelled_* event's own label doesn't count towards ambiguity — only genuinely pre-existing labels do", async () => {
-    // AI_READY is what THIS event just added, so it's excluded before
-    // checking ambiguity; AI_DISCUSSING was already there. The real
-    // pre-event state is just "AI_DISCUSSING", which has no rule for
+    // LABELS.AI_READY is what THIS event just added, so it's excluded before
+    // checking ambiguity; LABELS.AI_DISCUSSING was already there. The real
+    // pre-event state is just "LABELS.AI_DISCUSSING", which has no rule for
     // labelled_ai_ready -- correctly dropped, not ambiguous.
     const deps = fakeDeps({
       getLabels: vi.fn(async () => [LABELS.AI_READY, LABELS.AI_DISCUSSING]),
@@ -328,7 +328,7 @@ describe(`coordinateWebhook — leaving ${LABELS.AI_STUCK}`, () => {
     );
     expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_STUCK, event: EVENTS.BUILD_SUCCEEDED });
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
-    expect(deps.addLabel).not.toHaveBeenCalled(); // AI_GENERATED already there
+    expect(deps.addLabel).not.toHaveBeenCalled(); // LABELS.AI_GENERATED already there
   });
 
   it(`a late build_blocked with no swap visible yet (only ${LABELS.AI_STUCK}): swaps ${LABELS.AI_STUCK} -> ${LABELS.AI_BLOCKED} itself`, async () => {

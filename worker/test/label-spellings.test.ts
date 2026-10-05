@@ -1,6 +1,6 @@
 // A label's spelling lives in one place, graph/constants/labels.ts: code and
-// tests use LABELS, comments use its keys (AUTO_MERGING). Then a rename is a
-// change to that file (and the skills and docs, which can't import it), not
+// tests use LABELS, comments write LABELS.AUTO_MERGING (doc comments
+// {@link LABELS.AUTO_MERGING}). Then a rename is a change to that file (and the skills and docs, which can't import it), not
 // a grep across the TypeScript. This keeps a spelled-out label from creeping
 // back in.
 import { readdirSync, readFileSync, statSync } from "node:fs";

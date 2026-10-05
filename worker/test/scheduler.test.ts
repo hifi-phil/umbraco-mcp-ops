@@ -54,7 +54,7 @@ function fakeEnv(
   return { env, inserted, asked };
 }
 
-/** GitHub: issue #7 has AI_READY on the ops repo; nothing else anywhere. */
+/** GitHub: issue #7 has {@link LABELS.AI_READY} on the ops repo; nothing else anywhere. */
 const github = () =>
   vi.fn(async (url: string) => {
     if (url.includes("/repos/hifi-phil/umbraco-mcp-ops/issues?") && url.includes(`labels=${LABELS.AI_READY}`)) {
