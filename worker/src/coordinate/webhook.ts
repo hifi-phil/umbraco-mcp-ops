@@ -260,5 +260,15 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
   const reason = hardBlockReason(facts);
   if (reason) return blockMerge(deps, input, currentLabels, reason);
   if (failedCheckNames(facts).length > 0) return handToRework(deps, input, currentLabels, facts);
+
+  // Green: merge-flow again, once per head commit. merge-flow never signals
+  // completion (its result is the merge itself), so a pending fire can't say
+  // whether one is still running; a second alongside a slow first is
+  // harmless, a merge being idempotent.
+  if (facts.checkRuns.length > 0 && facts.headSha && (await deps.getMergeFiredFor()) !== facts.headSha) {
+    const result = await applyEvent(deps, input, EVENTS.MERGE_GATE_PASSED, currentLabels);
+    if (result.outcome === "applied") await deps.setMergeFiredFor(facts.headSha);
+    return result;
+  }
   return { outcome: "no_event" };
 }

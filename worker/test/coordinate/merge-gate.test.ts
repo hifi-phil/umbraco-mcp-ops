@@ -24,11 +24,41 @@ describe("coordinateWebhook — check_suite.completed, the real merge-gate aggre
     expect(deps.getMergeGateFacts).not.toHaveBeenCalled();
   });
 
-  it(`completed, in ${LABELS.AUTO_MERGING}, gate genuinely passes -> no_event (merge-flow's own Step 3 does the actual merge, not the reducer)`, async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]) });
+  it(`completed, in ${LABELS.AUTO_MERGING}, gate passes -> merge-flow fired again (one that ran while a check was queued didn't merge, PR #228)`, async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
+      getMergeGateFacts: vi.fn(async () => gateFacts({ headSha: "sha-1" })),
+    });
     const result = await coordinateWebhook(deps, checkSuiteInput());
-    expect(result).toEqual({ outcome: "no_event" });
+    expect(result).toMatchObject({ outcome: "applied", event: EVENTS.MERGE_GATE_PASSED });
     expect(deps.getMergeGateFacts).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412);
+    expect(deps.fireRoutine).toHaveBeenCalledTimes(1);
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.MERGE_FLOW);
+    expect(deps.addLabel).not.toHaveBeenCalled();
+    expect(deps.removeLabel).not.toHaveBeenCalled();
+  });
+
+  it("gate passes again on the same head commit (another suite finishing) -> nothing more; a new commit gets its own re-fire", async () => {
+    let sha = "sha-1";
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]),
+      getMergeGateFacts: vi.fn(async () => gateFacts({ headSha: sha })),
+    });
+    await coordinateWebhook(deps, input({ deliveryId: "s-1", payload: { action: "check_suite.completed", check_suite: { conclusion: "success", status: "completed" } } }));
+    expect(await coordinateWebhook(deps, input({ deliveryId: "s-2", payload: { action: "check_suite.completed", check_suite: { conclusion: "success", status: "completed" } } }))).toEqual({
+      outcome: "no_event",
+    });
+    sha = "sha-2";
+    await coordinateWebhook(deps, input({ deliveryId: "s-3", payload: { action: "check_suite.completed", check_suite: { conclusion: "success", status: "completed" } } }));
+    expect(deps.fireRoutine).toHaveBeenCalledTimes(2);
+  });
+
+  it("gate passes but no checks reported yet, or no head commit known -> no re-fire", async () => {
+    for (const facts of [gateFacts({ headSha: "sha-1", checkRuns: [] }), gateFacts()]) {
+      const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_MERGING]), getMergeGateFacts: vi.fn(async () => facts) });
+      expect(await coordinateWebhook(deps, checkSuiteInput())).toEqual({ outcome: "no_event" });
+      expect(deps.fireRoutine).not.toHaveBeenCalled();
+    }
   });
 
   it(`completed, in ${LABELS.AUTO_MERGING}, CI green but mergeable still computing -> re-read, then no_event`, async () => {

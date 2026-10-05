@@ -173,6 +173,10 @@ export type Deps = {
   // How many review rework rounds this PR has had (DO storage).
   getReviewReworks(): Promise<number>;
   setReviewReworks(rounds: number): Promise<void>;
+  // The head commit merge-flow was last re-fired for on green CI (DO
+  // storage), so each green commit gets one re-fire, not one per check suite.
+  getMergeFiredFor(): Promise<string | null>;
+  setMergeFiredFor(sha: string): Promise<void>;
   // review-loop's own rounds on this PR (DO storage).
   getReviewLoop(): Promise<ReviewLoop | null>;
   setReviewLoop(state: ReviewLoop | null): Promise<void>;

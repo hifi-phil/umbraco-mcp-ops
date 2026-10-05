@@ -211,6 +211,17 @@ export const rules: Rule[] = [
     verifiedBy: "deterministic",
   },
   {
+    // CI finished green with the label still on: merge-flow again. One that
+    // ran while a check was still queued finished without merging, and
+    // nothing else would retry it (PR #228). coordinate/ fires this once per
+    // head commit.
+    from: LABELS.AUTO_MERGING,
+    on: EVENTS.MERGE_GATE_PASSED,
+    to: noop,
+    run: ROUTINES.MERGE_FLOW,
+    verifiedBy: "deterministic", // the Worker's own re-fetched check runs
+  },
+  {
     // Needs a human: a merge conflict or requested changes. Checked when
     // LABELS.AUTO_MERGING is added and whenever CI finishes (coordinate/). The
     // swap LABELS.AUTO_MERGING -> LABELS.MERGE_BLOCKED stops retries and says why it stopped.

@@ -89,6 +89,7 @@ async function respond(run: () => Promise<unknown>): Promise<Response> {
 const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
 const REVIEW_REWORKS_KEY = "reviewReworks"; // review rework rounds on this PR (MAX_REVIEW_REWORKS)
+const MERGE_FIRED_FOR_KEY = "mergeFiredFor"; // the head commit merge-flow was re-fired for on green CI
 const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MAX_BOT_REVIEW_REWORKS)
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
@@ -239,6 +240,10 @@ export class IssueCoordinator {
       setReviewReworks: async (rounds: number) => {
         await this.ctx.storage.put(REVIEW_REWORKS_KEY, rounds);
       },
+      getMergeFiredFor: async () => (await this.ctx.storage.get<string>(MERGE_FIRED_FOR_KEY)) ?? null,
+      setMergeFiredFor: async (sha: string) => {
+        await this.ctx.storage.put(MERGE_FIRED_FOR_KEY, sha);
+      },
       getReviewLoop: async () => (await this.ctx.storage.get<ReviewLoop>(REVIEW_LOOP_KEY)) ?? null,
       setReviewLoop: async (state: ReviewLoop | null) => {
         if (state) await this.ctx.storage.put(REVIEW_LOOP_KEY, state);
@@ -258,6 +263,7 @@ export class IssueCoordinator {
         ]);
         const checkRuns = await githubClient.getCheckRuns(this.env, owner, repo, pull.headSha);
         return {
+          headSha: pull.headSha,
           checkRuns: checkRuns as MergeGateFacts["checkRuns"],
           latestReviewState,
           mergeable: pull.mergeable,

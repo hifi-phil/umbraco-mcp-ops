@@ -787,17 +787,18 @@ describe("IssueCoordinator — the real check_suite.completed / merge-gate aggre
     expect((deleteCall![0] as string)).toContain(`/labels/${LABELS.AUTO_MERGING}`);
   });
 
-  it("real all-green facts -> no_event, gate passes, no GitHub write beyond the reads", async () => {
+  it("real all-green facts -> merge-flow fired again, once for that head commit (PR #228)", async () => {
     vi.stubGlobal("fetch", fakeApiFetch({ labels: [LABELS.AUTO_MERGING] }));
     const { ctx } = fakeCtx();
     const coordinator = new IssueCoordinator(ctx, fakeEnv());
     await labelAutoMerging(coordinator);
 
-    const res = await coordinator.fetch(
+    const suite = (deliveryId: string) =>
       fetchRequest(
-        labeledInput({ deliveryId: "d-2", payload: { action: "check_suite.completed", check_suite: { conclusion: "success", status: "completed" } } }),
-      ),
-    );
-    expect(await res.json()).toEqual({ outcome: "no_event" });
+        labeledInput({ deliveryId, payload: { action: "check_suite.completed", check_suite: { conclusion: "success", status: "completed" } } }),
+      );
+    expect(await (await coordinator.fetch(suite("d-2"))).json()).toMatchObject({ outcome: "applied", event: "merge_gate_passed" });
+    // A second suite finishing on the same commit: already re-fired for it.
+    expect(await (await coordinator.fetch(suite("d-3"))).json()).toEqual({ outcome: "no_event" });
   });
 });
