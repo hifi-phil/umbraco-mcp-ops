@@ -235,6 +235,15 @@ describe("translate — the review", () => {
   });
 });
 
+describe("translate — the release split", () => {
+  it("a release_approved outcome -> release_approved; GitHub's release.published -> release_published", () => {
+    const body = outcomeComment(ROUTINES.AUTO_RELEASE_LOOP, { outcome: "release_approved", pr: 220, sha: "abc", version: "2.1.0", note: "n" });
+    expect(translate(payload({ action: "issue_comment.created", comment: { body } }))).toBe(EVENTS.RELEASE_APPROVED);
+    expect(translate(payload({ action: "release.published", release: { version: "2.1.0" } }))).toBe(EVENTS.RELEASE_PUBLISHED);
+    expect(translate(payload({ action: "release.published" }))).toBeNull();
+  });
+});
+
 describe("translate — the Worker's own hand-offs between items", () => {
   it("orchestrator.pr_merged -> pr_merged, orchestrator.released -> released, each only with its data", () => {
     expect(translate(payload({ action: "orchestrator.pr_merged", shipped: { pr: 7, sha: "abc" } }))).toBe(EVENTS.PR_MERGED);

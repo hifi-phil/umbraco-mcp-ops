@@ -132,6 +132,16 @@ export const rules: Rule[] = [
     verifiedBy: "external-judgment",
   },
   {
+    // The release split: the review passed, and the agent's run is over.
+    // coordinate/release.ts merges the PR (pinned to the reviewed commit);
+    // the label stays until the repo's workflow publishes the Release
+    // (release_published, from GitHub's own release event, below).
+    from: LABELS.AUTO_RELEASING,
+    on: EVENTS.RELEASE_APPROVED,
+    to: noop,
+    verifiedBy: "external-judgment", // release-reviewer's verdict
+  },
+  {
     from: "none",
     on: EVENTS.LABELLED_AI_DISCUSSING,
     to: label(LABELS.AI_DISCUSSING),

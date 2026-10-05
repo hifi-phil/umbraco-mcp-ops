@@ -120,6 +120,8 @@ resource "cloudflare_workers_script" "worker" {
     },
     { type = "d1", name = "DB", id = cloudflare_d1_database.log.id },
     { type = "plain_text", name = "MODE", text = var.mode },
+    # The release channel's Slack webhook, if set (the release split's post).
+    { type = "secret_text", name = "SLACK_RELEASE_WEBHOOK", text = coalesce(var.slack_release_webhook, "") },
     { type = "plain_text", name = "WATCHDOG", text = var.watchdog },
     # The sandbox's own watchdog: real, with a short timeout a scenario can
     # wait out. Every other repo keeps `watchdog` and the default minutes.

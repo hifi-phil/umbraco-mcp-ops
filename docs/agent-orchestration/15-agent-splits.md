@@ -217,13 +217,35 @@ done by an agent, and the end of the run is where it loses track.
 | | Sync `main` back to `dev` (`sync-main-to-dev.yml` exists) |
 | | Comment on and close the issue |
 
-**Open: where the plain code runs.** Two options:
+**Settled (06-10-2026): the Worker, plus each repo's own release
+workflow.** The App now has Contents: write (granted for the e2e stub), so
+the Worker can merge; tagging and the GitHub Release stay with the repo's
+workflow (`release-tag.yml` here), which already does them on a push to
+`main`, and the repos that publish packages do so from that release.
 
-- **The Worker.** Vendor-neutral, but it needs write access to `main` and
-  tags, much more than it has today.
-- **Actions in each target repo.** Every repo needs the workflows.
+1. **The agent** (`auto-release-loop`, orchestrated mode) prepares, gets CI
+   green and runs the pre-publish review. On a pass it reports
+   `release_approved` with the PR, the head commit the review saw, the
+   version, and a one-line release note, and stops there. (On a block,
+   `release_blocked`, as now.)
+2. **The Worker merges** the release PR with a **merge commit**, never a
+   squash (the tag and sync workflows key off it), **pinned to the
+   reviewed commit**: GitHub refuses the merge if anything was pushed after
+   the review. A refused merge is handled like a block: the trigger label
+   comes off, with a comment saying why.
+3. **The repo's workflow** tags `v<version>` and publishes the GitHub
+   Release.
+4. **On the published Release** (GitHub's `release` event; the App must
+   subscribe to it), the Worker finds the release issue (the open
+   `auto-releasing` issue titled `release <version>`), posts the release
+   note to Slack (a `SLACK_RELEASE_WEBHOOK` secret, if set), closes the
+   issue, and hands `released` to every waiting issue (the issue stages).
+5. **Sync** stays with `sync-main-to-dev.yml`, which opens the PR from
+   `main` back to `dev`.
 
-This needs exploring before split 2 is built.
+While it waits between the merge and the Release, the release issue is
+marked as completed, so the sweep doesn't take the wait for a lost run and
+fire the release again.
 
 ## Rollout
 

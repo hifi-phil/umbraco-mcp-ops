@@ -88,6 +88,7 @@ adds a trailer, it doesn't change what "done" means.
 | `issue-build-loop` | `build_blocked` | `{"outcome":"build_blocked","reason":"<one line>"}` | Step 3, when the issue is recorded as blocked |
 | `auto-release-loop` | `release_blocked` | `{"outcome":"release_blocked","reason":"<one line>"}` | Step 2.5, on a BLOCK verdict from `release-reviewer` |
 | `auto-release-loop` | `release_published` | `{"outcome":"release_published","version":"<version>"}` | Step 4, after publish + dev sync, on the close-out comment |
+| `auto-release-loop` | `release_approved` | `{"outcome":"release_approved","pr":<PR number>,"sha":"<reviewed head SHA>","version":"<version>","note":"<one line>"}` | Orchestrated mode, end of Step 2.5 on a pass: the orchestrator merges (pinned to `sha`) and posts `note` to Slack once the Release is out |
 | `review-loop` | `review_passed` | `{"outcome":"review_passed"}` | Its verdict comment on the PR, when it finds nothing to fix |
 | `review-loop` | `review_findings` | `{"outcome":"review_findings","findings":<count>}` | Its verdict comment on the PR, listing what to fix |
 | `review-loop` | `review_blocked` | `{"outcome":"review_blocked","reason":"<one line>"}` | Its verdict comment on the PR, when the approach is wrong |

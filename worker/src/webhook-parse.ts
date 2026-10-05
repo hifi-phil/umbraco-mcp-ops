@@ -68,6 +68,7 @@ export function toWebhookPayload(body: Record<string, unknown>, eventType: strin
   const issue = body.issue as { state?: "open" | "closed"; pull_request?: unknown } | undefined;
   const review = body.review as { state?: "approved" | "changes_requested" | "commented" } | undefined;
   const pullRequest = body.pull_request as { merged?: boolean; body?: string | null; merge_commit_sha?: string | null } | undefined;
+  const release = body.release as { tag_name?: string; html_url?: string } | undefined;
   const checkSuite = body.check_suite as
     | { conclusion?: "success" | "failure" | null; status?: "completed" | "in_progress" }
     | undefined;
@@ -92,6 +93,8 @@ export function toWebhookPayload(body: Record<string, unknown>, eventType: strin
     check_suite: checkSuite
       ? { conclusion: checkSuite.conclusion ?? null, status: checkSuite.status ?? "completed" }
       : undefined,
+    // GitHub's release event: the version is its tag without the leading v.
+    release: release?.tag_name ? { version: release.tag_name.replace(/^v/, ""), url: release.html_url } : undefined,
   };
 }
 

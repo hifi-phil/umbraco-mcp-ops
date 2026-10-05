@@ -48,6 +48,17 @@ describe("parseOutcomeShape — release outcomes", () => {
   });
 });
 
+describe("parseOutcomeShape — release_approved (the release split)", () => {
+  it("accepts the PR, the reviewed commit, the version and the note; rejects any missing", () => {
+    const ok = { outcome: "release_approved", pr: 220, sha: "abc", version: "2.1.0", note: "Issue stages." };
+    expect(parseOutcomeShape(ok)).toEqual(ok);
+    for (const key of ["pr", "sha", "version", "note"]) {
+      const { [key]: _, ...missing } = ok as Record<string, unknown>;
+      expect(parseOutcomeShape(missing), key).toBeNull();
+    }
+  });
+});
+
 describe("parseOutcomeShape — review outcomes", () => {
   it("accepts review_passed, review_findings and review_blocked", () => {
     expect(parseOutcomeShape({ outcome: "review_passed" })).toEqual({ outcome: "review_passed" });

@@ -190,6 +190,14 @@ describe(`reduce — CI green under ${LABELS.AUTO_MERGING}`, () => {
   });
 });
 
+describe("reduce — the release split", () => {
+  it(`${LABELS.AUTO_RELEASING} + release_approved -> stays put, fires nothing (the Worker merges)`, () => {
+    const rule = reduce(LABELS.AUTO_RELEASING, EVENTS.RELEASE_APPROVED);
+    expect(rule?.to).toEqual(noop);
+    expect(rule?.run).toBeUndefined();
+  });
+});
+
 describe("reduce — the issue's stages after its PR", () => {
   it(`${LABELS.PR_OPEN} (the build's PR) or no label (a person's PR) + pr_merged -> ${LABELS.READY_FOR_RELEASE}, nothing fired`, () => {
     for (const from of [LABELS.PR_OPEN, "none"] as const) {

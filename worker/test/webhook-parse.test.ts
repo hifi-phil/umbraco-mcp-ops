@@ -95,6 +95,12 @@ describe("toWebhookPayload", () => {
     expect(payload.pull_request).toEqual({ merged: true, body: "Closes #12", merge_commit_sha: "abc123" });
   });
 
+  it("maps GitHub's release event: the version from its tag (no leading v), and its page", () => {
+    const payload = toWebhookPayload({ action: "published", release: { tag_name: "v2.1.0", html_url: "https://x/v2.1.0" } }, "release");
+    expect(payload.action).toBe("release.published");
+    expect(payload.release).toEqual({ version: "2.1.0", url: "https://x/v2.1.0" });
+  });
+
   it("a PR with no description or merge commit -> null for each", () => {
     const payload = toWebhookPayload({ action: "closed", pull_request: { merged: false } }, "pull_request");
     expect(payload.pull_request).toEqual({ merged: false, body: null, merge_commit_sha: null });

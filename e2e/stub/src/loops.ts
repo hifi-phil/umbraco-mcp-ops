@@ -27,6 +27,7 @@ export type Action =
   | "waiting_for_ci"
   | "ci_red"
   | "release_published"
+  | "release_approved"
   | "release_blocked"
   | "discussed"
   | "review_passed"
@@ -234,11 +235,53 @@ async function review(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
   }
 }
 
+/** How long the stub waits for the orchestrator's merge before tagging, as
+ * release-tag.yml would on the push to main: within a fire's waitUntil. */
+export const MERGE_WAIT_TRIES = 10;
+export const MERGE_WAIT_MS = 2000;
+
+/**
+ * The release split, orchestrated: what auto-release-loop does (cut
+ * release/<version> from dev, open its PR into main, the pre-publish review
+ * passes, release_approved with the reviewed head), then what the repo's
+ * release workflow does once the orchestrator has merged (tag v<version> on
+ * the merge, publish the Release, whose event closes the release issue).
+ */
+async function approveRelease(gh: Gh, f: Fire, waitMs = MERGE_WAIT_MS): Promise<Action> {
+  const version = `0.0.${f.number}`;
+  const branch = `release/${version}`;
+  const { object } = (await gh("GET", `${base(f)}/git/ref/heads/dev`)) as { object: { sha: string } };
+  await gh("POST", `${base(f)}/git/refs`, { ref: `refs/heads/${branch}`, sha: object.sha });
+  await putFile(gh, f, branch, `releases/${version}.txt`, `released ${version}\n`, `chore(release): ${version}`);
+  const pr = (await gh("POST", `${base(f)}/pulls`, {
+    title: `release ${version}`,
+    head: branch,
+    base: "main",
+    body: `The e2e stub's release PR for #${f.number}.\n\n<!-- e2e: release -->`,
+  })) as { number: number; head: { sha: string } };
+  await comment(
+    gh,
+    f,
+    outcomeComment("auto-release-loop", { outcome: "release_approved", pr: pr.number, sha: pr.head.sha, version, note: `e2e release ${version}` }),
+  );
+  for (let i = 0; i < MERGE_WAIT_TRIES; i++) {
+    await new Promise((r) => setTimeout(r, waitMs));
+    const now = (await gh("GET", `${base(f)}/pulls/${pr.number}`)) as { merged?: boolean; merge_commit_sha?: string | null };
+    if (now.merged && now.merge_commit_sha) {
+      await gh("POST", `${base(f)}/git/refs`, { ref: `refs/tags/v${version}`, sha: now.merge_commit_sha });
+      await gh("POST", `${base(f)}/releases`, { tag_name: `v${version}`, name: `v${version}` });
+      return "release_published";
+    }
+  }
+  return "release_approved";
+}
+
 async function release(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
   if (hint === "blocked") {
     await comment(gh, f, outcomeComment("auto-release-loop", { outcome: "release_blocked", reason: "e2e stub: scripted block" }));
     return "release_blocked";
   }
+  if (hint === "approve") return approveRelease(gh, f);
   if (hint !== "published") return "none";
   const version = `0.0.${f.number}`;
   // The tag a real release makes (release-tag.yml), on what's on dev: the

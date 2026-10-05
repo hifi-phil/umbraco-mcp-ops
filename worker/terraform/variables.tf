@@ -57,6 +57,13 @@ variable "sweep_mode" {
   }
 }
 
+variable "slack_release_webhook" {
+  type        = string
+  sensitive   = true
+  default     = null
+  description = "A Slack incoming-webhook URL for the release channel (release-notifications). The release split posts each Release's note there once the repo's workflow publishes it. Unset: no post."
+}
+
 variable "sweep_enforce_repos" {
   type        = list(string)
   default     = []
@@ -93,7 +100,7 @@ variable "github_owner" {
 
 variable "github_app_id" {
   type        = string
-  description = "The Worker's GitHub App ID (the App's settings page). The Worker reads and writes GitHub as this App's bot. The App needs Issues, Pull requests and Contents read & write (Contents write for the e2e stub, which acts as the App on the sandbox), and Checks read, and must be installed on every repo the Worker serves (including e2e_repo). No personal token is stored: the Worker and the stub both act as this App."
+  description = "The Worker's GitHub App ID (the App's settings page). The Worker reads and writes GitHub as this App's bot. The App needs Issues, Pull requests and Contents read & write (Contents write for the e2e stub, which acts as the App on the sandbox), and Checks read, must subscribe to the Release event (the release split: a published Release closes its release issue), and must be installed on every repo the Worker serves (including e2e_repo). No personal token is stored: the Worker and the stub both act as this App."
 }
 
 variable "github_app_private_key" {

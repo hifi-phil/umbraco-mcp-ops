@@ -194,6 +194,13 @@ export async function openPullsForCommit(env: GitHubEnv, owner: string, repo: st
 }
 
 /** Open issues and PRs carrying `label` (the sweep's candidates). */
+/** Merges a PR with a merge commit (never a squash: release tooling keys
+ * off it), only if its head is still `sha`. GitHub's refusal (head moved,
+ * not mergeable) throws with its message. */
+export async function mergePull(env: GitHubEnv, owner: string, repo: string, pr: number, sha: string): Promise<void> {
+  await gh(env, "PUT", `/repos/${owner}/${repo}/pulls/${pr}/merge`, { merge_method: "merge", sha });
+}
+
 /** Whether `ref` (a tag or branch) contains commit `sha`: the compare
  * from the commit to the ref is "ahead" or "identical". A missing ref or
  * commit (404) reads as not contained. */
@@ -209,16 +216,16 @@ export async function openWithLabel(
   owner: string,
   repo: string,
   label: string,
-): Promise<{ number: number; updatedAt: string }[]> {
-  const found: { number: number; updatedAt: string }[] = [];
+): Promise<{ number: number; updatedAt: string; title: string }[]> {
+  const found: { number: number; updatedAt: string; title: string }[] = [];
   for (let page = 1; ; page++) {
     const res = await gh(
       env,
       "GET",
       `/repos/${owner}/${repo}/issues?state=open&per_page=100&page=${page}&labels=${encodeURIComponent(label)}`,
     );
-    const issues = (await res.json()) as Array<{ number: number; updated_at: string }>;
-    found.push(...issues.map((i) => ({ number: i.number, updatedAt: i.updated_at })));
+    const issues = (await res.json()) as Array<{ number: number; updated_at: string; title: string }>;
+    found.push(...issues.map((i) => ({ number: i.number, updatedAt: i.updated_at, title: i.title })));
     if (issues.length < 100) return found;
   }
 }

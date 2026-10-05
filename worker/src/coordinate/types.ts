@@ -72,6 +72,8 @@ export type PendingFire = {
 // LABELS.AI_REVIEWING (CI red before the review).
 export type Shipped = { pr: number; sha: string };
 
+export type ReleaseNote = { version: string; note: string };
+
 export type CiFix = { attempts: number; pending: boolean; returnTo?: Label };
 
 // The review's own rounds on this PR: how many times review-loop has asked
@@ -187,6 +189,14 @@ export type Deps = {
   // LABELS.READY_FOR_RELEASE (DO storage), for checking a release against.
   getShipped(): Promise<Shipped | null>;
   setShipped(shipped: Shipped): Promise<void>;
+  // The release split: merge a release PR with a merge commit, pinned to
+  // `sha` (GitHub refuses if the head moved); throws with GitHub's reason.
+  mergePull(owner: string, repo: string, pr: number, sha: string): Promise<void>;
+  // The release note the review left (DO storage), posted when the Release is out.
+  getReleaseNote(): Promise<ReleaseNote | null>;
+  setReleaseNote(note: ReleaseNote): Promise<void>;
+  // Posts to the release Slack channel; a no-op when no webhook is set.
+  postSlack(text: string): Promise<void>;
   // The head commit merge-flow was last re-fired for on green CI (DO
   // storage), so each green commit gets one re-fire, not one per check suite.
   getMergeFiredFor(): Promise<string | null>;
@@ -264,6 +274,8 @@ export function shadowDeps(deps: Deps): Deps {
     closeIssue: skip,
     commentOnIssue: skip,
     fireRoutine: skip,
+    mergePull: skip,
+    postSlack: skip,
     enforced: () => false,
   };
 }

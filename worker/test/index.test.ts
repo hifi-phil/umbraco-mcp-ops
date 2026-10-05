@@ -290,6 +290,40 @@ describe("index.ts fetch() — DO routing and isolation", () => {
     }
   });
 
+  it("a published release -> routed to the open release issue titled `release <version>` (the release split)", async () => {
+    const { env, idFromName, stubFetch } = fakeEnv();
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes(`/repos/hifi-phil/umbraco-mcp-ops/issues?state=open`) && url.includes(`labels=${LABELS.AUTO_RELEASING}`)
+        ? new Response(JSON.stringify([{ number: 218, title: "release 2.0.9", updated_at: "x" }, { number: 219, title: "Release 2.1.0", updated_at: "x" }]), {
+            status: 200,
+          })
+        : new Response("unexpected", { status: 500 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const release = (tag: string, action = "published") =>
+        request(
+          { action, repository: { name: "umbraco-mcp-ops", owner: { login: "hifi-phil" } }, release: { tag_name: tag, html_url: "https://x" } },
+          { "X-GitHub-Event": "release" },
+        );
+      await worker.fetch(release("v2.1.0"), env);
+      expect(idFromName).toHaveBeenCalledWith("hifi-phil/umbraco-mcp-ops#219");
+      const [, init] = stubFetch.mock.calls[0]!;
+      expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+        issueNumber: 219,
+        payload: { action: "release.published", release: { version: "2.1.0", url: "https://x" } },
+      });
+
+      // No matching release issue, or a release only drafted: nothing to route.
+      idFromName.mockClear();
+      expect(await (await worker.fetch(release("v9.9.9"), env)).json()).toMatchObject({ dropped: "no routable issue/PR number" });
+      expect(await (await worker.fetch(release("v2.1.0", "created"), env)).json()).toMatchObject({ dropped: "no routable issue/PR number" });
+      expect(idFromName).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("passes through the DO's response verbatim", async () => {
     const { env, stubFetch } = fakeEnv();
     stubFetch.mockResolvedValueOnce(new Response(JSON.stringify({ outcome: "applied" }), { status: 200 }));
