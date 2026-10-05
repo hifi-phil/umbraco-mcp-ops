@@ -72,6 +72,10 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       const scripted = (d: DeliveryDetail) => d.numbers.includes(runLog.sweepIssue ?? -1) && d.response.includes("scripted fire failure");
       const failed = details.filter((d) => (d.statusCode >= 400 || d.response.includes('"outcome":"error"')) && !scripted(d));
       expect(failed.map(line), "deliveries the Worker failed").toEqual([]);
+      // Answered 202 (the Worker's answer deadline, under GitHub's 10 s):
+      // not a failure, the work finished in the background, but worth seeing.
+      const late = details.filter((d) => d.statusCode === 202);
+      if (late.length > 0) progress(`audit: ${late.length} delivery(s) answered late (202): ${late.map(line).join("; ")}`);
       const noRule = details.filter((d) => d.response.includes('"outcome":"dropped_no_rule"'));
       expect(noRule.map(line), "events the table had no rule for").toEqual([]);
 
