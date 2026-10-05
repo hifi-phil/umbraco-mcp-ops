@@ -70,6 +70,8 @@ export type PendingFire = {
 
 // returnTo: where the fix's push goes back to, LABELS.AUTO_MERGING (the default) or
 // LABELS.AI_REVIEWING (CI red before the review).
+export type Shipped = { pr: number; sha: string };
+
 export type CiFix = { attempts: number; pending: boolean; returnTo?: Label };
 
 // The review's own rounds on this PR: how many times review-loop has asked
@@ -173,6 +175,18 @@ export type Deps = {
   // How many review rework rounds this PR has had (DO storage).
   getReviewReworks(): Promise<number>;
   setReviewReworks(rounds: number): Promise<void>;
+  // Hands an event to another item's coordinator (a merged PR to the issues
+  // it closes; a release to the issues waiting for one). It runs there, as
+  // that item's own event, deduped on `deliveryId`.
+  forward(ref: IssueRef, payload: WebhookPayload, deliveryId: string): Promise<void>;
+  // The open issues or PRs carrying `label` in a repo.
+  openWithLabel(owner: string, repo: string, label: string): Promise<number[]>;
+  // Whether `ref` (a tag) contains commit `sha`.
+  commitInRef(owner: string, repo: string, sha: string, ref: string): Promise<boolean>;
+  // The merged PR, and its merge commit, that moved this issue to
+  // LABELS.READY_FOR_RELEASE (DO storage), for checking a release against.
+  getShipped(): Promise<Shipped | null>;
+  setShipped(shipped: Shipped): Promise<void>;
   // The head commit merge-flow was last re-fired for on green CI (DO
   // storage), so each green commit gets one re-fire, not one per check suite.
   getMergeFiredFor(): Promise<string | null>;

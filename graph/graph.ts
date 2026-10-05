@@ -320,6 +320,30 @@ export const rules: Rule[] = [
     verifiedBy: "deterministic", // the Worker's own count
   },
 
+  // --- the issue's stages after its PR ---
+  // A PR whose description closes this issue merged into dev (coordinate/
+  // hands the event over, with the merge commit): the issue waits for a
+  // release. From LABELS.PR_OPEN (the build's PR), or from no label at all
+  // (a person's PR). The release whose tag contains that commit closes it.
+  {
+    from: LABELS.PR_OPEN,
+    on: EVENTS.PR_MERGED,
+    to: label(LABELS.READY_FOR_RELEASE),
+    verifiedBy: "deterministic", // a merge GitHub reported, and the PR's own "Closes #N"
+  },
+  {
+    from: "none",
+    on: EVENTS.PR_MERGED,
+    to: label(LABELS.READY_FOR_RELEASE),
+    verifiedBy: "deterministic",
+  },
+  {
+    from: LABELS.READY_FOR_RELEASE,
+    on: EVENTS.RELEASED,
+    to: close,
+    verifiedBy: "deterministic", // coordinate/ checked the release's tag contains the merge
+  },
+
   // --- a loop taking its own trigger label off ---
   // Native and reliable: in shadow run 1 every build and release removed its
   // trigger label, but only 1 of 4 posted the outcome comment. So removal is
@@ -445,6 +469,10 @@ export const CONTEXTUAL_EVENTS: ReadonlySet<Event> = new Set([
   EVENTS.UNLABELLED_AUTO_REWORKING,
   EVENTS.UNLABELLED_AUTO_MERGING,
   EVENTS.UNLABELLED_AI_REVIEWING,
+  // Only an issue at the right stage moves; one elsewhere (still under
+  // discussion, say) is left as it is.
+  EVENTS.PR_MERGED,
+  EVENTS.RELEASED,
 ]);
 
 /** Whether a routine fired into `state` should be watched: true exactly

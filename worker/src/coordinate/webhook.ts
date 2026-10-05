@@ -11,6 +11,8 @@ import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from 
 import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 import { reviewFindings, reviewGate } from "./review-gate";
+import { handOffMerged, handOffRelease, prMerged, released } from "./stages";
+import { parseOutcomeArtifact } from "@orchestrator/graph/github/from-github";
 
 /**
  * The literal implementation of translate() -> reduce() -> labelOps() +
@@ -49,6 +51,10 @@ export async function coordinateWebhook(
 
 async function processWebhook(deps: Deps, input: CoordinateInput): Promise<CoordinateResult> {
   const result = await processEvent(deps, input);
+  // Merged (by anyone, labelled or not): the issues its description closes
+  // move to their next stage. Failing here fails the delivery, so it can be
+  // redelivered; each issue dedupes its hand-off.
+  if (input.payload.action === "pull_request.closed") await handOffMerged(deps, input);
   // Closed by anyone (a merge, a person, a release): off the dashboard,
   // which shows open issues. Last, so the close's own rule (issue_closed is
   // a noop that would otherwise re-write the row) can't put it back.
@@ -140,6 +146,19 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   if (event === EVENTS.REVIEW_FINDINGS && deriveState(currentLabels) === LABELS.AI_REVIEWING) {
     return reviewFindings(deps, input, currentLabels);
   }
+  // The issue's stages after its PR (coordinate/stages.ts).
+  if (event === EVENTS.PR_MERGED) return prMerged(deps, input, currentLabels);
+  if (event === EVENTS.RELEASED) return released(deps, input, currentLabels);
+  if (event === EVENTS.RELEASE_PUBLISHED) {
+    const published = await applyEvent(deps, input, event, currentLabels);
+    const version = (() => {
+      const outcome = parseOutcomeArtifact(input.payload.comment?.body);
+      return outcome?.outcome === "release_published" ? outcome.version : undefined;
+    })();
+    if (published.outcome === "applied" && version) await handOffRelease(deps, input, version);
+    return published;
+  }
+
   if (event === EVENTS.REVIEW_PASSED) {
     const passed = await applyEvent(deps, input, event, currentLabels);
     if (passed.outcome === "applied") {

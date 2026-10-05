@@ -190,6 +190,26 @@ describe(`reduce — CI green under ${LABELS.AUTO_MERGING}`, () => {
   });
 });
 
+describe("reduce — the issue's stages after its PR", () => {
+  it(`${LABELS.PR_OPEN} (the build's PR) or no label (a person's PR) + pr_merged -> ${LABELS.READY_FOR_RELEASE}, nothing fired`, () => {
+    for (const from of [LABELS.PR_OPEN, "none"] as const) {
+      const rule = reduce(from, EVENTS.PR_MERGED);
+      expect(rule?.to, from).toEqual(label(LABELS.READY_FOR_RELEASE));
+      expect(rule?.run, from).toBeUndefined();
+    }
+  });
+
+  it(`${LABELS.READY_FOR_RELEASE} + released -> closed`, () => {
+    expect(reduce(LABELS.READY_FOR_RELEASE, EVENTS.RELEASED)?.to).toEqual(close);
+  });
+
+  it("elsewhere they're contextual: an issue at another stage is left alone, not a gap", () => {
+    expect(reduce(LABELS.AI_DISCUSSING, EVENTS.PR_MERGED)).toBeNull();
+    expect(CONTEXTUAL_EVENTS.has(EVENTS.PR_MERGED)).toBe(true);
+    expect(CONTEXTUAL_EVENTS.has(EVENTS.RELEASED)).toBe(true);
+  });
+});
+
 describe("reduce — illegal moves are dropped, not errors", () => {
   it("an event with no matching rule for the current state returns null", () => {
     expect(reduce(LABELS.PR_OPEN, EVENTS.LABELLED_AI_READY)).toBeNull();

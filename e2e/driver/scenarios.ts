@@ -138,7 +138,7 @@ const lateOutcome = (n: number, loop: string, outcome: Outcome) => comment(n, ou
 export const scenarios: Scenario[] = [
   // --- The lane --------------------------------------------------------------
   {
-    name: `full lane: build -> PR -> ${LABELS.AUTO_MERGING} -> merged, then release -> published`,
+    name: `full lane: build -> PR -> ${LABELS.AUTO_MERGING} -> merged (issue ${LABELS.READY_FOR_RELEASE}), then release -> published (issue closed)`,
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -148,38 +148,50 @@ export const scenarios: Scenario[] = [
         expectLabels(built, issue, LABELS.PR_OPEN);
         expect(hasMarker(built, "issue-build-loop", "build_succeeded"), `#${issue} build_succeeded marker`).toBe(true);
         const pr = t.n(Number(built.comments.join("\n").match(/"outcome":"build_succeeded","pr":(\d+)/)?.[1]));
-
-        await addLabel(pr, LABELS.AUTO_MERGING);
-        const merged = await waitFor(pr, (s) => s.merged, 4 * MIN);
-        expect(merged.merged, `PR #${pr} merged`).toBe(true);
-
-        const release = t.n(await openIssue(`release 0.0.${issue}`, "Release what's on dev.", "published"));
-        await addLabel(release, LABELS.AUTO_RELEASING);
-        const published = await waitFor(release, (s) => s.state === "closed", 2 * MIN);
-        expect(published.state, `#${release}`).toBe("closed");
-        expect(hasMarker(published, "auto-release-loop", "release_published"), `#${release} marker`).toBe(true);
-
-        await expectLogged(
-          issue,
-          { event: "labelled_ai_ready", run: "issue-build-loop" },
-          { event: "build_succeeded", effect: LABELS.PR_OPEN },
-        );
-        await expectLogged(pr, { event: "labelled_auto_merging", run: "merge-flow" }, { event: "merged", effect: "close" });
-        await expectLogged(release, { event: "labelled_auto_releasing", run: "auto-release-loop" }, { event: "release_published", effect: "close" });
-
-        // The live-status view: the built issue shows its last run; a closed
-        // PR or release has no row.
+        // The live-status view: the built issue shows its last run.
         expect(await statusOf(issue), `#${issue} status`).toMatchObject({
           state: LABELS.PR_OPEN,
           routine: "issue-build-loop",
           attempt: 1,
           running: 0,
         });
-        // After the close's own webhooks have all landed (issues.closed comes
-        // after the Worker's own close, and must not put the row back).
-        await sleep(20_000);
-        expect(await statusOf(pr), `PR #${pr} status, closed`).toBeUndefined();
-        expect(await statusOf(release), `#${release} status, closed`).toBeUndefined();
+
+        // The PR merges, and its "Closes #N" moves the issue on.
+        await addLabel(pr, LABELS.AUTO_MERGING);
+        const merged = await waitFor(pr, (s) => s.merged, 4 * MIN);
+        expect(merged.merged, `PR #${pr} merged`).toBe(true);
+        expectLabels(await waitFor(issue, labelsAre(LABELS.READY_FOR_RELEASE), MIN), issue, LABELS.READY_FOR_RELEASE);
+
+        // A release containing the merge closes the issue.
+        const version = `0.0.${t.n(await openIssue("release (e2e)", "Release what's on dev.", "published"))}`;
+        const release = Number(version.split(".")[2]);
+        try {
+          await addLabel(release, LABELS.AUTO_RELEASING);
+          const published = await waitFor(release, (s) => s.state === "closed", 2 * MIN);
+          expect(published.state, `#${release}`).toBe("closed");
+          expect(hasMarker(published, "auto-release-loop", "release_published"), `#${release} marker`).toBe(true);
+          const shipped = await waitFor(issue, (s) => s.state === "closed", MIN);
+          expect(shipped.state, `#${issue} closed by the release`).toBe("closed");
+
+          await expectLogged(
+            issue,
+            { event: "labelled_ai_ready", run: "issue-build-loop" },
+            { event: "build_succeeded", effect: LABELS.PR_OPEN },
+            { event: "pr_merged", effect: LABELS.READY_FOR_RELEASE },
+            { event: "released", effect: "close" },
+          );
+          await expectLogged(pr, { event: "labelled_auto_merging", run: "merge-flow" }, { event: "merged", effect: "close" });
+          await expectLogged(release, { event: "labelled_auto_releasing", run: "auto-release-loop" }, { event: "release_published", effect: "close" });
+
+          // After the closes' own webhooks have all landed (issues.closed comes
+          // after the Worker's own close, and must not put a row back).
+          await sleep(20_000);
+          expect(await statusOf(pr), `PR #${pr} status, closed`).toBeUndefined();
+          expect(await statusOf(release), `#${release} status, closed`).toBeUndefined();
+          expect(await statusOf(issue), `#${issue} status, closed`).toBeUndefined();
+        } finally {
+          await gh("DELETE", `/repos/${REPO}/git/refs/tags/v${version}`).catch(() => {});
+        }
       }),
   },
   {
