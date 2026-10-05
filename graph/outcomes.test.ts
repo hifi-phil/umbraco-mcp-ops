@@ -48,6 +48,22 @@ describe("parseOutcomeShape — release outcomes", () => {
   });
 });
 
+describe("parseOutcomeShape — review outcomes", () => {
+  it("accepts review_passed, review_findings and review_blocked", () => {
+    expect(parseOutcomeShape({ outcome: "review_passed" })).toEqual({ outcome: "review_passed" });
+    expect(parseOutcomeShape({ outcome: "review_findings", findings: 3 })).toEqual({ outcome: "review_findings", findings: 3 });
+    expect(parseOutcomeShape({ outcome: "review_blocked", reason: "wrong approach" })).toEqual({
+      outcome: "review_blocked",
+      reason: "wrong approach",
+    });
+  });
+
+  it("rejects review_findings without a numeric count, and review_blocked without a reason", () => {
+    expect(parseOutcomeShape({ outcome: "review_findings", findings: "3" })).toBeNull();
+    expect(parseOutcomeShape({ outcome: "review_blocked" })).toBeNull();
+  });
+});
+
 describe("parseOutcomeShape — general rejects", () => {
   it("rejects an unrecognised outcome name", () => {
     expect(parseOutcomeShape({ outcome: "something_else" })).toBeNull();

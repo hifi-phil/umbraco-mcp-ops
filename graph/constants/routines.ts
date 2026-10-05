@@ -12,6 +12,10 @@ export const ROUTINES = {
   ISSUE_DISCUSS_LOOP: "issue-discuss-loop",
   REWORK_LOOP: "rework-loop",
   MERGE_FLOW: "merge-flow",
+  // The adversarial PR review (15-agent-splits.md), fired by LABELS.AI_REVIEWING once
+  // CI is green. Its skill lands with the skill changes; until then only
+  // the e2e stub answers this route.
+  REVIEW_LOOP: "review-loop",
 } as const;
 
 export type Routine = (typeof ROUTINES)[keyof typeof ROUTINES];

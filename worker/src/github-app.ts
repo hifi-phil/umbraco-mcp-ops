@@ -91,6 +91,16 @@ export function appBotLogin(env: GitHubAppEnv): Promise<string> {
 const cache = new Map<string, { token: string; expiresAt: number }>();
 const REFRESH_MS = 5 * 60_000;
 
+/**
+ * Drops owner/repo's cached token, so the next call gets a fresh one. For a
+ * 403: a token keeps the permissions it was issued with for its whole hour,
+ * so one cached before the App was granted more (found 04-10-2026: Contents
+ * write accepted mid-run) goes on being refused until it expires.
+ */
+export function forgetInstallationToken(owner: string, repo: string): void {
+  cache.delete(`${owner}/${repo}`.toLowerCase());
+}
+
 /** For tests. */
 export function resetInstallationTokenCache(): void {
   cache.clear();

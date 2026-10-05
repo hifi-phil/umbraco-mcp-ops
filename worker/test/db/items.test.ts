@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as items from "../../src/db/items";
 import { testDb } from "./sqlite-d1";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 
 describe("db/items — what the dashboard lists, against real SQLite", () => {
   it("a webhook's meta: kind, title, state; a later one missing a title or state keeps the old", async () => {
@@ -43,7 +44,7 @@ describe("db/items — what the dashboard lists, against real SQLite", () => {
     db.exec(`INSERT INTO items (owner, repo, issue_number, kind, title) VALUES ('hifi-phil', 'umbraco-mcp-ops', 5, 'issue', 'Known');
       INSERT INTO transitions (owner, repo, issue_number, from_state, event, mode, created_at) VALUES
       ('Hifi-Phil', 'umbraco-mcp-ops', 5, 'none', 'labelled_ai_ready', 'enforce', '2026-10-03 09:00:00'),
-      ('hifi-phil', 'umbraco-mcp-ops', 5, 'ready-for-ai', 'build_blocked', 'enforce', '2026-10-03 10:00:00'),
+      ('hifi-phil', 'umbraco-mcp-ops', 5, '${LABELS.AI_READY}', 'build_blocked', 'enforce', '2026-10-03 10:00:00'),
       ('hifi-phil', 'umbraco-mcp-ops', 6, 'none', 'labelled_auto_merging', 'enforce', '2026-10-03 08:00:00'),
       ('_scheduler', '_', 0, '-', 'sweep', 'shadow', '2026-10-03 11:00:00')`);
     (db as unknown as { migrateRest(): void }).migrateRest();

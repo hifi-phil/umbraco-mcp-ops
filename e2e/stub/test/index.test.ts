@@ -13,9 +13,9 @@ import {
   type StubEnv,
 } from "../src/index";
 import { act, mergeIfGreen } from "../src/loops";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 
 const env: StubEnv = {
-  GITHUB_TOKEN: "gh",
   FIRE_TOKEN: "fire",
   HOOK_SECRET: "hook",
   E2E_REPO: "hifi-phil/mcp-ops-e2e-testing",
@@ -101,6 +101,9 @@ describe("act — rework-loop", () => {
     ["rework", "rework/7.txt"],
     ["ci_never_fixed", "rework/7.txt"],
     ["ci_fail", "ci-state"],
+    ["review_ci_fail", "ci-state"],
+    ["review_findings_once", "rework/7.txt"],
+    ["review_findings_always", "rework/7.txt"],
   ])("%s -> one push to the PR's branch (%s), labels untouched", async (hint, path) => {
     const gh = fakeGh({ ...pr, [`GET ${R}/contents/`]: { sha: "old" } });
     expect(await act(gh, fireFor("rework-loop"), hint)).toBe("pushed");
@@ -116,9 +119,36 @@ describe("act — rework-loop", () => {
   });
 });
 
+describe("act — review-loop", () => {
+  const verdictOf = (gh: ReturnType<typeof fakeGh>) => {
+    const post = gh.mock.calls.find(([m, p]) => m === "POST" && p.endsWith("/comments"))!;
+    return JSON.parse((post[2] as { body: string }).body.match(/```json\n(.*)\n```/)![1]!);
+  };
+
+  it.each([
+    ["review_pass", { outcome: "review_passed" }],
+    ["review_ci_fail", { outcome: "review_passed" }],
+    ["review_block", { outcome: "review_blocked", reason: "e2e stub: scripted block" }],
+    ["review_findings_always", { outcome: "review_findings", findings: 1 }],
+  ])("%s -> its verdict as a review-loop outcome comment, labels untouched", async (hint, outcome) => {
+    const gh = fakeGh();
+    expect(await act(gh, fireFor("review-loop"), hint)).toBe(outcome.outcome);
+    expect(verdictOf(gh)).toEqual(outcome);
+    expect(calls(gh).some((c) => c.includes("/labels"))).toBe(false);
+  });
+
+  it("review_findings_once -> findings on the first round, a pass once it has asked", async () => {
+    const first = fakeGh({ [`GET ${R}/issues/7/comments`]: [] });
+    expect(await act(first, fireFor("review-loop"), "review_findings_once")).toBe("review_findings");
+    const asked = outcomeComment("review-loop", { outcome: "review_findings", findings: 1 });
+    const second = fakeGh({ [`GET ${R}/issues/7/comments`]: [{ body: asked }] });
+    expect(await act(second, fireFor("review-loop"), "review_findings_once")).toBe("review_passed");
+  });
+});
+
 describe("act — merge-flow (mergeIfGreen)", () => {
   const pull = (over: Record<string, unknown> = {}) => ({
-    [`GET ${R}/pulls/7`]: { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merge" }], ...over },
+    [`GET ${R}/pulls/7`]: { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: LABELS.AUTO_MERGING }], ...over },
   });
   const runs = (...r: { status: string; conclusion: string | null }[]) => ({
     [`GET ${R}/commits/h/check-runs`]: { check_runs: r.map((x, i) => ({ name: `c${i}`, ...x })) },
@@ -143,7 +173,7 @@ describe("act — merge-flow (mergeIfGreen)", () => {
     expect(calls(gh).some((c) => c.includes("/merge") || c.includes("/labels"))).toBe(false);
   });
 
-  it("no auto-merge label, closed, or a conflict -> does nothing", async () => {
+  it(`no ${LABELS.AUTO_MERGING} label, closed, or a conflict -> does nothing`, async () => {
     for (const over of [{ labels: [] }, { state: "closed" }, { mergeable: false }]) {
       const gh = fakeGh({ ...pull(over), ...runs({ status: "completed", conclusion: "success" }) });
       expect(await mergeIfGreen(gh, fireFor("merge-flow"))).toBe("none");
@@ -158,7 +188,7 @@ describe("act — merge-flow (mergeIfGreen)", () => {
       if (path.endsWith("/pulls/7")) {
         reads++;
         return reads === 1
-          ? { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merge" }] }
+          ? { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: LABELS.AUTO_MERGING }] }
           : { state: "closed", merged: true };
       }
       if (path.endsWith("/check-runs")) return { check_runs: [{ name: "ci", status: "completed", conclusion: "success" }] };
@@ -175,7 +205,7 @@ describe("act — merge-flow (mergeIfGreen)", () => {
         if (++puts === 1) throw new Error(`GitHub PUT ${path} failed: 405 Base branch was modified`);
         return {};
       }
-      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merge" }] };
+      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: LABELS.AUTO_MERGING }] };
       if (path.endsWith("/check-runs")) return { check_runs: [{ name: "ci", status: "completed", conclusion: "success" }] };
       return {};
     });
@@ -303,18 +333,27 @@ describe("stubGitHub", () => {
   };
   const withApp = () => stubGitHub(env, async () => "inst-token");
 
-  it("check-runs are read with the App's token (a fine-grained token can't, on a private sandbox)", async () => {
-    expect(await auth(withApp(), "GET", `${R}/commits/h/check-runs`)).toBe("Bearer inst-token");
+  it("a 403 is retried once on a fresh token (one cached before a permission was granted)", async () => {
+    const fetch = vi
+      .fn(async (_url: string, _init?: RequestInit) => new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(new Response("Resource not accessible by integration", { status: 403 }));
+    vi.stubGlobal("fetch", fetch);
+    const tokens = ["stale", "fresh"];
+    const forget = vi.fn();
+    await stubGitHub(env, async () => tokens.shift()!, forget)("PUT", `${R}/contents/ci-state`);
+    expect(forget).toHaveBeenCalledOnce();
+    expect((fetch.mock.calls[1]![1]!.headers as Record<string, string>).Authorization).toBe("Bearer fresh");
   });
 
-  it("everything else (branches, commits, merges) stays on the stub's own token: the App has no Contents: write", async () => {
-    expect(await auth(withApp(), "PUT", `${R}/contents/ci-state`)).toBe("Bearer gh");
-    expect(await auth(withApp(), "PUT", `${R}/pulls/7/merge`)).toBe("Bearer gh");
-    expect(await auth(withApp(), "GET", `${R}/issues/7`)).toBe("Bearer gh");
-  });
-
-  it("without the App -> the stub's own token for check-runs too", async () => {
-    expect(await auth(stubGitHub({ ...env, GITHUB_APP_ID: "" }), "GET", `${R}/commits/h/check-runs`)).toBe("Bearer gh");
+  it("every call goes as the App: check-runs, commits, merges, issues (no personal token)", async () => {
+    for (const [method, path] of [
+      ["GET", `${R}/commits/h/check-runs`],
+      ["PUT", `${R}/contents/ci-state`],
+      ["PUT", `${R}/pulls/7/merge`],
+      ["GET", `${R}/issues/7`],
+    ] as const) {
+      expect(await auth(withApp(), method, path), `${method} ${path}`).toBe("Bearer inst-token");
+    }
   });
 });
 
@@ -398,7 +437,7 @@ describe("handleWebhook (the stub's own check_suite webhook)", () => {
     let checks = 0;
     const gh = vi.fn<Gh>(async (method, path) => {
       if (path.endsWith("/issues/7")) return { body: "<!-- e2e: merge -->" };
-      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: "auto-merge" }] };
+      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: LABELS.AUTO_MERGING }] };
       if (path.endsWith("/check-runs")) {
         checks++;
         return { check_runs: [{ name: "ci", status: checks < 2 ? "in_progress" : "completed", conclusion: checks < 2 ? null : "success" }] };

@@ -44,7 +44,7 @@ describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
     expect(deps.commentOnIssue).not.toHaveBeenCalled();
   });
 
-  it("in-flight ready-for-ai -> comments, swaps ready-for-ai -> ai-stuck, logs a watchdog_expired row, then clears pendingFire", async () => {
+  it(`in-flight ${LABELS.AI_READY} -> comments, swaps ${LABELS.AI_READY} -> ${LABELS.AI_STUCK}, logs a watchdog_expired row, then clears pendingFire`, async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
     await deps.setPendingFire(pending);
 
@@ -55,7 +55,7 @@ describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
       "hifi-phil",
       "umbraco-mcp-ops",
       412,
-      expect.stringMatching(/issue-build-loop.*60 minutes.*No progress step.*Moving this to `ai-stuck`/),
+      expect.stringMatching(new RegExp(`issue-build-loop.*60 minutes.*No progress step.*Moving this to \`${LABELS.AI_STUCK}\``)),
     );
     expect(deps.removeLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_READY);
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
@@ -77,11 +77,11 @@ describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
     );
   });
 
-  it("a build that already swapped to generated-by-ai is finished, never moved to ai-stuck (shadow run 1, #116)", async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_GENERATED]) });
+  it(`a build that already swapped to ${LABELS.PR_OPEN} is finished, never moved to ${LABELS.AI_STUCK} (shadow run 1, #116)`, async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.PR_OPEN]) });
     await deps.setPendingFire(pending);
     const result = await coordinateWatchdogExpired(deps);
-    expect(result).toMatchObject({ outcome: "dropped_no_rule", from: LABELS.AI_GENERATED });
+    expect(result).toMatchObject({ outcome: "dropped_no_rule", from: LABELS.PR_OPEN });
     expect(deps.addLabel).not.toHaveBeenCalled();
   });
 

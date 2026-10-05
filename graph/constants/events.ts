@@ -16,7 +16,7 @@ export const EVENTS = {
   RELEASE_BLOCKED: "release_blocked",
   RELEASE_PUBLISHED: "release_published",
   LABELLED_AI_DISCUSSING: "labelled_ai_discussing",
-  // A trusted human's reply on an open ai-discuss issue: loop-dispatch fires
+  // A trusted human's reply on an open LABELS.AI_DISCUSSING issue: loop-dispatch fires
   // the next discussion round on it (route-event.sh's issue_comment case).
   DISCUSSION_REPLY: "discussion_reply",
   // The loop (or a human) taking its trigger label off. Native, and the
@@ -30,14 +30,31 @@ export const EVENTS = {
   LABELLED_AUTO_REWORKING: "labelled_auto_reworking",
   REWORK_PUSHED: "rework_pushed",
   // A push by a rework the Worker started because CI failed under
-  // auto-merge (coordinate/ tells it apart from a review rework).
+  // LABELS.AUTO_MERGING (coordinate/ tells it apart from a review rework).
   CI_FIX_PUSHED: "ci_fix_pushed",
   UNLABELLED_AUTO_REWORKING: "unlabelled_auto_reworking",
+  // A PR asked for review rework once more than the cap allows (Phase 9):
+  // raised by the Worker from its own count of rounds, not by GitHub.
+  REWORK_CAP_REACHED: "rework_cap_reached",
   LABELLED_AUTO_MERGING: "labelled_auto_merging",
   MERGE_GATE_FAILED_SOFT: "merge_gate_failed_soft",
   MERGE_GATE_FAILED_HARD: "merge_gate_failed_hard",
   UNLABELLED_AUTO_MERGING: "unlabelled_auto_merging",
   MERGED: "merged",
+  // The review (15-agent-splits.md). LABELS.AI_REVIEWING added (by the build or a
+  // person) or removed; then the Worker's own reading of the PR's CI:
+  // green fires review-loop, red hands the PR to rework-loop first.
+  LABELLED_AI_REVIEWING: "labelled_ai_reviewing",
+  UNLABELLED_AI_REVIEWING: "unlabelled_ai_reviewing",
+  REVIEW_CI_PASSED: "review_ci_passed",
+  REVIEW_CI_FAILED: "review_ci_failed",
+  // A push by a rework started from LABELS.AI_REVIEWING (a CI fix or the review's
+  // findings): back to LABELS.AI_REVIEWING, to wait for CI and be reviewed again.
+  REVIEW_FIX_PUSHED: "review_fix_pushed",
+  // review-loop's outcomes (agent-outcomes artifacts).
+  REVIEW_PASSED: "review_passed",
+  REVIEW_FINDINGS: "review_findings",
+  REVIEW_BLOCKED: "review_blocked",
   // the watchdog — the one event NOT sourced from GitHub. The DO raises it
   // itself when a routine it fired hasn't produced an outcome within the
   // watchdog window (worker/src/coordinate/watchdog.ts's coordinateWatchdogExpired).

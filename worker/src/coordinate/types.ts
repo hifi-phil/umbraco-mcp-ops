@@ -31,6 +31,7 @@ export const LABEL_JUST_ADDED_BY: Partial<Record<Event, Label>> = {
   [EVENTS.LABELLED_AI_DISCUSSING]: LABELS.AI_DISCUSSING,
   [EVENTS.LABELLED_AUTO_REWORKING]: LABELS.AUTO_REWORKING,
   [EVENTS.LABELLED_AUTO_MERGING]: LABELS.AUTO_MERGING,
+  [EVENTS.LABELLED_AI_REVIEWING]: LABELS.AI_REVIEWING,
 };
 
 export type TransitionRow = {
@@ -67,7 +68,13 @@ export type PendingFire = {
   dueAt?: number;
 };
 
-export type CiFix = { attempts: number; pending: boolean };
+// returnTo: where the fix's push goes back to, LABELS.AUTO_MERGING (the default) or
+// LABELS.AI_REVIEWING (CI red before the review).
+export type CiFix = { attempts: number; pending: boolean; returnTo?: Label };
+
+// The review's own rounds on this PR: how many times review-loop has asked
+// for changes, and whether rework-loop is out fixing them now.
+export type ReviewLoop = { botRounds: number; fixPending: boolean };
 
 /**
  * A change to the issue's live-status row (03-components.md §3.6, the
@@ -91,6 +98,50 @@ export type StatusUpdate =
 
 /** After this many CI-fix reworks on one PR, stop and ask a human. */
 export const MAX_CI_FIX_ATTEMPTS = 3;
+
+/** After this many review rework rounds on one PR ({@link LABELS.AUTO_REWORKING} added by a
+ * reviewer outside the orchestrator: a person, or another bot), the next
+ * goes to {@link LABELS.AI_STUCK} instead of looping (Phase 9, 05-technical-elements.md's
+ * default). Tune from real data. */
+export const MAX_REVIEW_REWORKS = 3;
+
+/** The same cap for review-loop's own findings, counted separately so the
+ * bot can't use up a person's rounds (15-agent-splits.md). */
+export const MAX_BOT_REVIEW_REWORKS = 3;
+
+/** The loop caps in force for one repo (Deps.caps): the defaults above,
+ * unless CAP_OVERRIDES_JSON sets them for it (capsFor). */
+export type Caps = { ciFixAttempts: number; reviewReworks: number; botReviewReworks: number };
+
+export const DEFAULT_CAPS: Caps = {
+  ciFixAttempts: MAX_CI_FIX_ATTEMPTS,
+  reviewReworks: MAX_REVIEW_REWORKS,
+  botReviewReworks: MAX_BOT_REVIEW_REWORKS,
+};
+
+/**
+ * Per-repo caps, keyed "owner/repo" (any case), from CAP_OVERRIDES_JSON,
+ * over DEFAULT_CAPS. Only the e2e sandbox uses it today: a cap of 1 lets a
+ * cap scenario run one round instead of three. Only whole numbers of 1 or
+ * more count; anything else keeps the default. Unset or `{}` means none.
+ */
+export function capsFor(raw: string | undefined, owner: string, repo: string): Caps {
+  if (!raw) return DEFAULT_CAPS;
+  let map: Record<string, Partial<Caps>>;
+  try {
+    map = JSON.parse(raw);
+  } catch {
+    throw new Error("CAP_OVERRIDES_JSON is not valid JSON");
+  }
+  const want = `${owner}/${repo}`.toLowerCase();
+  const override = Object.entries(map).find(([key]) => key.toLowerCase() === want)?.[1] ?? {};
+  const pick = (v: unknown, fallback: number) => (Number.isInteger(v) && (v as number) >= 1 ? (v as number) : fallback);
+  return {
+    ciFixAttempts: pick(override.ciFixAttempts, DEFAULT_CAPS.ciFixAttempts),
+    reviewReworks: pick(override.reviewReworks, DEFAULT_CAPS.reviewReworks),
+    botReviewReworks: pick(override.botReviewReworks, DEFAULT_CAPS.botReviewReworks),
+  };
+}
 
 export type Deps = {
   getLabels(owner: string, repo: string, issueNumber: number): Promise<string[]>;
@@ -119,6 +170,14 @@ export type Deps = {
   // has been handed to rework-loop, and whether one is running now.
   getCiFix(): Promise<CiFix | null>;
   setCiFix(state: CiFix | null): Promise<void>;
+  // How many review rework rounds this PR has had (DO storage).
+  getReviewReworks(): Promise<number>;
+  setReviewReworks(rounds: number): Promise<void>;
+  // review-loop's own rounds on this PR (DO storage).
+  getReviewLoop(): Promise<ReviewLoop | null>;
+  setReviewLoop(state: ReviewLoop | null): Promise<void>;
+  // The CI-fix and review-round caps for this issue's repo (capsFor).
+  caps: Caps;
   // Phase 4: whether this event's writes and fire are real. Everything not
   // enforced runs in shadow (see resolveEnforced).
   enforced(event: Event): boolean;
@@ -167,7 +226,7 @@ export function resolveMode(raw: string | undefined): Mode {
  * Phase 4: MODE=enforce makes every event real except the watchdog, which
  * has its own WATCHDOG switch (shadow unless exactly "enforce"). Its
  * timeouts are still guesses, and a wrong expiry would move a live issue to
- * ai-stuck, so it goes live separately.
+ * {@link LABELS.AI_STUCK}, so it goes live separately.
  */
 export function resolveEnforced(
   mode: string | undefined,
@@ -197,7 +256,7 @@ export function depsFor(deps: Deps, event: Event): { io: Deps; mode: Mode } {
 }
 
 /** How long a watched routine gets to report an outcome (or a heartbeat,
- * which re-arms it) before the watchdog moves the issue to ai-stuck. */
+ * which re-arms it) before the watchdog moves the issue to {@link LABELS.AI_STUCK}. */
 export const WATCHDOG_MINUTES = 30;
 
 // Per-routine overrides, from umbraco-mcp-ops's D1 log (01-10-2026, via

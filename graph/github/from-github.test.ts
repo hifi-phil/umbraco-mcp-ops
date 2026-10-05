@@ -13,19 +13,19 @@ function outcomeComment(routine: string, json: unknown): string {
 }
 
 describe("translate — issue labels", () => {
-  it("issues.labeled ready-for-ai -> labelled_ai_ready", () => {
+  it(`issues.labeled ${LABELS.AI_READY} -> labelled_ai_ready`, () => {
     expect(
       translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_READY } })),
     ).toBe(EVENTS.LABELLED_AI_READY);
   });
 
-  it("issues.labeled auto-release -> labelled_auto_releasing", () => {
+  it(`issues.labeled ${LABELS.AUTO_RELEASING} -> labelled_auto_releasing`, () => {
     expect(
       translate(payload({ action: "issues.labeled", label: { name: LABELS.AUTO_RELEASING } })),
     ).toBe(EVENTS.LABELLED_AUTO_RELEASING);
   });
 
-  it("issues.labeled ai-discuss -> labelled_ai_discussing", () => {
+  it(`issues.labeled ${LABELS.AI_DISCUSSING} -> labelled_ai_discussing`, () => {
     expect(
       translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_DISCUSSING } })),
     ).toBe(EVENTS.LABELLED_AI_DISCUSSING);
@@ -62,7 +62,7 @@ describe("translate — self-trigger guard", () => {
     ).toBeNull();
   });
 
-  it("a plain comment with no marker still yields no event — 'ai-discuss' has no reducer rules", () => {
+  it(`a plain comment with no marker still yields no event — '${LABELS.AI_DISCUSSING}' has no reducer rules`, () => {
     expect(
       translate(payload({ action: "issue_comment.created", comment: { body: "just a reply" } })),
     ).toBeNull();
@@ -190,7 +190,7 @@ describe("translate — outcome artifacts (any loop, any marker)", () => {
 });
 
 describe("translate — PR labels", () => {
-  it("pull_request.labeled auto-rework -> labelled_auto_reworking", () => {
+  it(`pull_request.labeled ${LABELS.AUTO_REWORKING} -> labelled_auto_reworking`, () => {
     expect(
       translate(
         payload({ action: "pull_request.labeled", label: { name: LABELS.AUTO_REWORKING } }),
@@ -198,12 +198,40 @@ describe("translate — PR labels", () => {
     ).toBe(EVENTS.LABELLED_AUTO_REWORKING);
   });
 
-  it("pull_request.labeled auto-merge -> labelled_auto_merging", () => {
+  it(`pull_request.labeled ${LABELS.AUTO_MERGING} -> labelled_auto_merging`, () => {
     expect(
       translate(
         payload({ action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING } }),
       ),
     ).toBe(EVENTS.LABELLED_AUTO_MERGING);
+  });
+});
+
+describe("translate — the review", () => {
+  it(`pull_request.labeled / unlabeled ${LABELS.AI_REVIEWING} -> labelled_ai_reviewing / unlabelled_ai_reviewing`, () => {
+    expect(translate(payload({ action: "pull_request.labeled", label: { name: LABELS.AI_REVIEWING } }))).toBe(
+      EVENTS.LABELLED_AI_REVIEWING,
+    );
+    expect(translate(payload({ action: "pull_request.unlabeled", label: { name: LABELS.AI_REVIEWING } }))).toBe(
+      EVENTS.UNLABELLED_AI_REVIEWING,
+    );
+  });
+
+  it(`the Worker's own ${LABELS.AI_REVIEWING} changes are dropped (self-trigger guard)`, () => {
+    const sender = { login: BOT_LOGIN, type: "Bot" as const };
+    expect(translate(payload({ action: "pull_request.labeled", label: { name: LABELS.AI_REVIEWING }, sender }))).toBeNull();
+  });
+
+  it("review-loop's three outcome artifacts", () => {
+    const cases = [
+      [{ outcome: "review_passed" }, EVENTS.REVIEW_PASSED],
+      [{ outcome: "review_findings", findings: 2 }, EVENTS.REVIEW_FINDINGS],
+      [{ outcome: "review_blocked", reason: "wrong approach" }, EVENTS.REVIEW_BLOCKED],
+    ] as const;
+    for (const [json, event] of cases) {
+      const body = outcomeComment(ROUTINES.REVIEW_LOOP, json);
+      expect(translate(payload({ action: "issue_comment.created", comment: { body } })), json.outcome).toBe(event);
+    }
   });
 });
 
@@ -244,8 +272,8 @@ describe("translate — unmapped events", () => {
 });
 
 describe("translate — a loop's own label swap (native completion signal)", () => {
-  it("issues.labeled generated-by-ai / ai-blocked -> build_succeeded / build_blocked", () => {
-    expect(translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_GENERATED } }))).toBe(EVENTS.BUILD_SUCCEEDED);
+  it(`issues.labeled ${LABELS.PR_OPEN} / ${LABELS.AI_BLOCKED} -> build_succeeded / build_blocked`, () => {
+    expect(translate(payload({ action: "issues.labeled", label: { name: LABELS.PR_OPEN } }))).toBe(EVENTS.BUILD_SUCCEEDED);
     expect(translate(payload({ action: "issues.labeled", label: { name: LABELS.AI_BLOCKED } }))).toBe(EVENTS.BUILD_BLOCKED);
   });
 

@@ -48,13 +48,13 @@ sequenceDiagram
     participant W as Worker
     participant R as Routine
 
-    H->>GH: add label ready-for-ai
+    H->>GH: add label ai-ready
     GH->>W: webhook
     W->>R: fire issue-build-loop
     R-->>W: heartbeats while working
     R->>GH: open PR, post outcome
     GH->>W: webhook
-    W->>GH: swap label to generated-by-ai
+    W->>GH: swap label to pr-open
 ```
 
 If the routine goes quiet for its whole timeout, the Worker's watchdog
@@ -65,24 +65,24 @@ moves the issue to `ai-stuck` and comments the last step it reported.
 ```mermaid
 %%{init: {"themeVariables": {"fontSize": "20px"}, "flowchart": {"nodeSpacing": 40, "rankSpacing": 60}}}%%
 flowchart TD
-    A[ready-for-ai] --> B[generated-by-ai]
+    A[ai-ready] --> B[pr-open]
     A --> C[ai-blocked]
-    M[auto-merge] --> MD((merged))
+    M[auto-merging] --> MD((merged))
     M --> MB[merge-blocked]
-    M -- "CI red" --> RW[auto-rework]
+    M -- "CI red" --> RW[auto-reworking]
     RW -- "fix pushed" --> M
-    REL[auto-release] --> P((published))
+    REL[auto-releasing] --> P((published))
     S[ai-stuck]
 ```
 
-- **Issues:** `ready-for-ai` builds. The outcome is `generated-by-ai` (a PR)
+- **Issues:** `ai-ready` builds. The outcome is `pr-open` (a PR)
   or `ai-blocked`.
 - **PRs:**
-  - `auto-merge` merges once CI is green.
+  - `auto-merging` merges once CI is green.
   - A conflict or requested changes → `merge-blocked`, for a human.
-  - Red CI → `auto-rework` to fix it, then back to `auto-merge`. After three
+  - Red CI → `auto-reworking` to fix it, then back to `auto-merging`. After three
     tries it goes to `merge-blocked`.
-- **Releases:** `auto-release` publishes and closes the issue.
+- **Releases:** `auto-releasing` publishes and closes the issue.
 - **`ai-stuck`:** any of the above when a run dies. Re-adding the trigger
   label retries it.
 

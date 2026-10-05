@@ -19,7 +19,7 @@ import { CONTROLS, controlsFor, isControl, reposWithControlOff, setControl } fro
 import * as issueStatus from "../db/issue-status";
 import * as itemsDb from "../db/items";
 import * as transitions from "../db/transitions";
-import type { GitHubEnv } from "../github-client";
+import { githubConfigured, type GitHubEnv } from "../github-client";
 import { BACKFILL_MAX, backfillItems } from "../items";
 import {
   MAX_ITEMS,
@@ -111,7 +111,7 @@ dashboard.get("/status", async (c) => {
   // Items whose webhooks all came before the items table: look up the open
   // one first, then the rest on this page, on GitHub after responding, so
   // the next refresh shows them.
-  if (env.GITHUB_APP_TOKEN !== undefined) {
+  if (githubConfigured(env as GitHubEnv)) {
     const isOpenOne = (i: Item) => !!filters.open && i.repo === filters.open.repo && i.n === filters.open.n;
     const page = visible(all, filters).slice(0, filters.limit);
     const missing = [...all.filter(isOpenOne), ...page.filter((i) => !isOpenOne(i))].filter((i) => !i.known).slice(0, BACKFILL_MAX);

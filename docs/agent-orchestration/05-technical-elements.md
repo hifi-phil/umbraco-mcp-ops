@@ -120,9 +120,9 @@ rework counter (3.4). On the 4th, route to `state:stuck` instead of firing
 again, and post a comment tagging a human — don't rely on someone noticing
 the label. Revisit the number once Phase 3's shadow data shows the real
 distribution; 3 is a starting guess, not a measured value. Also worth a
-global in-flight limit with a ready queue — easier to add now than to
-retrofit while debugging why three issues stalled overnight (open question:
-where does the queue live — see [08-open-questions.md](08-open-questions.md)).
+global in-flight limit with a ready queue once several people are labelling
+work (deferred until then; the agreed design is in
+[08-open-questions.md](08-open-questions.md)).
 
 ## What we give up versus gh-aw
 

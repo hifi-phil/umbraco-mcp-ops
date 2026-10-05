@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { deliveriesSince, deliveryDetail, redeliver, REPO, sleep, transitions, workerHook, type DeliveryDetail } from "./github";
 import { inScenario, progress } from "./progress";
-import { runLog, scenarios } from "./scenarios";
+import { runItems, runLog, scenarios } from "./scenarios";
 
 const only = process.env.E2E_ONLY?.toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
 const runStart = new Date(Date.now() - 5_000).toISOString().replace(/\.\d+Z$/, "Z");
@@ -57,10 +57,15 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       const hook = await workerHook();
       const deliveries = await deliveriesSince(hook, runStart);
       progress(`audit: checking the orchestrator's answers to ${deliveries.length} deliveries`);
-      // The App's hook delivers for every repo it's installed on: keep the sandbox's.
+      // The App's hook delivers for every repo it's installed on: keep the
+      // sandbox's. And only what's about this run: a delivery only about
+      // items it didn't create (another run's leftovers being closed just
+      // before this one, say) isn't its to judge. One about no item at all
+      // (a check_suite with no PR) still is.
+      const ours = (d: DeliveryDetail) => d.numbers.length === 0 || d.numbers.some((n) => runItems.has(n));
       const details: (DeliveryDetail & { id: string })[] = (
         await pool(deliveries, 6, async (d) => ({ id: d.id, ...(await deliveryDetail(hook, d.id)) }))
-      ).filter((d) => d.repo.toLowerCase() === REPO.toLowerCase());
+      ).filter((d) => d.repo.toLowerCase() === REPO.toLowerCase() && ours(d));
       const line = (d: DeliveryDetail) => `${d.event}.${d.action} #${d.numbers.join(",")} -> ${d.statusCode} ${d.response}`;
 
       // The sweep scenario's refused fire is scripted; any other failure isn't.
@@ -73,9 +78,11 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       // The D1 log agrees, delivery by delivery: every issue/PR in the run
       // logged only enforced, applied rows (the sandbox Worker enforces, and
       // nothing was dropped); every delivery the Worker applied has exactly
-      // one row, carrying its delivery id and event; and the only rows no
-      // delivery caused are the watchdog's own expiries.
-      const numbers = [...new Set(details.flatMap((d) => d.numbers))];
+      // one row, carrying its delivery id and event (bar one case: LABELS.AI_REVIEWING
+      // added applies its label rule, then the CI gate's, two rows ending
+      // in the event it answered); and the only rows no delivery caused are
+      // the watchdog's own expiries.
+      const numbers = [...new Set(details.flatMap((d) => d.numbers))].filter((n) => runItems.has(n));
       progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
       const logs = new Map(await pool(numbers, 6, async (n) => [n, await transitions(n)] as const));
       const badRows = [...logs].flatMap(([n, rows]) =>
@@ -87,6 +94,8 @@ describe("audit: every answer the orchestrator gave during the run", () => {
         .filter((d) => {
           const event = d.response.match(/"event":"([a-z_]+)"/)?.[1];
           const rows = logs.get(d.numbers[0]!)?.filter((r) => r.delivery_id === d.guid) ?? [];
+          const labelThenGate = rows.length === 2 && rows[0]!.event === "labelled_ai_reviewing" && event !== "labelled_ai_reviewing";
+          if (labelThenGate) return rows[1]!.event !== event;
           return rows.length !== 1 || rows[0]!.event !== event;
         });
       expect(unmatched.map(line), "applied deliveries without exactly one matching row").toEqual([]);

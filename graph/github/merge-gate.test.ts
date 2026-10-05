@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deriveMergeGateOutcome, hardBlockReason, type MergeGateFacts } from "./merge-gate";
+import { LABELS } from "../constants/labels";
 
 function facts(overrides: Partial<MergeGateFacts> = {}): MergeGateFacts {
   return {
@@ -10,7 +11,7 @@ function facts(overrides: Partial<MergeGateFacts> = {}): MergeGateFacts {
   };
 }
 
-describe("hardBlockReason (checked when auto-merge is added, CI or not)", () => {
+describe(`hardBlockReason (checked when ${LABELS.AUTO_MERGING} is added, CI or not)`, () => {
   const pending = [{ status: "in_progress" as const, conclusion: null }];
 
   it("a conflict or requested changes block even while CI is still running", () => {

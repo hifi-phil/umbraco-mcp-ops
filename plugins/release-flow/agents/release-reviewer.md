@@ -6,7 +6,7 @@ description: >-
   release-review-checklist AND reasons about whether anything looks wrong or risky to ship,
   then returns VERDICT: PASS or VERDICT: BLOCK + findings. Pure judgment by design — it has
   no tool that fetches, executes, or edits anything. Use as the gate before an irreversible
-  auto-release publish.
+  auto-releasing publish.
 model: opus
 tools: Read
 ---

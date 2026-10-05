@@ -123,6 +123,33 @@ describe("github-client with the App configured", () => {
     expect(auth).toMatch(/^Bearer inst-/);
   });
 
+  it("a 403 on a cached token -> forgotten, and retried once on a fresh one (a token keeps the permissions it was issued with)", async () => {
+    let issued = 0;
+    let labelCalls = 0;
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/installation")) return json({ id: 42 });
+      if (url.endsWith("/access_tokens")) return json({ token: `inst-${++issued}`, expires_at: new Date(Date.now() + 3_600_000).toISOString() });
+      labelCalls++;
+      const auth = (init?.headers as Record<string, string>).Authorization;
+      return auth === "Bearer inst-1" ? new Response("Resource not accessible by integration", { status: 403 }) : json([{ name: auth }]);
+    });
+    vi.stubGlobal("fetch", fetch);
+    expect(await getLabels(appEnv(), "hifi-phil", "umbraco-mcp-ops", 7)).toEqual(["Bearer inst-2"]);
+    expect(labelCalls).toBe(2);
+    // The fresh token is the one cached now.
+    expect(await installationToken(appEnv(), "hifi-phil", "umbraco-mcp-ops")).toBe("inst-2");
+  });
+
+  it("a second 403 is a real refusal, and throws", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      if (url.endsWith("/installation")) return json({ id: 42 });
+      if (url.endsWith("/access_tokens")) return json({ token: "inst", expires_at: new Date(Date.now() + 3_600_000).toISOString() });
+      return new Response("Resource not accessible by integration", { status: 403 });
+    });
+    vi.stubGlobal("fetch", fetch);
+    await expect(getLabels(appEnv(), "hifi-phil", "umbraco-mcp-ops", 7)).rejects.toThrow(/403/);
+  });
+
   it("without the App (no id or key) -> the personal token, as before", async () => {
     vi.stubGlobal("fetch", fakeGitHub());
     expect(appConfigured({ GITHUB_APP_ID: "123" })).toBe(false);

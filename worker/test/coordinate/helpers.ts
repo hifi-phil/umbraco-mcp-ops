@@ -2,11 +2,13 @@
 // input, and merge-gate facts.
 import { vi } from "vitest";
 import {
+  DEFAULT_CAPS,
   watchdogMinutesFor,
   type CiFix,
   type CoordinateInput,
   type Deps,
   type PendingFire,
+  type ReviewLoop,
 } from "../../src/coordinate";
 import type { MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 
@@ -23,6 +25,8 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   const seen = new Set<string>();
   let pendingFire: PendingFire | null = null;
   let ciFix: CiFix | null = null;
+  let reviewReworks = 0;
+  let reviewLoop: ReviewLoop | null = null;
   let reconcileReported: string | null = null;
   let completed: string | null = null;
   return {
@@ -51,13 +55,22 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     recordStatus: vi.fn(async () => {}),
     getMergeGateFacts: vi.fn(async () => gateFacts()),
     getCiFix: vi.fn(async () => ciFix),
+    getReviewReworks: vi.fn(async () => reviewReworks),
+    setReviewReworks: vi.fn(async (n: number) => {
+      reviewReworks = n;
+    }),
     setCiFix: vi.fn(async (state: CiFix | null) => {
       ciFix = state;
+    }),
+    getReviewLoop: vi.fn(async () => reviewLoop),
+    setReviewLoop: vi.fn(async (state: ReviewLoop | null) => {
+      reviewLoop = state;
     }),
     // These tests are about the write path; shadow and per-event
     // enforcement have their own describe blocks.
     enforced: () => true,
     watchdogMinutes: watchdogMinutesFor,
+    caps: DEFAULT_CAPS,
     botLogin: async () => null,
     lastActivityAt: async () => null,
     markCompleted: vi.fn(async (at: string) => {

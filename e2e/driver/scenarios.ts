@@ -47,9 +47,16 @@ const MIN = 60_000;
 /** The sandbox's watchdog (tofu's e2e_watchdog_minutes). */
 const WATCHDOG_MINUTES = Number(process.env.E2E_WATCHDOG_MINUTES ?? 2);
 const STUCK_WAIT = (WATCHDOG_MINUTES + 2) * MIN;
+/** The sandbox's CI-fix and review-round caps (tofu's e2e_rework_cap). */
+const CAP = Number(process.env.E2E_REWORK_CAP ?? 1);
 
 /** For the audit (run.e2e.test.ts): an issue whose label delivery to redeliver, and the two PRs sharing a head. */
 export const runLog: { redeliverIssue?: number; sharedHead?: number[]; manualOverrideIssue?: number; sweepIssue?: number } = {};
+
+/** Every issue and PR this run's scenarios created (each registers its own,
+ * see scoped()), so the audit judges only the run's items, not whatever
+ * else touched the sandbox in the same minutes. */
+export const runItems = new Set<number>();
 
 const labelsAre = (...want: string[]) => (s: Snapshot) => JSON.stringify(s.labels) === JSON.stringify([...want].sort());
 const expectLabels = (s: Snapshot, n: number, ...want: string[]) => expect(s.labels, `#${n} labels`).toEqual([...want].sort());
@@ -62,7 +69,7 @@ async function scoped(body: (t: Track) => Promise<void>) {
   const numbers: number[] = [];
   const branches: string[] = [];
   try {
-    await body({ n: (x) => (numbers.push(x), x), branch: (b) => (branches.push(b), b) });
+    await body({ n: (x) => (numbers.push(x), runItems.add(x), x), branch: (b) => (branches.push(b), b) });
   } finally {
     await cleanUp(numbers, branches);
   }
@@ -75,7 +82,7 @@ async function trackedPr(t: Track, opts: Parameters<typeof openPr>[0]) {
   return pr;
 }
 
-/** A loop that never reports: the trigger goes on, and the watchdog moves it to ai-stuck. */
+/** A loop that never reports: the trigger goes on, and the watchdog moves it to {@link LABELS.AI_STUCK}. */
 async function expectStuck(n: number, trigger: string): Promise<Snapshot> {
   await addLabel(n, trigger);
   const s = await waitFor(n, labelsAre(LABELS.AI_STUCK), STUCK_WAIT);
@@ -127,14 +134,14 @@ const lateOutcome = (n: number, loop: string, outcome: Outcome) => comment(n, ou
 export const scenarios: Scenario[] = [
   // --- The lane --------------------------------------------------------------
   {
-    name: "full lane: build -> PR -> auto-merge -> merged, then release -> published",
+    name: `full lane: build -> PR -> ${LABELS.AUTO_MERGING} -> merged, then release -> published`,
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
         const issue = t.n(await openIssue("Add a build note", "Add a file under builds/ for this issue.", "success"));
         await addLabel(issue, LABELS.AI_READY);
-        const built = await waitFor(issue, labelsAre(LABELS.AI_GENERATED), 2 * MIN);
-        expectLabels(built, issue, LABELS.AI_GENERATED);
+        const built = await waitFor(issue, labelsAre(LABELS.PR_OPEN), 2 * MIN);
+        expectLabels(built, issue, LABELS.PR_OPEN);
         expect(hasMarker(built, "issue-build-loop", "build_succeeded"), `#${issue} build_succeeded marker`).toBe(true);
         const pr = t.n(Number(built.comments.join("\n").match(/"outcome":"build_succeeded","pr":(\d+)/)?.[1]));
 
@@ -151,7 +158,7 @@ export const scenarios: Scenario[] = [
         await expectLogged(
           issue,
           { event: "labelled_ai_ready", run: "issue-build-loop" },
-          { event: "build_succeeded", effect: LABELS.AI_GENERATED },
+          { event: "build_succeeded", effect: LABELS.PR_OPEN },
         );
         await expectLogged(pr, { event: "labelled_auto_merging", run: "merge-flow" }, { event: "merged", effect: "close" });
         await expectLogged(release, { event: "labelled_auto_releasing", run: "auto-release-loop" }, { event: "release_published", effect: "close" });
@@ -159,7 +166,7 @@ export const scenarios: Scenario[] = [
         // The live-status view: the built issue shows its last run; a closed
         // PR or release has no row.
         expect(await statusOf(issue), `#${issue} status`).toMatchObject({
-          state: LABELS.AI_GENERATED,
+          state: LABELS.PR_OPEN,
           routine: "issue-build-loop",
           attempt: 1,
           running: 0,
@@ -172,7 +179,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "build blocked: ready-for-ai -> ai-blocked",
+    name: `build blocked: ${LABELS.AI_READY} -> ${LABELS.AI_BLOCKED}`,
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -193,11 +200,11 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "live status: a release closed by hand with auto-release still on -> its row goes",
+    name: `live status: a release closed by hand with ${LABELS.AUTO_RELEASING} still on -> its row goes`,
     timeoutMs: 2 * MIN,
     run: () =>
       scoped(async (t) => {
-        // issue_closed from auto-release is a noop rule that applies; the
+        // issue_closed from LABELS.AUTO_RELEASING is a noop rule that applies; the
         // row must still go, whatever order the close's webhooks land in.
         const issue = t.n(await openIssue("Close me mid-release", "A person closes this while it's releasing.", "silent"));
         await addLabel(issue, LABELS.AUTO_RELEASING);
@@ -215,7 +222,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "manual override: a human clears ai-blocked -> logged as manual_override, nothing else done",
+    name: `manual override: a human clears ${LABELS.AI_BLOCKED} -> logged as manual_override, nothing else done`,
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -234,7 +241,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "release blocked: auto-release removed, issue stays open",
+    name: `release blocked: ${LABELS.AUTO_RELEASING} removed, issue stays open`,
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -248,7 +255,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "review rework: auto-rework -> push -> label cleared",
+    name: `review rework: ${LABELS.AUTO_REWORKING} -> push -> label cleared`,
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -262,7 +269,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "discussion: ai-discuss -> a round, a human reply -> the next round; '//' replies are ignored",
+    name: `discussion: ${LABELS.AI_DISCUSSING} -> a round, a human reply -> the next round; '//' replies are ignored`,
     timeoutMs: 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -290,7 +297,7 @@ export const scenarios: Scenario[] = [
 
   // --- The merge gate ------------------------------------------------------------
   {
-    name: "CI red before auto-merge: auto-rework at label time -> fix -> auto-merge -> merged",
+    name: `CI red before ${LABELS.AUTO_MERGING}: ${LABELS.AUTO_REWORKING} at label time -> fix -> ${LABELS.AUTO_MERGING} -> merged`,
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -301,11 +308,11 @@ export const scenarios: Scenario[] = [
         const s = await waitFor(pr.number, (x) => x.merged, 7 * MIN);
         expect(s.merged, `PR #${pr.number} merged`).toBe(true);
         expect(await labelHistory(pr.number)).toEqual(expect.arrayContaining([`+${LABELS.AUTO_REWORKING}`, `-${LABELS.AUTO_REWORKING}`]));
-        expect(hasComment(s, "🔧 CI failing", "attempt 1 of 3")).toBe(true);
+        expect(hasComment(s, "🔧 CI failing", `attempt 1 of ${CAP}`)).toBe(true);
       }),
   },
   {
-    name: "CI red after auto-merge: the check_suite path -> auto-rework -> fix -> merged",
+    name: `CI red after ${LABELS.AUTO_MERGING}: the check_suite path -> ${LABELS.AUTO_REWORKING} -> fix -> merged`,
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -321,7 +328,7 @@ export const scenarios: Scenario[] = [
           `/repos/${REPO}/commits/${head.sha}/check-runs`,
         );
         expect(labelled! < check_runs[0]!.completed_at, "label added before CI finished (else the setup raced)").toBe(true);
-        expect(hasComment(s, "🔧 CI failing", "attempt 1 of 3")).toBe(true);
+        expect(hasComment(s, "🔧 CI failing", `attempt 1 of ${CAP}`)).toBe(true);
         await expectLogged(
           pr.number,
           { event: "labelled_auto_merging", run: "merge-flow" },
@@ -332,25 +339,25 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "CI-fix limit: three fixes that don't fix it -> merge-blocked",
-    timeoutMs: 14 * MIN,
+    name: `CI-fix limit: fixes that don't fix it, up to the cap -> ${LABELS.MERGE_BLOCKED}`,
+    timeoutMs: (4 + 3 * CAP) * MIN,
     run: () =>
       scoped(async (t) => {
         const pr = await trackedPr(t, { title: "ci never fixed", hint: "ci_never_fixed", files: { "ci-state": "fail\n" } });
         await addLabel(pr.number, LABELS.AUTO_MERGING);
-        const s = await waitFor(pr.number, labelsAre(LABELS.MERGE_BLOCKED), 13 * MIN);
+        const s = await waitFor(pr.number, labelsAre(LABELS.MERGE_BLOCKED), (3 + 3 * CAP) * MIN);
         expectLabels(s, pr.number, LABELS.MERGE_BLOCKED);
         expect(s.merged).toBe(false);
         const reworks = (await labelHistory(pr.number)).filter((h) => h === `+${LABELS.AUTO_REWORKING}`);
-        expect(reworks.length, "rework rounds").toBe(3);
-        expect(hasComment(s, "after 3 fix attempts")).toBe(true);
+        expect(reworks.length, "rework rounds").toBe(CAP);
+        expect(hasComment(s, `after ${CAP} fix attempts`)).toBe(true);
         const rows = await expectLogged(pr.number, { event: "merge_gate_failed_hard", effect: LABELS.MERGE_BLOCKED });
-        expect(rows.filter((r) => r.event === "merge_gate_failed_soft"), "three soft fails logged").toHaveLength(3);
-        expect(rows.filter((r) => r.event === "ci_fix_pushed"), "three CI-fix pushes logged").toHaveLength(3);
+        expect(rows.filter((r) => r.event === "merge_gate_failed_soft"), "a soft fail per fix").toHaveLength(CAP);
+        expect(rows.filter((r) => r.event === "ci_fix_pushed"), "a CI-fix push per fix").toHaveLength(CAP);
       }),
   },
   {
-    name: "merge conflict -> merge-blocked; fixed and auto-merge re-added -> merged",
+    name: `merge conflict -> ${LABELS.MERGE_BLOCKED}; fixed and ${LABELS.AUTO_MERGING} re-added -> merged`,
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -390,7 +397,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "requested changes -> merge-blocked; approved and auto-merge re-added -> merged",
+    name: `requested changes -> ${LABELS.MERGE_BLOCKED}; approved and ${LABELS.AUTO_MERGING} re-added -> merged`,
     timeoutMs: 6 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -429,9 +436,9 @@ export const scenarios: Scenario[] = [
       }),
   },
 
-  // --- The watchdog and ai-stuck (the sandbox's watchdog is real, short) --------
+  // --- The watchdog and LABELS.AI_STUCK (the sandbox's watchdog is real, short) --------
   {
-    name: "watchdog: silent build -> ai-stuck; late build_succeeded -> generated-by-ai",
+    name: `watchdog: silent build -> ${LABELS.AI_STUCK}; late build_succeeded -> ${LABELS.PR_OPEN}`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -439,11 +446,11 @@ export const scenarios: Scenario[] = [
         const stuck = await expectStuck(issue, LABELS.AI_READY);
         expect(hasComment(stuck, "No progress step was ever reported")).toBe(true);
         await lateOutcome(issue, "issue-build-loop", { outcome: "build_succeeded", pr: 1 });
-        expectLabels(await waitFor(issue, labelsAre(LABELS.AI_GENERATED), MIN), issue, LABELS.AI_GENERATED);
+        expectLabels(await waitFor(issue, labelsAre(LABELS.PR_OPEN), MIN), issue, LABELS.PR_OPEN);
       }),
   },
   {
-    name: "watchdog: a heartbeat is quoted by the expiry; late build_blocked -> ai-blocked",
+    name: `watchdog: a heartbeat is quoted by the expiry; late build_blocked -> ${LABELS.AI_BLOCKED}`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -463,7 +470,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: a completion signal cancels the watchdog (no ai-stuck)",
+    name: `watchdog: a completion signal cancels the watchdog (no ${LABELS.AI_STUCK})`,
     timeoutMs: STUCK_WAIT + MIN,
     run: () =>
       scoped(async (t) => {
@@ -544,7 +551,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck build, ready-for-ai re-added -> retried -> ai-blocked",
+    name: `watchdog: stuck build, ${LABELS.AI_READY} re-added -> retried -> ${LABELS.AI_BLOCKED}`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -567,7 +574,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck release; late release_blocked -> ai-stuck cleared",
+    name: `watchdog: stuck release; late release_blocked -> ${LABELS.AI_STUCK} cleared`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -580,7 +587,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck release, auto-release re-added -> retried -> published",
+    name: `watchdog: stuck release, ${LABELS.AUTO_RELEASING} re-added -> retried -> published`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -592,7 +599,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck rework; a late push -> ai-stuck cleared",
+    name: `watchdog: stuck rework; a late push -> ${LABELS.AI_STUCK} cleared`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -603,7 +610,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck rework, auto-rework re-added -> retried -> pushed and cleared",
+    name: `watchdog: stuck rework, ${LABELS.AUTO_REWORKING} re-added -> retried -> pushed and cleared`,
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -615,7 +622,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "watchdog: stuck merge-flow, auto-merge re-added -> retried -> merged",
+    name: `watchdog: stuck merge-flow, ${LABELS.AUTO_MERGING} re-added -> retried -> merged`,
     timeoutMs: STUCK_WAIT + 3 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -637,6 +644,108 @@ export const scenarios: Scenario[] = [
         await merge(pr.number);
         const s = await waitFor(pr.number, (x) => x.state === "closed", MIN);
         expect(s.merged).toBe(true);
+      }),
+  },
+  // --- The review (15-agent-splits.md) ---------------------------------------
+  {
+    name: `review: ${LABELS.AI_REVIEWING} on a green PR -> review-loop -> passed -> unlabelled; re-added -> reviewed again`,
+    timeoutMs: 6 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const pr = await trackedPr(t, { title: "review pass", hint: "review_pass", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
+        await waitForChecks(pr.number);
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const passed = await waitFor(pr.number, (s) => s.labels.length === 0 && hasMarker(s, "review-loop", "review_passed"), 2 * MIN);
+        expectLabels(passed, pr.number);
+        await expectLogged(
+          pr.number,
+          "labelled_ai_reviewing",
+          { event: "review_ci_passed", run: "review-loop" },
+          { event: "review_passed", effect: "unlabel" },
+        );
+
+        // A person re-running it (say after editing the PR by hand).
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const twice = (s: Snapshot) =>
+          s.labels.length === 0 && s.comments.filter((c) => c.includes('"outcome":"review_passed"')).length === 2;
+        expectLabels(await waitFor(pr.number, twice, 2 * MIN), pr.number);
+        const rows = await transitions(pr.number);
+        expect(rows.filter((r) => r.event === "review_ci_passed"), "two reviews fired").toHaveLength(2);
+      }),
+  },
+  {
+    name: "review: findings -> rework-loop -> push -> CI -> reviewed again -> passed",
+    timeoutMs: 9 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const pr = await trackedPr(t, { title: "review findings", hint: "review_findings_once", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
+        // Labelled at once, before CI has finished: the check_suite path fires the review.
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const s = await waitFor(pr.number, (x) => x.labels.length === 0 && hasMarker(x, "review-loop", "review_passed"), 8 * MIN);
+        expectLabels(s, pr.number);
+        expect(hasComment(s, `Review round 1 of ${CAP}`)).toBe(true);
+        const commits = await gh<unknown[]>("GET", `/repos/${REPO}/pulls/${pr.number}/commits`);
+        expect(commits.length, "the stub's rework push").toBe(2);
+        await expectLogged(
+          pr.number,
+          { event: "review_ci_passed", run: "review-loop" },
+          { event: "review_findings", effect: LABELS.AUTO_REWORKING, run: "rework-loop" },
+          { event: "review_fix_pushed", effect: LABELS.AI_REVIEWING },
+          { event: "review_ci_passed", run: "review-loop" },
+          { event: "review_passed", effect: "unlabel" },
+        );
+      }),
+  },
+  {
+    name: `review: blocked -> ${LABELS.AI_BLOCKED}, waits; a person re-adds ${LABELS.AI_REVIEWING} -> reviewed again -> passed`,
+    timeoutMs: 6 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const pr = await trackedPr(t, { title: "review block", hint: "review_block", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
+        await waitForChecks(pr.number);
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const blocked = await waitFor(pr.number, labelsAre(LABELS.AI_BLOCKED), 2 * MIN);
+        expectLabels(blocked, pr.number, LABELS.AI_BLOCKED);
+        await expectLogged(pr.number, { event: "review_ci_passed", run: "review-loop" }, { event: "review_blocked", effect: LABELS.AI_BLOCKED });
+
+        await setHint(pr.number, "review_pass");
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const passed = await waitFor(pr.number, (s) => s.labels.length === 0 && hasMarker(s, "review-loop", "review_passed"), 2 * MIN);
+        expectLabels(passed, pr.number);
+      }),
+  },
+  {
+    name: `review: CI red under ${LABELS.AI_REVIEWING} -> CI fix -> back to ${LABELS.AI_REVIEWING} -> passed`,
+    timeoutMs: 9 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const pr = await trackedPr(t, { title: "review ci red", hint: "review_ci_fail", files: { "ci-state": "fail\n" } });
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const s = await waitFor(pr.number, (x) => x.labels.length === 0 && hasMarker(x, "review-loop", "review_passed"), 8 * MIN);
+        expectLabels(s, pr.number);
+        expect(hasComment(s, "🔧 CI failing", `attempt 1 of ${CAP}`)).toBe(true);
+        await expectLogged(
+          pr.number,
+          { event: "review_ci_failed", effect: LABELS.AUTO_REWORKING, run: "rework-loop" },
+          { event: "review_fix_pushed", effect: LABELS.AI_REVIEWING },
+          { event: "review_ci_passed", run: "review-loop" },
+          { event: "review_passed", effect: "unlabel" },
+        );
+      }),
+  },
+  {
+    name: `review: findings every round -> ${LABELS.AI_STUCK} once past the cap`,
+    timeoutMs: (5 + 3 * CAP) * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const pr = await trackedPr(t, { title: "review never passes", hint: "review_findings_always", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
+        await addLabel(pr.number, LABELS.AI_REVIEWING);
+        const s = await waitFor(pr.number, labelsAre(LABELS.AI_STUCK), (4 + 3 * CAP) * MIN);
+        expectLabels(s, pr.number, LABELS.AI_STUCK);
+        expect(hasComment(s, `asked for changes ${CAP} times`)).toBe(true);
+        const rows = await expectLogged(pr.number, { event: "rework_cap_reached", effect: LABELS.AI_STUCK });
+        expect(rows.filter((r) => r.event === "review_findings"), "a counted round per finding, up to the cap").toHaveLength(CAP);
+        expect(rows.filter((r) => r.event === "review_fix_pushed"), `a push back to ${LABELS.AI_REVIEWING} per round`).toHaveLength(CAP);
       }),
   },
 ];

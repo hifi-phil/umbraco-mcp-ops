@@ -19,7 +19,27 @@
   labelling, release notes? The bookkeeping ones are probably cheaper as
   plain Actions than as routines.
 - What's the right in-flight concurrency cap, and does the ready queue live
-  in the DO or in a separate coordinator? (Phase 9.)
+  in the DO or in a separate coordinator? (Phase 9.) **Deferred until there
+  are several users** (04-10-2026): with one person labelling it isn't
+  needed yet. Agreed for when it is:
+  - Caps per repo and per routine, starting at builds 4, reworks 2, merges
+    5 (cheap), releases 2 (e.g. v17 and v18 at once), overridable per repo
+    in `repo_controls`; plus a global ceiling on builds and reworks only
+    (spend), 8 to start.
+  - In flight means a watched fire, the watchdog's window, so a slot frees
+    on outcome, completion, expiry or a person removing the label.
+  - The queue lives in one Dispatcher DO (single-threaded: no races); the
+    issue DO asks it for a slot before arming and firing. Who goes next is
+    a pure function in `graph/`. Merges and reworks go before new builds,
+    otherwise FIFO.
+  - Leaks are the main risk: slots expire with the watchdog, and the
+    Dispatcher's alarm reconciles against pending fires; the sweep treats
+    queued as waiting, not lost.
+  - Shown on the dashboard only ("Queued, position n"); no GitHub comment
+    or label.
+  - No shadow phase: tested in the e2e sandbox (cap 1, three issues at
+    once), then on with generous caps and a per-repo off switch. Check
+    peak in-flight in `transitions` first.
 - Cloudflare or Azure? Decide on maintainership rather than capability — see
   [06-platform-alternative.md](06-platform-alternative.md).
 
@@ -123,13 +143,13 @@
   straight to `state:rework`, the log needs to record that jump even though
   no rule in the table permits it — worth deciding whether `verifiedBy` even
   applies to a row the reducer didn't produce. *Narrowed:* the most common
-  exit from stuck (re-adding a trigger label, e.g. `auto-rework` on an
+  exit from stuck (re-adding a trigger label, e.g. `auto-reworking` on an
   `ai-stuck` PR) is now a real rule in `graph/graph.ts`, not an override.
   The question still stands for relabels no rule covers.
 - **Does a late routine's own label removal tolerate a label that's already
-  gone?** Once the watchdog has swapped `ready-for-ai` → `ai-stuck`, a slow
-  `issue-build-loop` still tries to remove `ready-for-ai` before adding
-  `generated-by-ai` and posting its outcome. The Worker's own
+  gone?** Once the watchdog has swapped `ai-ready` → `ai-stuck`, a slow
+  `issue-build-loop` still tries to remove `ai-ready` before adding
+  `pr-open` and posting its outcome. The Worker's own
   `github-client.ts` treats that 404 as fine, but nobody has checked
   whether the loops' `gh issue edit --remove-label` / GitHub MCP calls do.
   If one aborts on it, the late outcome never arrives and the issue stays
@@ -144,7 +164,7 @@
   they're migrated.
 - ~~The outcome artifact's reducer rule fires inconsistently~~ — **resolved**:
   `build_succeeded`/`build_blocked`/`release_blocked` are now keyed on their
-  post-swap state (`AI_GENERATED`/`AI_BLOCKED`/`"none"`), matching
+  post-swap state (`PR_OPEN`/`AI_BLOCKED`/`"none"`), matching
   `release_published`'s shape, each firing an idempotent `noop` confirm.
   See `graph/graph.ts`'s comments on each rule and `worker/README.md`'s
   "black-box shape" section for how the inconsistency was found.

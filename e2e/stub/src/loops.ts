@@ -5,6 +5,7 @@
 // exactly the bugs the suite is for.
 
 import type { Outcome } from "@orchestrator/graph/outcomes";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 
 export type Gh = (method: string, path: string, body?: unknown) => Promise<unknown>;
 
@@ -28,6 +29,9 @@ export type Action =
   | "release_published"
   | "release_blocked"
   | "discussed"
+  | "review_passed"
+  | "review_findings"
+  | "review_blocked"
   | "heartbeat"
   | "completion"
   | "none";
@@ -84,6 +88,8 @@ export async function act(gh: Gh, fire: Fire, hint: string | null, signal?: Sign
       return rework(gh, fire, hint);
     case "merge-flow":
       return mergeIfGreen(gh, fire);
+    case "review-loop":
+      return review(gh, fire, hint);
     case "auto-release-loop":
       return release(gh, fire, hint);
     default:
@@ -133,6 +139,13 @@ async function rework(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
     case "ci_never_fixed": // a push that doesn't fix it
       await putFile(gh, f, head.ref, `rework/${f.number}.txt`, `tried ${Date.now()}\n`, "e2e stub: try to fix CI");
       return "pushed";
+    case "review_ci_fail": // CI red before the review: the fix CI needs
+      await putFile(gh, f, head.ref, "ci-state", "pass\n", "e2e stub: fix CI");
+      return "pushed";
+    case "review_findings_once": // the review's findings: any push
+    case "review_findings_always":
+      await putFile(gh, f, head.ref, `rework/${f.number}.txt`, `addressed ${Date.now()}\n`, "e2e stub: address the review");
+      return "pushed";
     default:
       return "none";
   }
@@ -158,7 +171,7 @@ export async function mergeIfGreen(gh: Gh, f: Fire, mergeRetryMs = MERGE_RETRY_M
     head: { sha: string };
     labels: { name: string }[];
   };
-  if (pr.state !== "open" || !pr.labels.some((l) => l.name === "auto-merge")) return "none";
+  if (pr.state !== "open" || !pr.labels.some((l) => l.name === LABELS.AUTO_MERGING)) return "none";
 
   const { check_runs: runs } = (await gh("GET", `${base(f)}/commits/${pr.head.sha}/check-runs`)) as {
     check_runs: { name: string; status: string; conclusion: string | null }[];
@@ -189,6 +202,35 @@ export async function mergeIfGreen(gh: Gh, f: Fire, mergeRetryMs = MERGE_RETRY_M
   }
   await comment(gh, f, "e2e stub (merge-flow): merged (squash).");
   return "merged";
+}
+
+/**
+ * review-loop's verdict, scripted by the PR's hint: review_findings_once
+ * asks for changes on its first round and passes the next;
+ * review_findings_always never passes (the cap); review_block blocks;
+ * review_pass and review_ci_fail pass.
+ */
+async function review(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
+  const verdict = async (outcome: Outcome) => {
+    await comment(gh, f, outcomeComment("review-loop", outcome));
+    return outcome.outcome as Action;
+  };
+  switch (hint) {
+    case "review_pass":
+    case "review_ci_fail":
+      return verdict({ outcome: "review_passed" });
+    case "review_block":
+      return verdict({ outcome: "review_blocked", reason: "e2e stub: scripted block" });
+    case "review_findings_always":
+      return verdict({ outcome: "review_findings", findings: 1 });
+    case "review_findings_once": {
+      const comments = (await gh("GET", `${base(f)}/issues/${f.number}/comments?per_page=100`)) as { body: string }[];
+      const asked = comments.some((c) => c.body.includes('"outcome":"review_findings"'));
+      return verdict(asked ? { outcome: "review_passed" } : { outcome: "review_findings", findings: 1 });
+    }
+    default:
+      return "none";
+  }
 }
 
 async function release(gh: Gh, f: Fire, hint: string | null): Promise<Action> {

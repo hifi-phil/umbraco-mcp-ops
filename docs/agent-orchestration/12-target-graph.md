@@ -50,12 +50,12 @@ Telemetry → Release) is a best reading. Correct them here if they're wrong.
 |---|---|---|
 | Backlog | Issues, created by hand | — |
 | Triage | Nothing | — |
-| Design | Partly `issue-discuss-loop` | `ai-discuss` |
-| **Build** | `issue-build-loop` (includes its own testing) | `ready-for-ai` → `generated-by-ai` / `ai-blocked` |
+| Design | Partly `issue-discuss-loop` | `ai-discussing` |
+| **Build** | `issue-build-loop` (includes its own testing) | `ai-ready` → `pr-open` / `ai-blocked` |
 | Test | Not a node; happens inside Build and in CI | — |
-| **Review** | Human PR review; "changes" → `rework-loop` | `auto-rework` |
-| **Integrate** | `merge-flow` | `auto-merge` |
-| **Release** | `auto-release-loop` | `auto-release` |
+| **Review** | Human PR review; "changes" → `rework-loop` | `auto-reworking` |
+| **Integrate** | `merge-flow` | `auto-merging` |
+| **Release** | `auto-release-loop` | `auto-releasing` |
 | Rollback | Nothing | — |
 | Dep upgrades | `dependabot-rollup` exists, outside the graph | — |
 | Refactor | Nothing as an issue loop | — |

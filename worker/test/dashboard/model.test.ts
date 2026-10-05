@@ -15,6 +15,7 @@ import {
   type ItemRow,
 } from "../../src/dashboard/model";
 import type { StatusRow } from "../../src/db/issue-status";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 
 const OPS = "hifi-phil/umbraco-mcp-ops";
 const SANDBOX = "hifi-phil/mcp-ops-e2e-testing";
@@ -25,7 +26,7 @@ const status = (o: Partial<StatusRow> = {}): StatusRow => ({
   owner: "hifi-phil",
   repo: "umbraco-mcp-ops",
   issue_number: 412,
-  state: "ready-for-ai",
+  state: LABELS.AI_READY,
   routine: "issue-build-loop",
   attempt: 1,
   running: 1,
@@ -57,7 +58,7 @@ describe("attachedRepos", () => {
 
 describe("buildItems", () => {
   it("joins the live status and the item's kind and title", () => {
-    expect(buildItems([activity()], [status()], [meta()], REPOS)[0]).toMatchObject({ repo: OPS, n: 412, kind: "issue", title: "Add a thing", closed: false, status: { state: "ready-for-ai" } });
+    expect(buildItems([activity()], [status()], [meta()], REPOS)[0]).toMatchObject({ repo: OPS, n: 412, kind: "issue", title: "Add a thing", closed: false, status: { state: LABELS.AI_READY } });
   });
 
   it("not known yet: a PR-only event makes it a PR, a closing last event closed; otherwise an issue", () => {
@@ -85,7 +86,7 @@ describe("visible: running, then needing attention, then open, then by latest ac
         activity({ issue_number: 4, event: "merged", pr_hint: 1, last_at: "2026-10-03 10:08:00" }),
         activity({ issue_number: 5, last_at: "2026-10-03 10:09:00" }),
       ],
-      [status({ issue_number: 1, running: 1 }), status({ issue_number: 3, state: "ai-stuck", running: 0 })],
+      [status({ issue_number: 1, running: 1 }), status({ issue_number: 3, state: LABELS.AI_STUCK, running: 0 })],
       [],
       REPOS,
     );
@@ -111,12 +112,12 @@ describe("filters in the URL", () => {
 
 describe("formatting", () => {
   it("effects in words", () => {
-    expect(effectText('{"kind":"label","value":"ai-stuck"}')).toBe("→ ai-stuck");
+    expect(effectText(`{"kind":"label","value":"${LABELS.AI_STUCK}"}`)).toBe(`→ ${LABELS.AI_STUCK}`);
     expect(effectText('{"kind":"close"}')).toBe("closed");
     expect(effectText('{"kind":"unlabel"}')).toBe("label removed");
     expect(effectText('{"kind":"noop"}')).toBe("no change");
     expect(effectText('{"kind":"noop","held":"mode_shadow"}')).toBe("nothing (held: mode_shadow)");
-    expect(effectText('{"kind":"manual","change":"-ai-blocked"}')).toBe("by hand: -ai-blocked");
+    expect(effectText(`{"kind":"manual","change":"-${LABELS.AI_BLOCKED}"}`)).toBe(`by hand: -${LABELS.AI_BLOCKED}`);
     expect(effectText('{"control":"sweep","enabled":false,"by":"octo"}')).toBe("sweep turned off by octo");
     expect(effectText(null)).toBe("");
     expect(effectText("not json")).toBe("not json");

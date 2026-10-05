@@ -9,6 +9,7 @@ import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
 import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
 import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
+import { reviewFindings, reviewGate } from "./review-gate";
 
 /**
  * The literal implementation of translate() -> reduce() -> labelOps() +
@@ -76,28 +77,82 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // itself just added), even though deriveState() below needs it filtered.
   const currentLabels = await deps.getLabels(input.owner, input.repo, input.issueNumber);
 
-  // A push by a rework this Worker started for failing CI: hand it back to
-  // auto-merge instead of just clearing auto-rework (a review rework).
+  // A push by a rework this Worker started: for failing CI, back to
+  // LABELS.AUTO_MERGING (or LABELS.AI_REVIEWING, if CI failed before the review); for the
+  // review's findings, back to LABELS.AI_REVIEWING. Instead of just clearing
+  // LABELS.AUTO_REWORKING, as a person's review rework does.
   if (event === EVENTS.REWORK_PUSHED || event === EVENTS.UNLABELLED_AUTO_REWORKING) {
     const ciFix = await deps.getCiFix();
+    const reviewLoop = ciFix?.pending ? null : await deps.getReviewLoop();
     if (ciFix?.pending) {
-      // auto-rework removed without a push (nothing to fix) ends the CI-fix
+      // LABELS.AUTO_REWORKING removed without a push (nothing to fix) ends the CI-fix
       // too, so a later review rework isn't mistaken for one.
-      if (event === EVENTS.REWORK_PUSHED) event = EVENTS.CI_FIX_PUSHED;
+      if (event === EVENTS.REWORK_PUSHED) {
+        event = ciFix.returnTo === LABELS.AI_REVIEWING ? EVENTS.REVIEW_FIX_PUSHED : EVENTS.CI_FIX_PUSHED;
+      }
       await deps.setCiFix({ ...ciFix, pending: false });
+    } else if (reviewLoop?.fixPending) {
+      if (event === EVENTS.REWORK_PUSHED) event = EVENTS.REVIEW_FIX_PUSHED;
+      await deps.setReviewLoop({ ...reviewLoop, fixPending: false });
     }
   }
 
-  // auto-merge added: check the PR before firing merge-flow. Reviews aren't
+  // A review rework round (LABELS.AUTO_REWORKING added by a reviewer: the Worker's own
+  // label changes never arrive as events). Counted per PR; past
+  // caps.reviewReworks it goes to a person instead of looping. A person
+  // retrying from LABELS.AI_STUCK starts a fresh count.
+  if (event === EVENTS.LABELLED_AUTO_REWORKING) {
+    const before = deriveState(currentLabels.filter((l) => l !== LABELS.AUTO_REWORKING));
+    if (before === "none" || before === LABELS.AI_STUCK) {
+      const rounds = before === LABELS.AI_STUCK ? 1 : (await deps.getReviewReworks()) + 1;
+      if (rounds > deps.caps.reviewReworks) return capReviewRework(deps, input, currentLabels, rounds - 1);
+      await deps.setReviewReworks(rounds);
+      // From LABELS.AI_STUCK, the review's own count starts fresh too.
+      if (before === LABELS.AI_STUCK) await deps.setReviewLoop(null);
+    }
+  }
+
+  // LABELS.AI_REVIEWING added (by the build or a person): the label, then the CI gate,
+  // which fires review-loop now if CI is already green. From LABELS.AI_STUCK, both
+  // the review's counts start fresh.
+  if (event === EVENTS.LABELLED_AI_REVIEWING) {
+    if (!currentLabels.includes(LABELS.AI_REVIEWING)) return { outcome: "stale_label", event };
+    if (deriveState(currentLabels.filter((l) => l !== LABELS.AI_REVIEWING)) === LABELS.AI_STUCK) {
+      await deps.setReviewLoop(null);
+      await deps.setCiFix(null);
+    }
+    const labelled = await applyEvent(deps, input, event, currentLabels);
+    if (labelled.outcome !== "applied") return labelled;
+    // What's on the PR now: the rule took off LABELS.AI_STUCK or LABELS.AI_BLOCKED.
+    const now = currentLabels.filter((l) => l !== LABELS.AI_STUCK && l !== LABELS.AI_BLOCKED);
+    const gated = await reviewGate(deps, input, now);
+    return gated.outcome === "no_event" ? labelled : gated;
+  }
+
+  // review-loop's verdict. Findings are a counted round; a pass starts the
+  // PR's next stage (LABELS.AUTO_MERGING) with fresh counts.
+  if (event === EVENTS.REVIEW_FINDINGS && deriveState(currentLabels) === LABELS.AI_REVIEWING) {
+    return reviewFindings(deps, input, currentLabels);
+  }
+  if (event === EVENTS.REVIEW_PASSED) {
+    const passed = await applyEvent(deps, input, event, currentLabels);
+    if (passed.outcome === "applied") {
+      await deps.setReviewLoop(null);
+      await deps.setCiFix(null);
+    }
+    return passed;
+  }
+
+  // LABELS.AUTO_MERGING added: check the PR before firing merge-flow. Reviews aren't
   // expected once the label is on, so this is where requested changes are
   // caught; conflicts are caught here and again each time CI finishes
   // (handleCheckSuiteCompleted). CI that has already failed goes straight
   // to rework.
   if (event === EVENTS.LABELLED_AUTO_MERGING) {
-    // Run after auto-merge has already gone (swapped out by CI finishing red
+    // Run after LABELS.AUTO_MERGING has already gone (swapped out by CI finishing red
     // a moment earlier, found by e2e on PR #246), there's no gate left to check.
     if (!currentLabels.includes(LABELS.AUTO_MERGING)) return { outcome: "stale_label", event };
-    // A human re-adding auto-merge after merge-blocked starts a fresh count.
+    // A human re-adding LABELS.AUTO_MERGING after LABELS.MERGE_BLOCKED starts a fresh count.
     if (currentLabels.includes(LABELS.MERGE_BLOCKED)) await deps.setCiFix(null);
     const facts = await settledGateFacts(deps, input);
     const reason = hardBlockReason(facts);
@@ -106,9 +161,26 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   }
 
   const result = await applyEvent(deps, input, event, currentLabels);
-  // A contextual event the table ignores here (say auto-merge removed from
-  // a merge-blocked PR) is still a person's edit worth a row.
+  // A contextual event the table ignores here (say LABELS.AUTO_MERGING removed from
+  // a LABELS.MERGE_BLOCKED PR) is still a person's edit worth a row.
   return result.outcome === "ignored" && human ? logManualOverride(deps, input, human, currentLabels) : result;
+}
+
+/** Review rework asked for past the cap: say so, and move the PR to
+ * {@link LABELS.AI_STUCK} (the table's REWORK_CAP_REACHED rule) without firing. */
+async function capReviewRework(deps: Deps, input: CoordinateInput, currentLabels: string[], rounds: number): Promise<CoordinateResult> {
+  const result = await applyEvent(deps, input, EVENTS.REWORK_CAP_REACHED, currentLabels);
+  if (result.outcome === "applied") {
+    await depsFor(deps, EVENTS.REWORK_CAP_REACHED).io.commentOnIssue(
+      input.owner,
+      input.repo,
+      input.issueNumber,
+      `🛑 This PR has had ${rounds} review rework rounds, the most rework-loop is given (${deps.caps.reviewReworks}), so it's moved to \`${LABELS.AI_STUCK}\` ` +
+        `for a person to look at. Re-add \`${LABELS.AUTO_REWORKING}\` to try again; that starts a fresh count. ` +
+        `(Automatic, from the orchestrator.)`,
+    );
+  }
+  return result;
 }
 
 /** A person (anyone but the Worker's own App bot) adding or removing a label
@@ -125,8 +197,8 @@ function humanLabelChange(payload: CoordinateInput["payload"], botLogin: string 
 
 /**
  * 03-components.md's human escape hatch: a person moved a tracked label in a
- * way the table doesn't act on (cleared ai-blocked, added merge-blocked,
- * removed ai-stuck, …). Nothing is decided or written to GitHub; a
+ * way the table doesn't act on (cleared {@link LABELS.AI_BLOCKED}, added {@link LABELS.MERGE_BLOCKED},
+ * removed {@link LABELS.AI_STUCK}, …). Nothing is decided or written to GitHub; a
  * `manual_override` row records it, so the log stays the issue's whole
  * history. The App is what makes this possible: the Worker's own label
  * changes come from its bot, so any other one is a person's (or a loop
@@ -160,8 +232,8 @@ async function logManualOverride(
 
 /**
  * check_suite.completed's own real aggregation path: only matters for a
- * PR currently in `auto-merge` (mirrors merge-flow's own gate — nothing
- * else watches CI this way), and only once the suite has actually
+ * PR currently in {@link LABELS.AI_REVIEWING} (the review's CI gate) or {@link LABELS.AUTO_MERGING}
+ * (mirrors merge-flow's own gate), and only once the suite has actually
  * finished (a mid-flight `status: "in_progress"` webhook has nothing to
  * decide yet).
  */
@@ -169,9 +241,10 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
   if (input.payload.check_suite?.status !== "completed") return { outcome: "no_event" };
 
   const currentLabels = await deps.getLabels(input.owner, input.repo, input.issueNumber);
+  if (deriveState(currentLabels) === LABELS.AI_REVIEWING) return reviewGate(deps, input, currentLabels);
   if (!currentLabels.includes(LABELS.AUTO_MERGING)) return { outcome: "no_event" };
 
-  // Same reading as when auto-merge is added. CI often fails within seconds
+  // Same reading as when LABELS.AUTO_MERGING is added. CI often fails within seconds
   // of a push, before GitHub has computed `mergeable`; waiting on that here
   // dropped the red CI for good (nothing else re-checks it), so an unknown
   // `mergeable` counts as "no known conflict", as hardBlockReason reads it.

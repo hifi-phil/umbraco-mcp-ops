@@ -10,6 +10,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IssueCoordinator, type IssueCoordinatorEnv } from "../src/issue-coordinator";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -138,7 +139,7 @@ const labeledInput = (overrides: Record<string, unknown> = {}) => ({
   issueNumber: 412,
   payload: {
     action: "issues.labeled",
-    label: { name: "ready-for-ai" },
+    label: { name: LABELS.AI_READY },
     sender: { login: "phil", type: "User" },
   },
   ...overrides,
@@ -177,7 +178,7 @@ describe("IssueCoordinator.fetch()", () => {
       412,
       "none",
       "labelled_ai_ready",
-      JSON.stringify({ kind: "label", value: "ready-for-ai" }),
+      JSON.stringify({ kind: "label", value: LABELS.AI_READY }),
       "issue-build-loop",
       null,
       "enforce",
@@ -291,7 +292,7 @@ describe("IssueCoordinator — one request at a time per issue", () => {
 
 describe("IssueCoordinator — the live-status row (issue_status)", () => {
   it("a fire upserts the row, keyed lowercased; the same routine again counts its attempt on", async () => {
-    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: [LABELS.AI_READY] }));
     const { ctx } = fakeCtx();
     const { db, status } = fakeDb();
     await new IssueCoordinator(ctx, fakeEnv({ DB: db })).fetch(
@@ -300,22 +301,22 @@ describe("IssueCoordinator — the live-status row (issue_status)", () => {
           owner: "Hifi-Phil",
           repo: "umbraco-mcp-ops",
           issueNumber: 412,
-          payload: { action: "issues.labeled", label: { name: "ready-for-ai" } },
+          payload: { action: "issues.labeled", label: { name: LABELS.AI_READY } },
         }),
     );
     expect(status).toHaveLength(1);
     expect(status[0]!.sql).toMatch(/ON CONFLICT \(owner, repo, issue_number\) DO UPDATE/);
     expect(status[0]!.sql).toMatch(/attempt = CASE WHEN issue_status.routine = excluded.routine THEN issue_status.attempt \+ 1 ELSE 1 END/);
-    expect(status[0]!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", 412, "ready-for-ai", "issue-build-loop", 1, 1, 0]);
+    expect(status[0]!.args).toEqual(["hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_READY, "issue-build-loop", 1, 1, 0]);
   });
 
   it("once closed on GitHub, a later transition (a late outcome, an expiry) doesn't re-create the row; reopening allows it", async () => {
-    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: [LABELS.AI_READY] }));
     const { ctx } = fakeCtx();
     const { db, status } = fakeDb();
     const coordinator = new IssueCoordinator(ctx, fakeEnv({ DB: db }));
     const ready = (id: string) =>
-      fetchRequest({ deliveryId: id, owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, payload: { action: "issues.labeled", label: { name: "ready-for-ai" } } });
+      fetchRequest({ deliveryId: id, owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, payload: { action: "issues.labeled", label: { name: LABELS.AI_READY } } });
     const action = (id: string, a: string) => fetchRequest({ deliveryId: id, owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, payload: { action: a } });
 
     await coordinator.fetch(action("c-1", "issues.closed"));
@@ -329,11 +330,11 @@ describe("IssueCoordinator — the live-status row (issue_status)", () => {
   });
 
   it("each log row also updates the item's summary (what the dashboard reads instead of the log)", async () => {
-    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: [LABELS.AI_READY] }));
     const { ctx } = fakeCtx();
     const { db, summary } = fakeDb();
     await new IssueCoordinator(ctx, fakeEnv({ DB: db })).fetch(
-      fetchRequest({ deliveryId: "d-s", owner: "Hifi-Phil", repo: "umbraco-mcp-ops", issueNumber: 412, payload: { action: "issues.labeled", label: { name: "ready-for-ai" } } }),
+      fetchRequest({ deliveryId: "d-s", owner: "Hifi-Phil", repo: "umbraco-mcp-ops", issueNumber: 412, payload: { action: "issues.labeled", label: { name: LABELS.AI_READY } } }),
     );
     expect(summary).toHaveLength(1);
     expect(summary[0]!.sql).toMatch(/events = items\.events \+ 1/);
@@ -341,7 +342,7 @@ describe("IssueCoordinator — the live-status row (issue_status)", () => {
   });
 
   it("a failing status write never fails the transition", async () => {
-    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: [LABELS.AI_READY] }));
     const { ctx } = fakeCtx();
     const inserted: unknown[][] = [];
     const db = {
@@ -361,7 +362,7 @@ describe("IssueCoordinator — the live-status row (issue_status)", () => {
           owner: "hifi-phil",
           repo: "umbraco-mcp-ops",
           issueNumber: 412,
-          payload: { action: "issues.labeled", label: { name: "ready-for-ai" } },
+          payload: { action: "issues.labeled", label: { name: LABELS.AI_READY } },
         }),
     );
     expect(((await res.json()) as { outcome: string }).outcome).toBe("applied");
@@ -383,7 +384,7 @@ describe("IssueCoordinator — /reconcile's idle clock", () => {
         };
       }),
     } as unknown as D1Database;
-    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: [LABELS.AI_READY] }));
     const { ctx } = fakeCtx();
     const res = await new IssueCoordinator(ctx, fakeEnv({ DB: db })).fetch(
       new Request("https://issue-coordinator/reconcile", {
@@ -397,7 +398,7 @@ describe("IssueCoordinator — /reconcile's idle clock", () => {
   });
 
   it("a pending fire counts as watched only while its alarm is armed (ctx.storage.getAlarm)", async () => {
-    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["ready-for-ai"] }));
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: [LABELS.AI_READY] }));
     const reconcile = (ctx: DurableObjectState) =>
       new IssueCoordinator(ctx, fakeEnv()).fetch(
         new Request("https://issue-coordinator/reconcile", {
@@ -426,8 +427,8 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
     run: "issue-build-loop",
   };
 
-  it("fires: comments, swaps ready-for-ai -> ai-stuck for real, logs a watchdog_expired row to D1, clears pendingFire", async () => {
-    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+  it(`fires: comments, swaps ${LABELS.AI_READY} -> ${LABELS.AI_STUCK} for real, logs a watchdog_expired row to D1, clears pendingFire`, async () => {
+    const apiFetch = fakeApiFetch({ labels: [LABELS.AI_READY] });
     vi.stubGlobal("fetch", apiFetch);
     const { ctx, storage } = fakeCtx();
     const { db, inserted } = fakeDb();
@@ -439,12 +440,12 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
     const calls = apiFetch.mock.calls.map(([url, init]) => `${(init as RequestInit)?.method ?? "GET"} ${url as string}`);
     const commentCall = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).includes("/comments"));
     const body = JSON.parse((commentCall![1] as RequestInit).body as string);
-    expect(body.body).toMatch(/issue-build-loop.*hasn't reported back within 60 minutes.*ai-stuck/);
-    expect(calls.some((c) => c.startsWith("DELETE") && c.endsWith("/labels/ready-for-ai"))).toBe(true);
+    expect(body.body).toMatch(new RegExp(`issue-build-loop.*hasn't reported back within 60 minutes.*${LABELS.AI_STUCK}`));
+    expect(calls.some((c) => c.startsWith("DELETE") && c.endsWith(`/labels/${LABELS.AI_READY}`))).toBe(true);
     const addCall = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).endsWith("/labels"));
-    expect(JSON.parse((addCall![1] as RequestInit).body as string)).toEqual({ labels: ["ai-stuck"] });
+    expect(JSON.parse((addCall![1] as RequestInit).body as string)).toEqual({ labels: [LABELS.AI_STUCK] });
     expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toEqual(expect.arrayContaining(["ready-for-ai", "watchdog_expired"]));
+    expect(inserted[0]).toEqual(expect.arrayContaining([LABELS.AI_READY, "watchdog_expired"]));
     expect(inserted[0]![0], "no delivery caused a watchdog row").toBeNull();
     expect(await storage.get("pendingFire")).toBeUndefined();
   });
@@ -463,7 +464,7 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
   });
 
   it("a newer fire armed while this alarm waited its turn -> left alone: no comment, its alarm kept", async () => {
-    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    const apiFetch = fakeApiFetch({ labels: [LABELS.AI_READY] });
     vi.stubGlobal("fetch", apiFetch);
     const { ctx, storage, deleteAlarm } = fakeCtx();
     await storage.put("pendingFire", { ...pendingBuild, dueAt: Date.now() + 60 * 60_000 });
@@ -473,7 +474,7 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
   });
 
   it("a pending fire stamped with a dueAt that has passed -> expires as usual", async () => {
-    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    const apiFetch = fakeApiFetch({ labels: [LABELS.AI_READY] });
     vi.stubGlobal("fetch", apiFetch);
     const { ctx, storage } = fakeCtx();
     await storage.put("pendingFire", { ...pendingBuild, dueAt: Date.now() - 1_000 });
@@ -512,8 +513,8 @@ describe("IssueCoordinator — a repo's watchdog override (WATCHDOG_OVERRIDES_JS
     expect(at - before).toBeLessThan(61_000);
   });
 
-  it("its expiry is real (comments, swaps to ai-stuck) though WATCHDOG is shadow, and quotes its own minutes", async () => {
-    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+  it(`its expiry is real (comments, swaps to ${LABELS.AI_STUCK}) though WATCHDOG is shadow, and quotes its own minutes`, async () => {
+    const apiFetch = fakeApiFetch({ labels: [LABELS.AI_READY] });
     vi.stubGlobal("fetch", apiFetch);
     const { ctx, storage } = fakeCtx();
     await storage.put("pendingFire", sandboxBuild);
@@ -521,11 +522,11 @@ describe("IssueCoordinator — a repo's watchdog override (WATCHDOG_OVERRIDES_JS
     const comment = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).includes("/comments"));
     expect(JSON.parse((comment![1] as RequestInit).body as string).body).toMatch(/within 1 minutes/);
     const add = apiFetch.mock.calls.find(([url, init]) => (init as RequestInit)?.method === "POST" && (url as string).endsWith("/labels"));
-    expect(JSON.parse((add![1] as RequestInit).body as string)).toEqual({ labels: ["ai-stuck"] });
+    expect(JSON.parse((add![1] as RequestInit).body as string)).toEqual({ labels: [LABELS.AI_STUCK] });
   });
 
   it("every other repo keeps WATCHDOG (shadow) and the default minutes", async () => {
-    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    const apiFetch = fakeApiFetch({ labels: [LABELS.AI_READY] });
     vi.stubGlobal("fetch", apiFetch);
     const { ctx, storage } = fakeCtx();
     await storage.put("pendingFire", { ...sandboxBuild, repo: "umbraco-mcp-ops" });
@@ -541,13 +542,13 @@ describe("IssueCoordinator — MODE=enforce with the watchdog shadowed (Phase 4)
     owner: "hifi-phil",
     repo: "umbraco-mcp-ops",
     issueNumber: 126,
-    payload: { action: "pull_request.labeled", label: { name: "auto-merge" }, sender: { login: "phil", type: "User" } },
+    payload: { action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING }, sender: { login: "phil", type: "User" } },
   });
   const fires = (apiFetch: ReturnType<typeof fakeApiFetch>) =>
     apiFetch.mock.calls.filter(([url]) => (url as string).startsWith("https://routines.example/fire/"));
 
-  it("auto-merge fires the repo's loop-dispatch routine for real, logged as enforce", async () => {
-    const apiFetch = fakeApiFetch({ labels: ["auto-merge"] });
+  it(`${LABELS.AUTO_MERGING} fires the repo's loop-dispatch routine for real, logged as enforce`, async () => {
+    const apiFetch = fakeApiFetch({ labels: [LABELS.AUTO_MERGING] });
     vi.stubGlobal("fetch", apiFetch);
     const { ctx } = fakeCtx();
     const { db, inserted } = fakeDb();
@@ -564,7 +565,7 @@ describe("IssueCoordinator — MODE=enforce with the watchdog shadowed (Phase 4)
   });
 
   it("the watchdog stays shadow: an expiry comments nothing, swaps nothing, and logs shadow", async () => {
-    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    const apiFetch = fakeApiFetch({ labels: [LABELS.AI_READY] });
     vi.stubGlobal("fetch", apiFetch);
     const { ctx, storage } = fakeCtx();
     const { db, inserted } = fakeDb();
@@ -607,7 +608,7 @@ describe("IssueCoordinator — shadow mode (Phase 3)", () => {
   );
 
   it("watchdog expiry in shadow: no comment, no label swap, still logs watchdog_expired and clears pendingFire", async () => {
-    const apiFetch = fakeApiFetch({ labels: ["ready-for-ai"] });
+    const apiFetch = fakeApiFetch({ labels: [LABELS.AI_READY] });
     vi.stubGlobal("fetch", apiFetch);
     const { ctx, storage } = fakeCtx();
     const { db, inserted } = fakeDb();
@@ -623,7 +624,7 @@ describe("IssueCoordinator — shadow mode (Phase 3)", () => {
 
     expect(writes(apiFetch)).toEqual([]);
     expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toEqual(expect.arrayContaining(["ready-for-ai", "watchdog_expired", "shadow"]));
+    expect(inserted[0]).toEqual(expect.arrayContaining([LABELS.AI_READY, "watchdog_expired", "shadow"]));
     expect(await storage.get("pendingFire")).toBeUndefined();
   });
 });
@@ -657,7 +658,7 @@ describe("IssueCoordinator.fetch() — POST /routine-signal", () => {
     const { ctx, setAlarm } = fakeCtx();
     const coordinator = new IssueCoordinator(ctx, fakeEnv());
     await coordinator.fetch(
-      fetchRequest(labeledInput({ payload: { action: "issues.labeled", label: { name: "ready-for-ai" } } })),
+      fetchRequest(labeledInput({ payload: { action: "issues.labeled", label: { name: LABELS.AI_READY } } })),
     );
     setAlarm.mockClear();
 
@@ -679,7 +680,7 @@ describe("IssueCoordinator.fetch() — POST /routine-signal", () => {
     const { db, inserted } = fakeDb();
     const coordinator = new IssueCoordinator(ctx, fakeEnv({ DB: db }));
     await coordinator.fetch(
-      fetchRequest(labeledInput({ payload: { action: "issues.labeled", label: { name: "ready-for-ai" } } })),
+      fetchRequest(labeledInput({ payload: { action: "issues.labeled", label: { name: LABELS.AI_READY } } })),
     );
     inserted.length = 0;
 
@@ -706,7 +707,7 @@ describe("IssueCoordinator.fetch() — POST /routine-signal", () => {
     const { ctx, setAlarm, deleteAlarm } = fakeCtx();
     const coordinator = new IssueCoordinator(ctx, fakeEnv());
     await coordinator.fetch(
-      fetchRequest(labeledInput({ payload: { action: "issues.labeled", label: { name: "ready-for-ai" } } })),
+      fetchRequest(labeledInput({ payload: { action: "issues.labeled", label: { name: LABELS.AI_READY } } })),
     );
     setAlarm.mockClear();
 
@@ -743,14 +744,14 @@ describe("IssueCoordinator — the real check_suite.completed / merge-gate aggre
       fetchRequest(
         labeledInput({
           issueNumber,
-          payload: { action: "pull_request.labeled", label: { name: "auto-merge" } },
+          payload: { action: "pull_request.labeled", label: { name: LABELS.AUTO_MERGING } },
         }),
       ),
     );
   }
 
   it("a real check-runs failure -> applied, unlabel not called (soft: leaves the label on for a retry)", async () => {
-    vi.stubGlobal("fetch", fakeApiFetch({ checkRuns: [{ status: "completed", conclusion: "failure" }], labels: ["auto-merge"] }));
+    vi.stubGlobal("fetch", fakeApiFetch({ checkRuns: [{ status: "completed", conclusion: "failure" }], labels: [LABELS.AUTO_MERGING] }));
     const { ctx } = fakeCtx();
     const coordinator = new IssueCoordinator(ctx, fakeEnv());
     await labelAutoMerging(coordinator);
@@ -765,7 +766,7 @@ describe("IssueCoordinator — the real check_suite.completed / merge-gate aggre
   });
 
   it("real unresolvable conflicts (mergeable: false) -> applied, removeLabel actually called against the fake GitHub API", async () => {
-    vi.stubGlobal("fetch", fakeApiFetch({ mergeable: false, labels: ["auto-merge"] }));
+    vi.stubGlobal("fetch", fakeApiFetch({ mergeable: false, labels: [LABELS.AUTO_MERGING] }));
     const { ctx } = fakeCtx();
     const coordinator = new IssueCoordinator(ctx, fakeEnv());
     await labelAutoMerging(coordinator);
@@ -783,11 +784,11 @@ describe("IssueCoordinator — the real check_suite.completed / merge-gate aggre
 
     const deleteCall = fetchSpy.mock.calls.find(([, init]) => (init as RequestInit)?.method === "DELETE");
     expect(deleteCall).toBeDefined();
-    expect((deleteCall![0] as string)).toContain("/labels/auto-merge");
+    expect((deleteCall![0] as string)).toContain(`/labels/${LABELS.AUTO_MERGING}`);
   });
 
   it("real all-green facts -> no_event, gate passes, no GitHub write beyond the reads", async () => {
-    vi.stubGlobal("fetch", fakeApiFetch({ labels: ["auto-merge"] }));
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: [LABELS.AUTO_MERGING] }));
     const { ctx } = fakeCtx();
     const coordinator = new IssueCoordinator(ctx, fakeEnv());
     await labelAutoMerging(coordinator);

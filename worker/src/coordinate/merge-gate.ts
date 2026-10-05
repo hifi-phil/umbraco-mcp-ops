@@ -1,16 +1,16 @@
-// The merge gate's two outcomes when auto-merge is on: a hard block
-// (merge-blocked) or CI failing, handed to rework-loop up to
-// MAX_CI_FIX_ATTEMPTS times; and the settled facts both read.
+// The merge gate's two outcomes when LABELS.AUTO_MERGING is on: a hard block
+// (LABELS.MERGE_BLOCKED) or CI failing, handed to rework-loop up to
+// caps.ciFixAttempts times; and the settled facts both read.
 
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { failedCheckNames, type MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS } from "@orchestrator/graph/constants/events";
-import { MAX_CI_FIX_ATTEMPTS, depsFor, type Acting, type CoordinateResult, type Deps, type IssueRef } from "./types";
+import { depsFor, type Acting, type CoordinateResult, type Deps, type IssueRef } from "./types";
 import { applyEvent } from "./apply";
 
-/** CI failed under auto-merge: swap auto-merge -> auto-rework so
- * rework-loop fixes it (its push swaps back to auto-merge), up to
- * MAX_CI_FIX_ATTEMPTS per PR, then merge-blocked. */
+/** CI failed under {@link LABELS.AUTO_MERGING}: swap {@link LABELS.AUTO_MERGING} -> {@link LABELS.AUTO_REWORKING} so
+ * rework-loop fixes it (its push swaps back to {@link LABELS.AUTO_MERGING}), up to
+ * caps.ciFixAttempts per PR, then {@link LABELS.MERGE_BLOCKED}. */
 export async function handToRework(
   deps: Deps,
   input: IssueRef & Acting,
@@ -19,14 +19,14 @@ export async function handToRework(
 ): Promise<CoordinateResult> {
   const failed = failedCheckNames(facts).join(", ") || "a required check";
   const attempts = (await deps.getCiFix())?.attempts ?? 0;
-  if (attempts >= MAX_CI_FIX_ATTEMPTS) {
+  if (attempts >= deps.caps.ciFixAttempts) {
     return blockMerge(deps, input, currentLabels, `CI still failing after ${attempts} fix attempts (${failed})`);
   }
   const result = await applyEvent(deps, input, EVENTS.MERGE_GATE_FAILED_SOFT, currentLabels);
   if (result.outcome === "applied") {
-    // A merge-blocked PR's retry (auto-merge re-added, read as auto-merge):
-    // the rule swaps only auto-merge, so merge-blocked comes off here, or
-    // merge-blocked + auto-rework would read as ambiguous from then on.
+    // A LABELS.MERGE_BLOCKED PR's retry (LABELS.AUTO_MERGING re-added, read as LABELS.AUTO_MERGING):
+    // the rule swaps only LABELS.AUTO_MERGING, so LABELS.MERGE_BLOCKED comes off here, or
+    // LABELS.MERGE_BLOCKED + LABELS.AUTO_REWORKING would read as ambiguous from then on.
     if (currentLabels.includes(LABELS.MERGE_BLOCKED)) {
       await depsFor(deps, EVENTS.MERGE_GATE_FAILED_SOFT).io.removeLabel(input.owner, input.repo, input.issueNumber, LABELS.MERGE_BLOCKED);
     }
@@ -37,7 +37,7 @@ export async function handToRework(
       input.repo,
       input.issueNumber,
       `🔧 CI failing: ${failed}. Handing this to rework-loop to fix (attempt ${attempts + 1} of ` +
-        `${MAX_CI_FIX_ATTEMPTS}); \`auto-merge\` comes back when it pushes the fix. ` +
+        `${deps.caps.ciFixAttempts}); \`${LABELS.AUTO_MERGING}\` comes back when it pushes the fix. ` +
         `(Automatic, from the orchestrator's merge gate.)`,
     );
   }
@@ -59,7 +59,7 @@ export async function settledGateFacts(deps: Deps, input: IssueRef): Promise<Mer
 export const MERGEABLE_RETRIES = 2;
 export const MERGEABLE_RETRY_MS = 1000;
 
-/** auto-merge -> merge-blocked (the table's MERGE_GATE_FAILED_HARD rule),
+/** {@link LABELS.AUTO_MERGING} -> {@link LABELS.MERGE_BLOCKED} (the table's MERGE_GATE_FAILED_HARD rule),
  * plus a comment saying why, since the label alone doesn't. */
 export async function blockMerge(
   deps: Deps,
@@ -73,8 +73,8 @@ export async function blockMerge(
       input.owner,
       input.repo,
       input.issueNumber,
-      `🛑 Not merging: ${reason}. \`auto-merge\` is replaced by \`${LABELS.MERGE_BLOCKED}\`. ` +
-        `Fix it, then re-add \`auto-merge\` to try again. (Automatic, from the orchestrator's merge gate.)`,
+      `🛑 Not merging: ${reason}. \`${LABELS.AUTO_MERGING}\` is replaced by \`${LABELS.MERGE_BLOCKED}\`. ` +
+        `Fix it, then re-add \`${LABELS.AUTO_MERGING}\` to try again. (Automatic, from the orchestrator's merge gate.)`,
     );
   }
   return result;

@@ -74,7 +74,7 @@ function hasOwnSignatureMarker(body: string | undefined): boolean {
 
 // loop-dispatch's discussion-round gates 2–7 (route-event.sh's
 // issue_comment case), all fail-closed. Gate 1, "the issue carries
-// ai-discuss", is the reducer's: DISCUSSION_REPLY only has a rule from
+// LABELS.AI_DISCUSSING", is the reducer's: DISCUSSION_REPLY only has a rule from
 // that state. The self-marker gate (2) is checked by the caller first.
 const TRUSTED_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"];
 function isDiscussionReply(payload: WebhookPayload): boolean {
@@ -115,8 +115,8 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
           return EVENTS.LABELLED_AI_DISCUSSING;
         // issue-build-loop's own Step 3 swap. The same fact its outcome
         // comment carries, but native and reliably present (the comment
-        // wasn't, in shadow run 1). Also how a late build leaves ai-stuck.
-        case LABELS.AI_GENERATED:
+        // wasn't, in shadow run 1). Also how a late build leaves LABELS.AI_STUCK.
+        case LABELS.PR_OPEN:
           return EVENTS.BUILD_SUCCEEDED;
         case LABELS.AI_BLOCKED:
           return EVENTS.BUILD_BLOCKED;
@@ -160,10 +160,16 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
             return EVENTS.RELEASE_BLOCKED;
           case "release_published":
             return EVENTS.RELEASE_PUBLISHED;
+          case "review_passed":
+            return EVENTS.REVIEW_PASSED;
+          case "review_findings":
+            return EVENTS.REVIEW_FINDINGS;
+          case "review_blocked":
+            return EVENTS.REVIEW_BLOCKED;
         }
       }
 
-      // A discussion round. Whether the issue is actually in ai-discuss is
+      // A discussion round. Whether the issue is actually in LABELS.AI_DISCUSSING is
       // the reducer's call (see isDiscussionReply above).
       if (isDiscussionReply(payload)) return EVENTS.DISCUSSION_REPLY;
       return null;
@@ -177,6 +183,8 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
           return EVENTS.LABELLED_AUTO_REWORKING;
         case LABELS.AUTO_MERGING:
           return EVENTS.LABELLED_AUTO_MERGING;
+        case LABELS.AI_REVIEWING:
+          return EVENTS.LABELLED_AI_REVIEWING;
         default:
           return null;
       }
@@ -188,6 +196,8 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
           return EVENTS.UNLABELLED_AUTO_REWORKING;
         case LABELS.AUTO_MERGING:
           return EVENTS.UNLABELLED_AUTO_MERGING;
+        case LABELS.AI_REVIEWING:
+          return EVENTS.UNLABELLED_AI_REVIEWING;
         default:
           return null;
       }
@@ -198,7 +208,7 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
     // no outcome artifact, no loop change: rework-loop already pushes in
     // its own Step 4; this just reads the webhook that action already
     // produces. Every push maps here; reduce() only acts on it when the PR
-    // is in auto-rework, and elsewhere it's a CONTEXTUAL_EVENT that the
+    // is in LABELS.AUTO_REWORKING, and elsewhere it's a CONTEXTUAL_EVENT that the
     // coordinator ignores without logging (see graph.ts).
     case "pull_request.synchronize":
       return EVENTS.REWORK_PUSHED;

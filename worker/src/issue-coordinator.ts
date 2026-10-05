@@ -27,11 +27,14 @@ import {
   coordinateWatchdogExpired,
   resolveEnforced,
   watchdogOverrideFor,
+  capsFor,
+  DEFAULT_CAPS,
   type CiFix,
   type CoordinateInput,
   type Deps,
   type IssueRef,
   type PendingFire,
+  type ReviewLoop,
   type StatusUpdate,
   type RoutineSignalInput,
   type TransitionRow,
@@ -46,6 +49,7 @@ import { fireRoutine } from "./routines-client";
 import type { GitHubEnv } from "./github-client";
 import type { RoutinesEnv } from "./routines-client";
 import type { MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
+import type { LABELS } from "@orchestrator/graph/constants/labels"; // for the {@link LABELS.…} references in its doc comments
 
 export type IssueCoordinatorEnv = GitHubEnv &
   RoutinesEnv & {
@@ -54,11 +58,13 @@ export type IssueCoordinatorEnv = GitHubEnv &
     // (including unset) is shadow — see coordinate/types.ts's resolveEnforced.
     MODE?: string;
     // The watchdog's own switch, only honoured under MODE=enforce: "enforce"
-    // makes expiries move issues to ai-stuck and comment; else they only log.
+    // makes expiries move issues to LABELS.AI_STUCK and comment; else they only log.
     WATCHDOG?: string;
     // {"owner/repo": {"mode"?, "minutes"?}}: a repo's own watchdog switch and
     // timeout, over WATCHDOG and watchdogMinutesFor. See coordinate/.
     WATCHDOG_OVERRIDES_JSON?: string;
+    // Per-repo loop caps (coordinate/types.ts's capsFor); the e2e sandbox's.
+    CAP_OVERRIDES_JSON?: string;
   };
 
 /**
@@ -82,6 +88,8 @@ async function respond(run: () => Promise<unknown>): Promise<Response> {
 
 const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
+const REVIEW_REWORKS_KEY = "reviewReworks"; // review rework rounds on this PR (MAX_REVIEW_REWORKS)
+const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MAX_BOT_REVIEW_REWORKS)
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
 const CLOSED_KEY = "closedOnGitHub"; // its status row stays gone until reopened
@@ -97,7 +105,7 @@ export class IssueCoordinator {
    * One request at a time for this issue, start to finish. Cloudflare only
    * holds back the next request while a DO awaits its own storage, not while
    * it awaits GitHub or a routine, so two webhooks for one PR (say its
-   * auto-merge label and its CI finishing red) used to interleave mid-run:
+   * {@link LABELS.AUTO_MERGING} label and its CI finishing red) used to interleave mid-run:
    * one read labels the other was halfway through swapping (found by e2e on
    * sandbox PR #168). In memory is enough: a DO instance is the only one for
    * its issue, and an evicted instance has nothing in flight.
@@ -168,6 +176,7 @@ export class IssueCoordinator {
     return {
       enforced: resolveEnforced(this.env.MODE, override?.mode ?? this.env.WATCHDOG),
       watchdogMinutes,
+      caps: ref ? capsFor(this.env.CAP_OVERRIDES_JSON, ref.owner, ref.repo) : DEFAULT_CAPS,
       botLogin: async () => (appConfigured(this.env) ? appBotLogin(this.env) : null),
       markCompleted: async (at: string) => {
         await this.ctx.storage.put(COMPLETED_KEY, at);
@@ -226,6 +235,15 @@ export class IssueCoordinator {
       },
       watchdogArmed: async () => (await this.ctx.storage.getAlarm()) !== null,
       getPendingFire: async () => (await this.ctx.storage.get<PendingFire>(PENDING_FIRE_KEY)) ?? null,
+      getReviewReworks: async () => (await this.ctx.storage.get<number>(REVIEW_REWORKS_KEY)) ?? 0,
+      setReviewReworks: async (rounds: number) => {
+        await this.ctx.storage.put(REVIEW_REWORKS_KEY, rounds);
+      },
+      getReviewLoop: async () => (await this.ctx.storage.get<ReviewLoop>(REVIEW_LOOP_KEY)) ?? null,
+      setReviewLoop: async (state: ReviewLoop | null) => {
+        if (state) await this.ctx.storage.put(REVIEW_LOOP_KEY, state);
+        else await this.ctx.storage.delete(REVIEW_LOOP_KEY);
+      },
       getCiFix: async () => (await this.ctx.storage.get<CiFix>(CI_FIX_KEY)) ?? null,
       setCiFix: async (state: CiFix | null) => {
         if (state) await this.ctx.storage.put(CI_FIX_KEY, state);

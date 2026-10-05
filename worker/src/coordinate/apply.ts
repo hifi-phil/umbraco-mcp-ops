@@ -82,12 +82,14 @@ export async function applyEvent(
   }
 
   if (rule.run) {
-    await deps.fireRoutine(input.owner, input.repo, input.issueNumber, rule.run);
     // Only arm the watchdog where the table says what an expiry means —
     // see graph.ts's watchdog section (issue-discuss-loop never reports an
     // outcome, so watching it would only ever raise false alarms).
     const target = rule.to.kind === "label" ? rule.to.value : current;
-    if (isWatched(target)) {
+    const watched = isWatched(target);
+    // Armed before the fire (Phase 9): a crash between deciding to fire and
+    // firing leaves the watchdog to notice, never a silent lost attempt.
+    if (watched) {
       await deps.setPendingFire({
         owner: input.owner,
         repo: input.repo,
@@ -96,6 +98,14 @@ export async function applyEvent(
       });
     } else {
       await deps.clearPendingFire();
+    }
+    try {
+      await deps.fireRoutine(input.owner, input.repo, input.issueNumber, rule.run);
+    } catch (e) {
+      // The fire was refused, not lost: nothing's running, so disarm (the
+      // sweep re-fires a trigger left with nothing watching it), and fail.
+      if (watched) await deps.clearPendingFire();
+      throw e;
     }
   } else {
     await deps.clearPendingFire();
@@ -144,15 +154,15 @@ export function deriveState(labels: readonly string[]): State | "ambiguous" {
   const tracked = labels.filter((l) => trackedSet.includes(l)) as Label[];
   if (tracked.length === 0) return "none";
   if (tracked.length === 1) return tracked[0]!;
-  // The one expected pairing: ai-stuck plus a label a late routine swapped
-  // in itself after the watchdog had already fired (e.g. ai-stuck +
-  // generated-by-ai, just before its outcome comment arrives). A known race
-  // with a defined answer — the issue is still ai-stuck, and graph.ts's
-  // "leaving ai-stuck" rules decide what the late outcome does with it.
+  // The one expected pairing: LABELS.AI_STUCK plus a label a late routine swapped
+  // in itself after the watchdog had already fired (e.g. LABELS.AI_STUCK +
+  // LABELS.PR_OPEN, just before its outcome comment arrives). A known race
+  // with a defined answer — the issue is still LABELS.AI_STUCK, and graph.ts's
+  // "leaving LABELS.AI_STUCK" rules decide what the late outcome does with it.
   if (tracked.length === 2 && tracked.includes(LABELS.AI_STUCK)) return LABELS.AI_STUCK;
-  // A human re-added auto-merge to a merge-blocked PR that's still blocked:
-  // read it as auto-merge, so the hard-block rule swaps it back to
-  // merge-blocked (which is already there, so only auto-merge comes off).
+  // A human re-added LABELS.AUTO_MERGING to a LABELS.MERGE_BLOCKED PR that's still blocked:
+  // read it as LABELS.AUTO_MERGING, so the hard-block rule swaps it back to
+  // LABELS.MERGE_BLOCKED (which is already there, so only LABELS.AUTO_MERGING comes off).
   if (tracked.length === 2 && tracked.includes(LABELS.MERGE_BLOCKED) && tracked.includes(LABELS.AUTO_MERGING)) {
     return LABELS.AUTO_MERGING;
   }

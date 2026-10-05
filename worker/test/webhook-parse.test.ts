@@ -6,6 +6,7 @@ import {
   toWebhookPayload,
   verifySignature,
 } from "../src/webhook-parse";
+import { LABELS } from "@orchestrator/graph/constants/labels";
 
 describe("combineEventAction", () => {
   it("joins event type and action with a dot", () => {
@@ -70,14 +71,14 @@ describe("toWebhookPayload", () => {
       {
         action: "labeled",
         sender: { login: "a-human", type: "User" },
-        label: { name: "ready-for-ai" },
+        label: { name: LABELS.AI_READY },
       },
       "issues",
     );
     expect(payload).toEqual({
       action: "issues.labeled",
       sender: { login: "a-human", type: "User" },
-      label: { name: "ready-for-ai" },
+      label: { name: LABELS.AI_READY },
       comment: undefined,
       review: undefined,
       pull_request: undefined,

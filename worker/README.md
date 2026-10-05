@@ -176,7 +176,7 @@ Then drive it as if a human labelled an issue on github.com:
 ```bash
 curl -X POST http://127.0.0.1:8943/mock/simulate-label \
   -H "Content-Type: application/json" \
-  -d '{"owner":"hifi-phil","repo":"umbraco-mcp-ops","issueNumber":500,"label":"ready-for-ai","senderLogin":"phil"}'
+  -d '{"owner":"hifi-phil","repo":"umbraco-mcp-ops","issueNumber":500,"label":"ai-ready","senderLogin":"phil"}'
 ```
 
 **What actually happened, verified, in one run of this:**
@@ -190,7 +190,7 @@ curl -X POST http://127.0.0.1:8943/mock/simulate-label \
    the bot** (`Authorization: Bearer mock-bot-token`, matching how the
    real loop would authenticate) — via
    `POST /repos/.../issues/500/comments` triggered the real
-   remove-`ready-for-ai`/add-`generated-by-ai` label ops, each of which the mock
+   remove-`ai-ready`/add-`pr-open` label ops, each of which the mock
    echoed back as its own webhook (`issues.unlabeled`, `issues.labeled`),
    attributed to the bot identity.
 3. **Both of those self-fired webhooks were correctly dropped** —
@@ -200,7 +200,7 @@ curl -X POST http://127.0.0.1:8943/mock/simulate-label \
    the D1 log ending up with exactly **2** rows (the two real
    transitions), not 4 — the self-fired webhooks never reached
    `logTransition`, let alone caused a third transition.
-4. Final mock state: `labels: ["generated-by-ai"]`, `ready-for-ai` genuinely
+4. Final mock state: `labels: ["pr-open"]`, `ai-ready` genuinely
    gone, the outcome comment recorded — `GET /mock/state` to inspect.
 
 `POST /mock/reset` clears all mock state between runs (D1 needs its own
@@ -238,7 +238,7 @@ webhook a raw curl would.
 
 ```bash
 curl -X POST http://127.0.0.1:8943/repos/o/r/issues/500/labels \
-  -H "Content-Type: application/json" -d '{"labels":["ready-for-ai"]}'
+  -H "Content-Type: application/json" -d '{"labels":["ai-ready"]}'
 
 curl -X POST http://127.0.0.1:8943/mock/run-agent-outcome-test \
   -H "Content-Type: application/json" \
@@ -359,16 +359,16 @@ reducer actually did with it. Six transitions, run this way, across four
 loops:
 
 ```
-issue-build-loop   id=9  from=none          event=labelled_ai_ready  -> label(ready-for-ai), run issue-build-loop
-issue-build-loop   id=10 from=generated-by-ai   event=build_succeeded    -> APPLIED: noop (post-swap confirm)
-auto-release-loop  id=13 from=auto-release event=release_published  -> APPLIED: close
-rework-loop        id=15 from=none           event=labelled_auto_reworking -> label(auto-rework), run rework-loop
-rework-loop        id=16 from=auto-rework event=rework_pushed      -> APPLIED: unlabel
-merge-flow         id=17 from=none           event=labelled_auto_merging  -> label(auto-merge), run merge-flow
-merge-flow         id=18 from=auto-merge   event=merged             -> APPLIED: close
-merge-flow (gate)  id=19 from=none           event=labelled_auto_merging  -> label(auto-merge), run merge-flow
-merge-flow (gate)  id=20 from=auto-merge   event=merge_gate_failed_soft -> APPLIED: noop (a real failed check-run, independently re-fetched)
-merge-flow (gate)  id=22 from=auto-merge   event=merge_gate_failed_hard -> APPLIED: unlabel (real mergeable:false, independently re-fetched)
+issue-build-loop   id=9  from=none          event=labelled_ai_ready  -> label(ai-ready), run issue-build-loop
+issue-build-loop   id=10 from=pr-open   event=build_succeeded    -> APPLIED: noop (post-swap confirm)
+auto-release-loop  id=13 from=auto-releasing event=release_published  -> APPLIED: close
+rework-loop        id=15 from=none           event=labelled_auto_reworking -> label(auto-reworking), run rework-loop
+rework-loop        id=16 from=auto-reworking event=rework_pushed      -> APPLIED: unlabel
+merge-flow         id=17 from=none           event=labelled_auto_merging  -> label(auto-merging), run merge-flow
+merge-flow         id=18 from=auto-merging   event=merged             -> APPLIED: close
+merge-flow (gate)  id=19 from=none           event=labelled_auto_merging  -> label(auto-merging), run merge-flow
+merge-flow (gate)  id=20 from=auto-merging   event=merge_gate_failed_soft -> APPLIED: noop (a real failed check-run, independently re-fetched)
+merge-flow (gate)  id=22 from=auto-merging   event=merge_gate_failed_hard -> APPLIED: unlabel (real mergeable:false, independently re-fetched)
 ```
 
 Every kickoff labeling and every native signal (`rework_pushed`, `merged`,
@@ -388,8 +388,8 @@ calls fired were correctly dropped by the self-trigger guard — confirmed
 with a real agent doing the firing, not just curl.
 
 **`id=10`'s row above reflects a fix, not the original finding.** The
-first time this ran, `build_succeeded` arrived from state `generated-by-ai`
-but the rule was keyed on `ready-for-ai` — issue-build-loop's own Step 3
+first time this ran, `build_succeeded` arrived from state `pr-open`
+but the rule was keyed on `ai-ready` — issue-build-loop's own Step 3
 always swaps the label *before* posting the comment, so a rule keyed on
 the pre-swap state can never fire, and this dropped as "no matching
 rule" every time, for all three of `build_succeeded`, `build_blocked`,
@@ -397,7 +397,7 @@ and `release_blocked` (the fourth, `release_published`, never had this
 problem — `auto-release-loop`'s Step 4 doesn't remove its label before
 closing, so it was already keyed correctly by accident). Fixed by
 rekeying all three to their post-swap state
-(`AI_GENERATED`/`AI_BLOCKED`/`"none"`), each now firing an idempotent
+(`PR_OPEN`/`AI_BLOCKED`/`"none"`), each now firing an idempotent
 `noop` confirm — same shape `MERGED`'s `to: close` already used. See
 `graph/graph.ts`'s comments on each rule.
 
@@ -454,8 +454,8 @@ Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
 
 `src/scheduler.ts`: one **Scheduler** Durable Object.
 
-- **What it catches:** an issue left in a trigger state (`ready-for-ai`,
-  `auto-release`, `auto-rework`, `auto-merge`) with no watchdog running and
+- **What it catches:** an issue left in a trigger state (`ai-ready`,
+  `auto-releasing`, `auto-reworking`, `auto-merging`) with no watchdog running and
   nothing logged for twice its routine's timeout. That's a fire that never
   got out, or a lost watchdog.
 - **How it works:** its alarm sweeps every `sweep_minutes` (default 15),
@@ -582,20 +582,20 @@ reducer like any other fact, rather than only leaving a comment. When the
 alarm fires, `coordinate/watchdog.ts`'s `coordinateWatchdogExpired` raises
 `watchdog_expired` against the live labels, and `graph.ts`'s table moves
 the issue to **`ai-stuck`** from any state a watched routine can leave it
-in (`ready-for-ai`, `auto-release`, `auto-rework`, `auto-merge`, plus
-post-swap `generated-by-ai`/`ai-blocked` for a build that swapped its label
+in (`ai-ready`, `auto-releasing`, `auto-reworking`, `auto-merging`, plus
+post-swap `pr-open`/`ai-blocked` for a build that swapped its label
 but never posted its outcome). It also comments (quoting the last heartbeat
 step if there was one) and logs the transition to D1.
 
 - **What gets watched is decided by the table.** A fired routine only arms
   the watchdog if its target state has a `watchdog_expired` rule
   (`graph.ts`'s `isWatched`). `issue-discuss-loop` never posts an outcome,
-  so `ai-discuss` has no such rule, and discussions no longer raise a
+  so `ai-discussing` has no such rule, and discussions no longer raise a
   false alarm 30 minutes after every fire.
 - **Two ways out of `ai-stuck`.** A late, authoritative outcome still wins,
   and a human re-adding the trigger label retries that loop. A slow routine
   that finishes after the watchdog usually swaps its own label first, which
-  leaves `ai-stuck` plus e.g. `generated-by-ai` on the issue. `deriveState()`
+  leaves `ai-stuck` plus e.g. `pr-open` on the issue. `deriveState()`
   reads that one pairing as `ai-stuck` rather than `ambiguous`. Any other
   pair of tracked labels is still ambiguous.
 - **Retry-safe ordering.** Cloudflare retries a throwing `alarm()` with
@@ -645,7 +645,7 @@ WHERE mode = 'shadow' AND event = 'watchdog_expired' GROUP BY from_state;
 Webhooks `translate()` doesn't recognise at all leave no row. Neither do
 **contextual events** (`graph.ts`'s `CONTEXTUAL_EVENTS`: pushes, merges,
 comments, closes and trigger-label removals) outside the states where they
-mean something. A push to a PR that isn't in `auto-rework` is ordinary
+mean something. A push to a PR that isn't in `auto-reworking` is ordinary
 activity, not a gap. The watchdog's timeout is per routine
 (`coordinate/types.ts`'s `watchdogMinutesFor`: release 60 min, build 60,
 others 30, set from real run times by `queries/routine-durations.sql`). Run 1's numbers and the fixes they led to are in
@@ -672,12 +672,12 @@ default branch, so that deletion only takes effect when it reaches `main`.
 
 **Never let the Worker and the old caller both fire.** loop-dispatch's
 re-check doesn't protect against two fires at once: both sessions start
-before either has changed anything, so a `ready-for-ai` would get two builds
-(two PRs) and an `ai-discuss` two replies. The cutover closes that window:
+before either has changed anything, so an `ai-ready` would get two builds
+(two PRs) and an `ai-discussing` two replies. The cutover closes that window:
 
 1. In `terraform.tfvars`: fill in `repo_routines` (Fire URL + token), set
-   `mode = "enforce"`, and give `github_read_token` Issues + Pull requests
-   **write** (enforced rules remove labels and close). `tofu apply`.
+   `mode = "enforce"`, and make sure the GitHub App has Issues + Pull
+   requests **write** (enforced rules remove labels and close). `tofu apply`.
 2. **Straight away**, disable the old caller, and don't label anything
    between steps 1 and 2:
    `gh workflow disable "loop-dispatch (caller)" --repo <owner>/<repo>`
@@ -685,7 +685,7 @@ before either has changed anything, so a `ready-for-ai` would get two builds
 3. Delete the caller: release to `main` here, or a PR in the other repo.
    The disable was only the bridge until then.
 
-Check it with a throwaway `ai-discuss` issue: exactly one reply, and a
+Check it with a throwaway `ai-discussing` issue: exactly one reply, and a
 `mode = enforce` row in D1.
 
 To undo: re-enable the caller workflow (or restore the file) first, and in
@@ -762,12 +762,12 @@ three steps.
   shortly before it expires). The **self-trigger guard** is
   `translate(payload, { botLogin })`: label changes the bot made come back
   as webhooks and are dropped. The bot login is the App's `<slug>[bot]`,
-  looked up once per isolate. So the CI-fix cycle's rules (`auto-merge` →
-  `auto-rework` → `auto-merge`) fire rework-loop and merge-flow directly
+  looked up once per isolate. So the CI-fix cycle's rules (`auto-merging` →
+  `auto-reworking` → `auto-merging`) fire rework-loop and merge-flow directly
   instead of through their echo. Tofu requires the App, because those rules
   would fire twice with an identity the guard can't recognise. The attempt
   count (`ciFix`, capped at `MAX_CI_FIX_ATTEMPTS`) lives in DO storage and
-  resets when a human re-adds `auto-merge` after `merge-blocked`.
+  resets when a human re-adds `auto-merging` after `merge-blocked`.
 - **Private repos work through the App.** The merge gate reads CI through
   the check-runs API. A fine-grained personal token has no Checks
   permission, so on a private repo it got 403. The GitHub App has

@@ -113,8 +113,8 @@ watchdog, so that keeps its own switch until its timeouts are proven.
 The procedure and switch order are in `worker/README.md`'s "Enforcing".
 The self-trigger guard didn't block this: at the time the table never added
 a trigger label, so the Worker's own writes (removals, `ai-stuck`) came back
-as no-ops. Phase 5's CI-fix cycle changed that: it adds `auto-rework` and
-`auto-merge`, and relies on those writes echoing back to fire the loops. So
+as no-ops. Phase 5's CI-fix cycle changed that: it adds `auto-reworking` and
+`auto-merging`, and relies on those writes echoing back to fire the loops. So
 the guard (Phase 7) has to come with a `run` on those two rules; see
 `worker/README.md`'s known gaps. The GitHub App (a separate identity) is still wanted for Phase 5,
 multiple orgs, and the Checks permission.
@@ -134,12 +134,12 @@ to be true before it's deleted:
 
 | Loop / step | Self-swap today | Deletable once |
 |---|---|---|
-| `issue-build-loop` Step 3 (success) | remove `ready-for-ai`, add `generated-by-ai` | the DO applies `to-github.ts`'s `labelOps()` output for `build_succeeded` itself, shadow-mode-verified against real traffic |
-| `issue-build-loop` Step 3 (blocked) | remove `ready-for-ai`, add `ai-blocked` | same, for `build_blocked` |
-| `auto-release-loop` Step 2.5 | remove `auto-release` on BLOCK | same, for `release_blocked` |
+| `issue-build-loop` Step 3 (success) | remove `ai-ready`, add `pr-open` | the DO applies `to-github.ts`'s `labelOps()` output for `build_succeeded` itself, shadow-mode-verified against real traffic |
+| `issue-build-loop` Step 3 (blocked) | remove `ai-ready`, add `ai-blocked` | same, for `build_blocked` |
+| `auto-release-loop` Step 2.5 | remove `auto-releasing` on BLOCK | same, for `release_blocked` |
 | `auto-release-loop` Step 4 | close the issue on publish | same, for `release_published` |
-| `rework-loop` Step 5 | remove `auto-rework` | same, for `rework_pushed` — already sourced from a native signal, so this one only needs the DO live, not a new artifact |
-| `merge-flow` Step 4 (hard block) | remove `auto-merge` | same, for `merge_gate_failed_hard` — the live gate re-check this event needs now exists for real (`worker/src/coordinate/webhook.ts`'s `handleCheckSuiteCompleted` + `graph/github/merge-gate.ts`, see 11-outcome-artifact.md and `worker/README.md`), so this row now only needs the DO live and shadow-verified, same bar as every other row — no longer blocked on infrastructure that doesn't exist |
+| `rework-loop` Step 5 | remove `auto-reworking` | same, for `rework_pushed` — already sourced from a native signal, so this one only needs the DO live, not a new artifact |
+| `merge-flow` Step 4 (hard block) | remove `auto-merging` | same, for `merge_gate_failed_hard` — the live gate re-check this event needs now exists for real (`worker/src/coordinate/webhook.ts`'s `handleCheckSuiteCompleted` + `graph/github/merge-gate.ts`, see 11-outcome-artifact.md and `worker/README.md`), so this row now only needs the DO live and shadow-verified, same bar as every other row — no longer blocked on infrastructure that doesn't exist |
 
 **Exit:** Every row above deleted, one at a time as its precondition
 clears — not "removed everywhere" as a single cutover, and never left
@@ -155,12 +155,12 @@ passes it on, and each loop skips its own swap only in that mode:
 
 | Row | In orchestrated mode |
 |---|---|
-| build success / blocked | loop posts the **required** marker, no swap; Worker swaps via new pre-swap rules (`ready-for-ai` + `build_*`) |
-| release blocked | loop posts the required marker, keeps the label; Worker removes `auto-release` |
+| build success / blocked | loop posts the **required** marker, no swap; Worker swaps via new pre-swap rules (`ai-ready` + `build_*`) |
+| release blocked | loop posts the required marker, keeps the label; Worker removes `auto-releasing` |
 | release published | unchanged: the loop's close is itself native, and the marker is required too |
-| rework pushed | loop doesn't remove `auto-rework` after a push; Worker does on the native push. Still removes it itself if it pushed nothing |
-| merge hard block | the **Worker** checks for a conflict or requested changes when `auto-merge` is added (reviews aren't expected after that) and whenever CI finishes, swaps `auto-merge` → **`merge-blocked`** and comments the reason, without firing merge-flow. Re-adding `auto-merge` retries. merge-flow makes the same swap only for a block the Worker missed |
-| merge CI failure | when CI is red under `auto-merge` (at label time or when a suite finishes), the **Worker** swaps `auto-merge` → **`auto-rework`** and comments the failing checks; rework-loop fixes them, and its push swaps `auto-rework` back to `auto-merge`, which re-runs the gate. After 3 attempts on one PR it goes to `merge-blocked` |
+| rework pushed | loop doesn't remove `auto-reworking` after a push; Worker does on the native push. Still removes it itself if it pushed nothing |
+| merge hard block | the **Worker** checks for a conflict or requested changes when `auto-merging` is added (reviews aren't expected after that) and whenever CI finishes, swaps `auto-merging` → **`merge-blocked`** and comments the reason, without firing merge-flow. Re-adding `auto-merging` retries. merge-flow makes the same swap only for a block the Worker missed |
+| merge CI failure | when CI is red under `auto-merging` (at label time or when a suite finishes), the **Worker** swaps `auto-merging` → **`auto-reworking`** and comments the failing checks; rework-loop fixes them, and its push swaps `auto-reworking` back to `auto-merging`, which re-runs the gate. After 3 attempts on one PR it goes to `merge-blocked` |
 
 The risk this moves: an orchestrated loop that skips the marker now leaves
 the issue in its trigger label (the marker appeared 1 in 6 times while it
@@ -199,7 +199,7 @@ within 30 minutes, quoting its last known step, not an invisible stall.
   minutes. The four shadow expiries:
   - two were run-1 issues, both since fixed: one false alarm (#116), and
     one release that really did run long (#118)
-  - one was a real stall: a merge-flow left on `auto-merge` before
+  - one was a real stall: a merge-flow left on `auto-merging` before
     `merge-blocked` existed (#138)
   - one fire never got anything back (#139)
 - **Turning it on** for `umbraco-mcp-ops` is `watchdog = "enforce"` in tofu.
@@ -307,6 +307,26 @@ and attempt, and last-known step, without querying GitHub or a DO directly.
 of running forever, and a crash between "decided to fire" and "actually
 fired" is never silent.
 
+**Status (04-10-2026):**
+- **Rework cap: built.** CI-fix reworks were already capped
+  (`MAX_CI_FIX_ATTEMPTS`, 3, then `merge-blocked`). Review rework rounds
+  (`auto-reworking` added by a reviewer, person or bot) are now counted per
+  PR: past `MAX_REVIEW_REWORKS` (3) the next goes to `ai-stuck`
+  (`rework_cap_reached`) with a comment, firing nothing. A person re-adding
+  `auto-reworking` from `ai-stuck` retries with a fresh count.
+- **Record-then-fire: built.** The watchdog is armed before the fire, on
+  the webhook path and the sweep's re-fire alike, so a crash between them
+  leaves the watchdog to notice. A fire that's refused (an error, not a
+  crash) disarms and fails, as before: nothing is running, and the sweep
+  re-fires a trigger left with nothing watching it.
+- **Concurrency cap and ready queue: deferred until there are several
+  users.** With one person labelling, every burst is one they started and
+  can see; nothing has stalled or collided so far. Adding it later is cheap:
+  every fire goes through the one arm-then-fire step (`coordinate/apply.ts`,
+  `coordinate/reconcile.ts`), and `transitions` already records each fire,
+  so peak in-flight per repo can be read back when it's needed. The design
+  agreed for then is in [08-open-questions.md](08-open-questions.md).
+
 ## Phase 10 — Split nodes that still fail too often
 
 **Entry:** Phases 1–9 live, with real per-node failure/timeout data from the
@@ -319,6 +339,18 @@ splitting costs more agent context, not less (see
 
 **Exit:** N/A — this phase repeats as needed, driven by data rather than a
 schedule.
+
+**Status (04-10-2026):** the first two splits are designed: build/review
+and release, in [15-agent-splits.md](15-agent-splits.md). They come from
+long sessions losing context and a review that isn't independent, rather
+than failure data. Build/review goes first, in the sandbox.
+- **Build/review, graph and Worker: built.** `ai-reviewing` and its CI gate,
+  `review-loop`'s three outcomes, the push back to `ai-reviewing`, and the
+  review's own round cap (`MAX_BOT_REVIEW_REWORKS`), counted apart from a
+  person's. Tested with the e2e stub; dormant on real repos until the
+  skills change (nothing adds `ai-reviewing` there yet).
+- **Still to build:** the decision and build logs, the skills, and what
+  people see.
 
 ## Note on infrastructure timing
 
