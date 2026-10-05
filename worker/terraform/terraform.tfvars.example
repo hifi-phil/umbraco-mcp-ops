@@ -4,7 +4,6 @@
 cloudflare_account_id = "your-account-id"
 workers_subdomain     = "your-subdomain"   # <script>.<this>.workers.dev
 github_owner          = "hifi-phil"
-github_repo           = "your-test-repo"   # where the real loops run (ai-ready, …)
 # The Worker's GitHub App (worker/README.md, known gaps): its ID, and the
 # private key GitHub downloads, pasted as-is. The Worker and the e2e stub
 # both act as it; there's no personal token.
@@ -25,6 +24,8 @@ EOT
 # mode = "shadow"      # the default; "enforce" = the Worker dispatches the repo.
 #                      # Then delete the repo's loop-dispatch caller workflow.
 # watchdog = "shadow"  # only honoured under mode = "enforce"
+# sweep_enforce_repos = ["umbraco-mcp-ops"]  # these repos' sweeps re-fire for real
+#                                            # (needs watchdog = "enforce")
 
 # Leave commented for the first apply; once the Worker exists, set it to
 # what `tofu output migration_tag` shows ("v2" for a fresh deploy).

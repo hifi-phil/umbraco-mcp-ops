@@ -57,6 +57,12 @@ variable "sweep_mode" {
   }
 }
 
+variable "sweep_enforce_repos" {
+  type        = list(string)
+  default     = []
+  description = "Repos under github_owner whose sweep re-fires for real while sweep_mode stays shadow for the rest (the e2e sandbox is always included). Each repo's watchdog must enforce too (watchdog = \"enforce\"), or its re-fires are held and only logged: the watchdog is what bounds a re-fire that dies."
+}
+
 variable "mode" {
   type        = string
   default     = "shadow"

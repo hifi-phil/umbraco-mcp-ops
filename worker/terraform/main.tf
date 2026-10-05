@@ -110,7 +110,14 @@ resource "cloudflare_workers_script" "worker" {
     { type = "plain_text", name = "SWEEP_MINUTES", text = tostring(var.sweep_minutes) },
     { type = "plain_text", name = "SWEEP_MODE", text = var.sweep_mode },
     { type = "plain_text", name = "SWEEP_MAX_REFIRES", text = tostring(var.sweep_max_refires) },
-    { type = "plain_text", name = "SWEEP_ENFORCE_REPOS", text = local.e2e ? "${var.github_owner}/${var.e2e_repo}" : "" },
+    {
+      type = "plain_text",
+      name = "SWEEP_ENFORCE_REPOS",
+      text = join(",", concat(
+        local.e2e ? ["${var.github_owner}/${var.e2e_repo}"] : [],
+        [for r in var.sweep_enforce_repos : "${var.github_owner}/${r}"],
+      )),
+    },
     { type = "d1", name = "DB", id = cloudflare_d1_database.log.id },
     { type = "plain_text", name = "MODE", text = var.mode },
     { type = "plain_text", name = "WATCHDOG", text = var.watchdog },
