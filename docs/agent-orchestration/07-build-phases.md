@@ -352,6 +352,58 @@ than failure data. Build/review goes first, in the sandbox.
 - **Still to build:** the decision and build logs, the skills, and what
   people see.
 
+## Phase 11 — Trial on a private copy of an Umbraco MCP repo
+
+**Entry:** The lane passes the e2e suite on the current labels, and the
+Worker answers GitHub in time (#223) with the sweep enforcing on
+umbraco-mcp-ops (#222).
+
+**Why:** the e2e suite proves the orchestrator against a stub agent. It
+can't show how the real skills and agents do on a real MCP codebase: real
+CI and test-suite times, the SQL Server and Umbraco setup in the cloud
+environment, and the failures only a real build hits. A trial on a copy of
+one of the Umbraco MCP repos shows that before any umbraco repo is
+onboarded, and needs no App install on the umbraco org.
+
+**Do:**
+1. **Make a standalone private copy, not a GitHub fork**, for example
+   `hifi-phil/umbraco-cms-mcp-dev-test` from Umbraco-CMS-MCP-Dev:
+   - On a fork, GitHub points new PRs at the *upstream* repo, so a build
+     that doesn't name its repo could open a PR on the real umbraco repo.
+     A copy has no upstream to aim at.
+   - Forks also start with Issues and Actions off, without the original's
+     secrets, and with some workflow triggers behaving differently. A copy
+     behaves like the real repo.
+2. **Switch off anything that reaches the outside world on the copy:**
+   - npm publishing: disable the workflow that publishes on a tag or
+     release, or leave its secrets out, so a test release can't publish a
+     package.
+   - the Slack release message: `auto-release-loop` posts stable and RC
+     releases to `release-notifications`; a test release must not.
+   - anything else a release triggers, or that uses a real secret.
+3. **Wire it up:** install the App on the copy, create the labels (the
+   names in `graph/constants/labels.ts`), add its Fire URL to
+   `repo_routines`, and give it a cloud environment with SQL Server
+   (`worker-env`).
+4. **Watchdog at real timeouts first.** MCP builds run full test suites, so
+   a per-repo override (`WATCHDOG_OVERRIDES_JSON`) may be needed once real
+   build times are known (`worker/queries/routine-durations.sql`).
+5. **Run real issues through the lane:** `ai-discussing` → `ai-ready` →
+   `pr-open` → `auto-merging` → a test release, with the sweep enforcing.
+6. **Run it twice:** once now on the current lane, for real timings and
+   failure modes; again after the review split's skills land
+   ([15-agent-splits.md](15-agent-splits.md), part 3), so `ai-reviewing`
+   is tried with real agents before an umbraco repo sees it.
+
+**Exit:** a few issues taken through the whole lane on the copy without a
+person stepping in beyond the labels; real per-routine durations recorded
+and the watchdog set from them; nothing published, posted or opened outside
+the copy. Then onboard the first umbraco repo the same way, with its
+outside-world steps left on.
+
+**Status (05-10-2026):** proposed. Which MCP repo to copy is still to
+choose (Umbraco-CMS-MCP-Dev is the likely one).
+
 ## Note on infrastructure timing
 
 The Durable Object can be deferred if it's adding conceptual load early —
