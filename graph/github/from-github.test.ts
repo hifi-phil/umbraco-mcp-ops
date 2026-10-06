@@ -235,6 +235,15 @@ describe("translate — the review", () => {
   });
 });
 
+describe("translate — the Worker's own hand-offs between items", () => {
+  it("orchestrator.pr_merged -> pr_merged, orchestrator.released -> released, each only with its data", () => {
+    expect(translate(payload({ action: "orchestrator.pr_merged", shipped: { pr: 7, sha: "abc" } }))).toBe(EVENTS.PR_MERGED);
+    expect(translate(payload({ action: "orchestrator.released", release: { version: "2.1.0" } }))).toBe(EVENTS.RELEASED);
+    expect(translate(payload({ action: "orchestrator.pr_merged" }))).toBeNull();
+    expect(translate(payload({ action: "orchestrator.released" }))).toBeNull();
+  });
+});
+
 describe("translate — rework push (native signal, not an outcome artifact)", () => {
   it("pull_request.synchronize -> rework_pushed unconditionally", () => {
     expect(translate(payload({ action: "pull_request.synchronize" }))).toBe(

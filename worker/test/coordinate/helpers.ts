@@ -9,6 +9,7 @@ import {
   type Deps,
   type PendingFire,
   type ReviewLoop,
+  type Shipped,
 } from "../../src/coordinate";
 import type { MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 
@@ -28,6 +29,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   let reviewReworks = 0;
   let reviewLoop: ReviewLoop | null = null;
   let mergeFiredFor: string | null = null;
+  let shipped: Shipped | null = null;
   let reconcileReported: string | null = null;
   let completed: string | null = null;
   return {
@@ -62,6 +64,13 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     }),
     setCiFix: vi.fn(async (state: CiFix | null) => {
       ciFix = state;
+    }),
+    forward: vi.fn(async () => {}),
+    openWithLabel: vi.fn(async () => []),
+    commitInRef: vi.fn(async () => true),
+    getShipped: vi.fn(async () => shipped),
+    setShipped: vi.fn(async (s: Shipped) => {
+      shipped = s;
     }),
     getMergeFiredFor: vi.fn(async () => mergeFiredFor),
     setMergeFiredFor: vi.fn(async (sha: string) => {

@@ -121,7 +121,8 @@ async function build(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
     title: `e2e: build #${f.number}`,
     head: branch,
     base: "dev",
-    body: `Built by the e2e stub for #${f.number}.\n\n<!-- e2e: merge -->`,
+    // "Closes #N", as the real build writes it: the merge moves the issue on.
+    body: `Built by the e2e stub. Closes #${f.number}.\n\n<!-- e2e: merge -->`,
   })) as { number: number };
   await comment(gh, f, outcomeComment("issue-build-loop", { outcome: "build_succeeded", pr: pr.number }));
   return "build_succeeded";
@@ -240,6 +241,10 @@ async function release(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
   }
   if (hint !== "published") return "none";
   const version = `0.0.${f.number}`;
+  // The tag a real release makes (release-tag.yml), on what's on dev: the
+  // orchestrator checks it contains each waiting issue's merge.
+  const { object } = (await gh("GET", `${base(f)}/git/ref/heads/dev`)) as { object: { sha: string } };
+  await gh("POST", `${base(f)}/git/refs`, { ref: `refs/tags/v${version}`, sha: object.sha });
   await comment(gh, f, outcomeComment("auto-release-loop", { outcome: "release_published", version }));
   // The real loop closes the issue itself on publish (a native close).
   await gh("PATCH", `${base(f)}/issues/${f.number}`, { state: "closed" });

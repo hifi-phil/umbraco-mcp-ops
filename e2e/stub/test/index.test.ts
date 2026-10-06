@@ -88,6 +88,7 @@ describe("act — issue-build-loop", () => {
     expect(await act(gh, fireFor("issue-build-loop"), "success")).toBe("build_succeeded");
     expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: expect.stringMatching(/^refs\/heads\/e2e\/build-7-/), sha: "devsha" });
     expect(gh).toHaveBeenCalledWith("POST", `${R}/pulls`, expect.objectContaining({ base: "dev", body: expect.stringContaining("<!-- e2e: merge -->") }));
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/pulls`, expect.objectContaining({ body: expect.stringContaining("Closes #7") }));
     expect(gh).toHaveBeenLastCalledWith("POST", `${R}/issues/7/comments`, {
       body: expect.stringContaining('{"outcome":"build_succeeded","pr":42}'),
     });
@@ -266,10 +267,11 @@ describe("act — heartbeat and completion signals", () => {
 });
 
 describe("act — auto-release-loop, and silent", () => {
-  it("published -> the release_published marker, then closes the issue (as the real loop does)", async () => {
-    const gh = fakeGh();
+  it("published -> tags dev's head v<version> (as release-tag.yml would), the release_published marker, then closes the issue", async () => {
+    const gh = fakeGh({ [`GET ${R}/git/ref/heads/dev`]: { object: { sha: "dev-head" } } });
     expect(await act(gh, fireFor("auto-release-loop"), "published")).toBe("release_published");
-    expect(calls(gh)).toEqual([`POST ${R}/issues/7/comments`, `PATCH ${R}/issues/7`]);
+    expect(calls(gh)).toEqual([`GET ${R}/git/ref/heads/dev`, `POST ${R}/git/refs`, `POST ${R}/issues/7/comments`, `PATCH ${R}/issues/7`]);
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: "refs/tags/v0.0.7", sha: "dev-head" });
   });
 
   it("blocked -> the release_blocked marker, issue left open", async () => {

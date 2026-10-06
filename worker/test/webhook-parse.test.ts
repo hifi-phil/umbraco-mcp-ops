@@ -86,13 +86,18 @@ describe("toWebhookPayload", () => {
     });
   });
 
-  it("maps a merged-PR webhook body", () => {
+  it("maps a merged-PR webhook body, with its description and merge commit (for the issues it closes)", () => {
     const payload = toWebhookPayload(
-      { action: "closed", pull_request: { merged: true } },
+      { action: "closed", pull_request: { merged: true, body: "Closes #12", merge_commit_sha: "abc123" } },
       "pull_request",
     );
     expect(payload.action).toBe("pull_request.closed");
-    expect(payload.pull_request).toEqual({ merged: true });
+    expect(payload.pull_request).toEqual({ merged: true, body: "Closes #12", merge_commit_sha: "abc123" });
+  });
+
+  it("a PR with no description or merge commit -> null for each", () => {
+    const payload = toWebhookPayload({ action: "closed", pull_request: { merged: false } }, "pull_request");
+    expect(payload.pull_request).toEqual({ merged: false, body: null, merge_commit_sha: null });
   });
 
   it("maps a comment webhook body, including an empty-string body", () => {

@@ -40,11 +40,15 @@ export const LABELS = {
   AI_STUCK: "ai-stuck",
   MERGE_BLOCKED: "merge-blocked",
   AI_REVIEWING: "ai-reviewing",
+  // The issue's stage after pr-open: its PR merged into dev, waiting for a
+  // release. Set from the PR's "Closes #N" when it merges; the release that
+  // contains the merge closes the issue.
+  READY_FOR_RELEASE: "ready-for-release",
 } as const;
 
 export type Label = (typeof LABELS)[keyof typeof LABELS];
 
-/** Same ten values as LABELS, as an array — for anything that needs to
+/** Same eleven values as LABELS, as an array — for anything that needs to
  * iterate all of them (a dashboard, a check against a live repo's actual
  * label set, a "does this string name a tracked label" guard). */
 export const ALL_LABELS: readonly Label[] = Object.values(LABELS);

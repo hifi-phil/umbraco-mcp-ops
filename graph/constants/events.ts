@@ -65,6 +65,12 @@ export const EVENTS = {
   // Still a directly-observed fact, not a guess: "no outcome seen for
   // attempt X by time T" is exactly what the DO knows first-hand.
   WATCHDOG_EXPIRED: "watchdog_expired",
+  // The issue's stages after its PR (07: issue stages). Not from GitHub
+  // either: the Worker hands them from one item to another. pr_merged, from
+  // a merged PR to each issue its description closes; released, from a
+  // published release to each issue waiting for one.
+  PR_MERGED: "pr_merged",
+  RELEASED: "released",
 } as const;
 
 export type Event = (typeof EVENTS)[keyof typeof EVENTS];

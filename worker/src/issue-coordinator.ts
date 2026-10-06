@@ -35,6 +35,7 @@ import {
   type IssueRef,
   type PendingFire,
   type ReviewLoop,
+  type Shipped,
   type StatusUpdate,
   type RoutineSignalInput,
   type TransitionRow,
@@ -65,7 +66,12 @@ export type IssueCoordinatorEnv = GitHubEnv &
     WATCHDOG_OVERRIDES_JSON?: string;
     // Per-repo loop caps (coordinate/types.ts's capsFor); the e2e sandbox's.
     CAP_OVERRIDES_JSON?: string;
+    // Its own namespace, for handing an event to another item (Deps.forward).
+    ISSUE_COORDINATOR?: DurableObjectNamespace;
   };
+
+/** One DO per issue/PR, as index.ts routes them (lowercased owner/repo). */
+const itemKey = (owner: string, repo: string, issueNumber: number) => `${owner}/${repo}`.toLowerCase() + `#${issueNumber}`;
 
 /**
  * A thrown error becomes a 500 carrying its message, instead of escaping to
@@ -89,6 +95,7 @@ async function respond(run: () => Promise<unknown>): Promise<Response> {
 const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
 const REVIEW_REWORKS_KEY = "reviewReworks"; // review rework rounds on this PR (MAX_REVIEW_REWORKS)
+const SHIPPED_KEY = "shipped"; // the merged PR and commit that moved this issue to LABELS.READY_FOR_RELEASE
 const MERGE_FIRED_FOR_KEY = "mergeFiredFor"; // the head commit merge-flow was re-fired for on green CI
 const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MAX_BOT_REVIEW_REWORKS)
 const RECONCILE_REPORTED_KEY = "reconcileReported";
@@ -239,6 +246,23 @@ export class IssueCoordinator {
       getReviewReworks: async () => (await this.ctx.storage.get<number>(REVIEW_REWORKS_KEY)) ?? 0,
       setReviewReworks: async (rounds: number) => {
         await this.ctx.storage.put(REVIEW_REWORKS_KEY, rounds);
+      },
+      forward: async (to, payload, deliveryId) => {
+        const ns = this.env.ISSUE_COORDINATOR;
+        if (!ns) throw new Error("no ISSUE_COORDINATOR binding to hand an event to another item");
+        const input: CoordinateInput = { deliveryId, owner: to.owner, repo: to.repo, issueNumber: to.issueNumber, payload };
+        const res = await ns.get(ns.idFromName(itemKey(to.owner, to.repo, to.issueNumber))).fetch("https://issue-coordinator/", {
+          method: "POST",
+          body: JSON.stringify(input),
+        });
+        if (!res.ok) throw new Error(`hand-off to #${to.issueNumber} failed: ${res.status} ${await res.text()}`);
+      },
+      openWithLabel: async (owner, repo, label) =>
+        (await githubClient.openWithLabel(this.env, owner, repo, label)).map((i) => i.number),
+      commitInRef: (owner, repo, sha, ref) => githubClient.commitInRef(this.env, owner, repo, sha, ref),
+      getShipped: async () => (await this.ctx.storage.get<Shipped>(SHIPPED_KEY)) ?? null,
+      setShipped: async (shipped: Shipped) => {
+        await this.ctx.storage.put(SHIPPED_KEY, shipped);
       },
       getMergeFiredFor: async () => (await this.ctx.storage.get<string>(MERGE_FIRED_FOR_KEY)) ?? null,
       setMergeFiredFor: async (sha: string) => {

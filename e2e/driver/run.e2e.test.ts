@@ -131,10 +131,14 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       );
       expect(refires, "reconcile_refire rows outside the sweep scenario").toEqual([]);
       const guids = new Set(details.map((d) => d.guid));
+      // A hand-off between items (a merged PR to the issue it closes, a
+      // release to the issues it ships) logs under the original delivery's
+      // id plus ":#<item>".
+      const original = (id: string) => id.replace(/:#\d+$/, "");
       const orphans = [...logs].flatMap(([n, rows]) =>
         rows
           .filter((r) =>
-            r.delivery_id === null ? r.event !== "watchdog_expired" && r.event !== "reconcile_refire" : !guids.has(r.delivery_id),
+            r.delivery_id === null ? r.event !== "watchdog_expired" && r.event !== "reconcile_refire" : !guids.has(original(r.delivery_id)),
           )
           .map((r) => `#${n} ${r.event} delivery=${r.delivery_id}`),
       );
