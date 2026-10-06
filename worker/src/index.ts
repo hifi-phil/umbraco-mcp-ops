@@ -11,8 +11,7 @@
 
 import { IssueCoordinator } from "./issue-coordinator";
 import { extractItemMeta, extractRoutingInfo, toWebhookPayload, verifySignature, type RoutingInfo } from "./webhook-parse";
-import { openPullsForCommit, openWithLabel } from "./github-client";
-import { LABELS } from "@orchestrator/graph/constants/labels";
+import { openPullsForCommit } from "./github-client";
 import type { CoordinateInput, RoutineSignalInput } from "./coordinate";
 
 import { Scheduler } from "./scheduler";
@@ -120,9 +119,7 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
   }
 
   await ensureScheduler(env);
-  const routing =
-    extractRoutingInfo(body) ??
-    (eventType === "check_suite" ? await routeByCommit(env, body) : eventType === "release" ? await routeRelease(env, body) : null);
+  const routing = extractRoutingInfo(body) ?? (eventType === "check_suite" ? await routeByCommit(env, body) : null);
   if (!routing) return Response.json({ ok: true, dropped: "no routable issue/PR number" });
 
   await recordItem(env, routing, body);
@@ -226,22 +223,6 @@ async function routeByCommit(env: Env, body: Record<string, unknown>): Promise<R
   if (!owner || !repo || !sha) return null;
   const issueNumbers = await openPullsForCommit(env, owner, repo, sha);
   return issueNumbers.length > 0 ? { owner, repo, issueNumbers } : null;
-}
-
-/**
- * GitHub's release event names a tag, not an issue. The release split's
- * last step belongs to the release issue: the open LABELS.AUTO_RELEASING
- * issue titled `release <version>` (the release trigger's convention).
- */
-async function routeRelease(env: Env, body: Record<string, unknown>): Promise<RoutingInfo> {
-  const repository = body.repository as { name?: string; owner?: { login?: string } } | undefined;
-  const tag = (body.release as { tag_name?: string } | undefined)?.tag_name;
-  const owner = repository?.owner?.login;
-  const repo = repository?.name;
-  if (!owner || !repo || !tag || body.action !== "published") return null;
-  const want = `release ${tag.replace(/^v/, "")}`.toLowerCase();
-  const issue = (await openWithLabel(env, owner, repo, LABELS.AUTO_RELEASING)).find((i) => i.title.trim().toLowerCase() === want);
-  return issue ? { owner, repo, issueNumbers: [issue.number] } : null;
 }
 
 /**

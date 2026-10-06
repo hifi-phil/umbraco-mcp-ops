@@ -35,7 +35,6 @@ import {
   type IssueRef,
   type PendingFire,
   type ReviewLoop,
-  type ReleaseNote,
   type Shipped,
   type StatusUpdate,
   type RoutineSignalInput,
@@ -67,9 +66,6 @@ export type IssueCoordinatorEnv = GitHubEnv &
     WATCHDOG_OVERRIDES_JSON?: string;
     // Per-repo loop caps (coordinate/types.ts's capsFor); the e2e sandbox's.
     CAP_OVERRIDES_JSON?: string;
-    // The release Slack channel's incoming webhook (optional): the release
-    // split posts the review's note there when a Release is out.
-    SLACK_RELEASE_WEBHOOK?: string;
     // Its own namespace, for handing an event to another item (Deps.forward).
     ISSUE_COORDINATOR?: DurableObjectNamespace;
   };
@@ -99,7 +95,6 @@ async function respond(run: () => Promise<unknown>): Promise<Response> {
 const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
 const REVIEW_REWORKS_KEY = "reviewReworks"; // review rework rounds on this PR (MAX_REVIEW_REWORKS)
-const RELEASE_NOTE_KEY = "releaseNote"; // the review's note, posted when the Release is out
 const SHIPPED_KEY = "shipped"; // the merged PR and commit that moved this issue to LABELS.READY_FOR_RELEASE
 const MERGE_FIRED_FOR_KEY = "mergeFiredFor"; // the head commit merge-flow was re-fired for on green CI
 const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MAX_BOT_REVIEW_REWORKS)
@@ -266,20 +261,7 @@ export class IssueCoordinator {
         (await githubClient.openWithLabel(this.env, owner, repo, label)).map((i) => i.number),
       commitInRef: (owner, repo, sha, ref) => githubClient.commitInRef(this.env, owner, repo, sha, ref),
       getPullDetails: (owner, repo, pr) => githubClient.getPullDetails(this.env, owner, repo, pr),
-      mergePull: (owner, repo, pr, sha) => githubClient.mergePull(this.env, owner, repo, pr, sha),
-      getReleaseNote: async () => (await this.ctx.storage.get<ReleaseNote>(RELEASE_NOTE_KEY)) ?? null,
-      setReleaseNote: async (note: ReleaseNote) => {
-        await this.ctx.storage.put(RELEASE_NOTE_KEY, note);
-      },
-      postSlack: async (text: string) => {
-        if (!this.env.SLACK_RELEASE_WEBHOOK) return;
-        const res = await fetch(this.env.SLACK_RELEASE_WEBHOOK, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
-        });
-        if (!res.ok) throw new Error(`Slack post failed: ${res.status}`);
-      },
+      mergePull: (owner, repo, pr, sha, method) => githubClient.mergePull(this.env, owner, repo, pr, sha, method),
       getShipped: async () => (await this.ctx.storage.get<Shipped>(SHIPPED_KEY)) ?? null,
       setShipped: async (shipped: Shipped) => {
         await this.ctx.storage.put(SHIPPED_KEY, shipped);

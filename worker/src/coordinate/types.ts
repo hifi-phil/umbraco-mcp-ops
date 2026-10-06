@@ -15,6 +15,7 @@ import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { type WebhookPayload } from "@orchestrator/graph/github/from-github";
 import { type MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
+import { type MergeMethod } from "@orchestrator/graph/outcomes";
 
 // A GitHub label-add webhook is only delivered *after* the label already
 // exists on the issue/PR — so a fresh getLabels() read for a "labelled_X"
@@ -71,8 +72,6 @@ export type PendingFire = {
 // returnTo: where the fix's push goes back to, LABELS.AUTO_MERGING (the default) or
 // LABELS.AI_REVIEWING (CI red before the review).
 export type Shipped = { pr: number; sha: string };
-
-export type ReleaseNote = { version: string; note: string };
 
 export type PullDetails = { headRef: string; headSha: string; baseRef: string; defaultBranch: string; merged: boolean };
 
@@ -194,14 +193,9 @@ export type Deps = {
   // A PR's branches, head and merge state, and the repo's default branch:
   // what the release split checks before (and instead of) merging.
   getPullDetails(owner: string, repo: string, pr: number): Promise<PullDetails>;
-  // The release split: merge a release PR with a merge commit, pinned to
-  // `sha` (GitHub refuses if the head moved); throws with GitHub's reason.
-  mergePull(owner: string, repo: string, pr: number, sha: string): Promise<void>;
-  // The release note the review left (DO storage), posted when the Release is out.
-  getReleaseNote(): Promise<ReleaseNote | null>;
-  setReleaseNote(note: ReleaseNote): Promise<void>;
-  // Posts to the release Slack channel; a no-op when no webhook is set.
-  postSlack(text: string): Promise<void>;
+  // The release split: merge a PR the way the project says, pinned to `sha`
+  // (GitHub refuses if the head moved); throws with GitHub's reason.
+  mergePull(owner: string, repo: string, pr: number, sha: string, method: MergeMethod): Promise<void>;
   // The head commit merge-flow was last re-fired for on green CI (DO
   // storage), so each green commit gets one re-fire, not one per check suite.
   getMergeFiredFor(): Promise<string | null>;
@@ -280,7 +274,6 @@ export function shadowDeps(deps: Deps): Deps {
     commentOnIssue: skip,
     fireRoutine: skip,
     mergePull: skip,
-    postSlack: skip,
     enforced: () => false,
   };
 }

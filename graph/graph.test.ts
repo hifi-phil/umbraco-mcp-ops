@@ -196,6 +196,13 @@ describe("reduce — the release split", () => {
     expect(rule?.to).toEqual(noop);
     expect(rule?.run).toBeUndefined();
   });
+
+  it(`${LABELS.AUTO_RELEASING} + release_merged -> stays put, fires release-publish (watched)`, () => {
+    const rule = reduce(LABELS.AUTO_RELEASING, EVENTS.RELEASE_MERGED);
+    expect(rule?.to).toEqual(noop);
+    expect(rule?.run).toBe(ROUTINES.RELEASE_PUBLISH);
+    expect(isWatched(LABELS.AUTO_RELEASING)).toBe(true);
+  });
 });
 
 describe("reduce — the issue's stages after its PR", () => {

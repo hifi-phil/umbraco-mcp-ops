@@ -17,6 +17,8 @@ export const EVENTS = {
   RELEASE_PUBLISHED: "release_published",
   // The pre-publish review passed: the Worker merges the release PR.
   RELEASE_APPROVED: "release_approved",
+  // The Worker merged it (raised by the Worker itself): the after part runs.
+  RELEASE_MERGED: "release_merged",
   LABELLED_AI_DISCUSSING: "labelled_ai_discussing",
   // A trusted human's reply on an open LABELS.AI_DISCUSSING issue: loop-dispatch fires
   // the next discussion round on it (route-event.sh's issue_comment case).

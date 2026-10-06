@@ -208,11 +208,11 @@ export async function getPullDetails(
   return { headRef: p.head.ref, headSha: p.head.sha, baseRef: p.base.ref, defaultBranch: p.base.repo.default_branch, merged: p.merged };
 }
 
-/** Merges a PR with a merge commit (never a squash: release tooling keys
- * off it), only if its head is still `sha`. GitHub's refusal (head moved,
- * not mergeable) throws with its message. */
-export async function mergePull(env: GitHubEnv, owner: string, repo: string, pr: number, sha: string): Promise<void> {
-  await gh(env, "PUT", `/repos/${owner}/${repo}/pulls/${pr}/merge`, { merge_method: "merge", sha });
+/** Merges a PR the way the project says (merge, squash or rebase), only if
+ * its head is still `sha`. GitHub's refusal (head moved, not mergeable)
+ * throws with its message. */
+export async function mergePull(env: GitHubEnv, owner: string, repo: string, pr: number, sha: string, method: "merge" | "squash" | "rebase"): Promise<void> {
+  await gh(env, "PUT", `/repos/${owner}/${repo}/pulls/${pr}/merge`, { merge_method: method, sha });
 }
 
 /** Whether `ref` (a tag or branch) contains commit `sha`: the compare

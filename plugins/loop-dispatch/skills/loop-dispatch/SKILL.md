@@ -93,6 +93,9 @@ specific issue/PR, and **follow that skill's instructions verbatim**:
   just the wake-up).
 - `auto-reworking` PR label → **`/rework-loop`** for that PR.
 - `auto-releasing` issue → **`/auto-release-loop`**, version taken from the issue title.
+- `route=release-publish` on an `auto-releasing` issue (only ever from the orchestrator,
+  after it merged the release PR) → **`/release-publish`**, or the publish skill the
+  repo's `CLAUDE.md` names instead.
 - `ai-discussing` issue, or a comment on one → **`/issue-discuss-loop`** for that issue. It
   discusses only: no code, no PR, and it never clears its own label (the human owns
   `ai-discussing`), so **don't expect the label to be gone afterwards** and don't remove it here.

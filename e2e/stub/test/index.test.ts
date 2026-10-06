@@ -274,27 +274,25 @@ describe("act — auto-release-loop, and silent", () => {
     expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: "refs/tags/v0.0.7", sha: "dev-head" });
   });
 
-  it("approve (the release split) -> release/<version> PR into main, release_approved with its head; once merged, tag + Release", async () => {
-    vi.useFakeTimers();
-    try {
-      const gh = fakeGh({
-        [`GET ${R}/git/ref/heads/dev`]: { object: { sha: "dev-head" } },
-        [`POST ${R}/pulls`]: { number: 90, head: { sha: "rel-head" } },
-        [`GET ${R}/pulls/90`]: { merged: true, merge_commit_sha: "merge-sha" },
-        [`GET ${R}/contents/`]: new Error("404"),
-      });
-      const done = act(gh, fireFor("auto-release-loop"), "approve");
-      await vi.advanceTimersByTimeAsync(2000);
-      expect(await done).toBe("release_published");
-      expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: "refs/heads/release/0.0.7", sha: "dev-head" });
-      expect(gh).toHaveBeenCalledWith("POST", `${R}/pulls`, expect.objectContaining({ head: "release/0.0.7", base: "main" }));
-      const approval = gh.mock.calls.find(([m, p]) => m === "POST" && p.endsWith("/issues/7/comments"))!;
-      expect((approval[2] as { body: string }).body).toContain('"outcome":"release_approved","pr":90,"sha":"rel-head","version":"0.0.7"');
-      expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: "refs/tags/v0.0.7", sha: "merge-sha" });
-      expect(gh).toHaveBeenCalledWith("POST", `${R}/releases`, { tag_name: "v0.0.7", name: "v0.0.7" });
-    } finally {
-      vi.useRealTimers();
-    }
+  it("approve (the release split, before) -> release/<version> PR into main (\"Part of\", not \"Closes\"), release_approved with its head and merge method", async () => {
+    const gh = fakeGh({
+      [`GET ${R}/git/ref/heads/dev`]: { object: { sha: "dev-head" } },
+      [`POST ${R}/pulls`]: { number: 90, head: { sha: "rel-head" } },
+      [`GET ${R}/contents/`]: new Error("404"),
+    });
+    expect(await act(gh, fireFor("auto-release-loop"), "approve")).toBe("release_approved");
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: "refs/heads/release/0.0.7", sha: "dev-head" });
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/pulls`, expect.objectContaining({ head: "release/0.0.7", base: "main", body: expect.stringContaining("Part of #7") }));
+    const approval = gh.mock.calls.find(([m, p]) => m === "POST" && p.endsWith("/issues/7/comments"))!;
+    expect((approval[2] as { body: string }).body).toContain('"outcome":"release_approved","pr":90,"sha":"rel-head","version":"0.0.7","merge_method":"merge"');
+  });
+
+  it("release-publish (the after part) -> tags the merged main v<version>, reports release_published with the tag", async () => {
+    const gh = fakeGh({ [`GET ${R}/git/ref/heads/main`]: { object: { sha: "main-merge" } } });
+    expect(await act(gh, fireFor("release-publish"), "approve")).toBe("release_published");
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: "refs/tags/v0.0.7", sha: "main-merge" });
+    const published = gh.mock.calls.find(([m, p]) => m === "POST" && p.endsWith("/issues/7/comments"))!;
+    expect((published[2] as { body: string }).body).toContain('"outcome":"release_published","version":"0.0.7","tag":"v0.0.7"');
   });
 
   it("blocked -> the release_blocked marker, issue left open", async () => {

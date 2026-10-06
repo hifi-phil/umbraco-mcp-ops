@@ -77,15 +77,15 @@ describe("a release published hands released to each issue waiting for one", () 
     expect(await coordinateWebhook(d, publishedComment("2.1.0"))).toMatchObject({ outcome: "applied", event: EVENTS.RELEASE_PUBLISHED });
     expect(d.closeIssue).toHaveBeenCalledWith(OWNER, REPO, 60);
     expect(d.openWithLabel).toHaveBeenCalledWith(OWNER, REPO, LABELS.READY_FOR_RELEASE);
-    expect(d.forward).toHaveBeenCalledWith(ref(12), { action: "orchestrator.released", release: { version: "2.1.0" } }, "d-release:#12");
-    expect(d.forward).toHaveBeenCalledWith(ref(13), { action: "orchestrator.released", release: { version: "2.1.0" } }, "d-release:#13");
+    expect(d.forward).toHaveBeenCalledWith(ref(12), { action: "orchestrator.released", release: { version: "2.1.0", tag: "v2.1.0" } }, "d-release:#12");
+    expect(d.forward).toHaveBeenCalledWith(ref(13), { action: "orchestrator.released", release: { version: "2.1.0", tag: "v2.1.0" } }, "d-release:#13");
   });
 });
 
 describe(`the issue: released -> closed, if the release's tag contains its merge`, () => {
-  const releasedIn = (version: string) => handOff(12, { action: "orchestrator.released", release: { version } });
+  const releasedIn = (version: string) => handOff(12, { action: "orchestrator.released", release: { version, tag: `v${version}` } });
 
-  it("its merge is in the tag (v<version>): closed", async () => {
+  it("its merge is in the tag the release reported: closed", async () => {
     const d = fakeDeps({ getLabels: vi.fn(async () => [LABELS.READY_FOR_RELEASE]) });
     await d.setShipped({ pr: 50, sha: "sha-merge" });
     expect(await coordinateWebhook(d, releasedIn("2.1.0"))).toMatchObject({ outcome: "applied", event: EVENTS.RELEASED });

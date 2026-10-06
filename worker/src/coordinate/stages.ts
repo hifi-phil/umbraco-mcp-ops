@@ -27,12 +27,13 @@ export async function handOffMerged(deps: Deps, input: CoordinateInput): Promise
   }
 }
 
-/** A release published: released to each open issue waiting for one. */
-export async function handOffRelease(deps: Deps, input: CoordinateInput, version: string): Promise<void> {
+/** A release published: released to each open issue waiting for one, with
+ * the tag the release reported (no naming convention assumed). */
+export async function handOffRelease(deps: Deps, input: CoordinateInput, version: string, tag: string): Promise<void> {
   for (const issueNumber of await deps.openWithLabel(input.owner, input.repo, LABELS.READY_FOR_RELEASE)) {
     await deps.forward(
       { owner: input.owner, repo: input.repo, issueNumber },
-      { action: "orchestrator.released", release: { version } },
+      { action: "orchestrator.released", release: { version, tag } },
       handOffId(input.deliveryId, issueNumber),
     );
   }
@@ -45,12 +46,12 @@ export async function prMerged(deps: Deps, input: CoordinateInput, currentLabels
   return result;
 }
 
-/** A release was published: closed only if its tag (v<version>) contains this
- * issue's merge. A merge after the release branch was cut waits for the next. */
+/** A release was published: closed only if its tag contains this issue's
+ * merge. A merge after the release branch was cut waits for the next. */
 export async function released(deps: Deps, input: CoordinateInput, currentLabels: string[]): Promise<CoordinateResult> {
-  const version = input.payload.release?.version;
+  const tag = input.payload.release?.tag;
   const shipped = await deps.getShipped();
-  const contained = !!version && !!shipped && (await deps.commitInRef(input.owner, input.repo, shipped.sha, `v${version}`));
+  const contained = !!tag && !!shipped && (await deps.commitInRef(input.owner, input.repo, shipped.sha, tag));
   if (!contained) return { outcome: "ignored", from: stateOf(currentLabels), event: EVENTS.RELEASED };
   return applyEvent(deps, input, EVENTS.RELEASED, currentLabels);
 }

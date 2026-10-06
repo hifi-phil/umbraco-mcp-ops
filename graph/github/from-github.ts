@@ -65,8 +65,7 @@ export type WebhookPayload = {
   // payload: a merged PR's commit to each issue it closes, and a published
   // release's version to each issue waiting for one.
   shipped?: { pr: number; sha: string };
-  // Also GitHub's own release event: the version from its tag, and its page.
-  release?: { version: string; url?: string };
+  release?: { version: string; tag: string };
   check_suite?: { conclusion: "success" | "failure" | null; status: "completed" | "in_progress" };
 };
 
@@ -233,11 +232,6 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
     case "pull_request.closed":
       if (payload.pull_request?.merged) return EVENTS.MERGED;
       return null;
-
-    // GitHub's own: the repo's workflow published the Release (the release
-    // split's last step). The Worker routes it to the release issue.
-    case "release.published":
-      return payload.release ? EVENTS.RELEASE_PUBLISHED : null;
 
     // The Worker's own hand-offs (see WebhookPayload's shipped / release).
     case "orchestrator.pr_merged":

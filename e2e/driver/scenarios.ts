@@ -163,9 +163,9 @@ export const scenarios: Scenario[] = [
         expectLabels(await waitFor(issue, labelsAre(LABELS.READY_FOR_RELEASE), MIN), issue, LABELS.READY_FOR_RELEASE);
 
         // A release containing the merge closes the issue. The release split:
-        // the stub's agent approves (release_approved), the orchestrator
-        // merges the release PR into main, the stub's "release workflow"
-        // tags and publishes, and GitHub's release event closes the release.
+        // before (the stub's agent approves), the merge (the orchestrator, as
+        // the App), after (release-publish: the stub tags main as the repo's
+        // workflow would and reports release_published with the tag).
         const release = t.n(await openIssue("release (e2e, retitled below)", "Release what's on dev.", "approve"));
         const version = `0.0.${release}`;
         await gh("PATCH", `/repos/${REPO}/issues/${release}`, { title: `release ${version}` });
@@ -189,6 +189,7 @@ export const scenarios: Scenario[] = [
             release,
             { event: "labelled_auto_releasing", run: "auto-release-loop" },
             { event: "release_approved" },
+            { event: "release_merged", run: "release-publish" },
             { event: "release_published", effect: "close" },
           );
           const releasePrs = await gh<{ number: number; merged_at: string | null; merge_commit_sha: string | null; head: { ref: string } }[]>(
@@ -207,8 +208,6 @@ export const scenarios: Scenario[] = [
           expect(await statusOf(release), `#${release} status, closed`).toBeUndefined();
           expect(await statusOf(issue), `#${issue} status, closed`).toBeUndefined();
         } finally {
-          const rel = await gh<{ id: number }>("GET", `/repos/${REPO}/releases/tags/v${version}`).catch(() => null);
-          if (rel) await gh("DELETE", `/repos/${REPO}/releases/${rel.id}`).catch(() => {});
           await gh("DELETE", `/repos/${REPO}/git/refs/tags/v${version}`).catch(() => {});
           await gh("DELETE", `/repos/${REPO}/git/refs/heads/release/${version}`).catch(() => {});
         }

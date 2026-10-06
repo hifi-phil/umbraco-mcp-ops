@@ -49,13 +49,28 @@ describe("parseOutcomeShape — release outcomes", () => {
 });
 
 describe("parseOutcomeShape — release_approved (the release split)", () => {
-  it("accepts the PR, the reviewed commit, the version and the note; rejects any missing", () => {
-    const ok = { outcome: "release_approved", pr: 220, sha: "abc", version: "2.1.0", note: "Issue stages." };
+  it("accepts the PR, the reviewed commit, the version and a merge method; rejects any missing", () => {
+    const ok = { outcome: "release_approved", pr: 220, sha: "abc", version: "2.1.0", merge_method: "merge" };
     expect(parseOutcomeShape(ok)).toEqual(ok);
-    for (const key of ["pr", "sha", "version", "note"]) {
+    for (const key of ["pr", "sha", "version", "merge_method"]) {
       const { [key]: _, ...missing } = ok as Record<string, unknown>;
       expect(parseOutcomeShape(missing), key).toBeNull();
     }
+  });
+
+  it("the merge method is GitHub's: merge, squash or rebase, nothing else", () => {
+    for (const m of ["merge", "squash", "rebase"]) {
+      expect(parseOutcomeShape({ outcome: "release_approved", pr: 1, sha: "a", version: "1", merge_method: m }), m).not.toBeNull();
+    }
+    expect(parseOutcomeShape({ outcome: "release_approved", pr: 1, sha: "a", version: "1", merge_method: "fast-forward" })).toBeNull();
+  });
+
+  it("release_published may carry the tag the project made", () => {
+    expect(parseOutcomeShape({ outcome: "release_published", version: "2.1.0", tag: "v2.1.0" })).toEqual({
+      outcome: "release_published",
+      version: "2.1.0",
+      tag: "v2.1.0",
+    });
   });
 });
 
