@@ -27,6 +27,7 @@ export type Action =
   | "waiting_for_ci"
   | "ci_red"
   | "release_published"
+  | "release_approved"
   | "release_blocked"
   | "discussed"
   | "review_passed"
@@ -92,6 +93,8 @@ export async function act(gh: Gh, fire: Fire, hint: string | null, signal?: Sign
       return review(gh, fire, hint);
     case "auto-release-loop":
       return release(gh, fire, hint);
+    case "release-publish":
+      return publishRelease(gh, fire, hint);
     default:
       return "none";
   }
@@ -234,11 +237,56 @@ async function review(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
   }
 }
 
+/**
+ * The release split's before part, orchestrated: what auto-release-loop does
+ * (cut release/<version> from dev, open its PR into main, the pre-publish
+ * review passes) ending in release_approved with the reviewed head and the
+ * merge method. The orchestrator merges, then fires release-publish.
+ */
+async function approveRelease(gh: Gh, f: Fire): Promise<Action> {
+  const version = `0.0.${f.number}`;
+  const branch = `release/${version}`;
+  const { object } = (await gh("GET", `${base(f)}/git/ref/heads/dev`)) as { object: { sha: string } };
+  await gh("POST", `${base(f)}/git/refs`, { ref: `refs/heads/${branch}`, sha: object.sha });
+  await putFile(gh, f, branch, `releases/${version}.txt`, `released ${version}\n`, `chore(release): ${version}`);
+  const pr = (await gh("POST", `${base(f)}/pulls`, {
+    title: `release ${version}`,
+    head: branch,
+    base: "main",
+    // "Part of", not "Closes": on the default branch "Closes" would close
+    // the release issue at the merge, before release-publish has run.
+    body: `The e2e stub's release PR. Part of #${f.number}.\n\n<!-- e2e: release -->`,
+  })) as { number: number; head: { sha: string } };
+  await comment(
+    gh,
+    f,
+    outcomeComment("auto-release-loop", { outcome: "release_approved", pr: pr.number, sha: pr.head.sha, version, merge_method: "merge" }),
+  );
+  return "release_approved";
+}
+
+/**
+ * The release split's after part (release-publish), with the repo's own
+ * tagging workflow played too: tag the merged main v<version>, then report
+ * release_published with that tag. (The real skill also posts the release
+ * note and merges main back into dev; the sandbox skips both.)
+ */
+async function publishRelease(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
+  if (hint !== "approve") return "none";
+  const version = `0.0.${f.number}`;
+  const tag = `v${version}`;
+  const { object } = (await gh("GET", `${base(f)}/git/ref/heads/main`)) as { object: { sha: string } };
+  await gh("POST", `${base(f)}/git/refs`, { ref: `refs/tags/${tag}`, sha: object.sha });
+  await comment(gh, f, outcomeComment("release-publish", { outcome: "release_published", version, tag }));
+  return "release_published";
+}
+
 async function release(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
   if (hint === "blocked") {
     await comment(gh, f, outcomeComment("auto-release-loop", { outcome: "release_blocked", reason: "e2e stub: scripted block" }));
     return "release_blocked";
   }
+  if (hint === "approve") return approveRelease(gh, f);
   if (hint !== "published") return "none";
   const version = `0.0.${f.number}`;
   // The tag a real release makes (release-tag.yml), on what's on dev: the

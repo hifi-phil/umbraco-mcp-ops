@@ -17,10 +17,19 @@ export type Outcome =
   | { outcome: "build_succeeded"; pr: number }
   | { outcome: "build_blocked"; reason: string }
   | { outcome: "release_blocked"; reason: string }
-  | { outcome: "release_published"; version: string }
+  // `tag`: the release's tag, as the project names it (release-publish
+  // reports it); absent from the agent that still publishes itself.
+  | { outcome: "release_published"; version: string; tag?: string }
+  // The release split (15-agent-splits.md): the pre-publish review passed.
+  // The Worker merges the PR the way the project says (merge_method), pinned
+  // to the commit the review saw.
+  | { outcome: "release_approved"; pr: number; sha: string; version: string; merge_method: MergeMethod }
   | { outcome: "review_passed" }
   | { outcome: "review_findings"; findings: number }
   | { outcome: "review_blocked"; reason: string };
+
+export type MergeMethod = "merge" | "squash" | "rebase";
+const MERGE_METHODS: readonly string[] = ["merge", "squash", "rebase"];
 
 export function parseOutcomeShape(value: unknown): Outcome | null {
   if (typeof value !== "object" || value === null) return null;
@@ -36,7 +45,19 @@ export function parseOutcomeShape(value: unknown): Outcome | null {
     return { outcome: "release_blocked", reason: v.reason };
   }
   if (v.outcome === "release_published" && typeof v.version === "string") {
-    return { outcome: "release_published", version: v.version };
+    return typeof v.tag === "string"
+      ? { outcome: "release_published", version: v.version, tag: v.tag }
+      : { outcome: "release_published", version: v.version };
+  }
+  if (
+    v.outcome === "release_approved" &&
+    typeof v.pr === "number" &&
+    typeof v.sha === "string" &&
+    typeof v.version === "string" &&
+    typeof v.merge_method === "string" &&
+    MERGE_METHODS.includes(v.merge_method)
+  ) {
+    return { outcome: "release_approved", pr: v.pr, sha: v.sha, version: v.version, merge_method: v.merge_method as MergeMethod };
   }
   if (v.outcome === "review_passed") return { outcome: "review_passed" };
   if (v.outcome === "review_findings" && typeof v.findings === "number") {

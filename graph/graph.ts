@@ -132,6 +132,25 @@ export const rules: Rule[] = [
     verifiedBy: "external-judgment",
   },
   {
+    // The release split, before: the review passed and the agent's run is
+    // over. coordinate/release.ts merges the PR (the project's merge method,
+    // pinned to the reviewed commit), then raises release_merged.
+    from: LABELS.AUTO_RELEASING,
+    on: EVENTS.RELEASE_APPROVED,
+    to: noop,
+    verifiedBy: "external-judgment", // release-reviewer's verdict
+  },
+  {
+    // The release split, after: the Worker merged it, so release-publish
+    // runs (waits for the repo's tag, the release note, main back into dev)
+    // and reports release_published, which closes the issue (below).
+    from: LABELS.AUTO_RELEASING,
+    on: EVENTS.RELEASE_MERGED,
+    to: noop,
+    run: ROUTINES.RELEASE_PUBLISH,
+    verifiedBy: "deterministic", // the Worker's own merge
+  },
+  {
     from: "none",
     on: EVENTS.LABELLED_AI_DISCUSSING,
     to: label(LABELS.AI_DISCUSSING),

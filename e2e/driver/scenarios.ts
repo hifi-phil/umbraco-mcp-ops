@@ -162,14 +162,18 @@ export const scenarios: Scenario[] = [
         expect(merged.merged, `PR #${pr} merged`).toBe(true);
         expectLabels(await waitFor(issue, labelsAre(LABELS.READY_FOR_RELEASE), MIN), issue, LABELS.READY_FOR_RELEASE);
 
-        // A release containing the merge closes the issue.
-        const version = `0.0.${t.n(await openIssue("release (e2e)", "Release what's on dev.", "published"))}`;
-        const release = Number(version.split(".")[2]);
+        // A release containing the merge closes the issue. The release split:
+        // before (the stub's agent approves), the merge (the orchestrator, as
+        // the App), after (release-publish: the stub tags main as the repo's
+        // workflow would and reports release_published with the tag).
+        const release = t.n(await openIssue("release (e2e, retitled below)", "Release what's on dev.", "approve"));
+        const version = `0.0.${release}`;
+        await gh("PATCH", `/repos/${REPO}/issues/${release}`, { title: `release ${version}` });
         try {
           await addLabel(release, LABELS.AUTO_RELEASING);
           const published = await waitFor(release, (s) => s.state === "closed", 2 * MIN);
           expect(published.state, `#${release}`).toBe("closed");
-          expect(hasMarker(published, "auto-release-loop", "release_published"), `#${release} marker`).toBe(true);
+          expect(hasMarker(published, "auto-release-loop", "release_approved"), `#${release} marker`).toBe(true);
           const shipped = await waitFor(issue, (s) => s.state === "closed", MIN);
           expect(shipped.state, `#${issue} closed by the release`).toBe("closed");
 
@@ -181,7 +185,21 @@ export const scenarios: Scenario[] = [
             { event: "released", effect: "close" },
           );
           await expectLogged(pr, { event: "labelled_auto_merging", run: "merge-flow" }, { event: "merged", effect: "close" });
-          await expectLogged(release, { event: "labelled_auto_releasing", run: "auto-release-loop" }, { event: "release_published", effect: "close" });
+          await expectLogged(
+            release,
+            { event: "labelled_auto_releasing", run: "auto-release-loop" },
+            { event: "release_approved" },
+            { event: "release_merged", run: "release-publish" },
+            { event: "release_published", effect: "close" },
+          );
+          const releasePrs = await gh<{ number: number; merged_at: string | null; merge_commit_sha: string | null; head: { ref: string } }[]>(
+            "GET",
+            `/repos/${REPO}/pulls?state=closed&base=main&per_page=20`,
+          );
+          const releasePr = releasePrs.find((p) => p.head.ref === `release/${version}`);
+          expect(releasePr?.merged_at, `release/${version} merged into main by the orchestrator`).toBeTruthy();
+          const merge = await gh<{ parents: unknown[] }>("GET", `/repos/${REPO}/commits/${releasePr?.merge_commit_sha}`);
+          expect(merge.parents.length, "a merge commit, not a squash").toBe(2);
 
           // After the closes' own webhooks have all landed (issues.closed comes
           // after the Worker's own close, and must not put a row back).
@@ -191,6 +209,7 @@ export const scenarios: Scenario[] = [
           expect(await statusOf(issue), `#${issue} status, closed`).toBeUndefined();
         } finally {
           await gh("DELETE", `/repos/${REPO}/git/refs/tags/v${version}`).catch(() => {});
+          await gh("DELETE", `/repos/${REPO}/git/refs/heads/release/${version}`).catch(() => {});
         }
       }),
   },

@@ -82,7 +82,8 @@ flowchart TD
   - A conflict or requested changes → `merge-blocked`, for a human.
   - Red CI → `auto-reworking` to fix it, then back to `auto-merging`. After three
     tries it goes to `merge-blocked`.
-- **Releases:** `auto-releasing` publishes and closes the issue.
+- **Releases:** `auto-releasing` prepares and reviews; the Worker merges; `release-publish`
+  posts the note and syncs `dev`; the Worker closes the issue.
 - **`ai-stuck`:** any of the above when a run dies. Re-adding the trigger
   label retries it.
 

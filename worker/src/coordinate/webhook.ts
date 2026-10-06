@@ -12,6 +12,7 @@ import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 import { reviewFindings, reviewGate } from "./review-gate";
 import { handOffMerged, handOffRelease, prMerged, released } from "./stages";
+import { releaseApproved, trustedAuthor } from "./release";
 import { parseOutcomeArtifact } from "@orchestrator/graph/github/from-github";
 
 /**
@@ -149,13 +150,19 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // The issue's stages after its PR (coordinate/stages.ts).
   if (event === EVENTS.PR_MERGED) return prMerged(deps, input, currentLabels);
   if (event === EVENTS.RELEASED) return released(deps, input, currentLabels);
+  // The release split: the review passed (the Worker merges, then fires
+  // release-publish), and release_published (from release-publish, or from
+  // an agent that still publishes itself) closes the issue and hands
+  // released to the issues it ships, with the tag it reported.
+  if (event === EVENTS.RELEASE_APPROVED) return releaseApproved(deps, input, currentLabels);
   if (event === EVENTS.RELEASE_PUBLISHED) {
+    // It closes issues: only a trusted author's report counts.
+    if (!(await trustedAuthor(deps, input))) return { outcome: "no_event" };
     const published = await applyEvent(deps, input, event, currentLabels);
-    const version = (() => {
-      const outcome = parseOutcomeArtifact(input.payload.comment?.body);
-      return outcome?.outcome === "release_published" ? outcome.version : undefined;
-    })();
-    if (published.outcome === "applied" && version) await handOffRelease(deps, input, version);
+    const outcome = parseOutcomeArtifact(input.payload.comment?.body);
+    if (published.outcome === "applied" && outcome?.outcome === "release_published") {
+      await handOffRelease(deps, input, outcome.version, outcome.tag ?? `v${outcome.version}`);
+    }
     return published;
   }
 

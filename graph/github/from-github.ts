@@ -65,7 +65,7 @@ export type WebhookPayload = {
   // payload: a merged PR's commit to each issue it closes, and a published
   // release's version to each issue waiting for one.
   shipped?: { pr: number; sha: string };
-  release?: { version: string };
+  release?: { version: string; tag: string };
   check_suite?: { conclusion: "success" | "failure" | null; status: "completed" | "in_progress" };
 };
 
@@ -165,6 +165,8 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
             return EVENTS.RELEASE_BLOCKED;
           case "release_published":
             return EVENTS.RELEASE_PUBLISHED;
+          case "release_approved":
+            return EVENTS.RELEASE_APPROVED;
           case "review_passed":
             return EVENTS.REVIEW_PASSED;
           case "review_findings":
