@@ -20,25 +20,43 @@ import { applyEvent } from "./apply";
 export async function releaseApproved(deps: Deps, input: CoordinateInput, currentLabels: string[]): Promise<CoordinateResult> {
   const outcome = parseOutcomeArtifact(input.payload.comment?.body);
   if (outcome?.outcome !== "release_approved") return { outcome: "no_event" };
+  // This one merges code, so unlike the other outcomes it counts only from
+  // the Worker's own App or someone with write access: anyone else's
+  // comment is ignored, not acted on.
+  if (!(await trustedAuthor(deps, input))) return { outcome: "no_event" };
   const result = await applyEvent(deps, input, EVENTS.RELEASE_APPROVED, currentLabels);
   if (result.outcome !== "applied") return result;
 
   const { io } = depsFor(deps, EVENTS.RELEASE_APPROVED);
   const where = { owner: input.owner, repo: input.repo };
-  try {
-    await io.mergePull(where.owner, where.repo, outcome.pr, outcome.sha);
-  } catch (e) {
-    const why = e instanceof Error ? e.message : String(e);
+  const refuse = async (why: string) => {
     await applyEvent(deps, input, EVENTS.RELEASE_BLOCKED, currentLabels);
     await io.commentOnIssue(
       where.owner,
       where.repo,
       input.issueNumber,
-      `🛑 Not releasing v${outcome.version}: merging #${outcome.pr} at the reviewed commit (\`${outcome.sha.slice(0, 7)}\`) was refused. ` +
-        `\`${LABELS.AUTO_RELEASING}\` is removed; fix the cause and re-add it to try again. GitHub said: ${why.slice(0, 300)} ` +
+      `🛑 Not releasing v${outcome.version}: ${why} \`${LABELS.AUTO_RELEASING}\` is removed; fix the cause and re-add it to try again. ` +
         `(Automatic, from the orchestrator.)`,
     );
     return result;
+  };
+
+  // Only this version's release PR, into the default branch.
+  const pr = await deps.getPullDetails(where.owner, where.repo, outcome.pr);
+  if (pr.headRef !== `release/${outcome.version}` || pr.baseRef !== pr.defaultBranch) {
+    return refuse(`#${outcome.pr} isn't the release PR for v${outcome.version} (it's \`${pr.headRef}\` into \`${pr.baseRef}\`).`);
+  }
+  // Merged already: a redelivery, or the merge's answer was lost. At the
+  // reviewed commit that's done, not a refusal; at any other it needs a person.
+  if (pr.merged) {
+    if (pr.headSha !== outcome.sha) return refuse(`#${outcome.pr} was merged at a commit the review didn't see (\`${pr.headSha.slice(0, 7)}\`).`);
+  } else {
+    try {
+      await io.mergePull(where.owner, where.repo, outcome.pr, outcome.sha);
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      return refuse(`merging #${outcome.pr} at the reviewed commit (\`${outcome.sha.slice(0, 7)}\`) was refused. GitHub said: ${why.slice(0, 300)}`);
+    }
   }
   await deps.setReleaseNote({ version: outcome.version, note: outcome.note });
   await deps.markCompleted(new Date().toISOString());
@@ -50,6 +68,16 @@ export async function releaseApproved(deps: Deps, input: CoordinateInput, curren
       `v${outcome.version}, and this closes when that Release is out. (Automatic, from the orchestrator.)`,
   );
   return result;
+}
+
+/** Write access, as for a discussion reply (from-github.ts): the comment's
+ * author association, or the Worker's own App bot. */
+const TRUSTED_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"];
+async function trustedAuthor(deps: Deps, input: CoordinateInput): Promise<boolean> {
+  const sender = input.payload.sender?.login;
+  const bot = await deps.botLogin();
+  if (bot && sender === bot) return true;
+  return TRUSTED_ASSOCIATIONS.includes(input.payload.comment?.author_association ?? "");
 }
 
 /** The Release is out (GitHub's own event): its note to Slack, if a webhook

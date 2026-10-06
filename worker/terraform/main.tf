@@ -120,8 +120,6 @@ resource "cloudflare_workers_script" "worker" {
     },
     { type = "d1", name = "DB", id = cloudflare_d1_database.log.id },
     { type = "plain_text", name = "MODE", text = var.mode },
-    # The release channel's Slack webhook, if set (the release split's post).
-    { type = "secret_text", name = "SLACK_RELEASE_WEBHOOK", text = coalesce(var.slack_release_webhook, "") },
     { type = "plain_text", name = "WATCHDOG", text = var.watchdog },
     # The sandbox's own watchdog: real, with a short timeout a scenario can
     # wait out. Every other repo keeps `watchdog` and the default minutes.
@@ -169,6 +167,11 @@ resource "cloudflare_workers_script" "worker" {
       { type = "secret_text", name = "GITHUB_OAUTH_CLIENT_SECRET", text = var.github_app_client_secret },
       { type = "secret_text", name = "SESSION_SECRET", text = random_password.session_secret.result },
       { type = "plain_text", name = "SIGN_IN_DOMAINS", text = var.sign_in_domains },
+    ] : [],
+    # The release channel's Slack webhook (the release split's post); without
+    # it, nothing is posted.
+    var.slack_release_webhook != null ? [
+      { type = "secret_text", name = "SLACK_RELEASE_WEBHOOK", text = var.slack_release_webhook },
     ] : [],
     # GET /transitions, the e2e suite's read of the D1 log, for the sandbox
     # only. Without e2e_repo there's no LOG_READ_SECRET, so the route is off.

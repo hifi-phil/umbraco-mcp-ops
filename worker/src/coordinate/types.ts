@@ -74,6 +74,8 @@ export type Shipped = { pr: number; sha: string };
 
 export type ReleaseNote = { version: string; note: string };
 
+export type PullDetails = { headRef: string; headSha: string; baseRef: string; defaultBranch: string; merged: boolean };
+
 export type CiFix = { attempts: number; pending: boolean; returnTo?: Label };
 
 // The review's own rounds on this PR: how many times review-loop has asked
@@ -189,6 +191,9 @@ export type Deps = {
   // LABELS.READY_FOR_RELEASE (DO storage), for checking a release against.
   getShipped(): Promise<Shipped | null>;
   setShipped(shipped: Shipped): Promise<void>;
+  // A PR's branches, head and merge state, and the repo's default branch:
+  // what the release split checks before (and instead of) merging.
+  getPullDetails(owner: string, repo: string, pr: number): Promise<PullDetails>;
   // The release split: merge a release PR with a merge commit, pinned to
   // `sha` (GitHub refuses if the head moved); throws with GitHub's reason.
   mergePull(owner: string, repo: string, pr: number, sha: string): Promise<void>;

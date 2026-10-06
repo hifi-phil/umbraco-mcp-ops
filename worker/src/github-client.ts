@@ -193,7 +193,21 @@ export async function openPullsForCommit(env: GitHubEnv, owner: string, repo: st
   return pulls.filter((p) => p.state === "open").map((p) => p.number);
 }
 
-/** Open issues and PRs carrying `label` (the sweep's candidates). */
+export async function getPullDetails(
+  env: GitHubEnv,
+  owner: string,
+  repo: string,
+  pr: number,
+): Promise<{ headRef: string; headSha: string; baseRef: string; defaultBranch: string; merged: boolean }> {
+  const res = await gh(env, "GET", `/repos/${owner}/${repo}/pulls/${pr}`);
+  const p = (await res.json()) as {
+    head: { ref: string; sha: string };
+    base: { ref: string; repo: { default_branch: string } };
+    merged: boolean;
+  };
+  return { headRef: p.head.ref, headSha: p.head.sha, baseRef: p.base.ref, defaultBranch: p.base.repo.default_branch, merged: p.merged };
+}
+
 /** Merges a PR with a merge commit (never a squash: release tooling keys
  * off it), only if its head is still `sha`. GitHub's refusal (head moved,
  * not mergeable) throws with its message. */
@@ -211,6 +225,7 @@ export async function commitInRef(env: GitHubEnv, owner: string, repo: string, s
   return status === "ahead" || status === "identical";
 }
 
+/** Open issues and PRs carrying `label` (the sweep's candidates). */
 export async function openWithLabel(
   env: GitHubEnv,
   owner: string,

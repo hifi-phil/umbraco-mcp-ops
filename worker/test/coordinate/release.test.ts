@@ -11,13 +11,15 @@ const OWNER = "hifi-phil";
 const REPO = "umbraco-mcp-ops";
 const ISSUE = 219;
 
-const approved = (extra: Record<string, unknown> = {}) =>
+const approved = (extra: Record<string, unknown> = {}, author_association = "OWNER", sender = "hifi-phil") =>
   input({
     deliveryId: "d-approved",
     issueNumber: ISSUE,
     payload: {
       action: "issue_comment.created",
+      sender: { login: sender, type: "User" },
       comment: {
+        author_association,
         body: `Review passed.\n\n<!-- agent-outcome:auto-release-loop -->\n\`\`\`json\n${JSON.stringify({
           outcome: "release_approved",
           pr: 220,
@@ -63,6 +65,59 @@ describe("release_approved: the Worker merges", () => {
     await coordinateWebhook(d, approved());
     expect(d.mergePull).not.toHaveBeenCalled();
     expect(d.commentOnIssue).not.toHaveBeenCalled();
+  });
+});
+
+describe("release_approved: who may approve, which PR, and a retry", () => {
+  it("anyone without write access: ignored, nothing merged or logged", async () => {
+    for (const association of ["NONE", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR"]) {
+      const d = releasing();
+      expect(await coordinateWebhook(d, approved({}, association, "someone")), association).toEqual({ outcome: "no_event" });
+      expect(d.mergePull).not.toHaveBeenCalled();
+      expect(d.logTransition).not.toHaveBeenCalled();
+    }
+  });
+
+  it("the Worker's own App (the e2e stub posts as it) counts, whatever its association", async () => {
+    const d = releasing({ botLogin: async () => "orchestrator[bot]" });
+    await coordinateWebhook(d, approved({}, "NONE", "orchestrator[bot]"));
+    expect(d.mergePull).toHaveBeenCalled();
+  });
+
+  it("not this version's release PR into the default branch: refused like a block, nothing merged", async () => {
+    for (const details of [
+      { headRef: "feature/x", baseRef: "main" },
+      { headRef: "release/2.1.0", baseRef: "dev" },
+      { headRef: "release/2.0.9", baseRef: "main" },
+    ]) {
+      const d = releasing({
+        getPullDetails: vi.fn(async () => ({ ...details, headSha: "abc1234def", defaultBranch: "main", merged: false })),
+      });
+      await coordinateWebhook(d, approved());
+      expect(d.mergePull).not.toHaveBeenCalled();
+      expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, ISSUE, LABELS.AUTO_RELEASING);
+      expect(d.commentOnIssue).toHaveBeenCalledWith(OWNER, REPO, ISSUE, expect.stringMatching(/isn't the release PR for v2\.1\.0/));
+    }
+  });
+
+  it("already merged at the reviewed commit (a redelivery, a lost answer): done, not a refusal", async () => {
+    const d = releasing({
+      getPullDetails: vi.fn(async () => ({ headRef: "release/2.1.0", headSha: "abc1234def", baseRef: "main", defaultBranch: "main", merged: true })),
+    });
+    await coordinateWebhook(d, approved());
+    expect(d.mergePull).not.toHaveBeenCalled();
+    expect(d.removeLabel).not.toHaveBeenCalled();
+    expect(await d.getReleaseNote()).toEqual({ version: "2.1.0", note: "Issue stages and the release split." });
+    expect(d.markCompleted).toHaveBeenCalled();
+  });
+
+  it("already merged at a commit the review didn't see: refused, for a person", async () => {
+    const d = releasing({
+      getPullDetails: vi.fn(async () => ({ headRef: "release/2.1.0", headSha: "other99", baseRef: "main", defaultBranch: "main", merged: true })),
+    });
+    await coordinateWebhook(d, approved());
+    expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, ISSUE, LABELS.AUTO_RELEASING);
+    expect(d.commentOnIssue).toHaveBeenCalledWith(OWNER, REPO, ISSUE, expect.stringMatching(/merged at a commit the review didn't see/));
   });
 });
 
