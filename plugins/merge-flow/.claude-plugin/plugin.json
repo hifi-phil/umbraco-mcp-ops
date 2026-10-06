@@ -1,6 +1,6 @@
 {
   "name": "merge-flow",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Guardrail loop that merges PRs labelled `auto-merging` — the maintainer's deliberate go-signal (the human approval, since you can't review-approve your own PR) — but only once they are also CI-green, conflict-free, on the right base, and free of an unresolved 'changes requested'. Replaces error-prone manual merges: it never merges on an unmet gate, and drives each PR to a clean merge (branch deleted) or flags the blocker. Uses /goal so a merge job is provably finished. Repo-agnostic; runs locally or as a scheduled cloud routine.",
   "author": {
     "name": "Phil W",
