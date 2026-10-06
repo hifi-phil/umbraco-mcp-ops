@@ -28,14 +28,18 @@ describe.concurrent("scenarios", () => {
       s.name,
       () =>
         inScenario(s.name, async () => {
-          attempt++;
+          // Each attempt keeps its own number. A timed-out attempt isn't
+          // cancelled (its promise runs on), so once a newer one has started
+          // it says nothing more, rather than logging under the retry's number.
+          const mine = ++attempt;
+          const current = () => mine === attempt;
           const start = Date.now();
-          progress(attempt === 1 ? "start" : `RETRY ${attempt}/${RETRIES + 1}`);
+          progress(mine === 1 ? "start" : `RETRY ${mine}/${RETRIES + 1}`);
           try {
             await s.run();
-            progress(`PASSED in ${Math.round((Date.now() - start) / 1000)}s${attempt > 1 ? ` (on attempt ${attempt})` : ""}`);
+            if (current()) progress(`PASSED in ${Math.round((Date.now() - start) / 1000)}s${mine > 1 ? ` (on attempt ${mine})` : ""}`);
           } catch (e) {
-            progress(`FAILED after ${Math.round((Date.now() - start) / 1000)}s: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
+            if (current()) progress(`FAILED after ${Math.round((Date.now() - start) / 1000)}s: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
             throw e;
           }
         }),
