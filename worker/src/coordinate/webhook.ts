@@ -79,6 +79,10 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   let event = translate(input.payload, botLogin ? { botLogin } : {});
   const human = humanLabelChange(input.payload, botLogin);
   if (!event) return human ? logManualOverride(deps, input, human) : { outcome: "no_event" };
+  // A label added to a closed issue starts nothing: a closed release issue
+  // re-labelled would otherwise run (and merge) the whole release again
+  // (e2e #826, 06-10-2026). Reopen it first to retry.
+  if (input.payload.action === "issues.labeled" && input.payload.issue?.state === "closed") return { outcome: "closed_issue", event };
 
   // Fresh, per §3.4/to-github.ts's "never cache" principle -- and the one
   // set labelOps() below must see in full (including a label this event
