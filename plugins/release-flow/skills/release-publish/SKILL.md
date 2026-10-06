@@ -43,9 +43,10 @@ head is `release/<version>`, and the branch it merged into is this release's `<m
 3. **Merge `<main>` back into its own `<dev>`**: `main` → `dev`, `v<major>/main` →
    `v<major>/dev`, or the pair the repo's `CLAUDE.md` lists when it differs.
    **Never across lines.** If `<main>` has no `<dev>` by either rule, don't guess: say so
-   on the issue and skip the sync. If `sync-main-to-dev.yml` opened
-   a PR for exactly this pair, merge that one; otherwise open it and merge it. Always a
-   **merge commit**, never squash or rebase. A conflict: leave the PR open, say so on the
+   on the issue and skip the sync. **Always through a PR**, never a merge pushed straight
+   to `<dev>`: if `sync-main-to-dev.yml` opened a PR for exactly this pair, merge that one;
+   otherwise open one `<main>` → `<dev>` and merge it. Always a **merge commit**, never
+   squash or rebase. A conflict: leave the PR open, say so on the
    issue, and carry on (the release is out; syncing is a person's job then).
 4. **Report.** One comment on the release issue with the **required** `release_published`
    artifact (load `agent-outcomes` for the marker and shape): `version`, and `tag`, the tag

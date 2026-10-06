@@ -231,9 +231,11 @@ and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close 
 ## Step 4 — sync dev + close out (autonomous)
 
 1. Merge `<main>` back into `<dev>` (the same line: never `main` into a `v<major>/dev`,
-   or `v<major>/main` into `dev`) so it carries the bump + any release fixes
-   (`sync-main-to-dev.yml` if installed and it covers this line, else do the back-merge
-   and use `sync-dev`). **The `/goal` is not met until `<dev>` is synced.**
+   or `v<major>/main` into `dev`) so it carries the bump + any release fixes. **Always
+   through a PR**, never a merge pushed straight to `<dev>`: the PR `sync-main-to-dev.yml`
+   opened, if it's installed and covers this line, else open one `<main>` → `<dev>`. Merge
+   it with a **merge commit**, then use `sync-dev`. **The `/goal` is not met until `<dev>`
+   is synced.**
 2. **Comment the outcome on the triggering issue** (Release link, tag, "dev synced") and
    **close it**. Only if `agent-outcomes` is available, append the `release_published`
    outcome artifact to that same comment; otherwise skip it. Closing the issue is the
