@@ -226,6 +226,16 @@ export async function commitInRef(env: GitHubEnv, owner: string, repo: string, s
 }
 
 /** Open issues and PRs carrying `label` (the sweep's candidates). */
+/** Whether `ref` (a tag or branch) contains commit `sha`: the compare
+ * from the commit to the ref is "ahead" or "identical". A missing ref or
+ * commit (404) reads as not contained. */
+export async function commitInRef(env: GitHubEnv, owner: string, repo: string, sha: string, ref: string): Promise<boolean> {
+  const res = await gh(env, "GET", `/repos/${owner}/${repo}/compare/${sha}...${encodeURIComponent(ref)}`, undefined, { allow404: true });
+  if (res.status === 404) return false;
+  const { status } = (await res.json()) as { status: string };
+  return status === "ahead" || status === "identical";
+}
+
 export async function openWithLabel(
   env: GitHubEnv,
   owner: string,
