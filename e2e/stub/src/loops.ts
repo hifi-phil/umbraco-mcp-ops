@@ -101,6 +101,9 @@ export async function act(gh: Gh, fire: Fire, hint: string | null, signal?: Sign
 }
 
 /** One discussion round: a signed question, numbered by the rounds so far. */
+/** Marks the stub review-loop's PR reviews, which its rework-loop acts on. */
+const REVIEW_SIGNATURE = "e2e stub (review-loop): review";
+
 async function discuss(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
   if (hint !== "discuss") return "none";
   const comments = (await gh("GET", `${base(f)}/issues/${f.number}/comments?per_page=100`)) as { body: string }[];
@@ -146,10 +149,15 @@ async function rework(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
     case "review_ci_fail": // CI red before the review: the fix CI needs
       await putFile(gh, f, head.ref, "ci-state", "pass\n", "e2e stub: fix CI");
       return "pushed";
-    case "review_findings_once": // the review's findings: any push
-    case "review_findings_always":
+    case "review_findings_once": // the review's findings: a push, but only with a review to act on
+    case "review_findings_always": {
+      // As the real rework-loop: findings left anywhere but a PR review look
+      // like nothing to do, so no review means no push.
+      const reviews = (await gh("GET", `${base(f)}/pulls/${f.number}/reviews?per_page=100`)) as { body: string }[];
+      if (!Array.isArray(reviews) || !reviews.some((r) => r.body.includes(REVIEW_SIGNATURE))) return "none";
       await putFile(gh, f, head.ref, `rework/${f.number}.txt`, `addressed ${Date.now()}\n`, "e2e stub: address the review");
       return "pushed";
+    }
     default:
       return "none";
   }
@@ -216,6 +224,11 @@ export async function mergeIfGreen(gh: Gh, f: Fire, mergeRetryMs = MERGE_RETRY_M
  */
 async function review(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
   const verdict = async (outcome: Outcome) => {
+    // As the real review-loop: findings and a block go in a PR review (a
+    // comment review: the stub may be the PR's author), the verdict in a comment.
+    if (outcome.outcome !== "review_passed") {
+      await gh("POST", `${base(f)}/pulls/${f.number}/reviews`, { event: "COMMENT", body: `${REVIEW_SIGNATURE}\n${outcome.outcome}` });
+    }
     await comment(gh, f, outcomeComment("review-loop", outcome));
     return outcome.outcome as Action;
   };

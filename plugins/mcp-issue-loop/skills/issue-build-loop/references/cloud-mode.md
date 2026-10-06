@@ -25,6 +25,11 @@ Server** worker-env so the local run is **CI-parity** — the subagent tests on 
 provider CI uses, greens the suite locally, and skips the slow push → CI-fail → fix →
 re-push loop. (SQLite is a degraded fallback only; see step 2.)
 
+**Orchestrated mode** (the dispatch said so): steps 1–2 below as written, then follow
+`SKILL.md`'s [Orchestrated mode](../SKILL.md#orchestrated-mode-build-then-hand-to-review)
+(self-review, open the PR with `ai-reviewing`, report, stop) **instead of steps 3–5**: the
+orchestrator drives CI and fires `review-loop`.
+
 For the one triggering issue (identify it from the event; if unclear, take the **oldest**
 open `ai-ready` issue; none → quiet no-op):
 

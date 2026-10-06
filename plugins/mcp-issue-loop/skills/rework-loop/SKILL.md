@@ -50,7 +50,16 @@ re-armable.
 checks' logs (github-ops → *Get PR CI / check-run status*) and fix what failed; there
 may be no review at all. Read the logs once, don't poll. For this kind of rework, Step 5
 has no threads to reply to and no reviewer to re-request. The orchestrator swaps
-`auto-reworking` back to `auto-merging` when it sees your push.
+`auto-reworking` back to the label it came from (`auto-merging` or `ai-reviewing`) when it
+sees your push.
+
+**The review's findings (orchestrated mode).** If the orchestrator added `auto-reworking`
+with a "🔍 Review round" comment, the feedback is `review-loop`'s latest PR review: its
+inline comments, and its body. Fix each one; reread the issue the PR closes, so a fix
+doesn't drift from what it asked for. A finding you judge wrong: reply on its thread saying
+why, rather than changing the code. If there's no such review to act on, don't clear the
+label and push nothing: say so on the PR and stop, so a person sees it. After your push the
+orchestrator puts `ai-reviewing` back and the review runs again; don't re-request review.
 
 ## Step 2 — address it (with a local test gate)
 

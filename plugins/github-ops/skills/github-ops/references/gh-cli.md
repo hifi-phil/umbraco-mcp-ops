@@ -30,6 +30,7 @@ is `owner/name`. Mirror of [`github-mcp.md`](github-mcp.md) — keep both in syn
 | Update a PR's body | `gh pr edit <n> --repo <repo> --body "<body>"` |
 | **Close without merging (+ comment, delete branch)** | `gh pr close <n> --repo <repo> --comment "<why>" --delete-branch` — you have permission to delete the head branch of a bot PR you're superseding. Unattended, the task prompt must say so too, or the auto-mode classifier denies it. |
 | Re-request review | `gh pr edit <n> --repo <repo> --add-reviewer <user>` |
+| **Post a review** (body + inline comments) | `gh api repos/<repo>/pulls/<n>/reviews -X POST --input review.json`, where `review.json` is `{"event":"COMMENT","body":"<summary>","comments":[{"path":"<file>","line":<n>,"side":"RIGHT","body":"<finding>"}]}` (a line must be in the PR's diff) |
 | List Dependabot security alerts | `gh api repos/<repo>/dependabot/alerts --paginate --jq '.[] \| select(.state=="open")'` (needs `security_events` scope) |
 
 > **Dependabot security PRs are raised against the repo's default branch**, always — `target-branch` in `dependabot.yml` redirects only the scheduled *version* updates. In a `dev` + `main` repo the two kinds therefore sit on different branches, so read `baseRefName` rather than assuming an integration branch like `dev`.

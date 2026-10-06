@@ -92,6 +92,8 @@ specific issue/PR, and **follow that skill's instructions verbatim**:
 - `auto-merging` PR → **`/merge-flow`** (it sweeps all `auto-merging` PRs; the event is
   just the wake-up).
 - `auto-reworking` PR label → **`/rework-loop`** for that PR.
+- `route=review-loop` on an `ai-reviewing` PR (only ever from the orchestrator, once the
+  PR's CI is green) → **`/review-loop`** for that PR.
 - `auto-releasing` issue → **`/auto-release-loop`**, version taken from the issue title.
 - `route=release-publish` on an `auto-releasing` issue (only ever from the orchestrator,
   after it merged the release PR) → **`/release-publish`**, or the publish skill the

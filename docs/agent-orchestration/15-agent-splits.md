@@ -349,8 +349,10 @@ directly.
 ## Still to decide while building
 
 **Review routine**
-- The skill behind `review-loop`. `mcp-review` is a skill today, and
-  content repos need a reviewer too.
+- **Settled (07-10-2026): the skill behind `review-loop`** is its own skill,
+  `review-loop`, which runs `mcp-review` in report-only mode (it fits both
+  repo shapes) with the reviewers on `opus`. A repo's `CLAUDE.md` can name a
+  different reviewer skill.
 
 Settled in the graph and Worker change: the routine is `review-loop`; its
 outcomes are `review_passed`, `review_findings` (with a count) and
@@ -363,9 +365,12 @@ and is reviewed again once its CI is green.
 - The MCP's tools, and how the fire token reaches the routine.
 - Where the export goes when a PR merges.
 
-**Skills**
-- `issue-build-loop` stops once the PR is open, with `ai-reviewing` on it.
-- Every routine reads and writes the logs through the MCP.
+**Skills** (part 3, built 07-10-2026, except the logs)
+- `issue-build-loop`, in orchestrated mode, stops once the PR is open, with
+  `ai-reviewing` on it, after a self-review subagent. Unorchestrated, it
+  still drives CI and runs `mcp-review` itself.
+- Every routine reads and writes the logs through the MCP. *(Part 2, not
+  built yet.)*
 - **`review-loop` posts its findings as a real PR review**, with inline
   comments on the lines concerned. `rework-loop` only reads a PR's reviews
   and review comments (its Step 1), so findings left in an ordinary
@@ -375,15 +380,16 @@ and is reviewed again once its CI is green.
     routines act as the account that opened it, the review is a plain
     "comment" review. That still creates inline threads, which
     `rework-loop` reads.
-  - The outcome marker for the Worker goes in the review's body, or in a
-    separate comment.
+  - The outcome marker for the Worker goes in a separate comment (the
+    Worker reads comments), not the review's body.
 - **`rework-loop` reads the decision log**, so it can weigh a finding that
-  challenges a deliberate choice instead of undoing it.
-- **`rework-loop` rereads the issue** (optional), so a fix doesn't drift
-  from what the issue asked for.
-- The e2e stub hides the findings gap (its rework pushes whatever the hint
-  says), so the stub's `review-loop` should post a real review too, and
-  its `rework-loop` should fail if it finds no review to act on.
+  challenges a deliberate choice instead of undoing it. *(Part 2.)*
+- **`rework-loop` rereads the issue**, so a fix doesn't drift from what the
+  issue asked for. A finding it judges wrong gets a reply on its thread,
+  not a change.
+- The e2e stub's `review-loop` posts a real PR review for findings and a
+  block, and its `rework-loop` pushes nothing when it finds no review to
+  act on.
 
 **Account**
 - Whether the orchestrator moves to an Umbraco-owned Cloudflare account

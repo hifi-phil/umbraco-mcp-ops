@@ -140,10 +140,10 @@ session**, append the `build_succeeded` outcome artifact to that same comment (m
 shape in that skill). If it isn't available, skip this sentence entirely: don't invent a
 marker. Either way the label swap above is the real signal and is never skipped.
 
-**Orchestrated mode** (the dispatch said so) reverses that: **don't swap the labels**,
-and the `build_succeeded` or `build_blocked` artifact is **required** in that comment
-(load the `agent-outcomes` skill for the marker + shape). The orchestrator reads it and
-does the swap itself. Without it the issue stays `ai-ready`, so never skip it.
+**Orchestrated mode** (the dispatch said so) changes this step: the build **stops once
+its PR is open**, and the review is a separate routine. See
+[Orchestrated mode](#orchestrated-mode-build-then-hand-to-review) below; the rest of this
+step (driving CI, `mcp-review`, the label swap) doesn't run.
 
 If a build subagent reports it could not finish (e.g. the issue is genuinely ambiguous), or
 the CI-green cap or no-progress guard trips while driving CI **or** while fixing an
@@ -157,6 +157,27 @@ above: comment with the required artifact, and leave the labels to the orchestra
 Keep dispatching until the queue is empty, all build subagents have returned, every PR's CI
 is green (or the issue is blocked), and each green PR has been through `mcp-review` and had
 its outcome label swapped.
+
+### Orchestrated mode: build, then hand to review
+
+Build/review split (`docs/agent-orchestration/15-agent-splits.md`): the orchestrator watches
+CI and fires `review-loop`, an independent review on a stronger model; `rework-loop` makes
+every fix. So in orchestrated mode, for the one issue:
+
+1. **Build and test locally**, as the playbook says (in cloud mode, with the SQL Server gate).
+2. **Self-review**: spawn one subagent on the build's model, with the issue and the diff, to
+   reread the change with a clear head before it goes out: missed requirements, leftover
+   debug code, tests that don't test the change. Fix what it finds and re-test. This isn't
+   the review (`review-loop` is); it's the builder checking its own work.
+3. **Open the PR** against the base branch (`Closes #<n>`, ready for review, not draft), and
+   **add `ai-reviewing` to the PR** (github-ops → *Add / remove a label*). That label is what
+   the orchestrator gates the review on.
+4. **Report**: one comment on the issue with the **required** `build_succeeded` artifact
+   (load `agent-outcomes` for the marker + shape), or `build_blocked` if it couldn't be built.
+   **Don't swap the issue's labels**: the orchestrator does. Without the artifact the issue
+   stays `ai-ready`, so never skip it.
+5. **Stop.** Don't poll CI, don't run `mcp-review`, and don't respond to the review: CI red
+   goes to `rework-loop` from the orchestrator, and so do the review's findings.
 
 ## Step 4 — hand off (no human-review phase here)
 
