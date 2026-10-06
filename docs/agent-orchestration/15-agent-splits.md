@@ -247,6 +247,96 @@ While it waits between the merge and the Release, the release issue is
 marked as completed, so the sweep doesn't take the wait for a lost run and
 fire the release again.
 
+### The release, end to end
+
+The only agent is `auto-release-loop`, one Claude session (the shaded box).
+It starts when the Worker fires it and ends when it reports
+`release_approved` or `release_blocked`; `release-reviewer` is a read-only
+sub-agent inside it that only judges. Everything else is deterministic: the
+Worker and the repo's own GitHub Actions. If the session never reports, the
+watchdog moves the issue to `ai-stuck`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor P as Person
+    participant W as Worker (deterministic)
+    participant A as auto-release-loop (agent)
+    participant R as release-reviewer (sub-agent)
+    participant GH as GitHub Actions (deterministic)
+    participant S as Slack
+
+    P->>W: opens "release 2.1.0", adds auto-releasing
+    W->>A: fires the routine, arms the 60-min watchdog
+
+    rect rgba(120, 120, 220, 0.12)
+        Note over A,R: Agent session
+        A->>A: cut release/2.1.0 from dev, bump versions, write the changelog
+        A->>GH: open PR release/2.1.0 → main
+        GH-->>A: CI results
+        A->>A: fix CI until green (up to 8 tries)
+        A->>R: pre-publish review, on facts pinned to the head commit
+        R-->>A: PASS or BLOCK
+        alt BLOCK
+            A->>W: release_blocked
+            W->>W: removes auto-releasing (release stops here)
+        else PASS
+            A->>W: release_approved (PR, reviewed commit, version, note)
+        end
+        Note over A: the agent's session ends
+    end
+
+    W->>W: check: trusted author, and this version's release PR into the default branch
+    W->>GH: merge the PR (a merge commit, pinned to the reviewed commit)
+    alt merge refused (pushed to after the review)
+        W->>W: removes auto-releasing, comments why
+    else merged
+        W->>W: marks the run completed, so the sweep waits
+        GH->>GH: release-tag.yml: tag v2.1.0, publish the Release
+        GH->>GH: sync-main-to-dev.yml: open main → dev (a person merges)
+        GH->>W: release.published
+        W->>S: the release note
+        W->>W: close the release issue
+        W->>W: close each ready-for-release issue whose merge is in v2.1.0
+    end
+```
+
+### The labels along the way
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    state "Release issue" as Rel {
+        [*] --> auto_releasing: a person adds the label
+        auto_releasing --> ai_stuck: the agent never reports (watchdog)
+        auto_releasing --> no_label: blocked, or the merge refused
+        auto_releasing --> closed_r: the Release is published
+        closed_r --> [*]
+
+        auto_releasing: auto-releasing
+        ai_stuck: ai-stuck
+        no_label: (no label)
+        closed_r: closed
+    }
+
+    state "A feature issue it ships" as Feat {
+        [*] --> ai_ready: a person adds the label
+        ai_ready --> pr_open: the build opens its PR
+        pr_open --> ready_for_release: the PR merges into dev
+        ready_for_release --> closed_f: a release containing the merge
+        closed_f --> [*]
+
+        ai_ready: ai-ready
+        pr_open: pr-open
+        ready_for_release: ready-for-release
+        closed_f: closed
+    }
+```
+
+The release PR itself carries no tracked label: the Worker merges it
+directly.
+
 ## Rollout
 
 1. **Sandbox** (`hifi-phil/mcp-ops-e2e-testing`). The e2e suite gains
