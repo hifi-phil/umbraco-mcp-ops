@@ -267,7 +267,7 @@ async function approveRelease(gh: Gh, f: Fire): Promise<Action> {
 
 /**
  * The release split's after part (release-publish), with the repo's own
- * tagging workflow played too: tag the merged main v<version>, then report
+ * tagging workflow played too: tag the release PR's merge v<version>, then report
  * release_published with that tag. (The real skill also posts the release
  * note and merges main back into dev; the sandbox skips both.)
  */
@@ -275,8 +275,15 @@ async function publishRelease(gh: Gh, f: Fire, hint: string | null): Promise<Act
   if (hint !== "approve") return "none";
   const version = `0.0.${f.number}`;
   const tag = `v${version}`;
-  const { object } = (await gh("GET", `${base(f)}/git/ref/heads/main`)) as { object: { sha: string } };
-  await gh("POST", `${base(f)}/git/refs`, { ref: `refs/tags/${tag}`, sha: object.sha });
+  // The release PR's merge commit, as release-tag.yml tags the push that
+  // merge made. Not main's head: read straight after the merge it can still
+  // be the commit before it (e2e #826, 06-10-2026).
+  const prs = (await gh("GET", `${base(f)}/pulls?state=closed&base=main&head=${f.owner}:release/${version}`)) as {
+    merge_commit_sha: string | null;
+  }[];
+  const sha = prs.find((p) => p.merge_commit_sha)?.merge_commit_sha;
+  if (!sha) return "none";
+  await gh("POST", `${base(f)}/git/refs`, { ref: `refs/tags/${tag}`, sha });
   await comment(gh, f, outcomeComment("release-publish", { outcome: "release_published", version, tag }));
   return "release_published";
 }

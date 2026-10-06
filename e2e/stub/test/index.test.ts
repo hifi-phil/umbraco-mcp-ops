@@ -287,10 +287,11 @@ describe("act — auto-release-loop, and silent", () => {
     expect((approval[2] as { body: string }).body).toContain('"outcome":"release_approved","pr":90,"sha":"rel-head","version":"0.0.7","merge_method":"merge"');
   });
 
-  it("release-publish (the after part) -> tags the merged main v<version>, reports release_published with the tag", async () => {
-    const gh = fakeGh({ [`GET ${R}/git/ref/heads/main`]: { object: { sha: "main-merge" } } });
+  it("release-publish (the after part) -> tags the release PR's merge commit v<version>, reports release_published with the tag", async () => {
+    const gh = fakeGh({ [`GET ${R}/pulls?state=closed&base=main&head=`]: [{ merge_commit_sha: "release-merge" }] });
     expect(await act(gh, fireFor("release-publish"), "approve")).toBe("release_published");
-    expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: "refs/tags/v0.0.7", sha: "main-merge" });
+    expect(gh).toHaveBeenCalledWith("GET", expect.stringContaining(":release/0.0.7"));
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: "refs/tags/v0.0.7", sha: "release-merge" });
     const published = gh.mock.calls.find(([m, p]) => m === "POST" && p.endsWith("/issues/7/comments"))!;
     expect((published[2] as { body: string }).body).toContain('"outcome":"release_published","version":"0.0.7","tag":"v0.0.7"');
   });

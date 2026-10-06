@@ -359,6 +359,7 @@ export type CoordinateResult =
   | { outcome: "dropped_no_rule"; from: State; event: Event }
   | { outcome: "ignored"; from: State; event: Event } // a CONTEXTUAL_EVENT outside its states; not logged
   | { outcome: "stale_label"; event: Event } // the label was already gone when its webhook ran; not logged
+  | { outcome: "closed_issue"; event: Event } // a label added to a closed issue: nothing starts; not logged
   | { outcome: "manual_override"; change: string; by: string | null } // a person edited a tracked label; logged
   | { outcome: "applied"; from: State; event: Event; rule: Rule };
 
