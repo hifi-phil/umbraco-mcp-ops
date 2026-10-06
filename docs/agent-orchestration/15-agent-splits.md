@@ -249,7 +249,7 @@ fire the release again.
 
 ### The release, end to end
 
-The only agent is `auto-release-loop`, one Claude session (the shaded box).
+The only agent is `auto-release-loop`, one Claude session (the 🤖 box).
 It starts when the Worker fires it and ends when it reports
 `release_approved` or `release_blocked`; `release-reviewer` is a read-only
 sub-agent inside it that only judges. Everything else is deterministic: the
@@ -257,48 +257,38 @@ Worker and the repo's own GitHub Actions. If the session never reports, the
 watchdog moves the issue to `ai-stuck`.
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor P as Person
-    participant W as Worker (deterministic)
-    participant A as auto-release-loop (agent)
-    participant R as release-reviewer (sub-agent)
-    participant GH as GitHub Actions (deterministic)
-    participant S as Slack
+flowchart TD
+    P["👤 <b>Person</b><br/>opens <i>release 2.1.0</i>, adds the label<br/>🏷 auto-releasing"]
+    W1["⚙ <b>Worker</b><br/>fires auto-release-loop,<br/>starts a 60-min watchdog<br/>🏷 auto-releasing"]
 
-    P->>W: opens "release 2.1.0", adds auto-releasing
-    W->>A: fires the routine, arms the 60-min watchdog
-
-    rect rgba(120, 120, 220, 0.12)
-        Note over A,R: Agent session
-        A->>A: cut release/2.1.0 from dev, bump versions, write the changelog
-        A->>GH: open PR release/2.1.0 → main
-        GH-->>A: CI results
-        A->>A: fix CI until green (up to 8 tries)
-        A->>R: pre-publish review, on facts pinned to the head commit
-        R-->>A: PASS or BLOCK
-        alt BLOCK
-            A->>W: release_blocked
-            W->>W: removes auto-releasing (release stops here)
-        else PASS
-            A->>W: release_approved (PR, reviewed commit, version, note)
-        end
-        Note over A: the agent's session ends
+    subgraph AGENT["🤖 AGENT: auto-release-loop (one Claude session)"]
+        A1["1. cut release/2.1.0 from dev"]
+        A2["2. bump versions + changelog,<br/>open PR release/2.1.0 → main"]
+        A3["3. get CI green<br/>(fixes failures itself, up to 8 tries)"]
+        A4{"4. pre-publish review<br/>release-reviewer<br/>(a read-only sub-agent)"}
+        A1 --> A2 --> A3 --> A4
     end
 
-    W->>W: check: trusted author, and this version's release PR into the default branch
-    W->>GH: merge the PR (a merge commit, pinned to the reviewed commit)
-    alt merge refused (pushed to after the review)
-        W->>W: removes auto-releasing, comments why
-    else merged
-        W->>W: marks the run completed, so the sweep waits
-        GH->>GH: release-tag.yml: tag v2.1.0, publish the Release
-        GH->>GH: sync-main-to-dev.yml: open main → dev (a person merges)
-        GH->>W: release.published
-        W->>S: the release note
-        W->>W: close the release issue
-        W->>W: close each ready-for-release issue whose merge is in v2.1.0
-    end
+    WS["⚙ <b>Worker</b> (watchdog)<br/>no report within 60 min<br/>🏷 ai-stuck"]
+    WB["⚙ <b>Worker</b><br/>removes the label<br/>🏷 (none)"]
+    W2["⚙ <b>Worker</b><br/>checks: trusted author? the right PR?<br/>merges the PR: a merge commit,<br/>pinned to the reviewed commit<br/>🏷 auto-releasing"]
+    WR["⚙ <b>Worker</b><br/>label off, 🛑 comment why<br/>🏷 (none)"]
+    G["⚙ <b>GitHub Actions</b><br/>release-tag.yml: tags v2.1.0, publishes the Release<br/>(packages publish from it)<br/>sync-main-to-dev.yml: opens main → dev<br/>for a person to merge"]
+    W3["⚙ <b>Worker</b>, on the Release event<br/>posts the note to Slack<br/>closes the release issue<br/>closes every ready-for-release issue<br/>whose merge is in v2.1.0<br/>🏷 closed"]
+
+    P --> W1 --> AGENT
+    A4 -- "BLOCK: posts release_blocked" --> WB
+    A4 -- "PASS: posts release_approved" --> W2
+    AGENT -. "never reports back" .-> WS
+    W2 -- "refused (pushed to after the review)" --> WR
+    W2 -- merged --> G --> W3
+
+    classDef agent fill:#ece8fb,stroke:#7b6fd6,color:#222
+    classDef det fill:#eef6ee,stroke:#5a9a5a,color:#222
+    classDef person fill:#fff6e0,stroke:#c9a227,color:#222
+    class A1,A2,A3,A4 agent
+    class W1,WS,WB,W2,WR,G,W3 det
+    class P person
 ```
 
 ### The labels along the way
