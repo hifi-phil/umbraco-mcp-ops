@@ -3,6 +3,7 @@
 // screen). Every link carries the filters, so a view is a URL.
 
 import type { LogRow } from "../../db/transitions";
+import type { LogEntry } from "../../db/log-entries";
 import {
   MAX_SHOWN,
   PAGE,
@@ -31,7 +32,7 @@ export type ListPageProps = {
   repos: string[];
   sandbox?: string[];
   sweepOff?: string[];
-  selected: { item: Item | null; log: LogRow[] } | null;
+  selected: { item: Item | null; log: LogRow[]; workLog: LogEntry[] } | null;
   now: number;
   user?: string;
 };
@@ -74,7 +75,67 @@ function By({ actor }: { actor?: string | null }) {
   return <> · by {by.person ? <span class="person">{by.text}</span> : by.text}</>;
 }
 
-export function Panel({ item, open, log, now, filters: f }: { item: Item | null; open: { repo: string; n: number }; log: LogRow[]; now: number; filters: Filters }) {
+/** The decision log and build log (16-work-log.md), oldest first: what the
+ * routines decided and checked, beside what the labels did. */
+function WorkLog({ entries, now }: { entries: LogEntry[]; now: number }) {
+  return (
+    <>
+      <div class="panel-log-title">
+        Work log <span class="muted">({entries.length}, oldest first)</span>
+      </div>
+      <div class="wrap">
+        <table class="log work-log">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Entry</th>
+              <th>Routine</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.length === 0 ? (
+              <tr>
+                <td colspan={3} class="empty">
+                  No decisions or build entries recorded.
+                </td>
+              </tr>
+            ) : (
+              entries.map((e) => (
+                <tr>
+                  <td>
+                    {when(e.created_at)}
+                    <div class="sub">{ago(e.created_at, now)}</div>
+                  </td>
+                  <td>
+                    <span class={`tag ${e.kind === "decision" ? "default" : "quiet"}`}>{e.kind === "decision" ? e.category : "build"}</span>
+                    <pre class="entry">{e.body}</pre>
+                  </td>
+                  <td>{e.routine}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+export function Panel({
+  item,
+  open,
+  log,
+  workLog = [],
+  now,
+  filters: f,
+}: {
+  item: Item | null;
+  open: { repo: string; n: number };
+  log: LogRow[];
+  workLog?: LogEntry[];
+  now: number;
+  filters: Filters;
+}) {
   const s = item?.status ?? null;
   return (
     <div class="box panel">
@@ -137,6 +198,7 @@ export function Panel({ item, open, log, now, filters: f }: { item: Item | null;
           </div>
         )}
       </div>
+      <WorkLog entries={workLog} now={now} />
       <div class="panel-log-title">
         Transitions{" "}
         <span class="muted">
@@ -224,6 +286,12 @@ function Row({ item: i, f, selected, sandbox, now, panel }: { item: Item; f: Fil
         <span class="row-sub">
           {i.repo}
           {sandbox && <> <E2e /></>} · <code>{i.lastEvent}</code> · {ago(i.lastAt, now)}
+          {i.decisions + i.builds > 0 && (
+            <>
+              {" "}
+              · <span class="work-log-count">{i.decisions} {i.decisions === 1 ? "decision" : "decisions"}, {i.builds} {i.builds === 1 ? "build entry" : "build entries"}</span>
+            </>
+          )}
         </span>
       </a>
       {/* On a narrow screen the log opens under its row instead of beside the list. */}
@@ -241,7 +309,7 @@ export function ListPage(p: ListPageProps) {
   const byStatus = items.filter((i) => matches(i, f, "status"));
   const inRepo = (r: string | null) => items.filter((i) => matches(i, { ...f, repo: r })).length;
   const panel = selected ? (
-    <Panel item={selected.item} open={f.open!} log={selected.log} now={now} filters={f} />
+    <Panel item={selected.item} open={f.open!} log={selected.log} workLog={selected.workLog} now={now} filters={f} />
   ) : (
     <div class="box pad panel-empty">
       <p class="lead">Pick an issue or pull request to see its log.</p>

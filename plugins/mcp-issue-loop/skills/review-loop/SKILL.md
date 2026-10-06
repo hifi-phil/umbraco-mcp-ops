@@ -80,6 +80,16 @@ Name the reviewers that ran and the head SHA reviewed.
 - Findings → `review_findings` with `findings`: how many inline comments you posted.
 - The approach is wrong → `review_blocked` with a one-line `reason`.
 
+**On a pass, with a decision log:** add a **Decisions to check** section to the end of the
+PR's description (github-ops → *Update a PR's body*; replace the section if one is already
+there). It's for the person who reviews next, in the style of `decision-review`:
+- Only the decisions a person should look at: an `assumption` or `deviation` always, a
+  `workaround` that leaves debt, a `judgment-call` with a real alternative. Not the rest.
+- Ranked, most consequential first; at most five.
+- Each one line: the decision, its category and log number, and a recommended action
+  ("confirm the issue meant X", "accept", "open a follow-up for Y").
+- None worth a look: one line saying the logged decisions need no action.
+
 Before that comment, add one **build** entry (when you have a `log_token`): the head SHA
 reviewed, the reviewers that ran, the verdict, how many findings, and which decisions were
 challenged. A failed write never stops the run.

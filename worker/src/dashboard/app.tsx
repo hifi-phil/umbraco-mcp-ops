@@ -18,6 +18,8 @@ import { handleCallback, handleLogin, handleLogout, readSession, signInConfigure
 import { CONTROLS, controlsFor, isControl, reposWithControlOff, setControl } from "../controls";
 import * as issueStatus from "../db/issue-status";
 import * as itemsDb from "../db/items";
+import * as logEntries from "../db/log-entries";
+import type { LogEntry } from "../db/log-entries";
 import * as transitions from "../db/transitions";
 import { githubConfigured, type GitHubEnv } from "../github-client";
 import { BACKFILL_MAX, backfillItems } from "../items";
@@ -99,7 +101,7 @@ dashboard.get("/status", async (c) => {
   // One row per item from its summary (db/items), never the whole log: a
   // load reads about as many rows as there are items.
   const [summary, status] = await Promise.all([itemsDb.listSummaries(env.DB, MAX_ITEMS), issueStatus.list(env.DB)]);
-  const activity = summary.map((r) => ({ owner: r.owner, repo: r.repo, issue_number: r.issue_number, event: r.last_event, last_at: r.last_at, events: r.events, pr_hint: r.pr_hint }));
+  const activity = summary.map((r) => ({ owner: r.owner, repo: r.repo, issue_number: r.issue_number, event: r.last_event, last_at: r.last_at, events: r.events, pr_hint: r.pr_hint, decisions: r.decisions, builds: r.builds }));
   const all = buildItems(activity, status, summary, repos);
 
   // Find with exactly one match: open its log straight away.
@@ -121,11 +123,15 @@ dashboard.get("/status", async (c) => {
   // Repos whose sweep is switched off are flagged on their pill.
   const sweepOff = await reposWithControlOff(env.DB, "sweep").catch(() => new Set<string>());
 
-  let selected: { item: Item | null; log: transitions.LogRow[] } | null = null;
+  let selected: { item: Item | null; log: transitions.LogRow[]; workLog: LogEntry[] } | null = null;
   if (filters.open) {
+    // Only an opened item reads its logs: one indexed read each.
     const [owner, repo] = filters.open.repo.split("/") as [string, string];
-    const log = await transitions.forIssue(env.DB, owner, repo, filters.open.n, { newestFirst: true, limit: 300 });
-    selected = { item: all.find((i) => i.repo === filters.open!.repo && i.n === filters.open!.n) ?? null, log };
+    const [log, workLog] = await Promise.all([
+      transitions.forIssue(env.DB, owner, repo, filters.open.n, { newestFirst: true, limit: 300 }),
+      logEntries.forItems(env.DB, owner, repo, [filters.open.n]).catch(() => []),
+    ]);
+    selected = { item: all.find((i) => i.repo === filters.open!.repo && i.n === filters.open!.n) ?? null, log, workLog };
   }
   return htmlResponse(
     <ListPage items={all} filters={filters} repos={repos} sandbox={c.get("sandbox")} sweepOff={[...sweepOff]} selected={selected} now={Date.now()} user={c.get("user")} />,
