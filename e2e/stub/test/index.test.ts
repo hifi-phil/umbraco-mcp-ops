@@ -98,6 +98,8 @@ describe("act — issue-build-loop", () => {
 describe("act — rework-loop", () => {
   const pr = { [`GET ${R}/pulls/7`]: { head: { ref: "feature" } } };
 
+  const reviewed = { [`GET ${R}/pulls/7/reviews`]: [{ body: "e2e stub (review-loop): review\nreview_findings" }] };
+
   it.each([
     ["rework", "rework/7.txt"],
     ["ci_never_fixed", "rework/7.txt"],
@@ -106,10 +108,16 @@ describe("act — rework-loop", () => {
     ["review_findings_once", "rework/7.txt"],
     ["review_findings_always", "rework/7.txt"],
   ])("%s -> one push to the PR's branch (%s), labels untouched", async (hint, path) => {
-    const gh = fakeGh({ ...pr, [`GET ${R}/contents/`]: { sha: "old" } });
+    const gh = fakeGh({ ...reviewed, ...pr, [`GET ${R}/contents/`]: { sha: "old" } });
     expect(await act(gh, fireFor("rework-loop"), hint)).toBe("pushed");
     expect(gh).toHaveBeenCalledWith("PUT", `${R}/contents/${path}`, expect.objectContaining({ branch: "feature", sha: "old" }));
     expect(calls(gh).some((c) => c.includes("/labels"))).toBe(false);
+  });
+
+  it("the review's findings with no PR review to act on (left in a comment, say) -> no push", async () => {
+    const gh = fakeGh({ [`GET ${R}/pulls/7/reviews`]: [], ...pr, [`GET ${R}/contents/`]: { sha: "old" } });
+    expect(await act(gh, fireFor("rework-loop"), "review_findings_once")).toBe("none");
+    expect(calls(gh).some((c) => c.startsWith("PUT"))).toBe(false);
   });
 
   it("ci_fail writes ci-state = pass", async () => {
@@ -136,6 +144,8 @@ describe("act — review-loop", () => {
     expect(await act(gh, fireFor("review-loop"), hint)).toBe(outcome.outcome);
     expect(verdictOf(gh)).toEqual(outcome);
     expect(calls(gh).some((c) => c.includes("/labels"))).toBe(false);
+    // Findings and a block are a PR review too; a pass is only the verdict.
+    expect(calls(gh).includes(`POST ${R}/pulls/7/reviews`)).toBe(outcome.outcome !== "review_passed");
   });
 
   it("review_findings_once -> findings on the first round, a pass once it has asked", async () => {

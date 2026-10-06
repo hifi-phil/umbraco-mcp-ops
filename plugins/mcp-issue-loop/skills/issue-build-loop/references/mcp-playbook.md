@@ -5,10 +5,10 @@ This is the MCP-repo variant; content repos use `content-playbook.md`.
 The **build playbook** below. The orchestrator (see `../SKILL.md`) substitutes the issue
 details and dispatches it as a subagent prompt (`agentType: general-purpose`, so the full
 tool + Skill set is available). It runs once per issue, in parallel (cap 3), and takes an
-issue from `ai-ready` to a pushed branch with an open PR. The orchestrator then drives
-that PR's CI green (re-dispatching a subagent into the same worktree on a failing check),
-marks the issue's outcome, and reviews it with `mcp-review` before handing off — human
-change-requests are `rework-loop`'s, not a playbook here (see *Responding to human review*
+issue from `ai-ready` to a pushed branch with an open PR. The orchestrator then reviews it
+with `mcp-review` (re-dispatching a subagent into the same worktree to fix findings), hands
+it to `ai-reviewing` and marks the issue's outcome — CI and later reviews are the
+orchestrator's and `rework-loop`'s, not a playbook here (see *Responding to human review*
 at the end).
 
 ---
@@ -128,10 +128,10 @@ green. If state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename th
 
 **Do not run `/security-review` or `/code-review` yourself** — see `SKILL.md`'s Rules for
 why they're inert in a subagent; a subagent grading its own code is weak anyway. You also
-do **not** drive CI — once you return, **the orchestrator** polls the PR's checks and drives it green,
-then runs the [`mcp-review`](../../mcp-review/SKILL.md) skill over it, handing you back
-either a failing check's log or any surviving review findings to fix in this worktree. Just
-build well and return; don't claim a review ran or that CI is green.
+do **not** drive CI — once you return, **the orchestrator** runs the
+[`mcp-review`](../../mcp-review/SKILL.md) skill over the PR, handing you back any surviving
+findings to fix in this worktree. CI is watched later, after the PR goes to `ai-reviewing`.
+Just build well and return; don't claim a review ran or that CI is green.
 
 ### 6. Commit, push, open the PR
 
@@ -143,9 +143,8 @@ gitflow repos — defer to the `release-and-branching` skill), linking the issue
 to be able to review and approve it; that review is the acceptance gate.
 
 Include in the PR body: what changed, which skills/agents were used, and test
-results. **Do not claim security/code review ran, or that CI is green** — driving CI
-green, marking the issue's outcome, and the review all happen next, at the orchestrator
-level.
+results. **Do not claim security/code review ran, or that CI is green** — the review and
+marking the issue's outcome happen next, at the orchestrator level.
 
 ### 7. Return
 

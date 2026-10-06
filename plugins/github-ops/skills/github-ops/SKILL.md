@@ -67,6 +67,7 @@ instead).
 | **Get PR CI / check-run status** | every loop (the merge gate) |
 | **Read a failing check's log** | every loop (diagnosing a red CI run) |
 | Re-request review / add reviewer | review-response |
+| **Post a PR review** (body + inline comments, `COMMENT` event) | review-loop |
 | Create a PR | all loops |
 | **Merge a PR (+ delete branch)** | merge-flow |
 | Update a PR's body | dependabot-rollup |

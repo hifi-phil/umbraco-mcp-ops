@@ -6,7 +6,7 @@ description: >-
   quality, and our lightweight security-reviewer agent for vulnerabilities, then merges and
   confidence-filters the findings and posts them on the PR. Run it from a TOP-LEVEL session
   (orchestrator / rework session), never inside a build subagent. Used by issue-build-loop
-  (both repo shapes) and rework-loop. Requires github-ops. Invoke as "review PR #N with
+  (both repo shapes), rework-loop, and review-loop (report-only mode). Requires github-ops. Invoke as "review PR #N with
   mcp-review".
 ---
 
@@ -74,6 +74,10 @@ For a security finding, keep it only if the `security-reviewer` gave a concrete 
 If nothing survives, the change is clean.
 
 ## 5. Act on what survives
+
+**Report-only mode** (`review-loop`, or any caller that says so): skip this step. Return the
+surviving findings, each with its file, line and a one-line fix, and which agents ran. The
+caller posts them; nothing here is fixed or posted.
 
 - **Findings survive:** fix them (or hand them to the agent that owns the fix — the build
   subagent's worktree, or the rework session), re-run the affected tests, and re-review a

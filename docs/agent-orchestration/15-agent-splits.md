@@ -56,12 +56,14 @@ flowchart LR
 does. It:
 
 1. builds the change and tests it locally;
-2. runs a **self-review subagent** that has the builder's context and
-   rereads the diff with a clear head;
+2. reviews it with `mcp-review` (Anthropic's review agents, as it always
+   has), from its top-level session, and fixes what that finds;
 3. writes its decisions and build entry to the logs (below);
-4. opens the PR with `ai-reviewing` on it, and stops.
+4. adds `ai-reviewing` to the PR, and stops.
 
-It no longer drives CI or runs `mcp-review`.
+It no longer drives CI. That's the same whether or not the Worker
+orchestrates the repo (decided 07-10-2026); only who swaps the issue's labels
+differs, as for every loop.
 
 ### CI
 
@@ -157,7 +159,7 @@ in files.
 
 | Routine | Decision log | Build log |
 |---|---|---|
-| build | Writes its decisions, including the self-review subagent's | Writes its entry |
+| build | Writes its decisions, including what its `mcp-review` changed | Writes its entry |
 | `ai-reviewing` | Reads it, after forming its findings | Writes its verdict, round and findings |
 | `rework-loop` | Reads it, and adds its own decisions | Writes its entry |
 | Worker | — | — (`transitions` is its log) |
@@ -349,8 +351,10 @@ directly.
 ## Still to decide while building
 
 **Review routine**
-- The skill behind `review-loop`. `mcp-review` is a skill today, and
-  content repos need a reviewer too.
+- **Settled (07-10-2026): the skill behind `review-loop`** is its own skill,
+  `review-loop`, which runs `mcp-review` in report-only mode (it fits both
+  repo shapes) with the reviewers on `opus`. A repo's `CLAUDE.md` can name a
+  different reviewer skill.
 
 Settled in the graph and Worker change: the routine is `review-loop`; its
 outcomes are `review_passed`, `review_findings` (with a count) and
@@ -363,9 +367,11 @@ and is reviewed again once its CI is green.
 - The MCP's tools, and how the fire token reaches the routine.
 - Where the export goes when a PR merges.
 
-**Skills**
-- `issue-build-loop` stops once the PR is open, with `ai-reviewing` on it.
-- Every routine reads and writes the logs through the MCP.
+**Skills** (part 3, built 07-10-2026, except the logs)
+- `issue-build-loop` reviews its PR with `mcp-review`, adds `ai-reviewing`
+  and stops, orchestrated or not. It no longer drives CI.
+- Every routine reads and writes the logs through the MCP. *(Part 2, not
+  built yet.)*
 - **`review-loop` posts its findings as a real PR review**, with inline
   comments on the lines concerned. `rework-loop` only reads a PR's reviews
   and review comments (its Step 1), so findings left in an ordinary
@@ -375,15 +381,16 @@ and is reviewed again once its CI is green.
     routines act as the account that opened it, the review is a plain
     "comment" review. That still creates inline threads, which
     `rework-loop` reads.
-  - The outcome marker for the Worker goes in the review's body, or in a
-    separate comment.
+  - The outcome marker for the Worker goes in a separate comment (the
+    Worker reads comments), not the review's body.
 - **`rework-loop` reads the decision log**, so it can weigh a finding that
-  challenges a deliberate choice instead of undoing it.
-- **`rework-loop` rereads the issue** (optional), so a fix doesn't drift
-  from what the issue asked for.
-- The e2e stub hides the findings gap (its rework pushes whatever the hint
-  says), so the stub's `review-loop` should post a real review too, and
-  its `rework-loop` should fail if it finds no review to act on.
+  challenges a deliberate choice instead of undoing it. *(Part 2.)*
+- **`rework-loop` rereads the issue**, so a fix doesn't drift from what the
+  issue asked for. A finding it judges wrong gets a reply on its thread,
+  not a change.
+- The e2e stub's `review-loop` posts a real PR review for findings and a
+  block, and its `rework-loop` pushes nothing when it finds no review to
+  act on.
 
 **Account**
 - Whether the orchestrator moves to an Umbraco-owned Cloudflare account

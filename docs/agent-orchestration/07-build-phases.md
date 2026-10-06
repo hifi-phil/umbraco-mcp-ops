@@ -390,10 +390,10 @@ onboarded, and needs no App install on the umbraco org.
    build times are known (`worker/queries/routine-durations.sql`).
 5. **Run real issues through the lane:** `ai-discussing` → `ai-ready` →
    `pr-open` → `auto-merging` → a test release, with the sweep enforcing.
-6. **Run it twice:** once now on the current lane, for real timings and
-   failure modes; again after the review split's skills land
-   ([15-agent-splits.md](15-agent-splits.md), part 3), so `ai-reviewing`
-   is tried with real agents before an umbraco repo sees it.
+6. **Run it once, after the review split is built**
+   ([15-agent-splits.md](15-agent-splits.md): the skills, the logs and what
+   people see). A run before that would only show the old flow, where the
+   build reviews itself (decided 07-10-2026).
 
 **Exit:** a few issues taken through the whole lane on the copy without a
 person stepping in beyond the labels; real per-routine durations recorded
