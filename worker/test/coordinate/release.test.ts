@@ -62,6 +62,22 @@ describe("release_approved: the Worker merges, then the after part runs", () => 
     expect(d.fireRoutine).toHaveBeenCalledWith(OWNER, REPO, ISSUE, ROUTINES.RELEASE_PUBLISH);
   });
 
+  it("the merge call fails but the PR did merge at the reviewed commit (a lost answer): done, the after part runs", async () => {
+    const getPullDetails = vi.fn().mockResolvedValueOnce({ headRef: "release/2.1.0", headSha: "abc1234def", baseRef: "main", defaultBranch: "main", merged: false })
+      .mockResolvedValueOnce({ headRef: "release/2.1.0", headSha: "abc1234def", baseRef: "main", defaultBranch: "main", merged: true });
+    const d = releasing({ getPullDetails, mergePull: vi.fn(async () => Promise.reject(new Error("502 Bad Gateway"))) });
+    expect(await coordinateWebhook(d, approved())).toMatchObject({ outcome: "applied", event: EVENTS.RELEASE_MERGED });
+    expect(d.removeLabel).not.toHaveBeenCalled();
+    expect(d.fireRoutine).toHaveBeenCalledWith(OWNER, REPO, ISSUE, ROUTINES.RELEASE_PUBLISH);
+  });
+
+  it("release-publish is fired before the comment: a failed comment still leaves it running and watched", async () => {
+    const d = releasing({ commentOnIssue: vi.fn(async () => Promise.reject(new Error("500"))) });
+    await expect(coordinateWebhook(d, approved())).rejects.toThrow("500");
+    expect(d.fireRoutine).toHaveBeenCalledWith(OWNER, REPO, ISSUE, ROUTINES.RELEASE_PUBLISH);
+    expect(await d.getPendingFire()).toMatchObject({ run: ROUTINES.RELEASE_PUBLISH });
+  });
+
   it("already merged at a commit the review didn't see: refused, for a person", async () => {
     const d = releasing({ getPullDetails: pull({ merged: true, headSha: "other99" }) });
     await coordinateWebhook(d, approved());
@@ -107,6 +123,14 @@ describe("release_published (from release-publish): the issue closes, released g
       { action: "orchestrator.released", release: { version: "2.1.0", tag: "release-2.1.0" } },
       "d-published:#12",
     );
+  });
+
+  it("anyone without write access: ignored, nothing closed or handed on (it closes issues)", async () => {
+    const d = releasing({ openWithLabel: vi.fn(async () => [12]) });
+    const forged = outcomeComment({ outcome: "release_published", version: "2.1.0", tag: "dev" }, "NONE", "someone", "d-forged");
+    expect(await coordinateWebhook(d, forged)).toEqual({ outcome: "no_event" });
+    expect(d.closeIssue).not.toHaveBeenCalled();
+    expect(d.forward).not.toHaveBeenCalled();
   });
 
   it("an agent that still publishes itself (no tag reported): v<version>, as it always tagged", async () => {

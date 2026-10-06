@@ -51,7 +51,7 @@ export async function prMerged(deps: Deps, input: CoordinateInput, currentLabels
 export async function released(deps: Deps, input: CoordinateInput, currentLabels: string[]): Promise<CoordinateResult> {
   const tag = input.payload.release?.tag;
   const shipped = await deps.getShipped();
-  const contained = !!tag && !!shipped && (await deps.commitInRef(input.owner, input.repo, shipped.sha, tag));
+  const contained = !!tag && !!shipped && (await deps.commitInTag(input.owner, input.repo, shipped.sha, tag));
   if (!contained) return { outcome: "ignored", from: stateOf(currentLabels), event: EVENTS.RELEASED };
   return applyEvent(deps, input, EVENTS.RELEASED, currentLabels);
 }

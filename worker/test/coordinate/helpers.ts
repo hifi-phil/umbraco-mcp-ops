@@ -67,7 +67,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     }),
     forward: vi.fn(async () => {}),
     openWithLabel: vi.fn(async () => []),
-    commitInRef: vi.fn(async () => true),
+    commitInTag: vi.fn(async () => true),
     getPullDetails: vi.fn(async () => ({ headRef: "release/2.1.0", headSha: "abc1234def", baseRef: "main", defaultBranch: "main", merged: false })),
     mergePull: vi.fn(async () => {}),
     getShipped: vi.fn(async () => shipped),

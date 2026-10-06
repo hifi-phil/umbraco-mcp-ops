@@ -47,10 +47,19 @@ export async function releaseApproved(deps: Deps, input: CoordinateInput, curren
     try {
       await io.mergePull(where.owner, where.repo, outcome.pr, outcome.sha, outcome.merge_method);
     } catch (e) {
-      const why = e instanceof Error ? e.message : String(e);
-      return refuse(`merging #${outcome.pr} at the reviewed commit (\`${outcome.sha.slice(0, 7)}\`) was refused. GitHub said: ${why.slice(0, 300)}`);
+      // A lost answer (a timeout, a 5xx) can hide a merge that happened:
+      // look again before calling it refused.
+      const again = await deps.getPullDetails(where.owner, where.repo, outcome.pr).catch(() => null);
+      if (!(again?.merged && again.headSha === outcome.sha)) {
+        const why = e instanceof Error ? e.message : String(e);
+        return refuse(`merging #${outcome.pr} at the reviewed commit (\`${outcome.sha.slice(0, 7)}\`) was refused. GitHub said: ${why.slice(0, 300)}`);
+      }
     }
   }
+  // The merge is the Worker's own: the after part runs first (the table's
+  // release_merged rule fires release-publish and watches it), so a failed
+  // comment can't leave a merged release with nothing watching it.
+  const merged = await applyEvent(deps, input, EVENTS.RELEASE_MERGED, currentLabels);
   await io.commentOnIssue(
     where.owner,
     where.repo,
@@ -58,15 +67,13 @@ export async function releaseApproved(deps: Deps, input: CoordinateInput, curren
     `✅ The pre-publish review passed: merged #${outcome.pr} (${outcome.merge_method}). release-publish takes it from here: ` +
       `it waits for the repo's tag, posts the release note and merges back into \`dev\`. (Automatic, from the orchestrator.)`,
   );
-  // The merge is the Worker's own: the after part runs (the table's
-  // release_merged rule fires release-publish and watches it).
-  return applyEvent(deps, input, EVENTS.RELEASE_MERGED, currentLabels);
+  return merged;
 }
 
 /** Write access, as for a discussion reply (from-github.ts): the comment's
  * author association, or the Worker's own App bot. */
 const TRUSTED_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"];
-async function trustedAuthor(deps: Deps, input: CoordinateInput): Promise<boolean> {
+export async function trustedAuthor(deps: Deps, input: CoordinateInput): Promise<boolean> {
   const sender = input.payload.sender?.login;
   const bot = await deps.botLogin();
   if (bot && sender === bot) return true;

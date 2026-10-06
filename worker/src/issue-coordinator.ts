@@ -259,7 +259,7 @@ export class IssueCoordinator {
       },
       openWithLabel: async (owner, repo, label) =>
         (await githubClient.openWithLabel(this.env, owner, repo, label)).map((i) => i.number),
-      commitInRef: (owner, repo, sha, ref) => githubClient.commitInRef(this.env, owner, repo, sha, ref),
+      commitInTag: (owner, repo, sha, tag) => githubClient.commitInTag(this.env, owner, repo, sha, tag),
       getPullDetails: (owner, repo, pr) => githubClient.getPullDetails(this.env, owner, repo, pr),
       mergePull: (owner, repo, pr, sha, method) => githubClient.mergePull(this.env, owner, repo, pr, sha, method),
       getShipped: async () => (await this.ctx.storage.get<Shipped>(SHIPPED_KEY)) ?? null,

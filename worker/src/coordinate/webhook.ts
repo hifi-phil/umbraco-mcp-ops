@@ -12,7 +12,7 @@ import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 import { reviewFindings, reviewGate } from "./review-gate";
 import { handOffMerged, handOffRelease, prMerged, released } from "./stages";
-import { releaseApproved } from "./release";
+import { releaseApproved, trustedAuthor } from "./release";
 import { parseOutcomeArtifact } from "@orchestrator/graph/github/from-github";
 
 /**
@@ -156,6 +156,8 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // released to the issues it ships, with the tag it reported.
   if (event === EVENTS.RELEASE_APPROVED) return releaseApproved(deps, input, currentLabels);
   if (event === EVENTS.RELEASE_PUBLISHED) {
+    // It closes issues: only a trusted author's report counts.
+    if (!(await trustedAuthor(deps, input))) return { outcome: "no_event" };
     const published = await applyEvent(deps, input, event, currentLabels);
     const outcome = parseOutcomeArtifact(input.payload.comment?.body);
     if (published.outcome === "applied" && outcome?.outcome === "release_published") {

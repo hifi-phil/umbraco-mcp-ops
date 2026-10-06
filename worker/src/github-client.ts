@@ -218,8 +218,12 @@ export async function mergePull(env: GitHubEnv, owner: string, repo: string, pr:
 /** Whether `ref` (a tag or branch) contains commit `sha`: the compare
  * from the commit to the ref is "ahead" or "identical". A missing ref or
  * commit (404) reads as not contained. */
-export async function commitInRef(env: GitHubEnv, owner: string, repo: string, sha: string, ref: string): Promise<boolean> {
-  const res = await gh(env, "GET", `/repos/${owner}/${repo}/compare/${sha}...${encodeURIComponent(ref)}`, undefined, { allow404: true });
+export async function commitInTag(env: GitHubEnv, owner: string, repo: string, sha: string, tag: string): Promise<boolean> {
+  // A tag, not a branch: the name comes from an agent's report, and a
+  // branch (dev) would "contain" merges nothing has shipped.
+  const exists = await gh(env, "GET", `/repos/${owner}/${repo}/git/ref/tags/${tag.split("/").map(encodeURIComponent).join("/")}`, undefined, { allow404: true });
+  if (exists.status === 404) return false;
+  const res = await gh(env, "GET", `/repos/${owner}/${repo}/compare/${sha}...${encodeURIComponent(tag)}`, undefined, { allow404: true });
   if (res.status === 404) return false;
   const { status } = (await res.json()) as { status: string };
   return status === "ahead" || status === "identical";

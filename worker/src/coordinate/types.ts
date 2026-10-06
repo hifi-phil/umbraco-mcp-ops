@@ -185,7 +185,7 @@ export type Deps = {
   // The open issues or PRs carrying `label` in a repo.
   openWithLabel(owner: string, repo: string, label: string): Promise<number[]>;
   // Whether `ref` (a tag) contains commit `sha`.
-  commitInRef(owner: string, repo: string, sha: string, ref: string): Promise<boolean>;
+  commitInTag(owner: string, repo: string, sha: string, tag: string): Promise<boolean>;
   // The merged PR, and its merge commit, that moved this issue to
   // LABELS.READY_FOR_RELEASE (DO storage), for checking a release against.
   getShipped(): Promise<Shipped | null>;
