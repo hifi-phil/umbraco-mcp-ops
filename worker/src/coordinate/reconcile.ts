@@ -78,7 +78,17 @@ export async function coordinateReconcile(
   const event = state === "ambiguous" || state === "none" ? undefined : TRIGGER_EVENTS[state as Label];
   // LABELS.AI_REVIEWING fires nothing itself (its CI gate does), so it's swept by the
   // routine the gate would fire.
-  const run = state === LABELS.AI_REVIEWING ? ROUTINES.REVIEW_LOOP : event ? reduce("none", event)?.run : undefined;
+  // LABELS.AUTO_RELEASING after the Worker merged the release PR: the after
+  // part (release-publish) is what was lost, not the before part.
+  const releaseMerged = state === LABELS.AUTO_RELEASING && (await deps.getReleaseMerged()) !== null;
+  const run =
+    state === LABELS.AI_REVIEWING
+      ? ROUTINES.REVIEW_LOOP
+      : releaseMerged
+        ? ROUTINES.RELEASE_PUBLISH
+        : event
+          ? reduce("none", event)?.run
+          : undefined;
   if (!run) return { outcome: "not_triggered", state };
 
   // Activity is the later of its last real log row and GitHub's updated_at:

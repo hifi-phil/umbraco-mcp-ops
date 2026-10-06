@@ -96,6 +96,7 @@ const PENDING_FIRE_KEY = "pendingFire";
 const CI_FIX_KEY = "ciFix";
 const REVIEW_REWORKS_KEY = "reviewReworks"; // review rework rounds on this PR (MAX_REVIEW_REWORKS)
 const SHIPPED_KEY = "shipped"; // the merged PR and commit that moved this issue to LABELS.READY_FOR_RELEASE
+const RELEASE_MERGED_KEY = "releaseMerged"; // the release PR and commit the Worker merged (the release split)
 const MERGE_FIRED_FOR_KEY = "mergeFiredFor"; // the head commit merge-flow was re-fired for on green CI
 const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MAX_BOT_REVIEW_REWORKS)
 const RECONCILE_REPORTED_KEY = "reconcileReported";
@@ -265,6 +266,11 @@ export class IssueCoordinator {
       getShipped: async () => (await this.ctx.storage.get<Shipped>(SHIPPED_KEY)) ?? null,
       setShipped: async (shipped: Shipped) => {
         await this.ctx.storage.put(SHIPPED_KEY, shipped);
+      },
+      getReleaseMerged: async () => (await this.ctx.storage.get<Shipped>(RELEASE_MERGED_KEY)) ?? null,
+      setReleaseMerged: async (merged: Shipped | null) => {
+        if (merged) await this.ctx.storage.put(RELEASE_MERGED_KEY, merged);
+        else await this.ctx.storage.delete(RELEASE_MERGED_KEY);
       },
       getMergeFiredFor: async () => (await this.ctx.storage.get<string>(MERGE_FIRED_FOR_KEY)) ?? null,
       setMergeFiredFor: async (sha: string) => {
