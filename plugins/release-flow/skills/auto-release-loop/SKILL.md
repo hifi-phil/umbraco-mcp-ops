@@ -34,27 +34,29 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
   `release <version>`, **comment on the issue asking for one and stop** — never guess a
   version.
 - **Branch model** via the `release-and-branching` skill — this skill is for
-  **gitflow**: an integration branch and a release branch, `dev` + `main` by default.
-- **The release line.** If the repo's `CLAUDE.md` lists more than one line (e.g. a
-  table mapping Umbraco 18 to `main`/`dev` and 17 to `v17/main`/`v17/dev`), pick the
-  line whose major matches `<version>`'s; that pair is `<integration>` and `<base>` for
-  the rest of this skill. One line, or none listed: `dev` and `main`. A version that
-  matches no listed line, or more than one: **comment on the issue and stop**, never
-  guess. Start from an up-to-date `<integration>` (use the `sync-dev` skill).
+  **gitflow**. A release is on one **line**, a pair of branches, written in this skill as:
+  - **`<dev>`**: where work merges and the release is cut from.
+  - **`<main>`**: where the release merges and is tagged.
+- **Which line.** The current line is `dev` + `main`. An older major is released from its
+  own pair, `v<major>/dev` + `v<major>/main` (e.g. `v17/dev` + `v17/main`): use that pair
+  when `v<major>/dev` exists for `<version>`'s major, else `dev` + `main`. The repo's
+  `CLAUDE.md` overrides this when it lists its lines differently. A version that fits no
+  line, or more than one: **comment on the issue and stop**, never guess. Start from an
+  up-to-date `<dev>` (use the `sync-dev` skill).
 - All GitHub actions go through the **`github-ops`** skill.
 
 ## The `/goal`
 
 ```
-/goal auto-releasing <version> of <repo>: release/<version> cut from <integration>; version files + changelog bumped; PR to <base> is green; pre-publish review checklist passed with no BLOCK; merged to <base>; tagged v<version>; GitHub Release published (prerelease if <version> has a pre-release suffix); release note attempted for a stable or release-candidate version unless the repo opts out (a failed post is noted, not retried, and never holds the goal open); <base> synced back to <integration>; triggering issue commented and closed
+/goal auto-releasing <version> of <repo>: release/<version> cut from <dev>; version files + changelog bumped; PR to <main> is green; pre-publish review checklist passed with no BLOCK; merged to <main>; tagged v<version>; GitHub Release published (prerelease if <version> has a pre-release suffix); release note attempted for a stable or release-candidate version unless the repo opts out (a failed post is noted, not retried, and never holds the goal open); <main> synced back to <dev>; triggering issue commented and closed
 ```
 
 ## Step 1 — prepare (autonomous)
 
-1. From up-to-date `<integration>`, cut `release/<version>`.
+1. From up-to-date `<dev>`, cut `release/<version>`.
 2. Bump the repo's **version-file list** (from its `CLAUDE.md`) and the changelog — use
    the repo's own release skill if it has one (e.g. `umbraco-mcp-skills:release`).
-3. Push and open a PR **`release/<version>` → `<base>`**, referencing the triggering issue
+3. Push and open a PR **`release/<version>` → `<main>`**, referencing the triggering issue
    (`Closes #<n>`; in **orchestrated mode** `Part of #<n>` instead: on the default branch
    `Closes` would close the issue at the merge, before `release-publish` has run). Send a
    **Claude push notification** (the `PushNotification` tool)
@@ -173,13 +175,13 @@ hands the agent already-materialized content as plain text. Do this sequence
 **Orchestrated mode: stop here on a pass.** Steps 3 and 4 aren't yours. The
 orchestrator merges the PR as its GitHub App, the way you say, pinned to the commit you
 reviewed; the repo's own workflow tags it; then `release-publish` (a separate, small run)
-posts the release note, merges `<base>` back into `<integration>` and reports, and the orchestrator
+posts the release note, merges `<main>` back into `<dev>` and reports, and the orchestrator
 closes this issue. So on a pass, post one comment on the triggering issue with the
 **required** `release_approved` artifact (load `agent-outcomes` for the marker and shape),
 and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close anything.
 - `pr`: the release PR's number; `sha`: the **head SHA the review judged** (Step 2.5's
   re-fetched one). A push after the review makes the merge refuse, which is the point.
-- `version`: `<version>`; `merge_method`: how this repo merges a release into `<base>`
+- `version`: `<version>`; `merge_method`: how this repo merges a release into `<main>`
   (`merge`, `squash` or `rebase`, from its conventions: `release-and-branching`, or its
   `CLAUDE.md`). For a gitflow repo that's `merge`: the release tooling keys off the
   merge commit.
@@ -187,11 +189,11 @@ and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close 
 
 ## Step 3 — publish (once green + review passed)
 
-1. Merge `release/<version>` → `<base>` per convention (github-ops → *Merge a PR*).
+1. Merge `release/<version>` → `<main>` per convention (github-ops → *Merge a PR*).
 2. **Tag `v<version>`** and **create the GitHub Release** — mark it **prerelease** if
    `<version>` has a `-alpha` / `-beta` / `-rc` suffix. If the repo's `release-tag.yml`
    automation fires on the version change, confirm it; else do it explicitly.
-3. Verify: `<base>` contains the release, `v<version>` points at it, the Release is
+3. Verify: `<main>` contains the release, `v<version>` points at it, the Release is
    published.
 4. **Slack notification — stable and release-candidate versions.** First read the
    repo's `CLAUDE.md` *Releases* section for a `Release note:` line: `none` means **no
@@ -228,10 +230,10 @@ and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close 
 
 ## Step 4 — sync dev + close out (autonomous)
 
-1. Merge `<base>` back into `<integration>` (the same line: never `main` into a `v17/dev`,
-   or `v17/main` into `dev`) so it carries the bump + any release fixes
+1. Merge `<main>` back into `<dev>` (the same line: never `main` into a `v<major>/dev`,
+   or `v<major>/main` into `dev`) so it carries the bump + any release fixes
    (`sync-main-to-dev.yml` if installed and it covers this line, else do the back-merge
-   and use `sync-dev`). **The `/goal` is not met until `<integration>` is synced.**
+   and use `sync-dev`). **The `/goal` is not met until `<dev>` is synced.**
 2. **Comment the outcome on the triggering issue** (Release link, tag, "dev synced") and
    **close it**. Only if `agent-outcomes` is available, append the `release_published`
    outcome artifact to that same comment; otherwise skip it. Closing the issue is the
@@ -242,9 +244,9 @@ and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close 
 
 ## Guardrails
 
-- **Never force-push; never skip the back-merge** — an un-synced integration branch is
+- **Never force-push; never skip the back-merge** — an un-synced `<dev>` is
   the classic release mistake. **Never cross lines**: a release only touches its own
-  `<integration>` and `<base>`.
+  `<dev>` and `<main>`.
 - **One release per triggering issue.**
 
 ## Running as a routine
