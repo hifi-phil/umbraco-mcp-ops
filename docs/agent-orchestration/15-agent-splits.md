@@ -58,7 +58,7 @@ does. It:
 1. builds the change and tests it locally;
 2. reviews it with `mcp-review` (Anthropic's review agents, as it always
    has), from its top-level session, and fixes what that finds;
-3. writes its decisions and build entry to the logs (below);
+3. writes its decisions and build entry to the logs ([16-work-log.md](16-work-log.md));
 4. adds `ai-reviewing` to the PR, and stops.
 
 It no longer drives CI. That's the same whether or not the Worker
@@ -125,86 +125,9 @@ person re-adding `auto-reworking` from `ai-stuck` resets both counts, as now.
 
 ## The decision log and build log
 
-### What they are
-
-This follows Matt Brailsford's
-[umbraco-claude-playbook](https://github.com/mattbrailsford/umbraco-claude-playbook)
-(`DECISION-LOG.md`, `BUILD-LOG.md` and `decision-review`, in use on
-`umbraco/Umbraco.AI`). The difference is that the entries live in D1, not
-in files.
-
-- **Decision log:** each choice the issue didn't settle. One short, dated
-  entry: what was decided, why, and what was rejected. Each entry is tagged
-  with one of his four categories: *assumption*, *deviation*, *workaround*
-  or *judgment call*.
-- **Build log:** what each routine did and checked: the commit, the tests
-  run and their counts, the review round and verdict, and anything it
-  didn't verify.
-
-### Why D1
-
-- **One timeline.** `transitions` already records every label change and
-  fire for an issue, with who caused it. With decisions and checks next to
-  it, the dashboard can show the whole story: labelled → decided X because
-  Y → tests 42/42 → review round 1 FAIL → rework → PASS.
-- **No overwrites.** Every entry is its own row, so two writers can't
-  overwrite each other.
-- **Queryable.** "Every workaround this month" is a single query. That's
-  the data Phase 10 says future splits should follow.
-- **The reviewer can write.** Writing to D1 doesn't push a commit, so it
-  doesn't restart CI and the review.
-- **No lock-in.** It's our own schema, not something tied to GitHub.
-
-### Who writes what
-
-| Routine | Decision log | Build log |
-|---|---|---|
-| build | Writes its decisions, including what its `mcp-review` changed | Writes its entry |
-| `ai-reviewing` | Reads it, after forming its findings | Writes its verdict, round and findings |
-| `rework-loop` | Reads it, and adds its own decisions | Writes its entry |
-| Worker | — | — (`transitions` is its log) |
-
-### How routines reach it
-
-Through an **MCP endpoint on the Worker**, with tools to add an entry and
-to read an issue's log.
-
-- **Scoped tokens.** Each fire carries a short-lived token, issued by the
-  Worker, for that one issue or PR and that one routine.
-- **Add-only.** A token can add entries but not edit or delete them.
-  Entries are capped at a few KB. A routine that has read hostile text in
-  an issue or a PR comment can, at worst, add short entries to its own
-  issue.
-- **Best effort.** A routine never stops because the Worker can't be
-  reached.
-
-### What people see
-
-- **Dashboard:** the merged timeline. It reads summaries, not the whole
-  log, to stay within the D1 read budget.
-- **PR description:** a short summary in the style of `decision-review`.
-  It lists only the entries a person should look at, ranked, each with a
-  recommended action.
-- **Permanent copy:** when the PR merges, the Worker exports the issue's
-  logs. D1 belongs to this deployment and `tofu destroy` removes it.
-  Whether the export goes into the repo as a file or onto the PR is still
-  open.
-
-Repos that already use the playbook, with a `docs/plans/<feature>/` folder,
-keep their files. The routines read those as well as D1.
-
-### The free plan is enough for now
-
-- **Volume is small.** A few log rows per routine run is far inside the
-  free plan's daily caps.
-- **Size isn't the issue.** A busy issue is about 50 KB of log entries. A
-  database holds 500 MB on the free plan, 10 GB on paid.
-- **Watch the read cap.** Since 01-09-2026 the free plan fails D1 queries
-  outright once a daily cap is hit, which would stop the orchestrator, not
-  just the logs. The dashboard already reads summaries to stay well clear.
-- **When to go paid:** if daily usage starts getting close to a cap, for
-  example once the umbraco repos bring real traffic. Workers Paid is an
-  account plan: it covers the Worker, the Durable Objects and D1 together.
+Every routine records its decisions and what it verified, in D1 next to the
+label history. The design and the plan are in their own document:
+[16-work-log.md](16-work-log.md).
 
 ## Split 2: release
 
@@ -239,15 +162,12 @@ outcomes are `review_passed`, `review_findings` (with a count) and
 `ai-reviewing`, a CI fix or the review's findings, goes back to `ai-reviewing`
 and is reviewed again once its CI is green.
 
-**Logs**
-- The schema: one table or two.
-- The MCP's tools, and how the fire token reaches the routine.
-- Where the export goes when a PR merges.
+**Logs:** see [16-work-log.md](16-work-log.md).
 
 **Skills** (part 3, built 07-10-2026, except the logs)
 - `issue-build-loop` reviews its PR with `mcp-review`, adds `ai-reviewing`
   and stops, orchestrated or not. It no longer drives CI.
-- Every routine reads and writes the logs through the MCP. *(Part 2, not
+- Every routine reads and writes the logs through `log-entry.sh` (the `work-log` skill). *(Part 2, not
   built yet.)*
 - **`review-loop` posts its findings as a real PR review**, with inline
   comments on the lines concerned. `rework-loop` only reads a PR's reviews
