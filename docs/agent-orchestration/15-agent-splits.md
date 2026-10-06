@@ -56,12 +56,14 @@ flowchart LR
 does. It:
 
 1. builds the change and tests it locally;
-2. runs a **self-review subagent** that has the builder's context and
-   rereads the diff with a clear head;
+2. reviews it with `mcp-review` (Anthropic's review agents, as it always
+   has), from its top-level session, and fixes what that finds;
 3. writes its decisions and build entry to the logs (below);
-4. opens the PR with `ai-reviewing` on it, and stops.
+4. adds `ai-reviewing` to the PR, and stops.
 
-It no longer drives CI or runs `mcp-review`.
+It no longer drives CI. That's the same whether or not the Worker
+orchestrates the repo (decided 07-10-2026); only who swaps the issue's labels
+differs, as for every loop.
 
 ### CI
 
@@ -157,7 +159,7 @@ in files.
 
 | Routine | Decision log | Build log |
 |---|---|---|
-| build | Writes its decisions, including the self-review subagent's | Writes its entry |
+| build | Writes its decisions, including what its `mcp-review` changed | Writes its entry |
 | `ai-reviewing` | Reads it, after forming its findings | Writes its verdict, round and findings |
 | `rework-loop` | Reads it, and adds its own decisions | Writes its entry |
 | Worker | — | — (`transitions` is its log) |
@@ -366,9 +368,8 @@ and is reviewed again once its CI is green.
 - Where the export goes when a PR merges.
 
 **Skills** (part 3, built 07-10-2026, except the logs)
-- `issue-build-loop`, in orchestrated mode, stops once the PR is open, with
-  `ai-reviewing` on it, after a self-review subagent. Unorchestrated, it
-  still drives CI and runs `mcp-review` itself.
+- `issue-build-loop` reviews its PR with `mcp-review`, adds `ai-reviewing`
+  and stops, orchestrated or not. It no longer drives CI.
 - Every routine reads and writes the logs through the MCP. *(Part 2, not
   built yet.)*
 - **`review-loop` posts its findings as a real PR review**, with inline

@@ -84,7 +84,7 @@ adds a trailer, it doesn't change what "done" means.
 
 | Routine | Outcome | Shape | Reported from |
 |---|---|---|---|
-| `issue-build-loop` | `build_succeeded` | `{"outcome":"build_succeeded","pr":<PR number>}` | Step 3, once `mcp-review` is clean and the outcome-label swap runs; orchestrated mode, once the PR is open with `ai-reviewing` on it |
+| `issue-build-loop` | `build_succeeded` | `{"outcome":"build_succeeded","pr":<PR number>}` | Step 3, once `mcp-review` is clean and `ai-reviewing` is on the PR |
 | `issue-build-loop` | `build_blocked` | `{"outcome":"build_blocked","reason":"<one line>"}` | Step 3, when the issue is recorded as blocked |
 | `auto-release-loop` | `release_blocked` | `{"outcome":"release_blocked","reason":"<one line>"}` | Step 2.5, on a BLOCK verdict from `release-reviewer` |
 | `auto-release-loop` | `release_published` | `{"outcome":"release_published","version":"<version>"}` | Step 4, after publish + dev sync, on the close-out comment |
