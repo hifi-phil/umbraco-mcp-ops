@@ -4,7 +4,7 @@
 
 ---
 
-**Status:** Plan agreed, not built. **Date:** 07-10-2026
+**Status:** Being built: steps 1 (#245), 2 (#246) and 3 (the skills) in review. **Date:** 07-10-2026
 
 Part 2 of the build/review split ([15-agent-splits.md](15-agent-splits.md)),
 and part 4, what people see. Released with part 3 (the skills) as 2.2.0.

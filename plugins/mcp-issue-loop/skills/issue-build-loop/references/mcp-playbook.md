@@ -133,6 +133,10 @@ do **not** drive CI — once you return, **the orchestrator** runs the
 findings to fix in this worktree. CI is watched later, after the PR goes to `ai-reviewing`.
 Just build well and return; don't claim a review ran or that CI is green.
 
+**If you were given a `log_token`**, record each **decision** as you make it, per the
+`work-log` skill: a choice the issue didn't settle, with its category, why, and what you
+rejected. Not the build entry: the orchestrator writes that.
+
 ### 6. Commit, push, open the PR
 
 Commit with a clear message (end it with the repo's required

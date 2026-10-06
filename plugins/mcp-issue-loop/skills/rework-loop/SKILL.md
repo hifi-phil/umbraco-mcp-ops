@@ -61,6 +61,13 @@ why, rather than changing the code. If there's no such review to act on, don't c
 label and push nothing: say so on the PR and stop, so a person sees it. After your push the
 orchestrator puts `ai-reviewing` back and the review runs again; don't re-request review.
 
+**The decision log** (when the dispatch passed a `log_token`; the
+[`work-log`](../../../agent-outcomes/skills/work-log/SKILL.md) skill's `read`, for the PR
+and the issue it closes): read it before changing anything. A finding that challenges a
+logged decision is a choice between two reasoned positions: keep the decision (reply on the
+thread with its reason) or change it, and record whichever you chose as a decision of your
+own.
+
 ## Step 2 — address it (with a local test gate)
 
 Check out the PR's head branch. **As your first action, boot a local Umbraco** so it's
@@ -89,6 +96,10 @@ true` and won't run here. Report only what mcp-review actually found.
 Commit and push to the PR branch. The local compile + test gate (Step 2) plus
 `mcp-review` (Step 3) are the only gates this session applies — **do not poll or wait
 for the full CI suite to go green** (see Test gate above).
+
+With a `log_token`: record each **decision** you made fixing it, and one **build** entry
+(the commit, the tests and counts, which findings were fixed or answered, what wasn't
+verified). A failed write never stops the run.
 
 ## Step 5 — reply, re-request & clear the label
 

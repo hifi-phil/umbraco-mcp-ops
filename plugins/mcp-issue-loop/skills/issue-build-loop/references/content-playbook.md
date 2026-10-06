@@ -28,6 +28,8 @@ the per-issue prompt substituted into each build subagent, in place of the MCP s
    in a subagent. After you return an open PR, the orchestrator runs
    [`mcp-review`](../../mcp-review/SKILL.md) over it and hands back any findings. For a
    pure-prose change the review will find little — that's fine.
+   **If you were given a `log_token`**, record each **decision** as you make it, per the
+   `work-log` skill (not the build entry: the orchestrator writes that).
 5. **Commit, push, open the PR** against the base branch (detect via
    `release-and-branching` — never assume it; these repos don't share one model).
    Link the issue (`Closes #N`), ready for review, never draft. `umbraco-mcp-ops` runs
