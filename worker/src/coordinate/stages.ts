@@ -7,7 +7,8 @@
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { closingIssues } from "@orchestrator/graph/github/closing-refs";
-import { type CoordinateInput, type CoordinateResult, type Deps } from "./types";
+import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
+import { exportComment } from "../work-log";
 import { applyEvent, deriveState } from "./apply";
 
 /** A delivery id for a hand-off: the original's, plus the item it's for, so
@@ -24,6 +25,21 @@ export async function handOffMerged(deps: Deps, input: CoordinateInput): Promise
       { action: "orchestrator.pr_merged", shipped: { pr: input.issueNumber, sha: pr.merge_commit_sha } },
       handOffId(input.deliveryId, issueNumber),
     );
+  }
+}
+
+/** A PR merged: its work log, and that of the issues it closes, as one
+ * comment on the PR (16-work-log.md), the permanent copy. Never fails the
+ * delivery: the log is a record, not a step. */
+export async function exportWorkLog(deps: Deps, input: CoordinateInput): Promise<void> {
+  const pr = input.payload.pull_request;
+  if (!pr?.merged) return;
+  try {
+    const items = [input.issueNumber, ...closingIssues(pr.body).filter((n) => n !== input.issueNumber)];
+    const body = exportComment(input.issueNumber, await deps.workLogFor(input.owner, input.repo, items));
+    if (body) await depsFor(deps, EVENTS.MERGED).io.commentOnIssue(input.owner, input.repo, input.issueNumber, body);
+  } catch (e) {
+    console.error("work log export failed:", e instanceof Error ? e.message : e);
   }
 }
 
