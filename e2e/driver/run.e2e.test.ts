@@ -96,9 +96,10 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       // The D1 log agrees, delivery by delivery: every issue/PR in the run
       // logged only enforced, applied rows (the sandbox Worker enforces, and
       // nothing was dropped); every delivery the Worker applied has exactly
-      // one row, carrying its delivery id and event (bar one case: LABELS.AI_REVIEWING
-      // added applies its label rule, then the CI gate's, two rows ending
-      // in the event it answered); and the only rows no delivery caused are
+      // one row, carrying its delivery id and event (bar two cases, two rows
+      // ending in the event it answered: LABELS.AI_REVIEWING added applies its
+      // label rule, then the CI gate's; and release_approved, then the
+      // Worker's own merge, release_merged); and the only rows no delivery caused are
       // the watchdog's own expiries.
       const numbers = [...new Set(details.flatMap((d) => d.numbers))].filter((n) => runItems.has(n));
       progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
@@ -113,7 +114,8 @@ describe("audit: every answer the orchestrator gave during the run", () => {
           const event = d.response.match(/"event":"([a-z_]+)"/)?.[1];
           const rows = logs.get(d.numbers[0]!)?.filter((r) => r.delivery_id === d.guid) ?? [];
           const labelThenGate = rows.length === 2 && rows[0]!.event === "labelled_ai_reviewing" && event !== "labelled_ai_reviewing";
-          if (labelThenGate) return rows[1]!.event !== event;
+          const approvedThenMerged = rows.length === 2 && rows[0]!.event === "release_approved" && event === "release_merged";
+          if (labelThenGate || approvedThenMerged) return rows[1]!.event !== event;
           return rows.length !== 1 || rows[0]!.event !== event;
         });
       expect(unmatched.map(line), "applied deliveries without exactly one matching row").toEqual([]);

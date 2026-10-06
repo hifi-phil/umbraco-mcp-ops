@@ -410,3 +410,23 @@ describe("coordinateWebhook — manual_override (a person editing a tracked labe
     expect(deps.logTransition).not.toHaveBeenCalled();
   });
 });
+
+describe("coordinateWebhook — a closed issue", () => {
+  it("a trigger label added to a closed issue starts nothing (a closed release isn't released again)", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]) });
+    const msg = input({
+      payload: { action: "issues.labeled", label: { name: LABELS.AUTO_RELEASING }, issue: { state: "closed", is_pr: false } },
+    });
+    expect(await coordinateWebhook(deps, msg)).toEqual({ outcome: "closed_issue", event: EVENTS.LABELLED_AUTO_RELEASING });
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+    expect(deps.logTransition).not.toHaveBeenCalled();
+  });
+
+  it("an open one still starts as usual", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]) });
+    const msg = input({
+      payload: { action: "issues.labeled", label: { name: LABELS.AUTO_RELEASING }, issue: { state: "open", is_pr: false } },
+    });
+    expect(await coordinateWebhook(deps, msg)).toMatchObject({ outcome: "applied" });
+  });
+});
