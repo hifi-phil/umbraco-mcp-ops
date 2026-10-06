@@ -39,6 +39,18 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
     expect(deps.markCompleted).toHaveBeenCalledOnce();
   });
 
+  it(`${LABELS.AUTO_RELEASING} left behind after the Worker merged the release PR -> release-publish re-fired, not auto-release-loop`, async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]), lastActivityAt: async () => minutesAgo(180) });
+    await deps.setReleaseMerged({ pr: 220, sha: "abc1234def" });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toMatchObject({ outcome: "refired", run: ROUTINES.RELEASE_PUBLISH });
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.RELEASE_PUBLISH);
+  });
+
+  it(`${LABELS.AUTO_RELEASING} left behind, nothing merged -> auto-release-loop, as before`, async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]), lastActivityAt: async () => minutesAgo(180) });
+    expect(await coordinateReconcile(deps, ref, { enforced: true, now })).toMatchObject({ outcome: "refired", run: ROUTINES.AUTO_RELEASE_LOOP });
+  });
+
   it("GitHub updated it a moment ago (a label whose webhook hasn't landed) -> recent, even with no log rows", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
     const updatedAt = new Date(now - 30_000).toISOString();

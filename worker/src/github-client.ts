@@ -193,22 +193,58 @@ export async function openPullsForCommit(env: GitHubEnv, owner: string, repo: st
   return pulls.filter((p) => p.state === "open").map((p) => p.number);
 }
 
+export async function getPullDetails(
+  env: GitHubEnv,
+  owner: string,
+  repo: string,
+  pr: number,
+): Promise<{ headRef: string; headSha: string; baseRef: string; defaultBranch: string; merged: boolean }> {
+  const res = await gh(env, "GET", `/repos/${owner}/${repo}/pulls/${pr}`);
+  const p = (await res.json()) as {
+    head: { ref: string; sha: string };
+    base: { ref: string; repo: { default_branch: string } };
+    merged: boolean;
+  };
+  return { headRef: p.head.ref, headSha: p.head.sha, baseRef: p.base.ref, defaultBranch: p.base.repo.default_branch, merged: p.merged };
+}
+
+/** Merges a PR the way the project says (merge, squash or rebase), only if
+ * its head is still `sha`. GitHub's refusal (head moved, not mergeable)
+ * throws with its message. */
+export async function mergePull(env: GitHubEnv, owner: string, repo: string, pr: number, sha: string, method: "merge" | "squash" | "rebase"): Promise<void> {
+  await gh(env, "PUT", `/repos/${owner}/${repo}/pulls/${pr}/merge`, { merge_method: method, sha });
+}
+
+/** Whether `ref` (a tag or branch) contains commit `sha`: the compare
+ * from the commit to the ref is "ahead" or "identical". A missing ref or
+ * commit (404) reads as not contained. */
+export async function commitInTag(env: GitHubEnv, owner: string, repo: string, sha: string, tag: string): Promise<boolean> {
+  // A tag, not a branch: the name comes from an agent's report, and a
+  // branch (dev) would "contain" merges nothing has shipped.
+  const exists = await gh(env, "GET", `/repos/${owner}/${repo}/git/ref/tags/${tag.split("/").map(encodeURIComponent).join("/")}`, undefined, { allow404: true });
+  if (exists.status === 404) return false;
+  const res = await gh(env, "GET", `/repos/${owner}/${repo}/compare/${sha}...${encodeURIComponent(tag)}`, undefined, { allow404: true });
+  if (res.status === 404) return false;
+  const { status } = (await res.json()) as { status: string };
+  return status === "ahead" || status === "identical";
+}
+
 /** Open issues and PRs carrying `label` (the sweep's candidates). */
 export async function openWithLabel(
   env: GitHubEnv,
   owner: string,
   repo: string,
   label: string,
-): Promise<{ number: number; updatedAt: string }[]> {
-  const found: { number: number; updatedAt: string }[] = [];
+): Promise<{ number: number; updatedAt: string; title: string }[]> {
+  const found: { number: number; updatedAt: string; title: string }[] = [];
   for (let page = 1; ; page++) {
     const res = await gh(
       env,
       "GET",
       `/repos/${owner}/${repo}/issues?state=open&per_page=100&page=${page}&labels=${encodeURIComponent(label)}`,
     );
-    const issues = (await res.json()) as Array<{ number: number; updated_at: string }>;
-    found.push(...issues.map((i) => ({ number: i.number, updatedAt: i.updated_at })));
+    const issues = (await res.json()) as Array<{ number: number; updated_at: string; title: string }>;
+    found.push(...issues.map((i) => ({ number: i.number, updatedAt: i.updated_at, title: i.title })));
     if (issues.length < 100) return found;
   }
 }

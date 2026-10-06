@@ -16,6 +16,11 @@ export const ROUTINES = {
   // CI is green. Its skill lands with the skill changes; until then only
   // the e2e stub answers this route.
   REVIEW_LOOP: "review-loop",
+  // The release's after part (15-agent-splits.md): a skinny agent, fired once
+  // the Worker has merged the release PR. It waits for the repo's own tag,
+  // posts the release note, merges main back into dev, and reports
+  // release_published with the tag.
+  RELEASE_PUBLISH: "release-publish",
 } as const;
 
 export type Routine = (typeof ROUTINES)[keyof typeof ROUTINES];

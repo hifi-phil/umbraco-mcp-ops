@@ -6,10 +6,14 @@ import { ALL_LABELS, LABELS } from "@orchestrator/graph/constants/labels";
 import { translate } from "@orchestrator/graph/github/from-github";
 import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
+import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
 import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 import { reviewFindings, reviewGate } from "./review-gate";
+import { handOffMerged, handOffRelease, prMerged, released } from "./stages";
+import { releaseApproved, retryReleasePublish, trustedAuthor } from "./release";
+import { parseOutcomeArtifact } from "@orchestrator/graph/github/from-github";
 
 /**
  * The literal implementation of translate() -> reduce() -> labelOps() +
@@ -48,6 +52,10 @@ export async function coordinateWebhook(
 
 async function processWebhook(deps: Deps, input: CoordinateInput): Promise<CoordinateResult> {
   const result = await processEvent(deps, input);
+  // Merged (by anyone, labelled or not): the issues its description closes
+  // move to their next stage. Failing here fails the delivery, so it can be
+  // redelivered; each issue dedupes its hand-off.
+  if (input.payload.action === "pull_request.closed") await handOffMerged(deps, input);
   // Closed by anyone (a merge, a person, a release): off the dashboard,
   // which shows open issues. Last, so the close's own rule (issue_closed is
   // a noop that would otherwise re-write the row) can't put it back.
@@ -117,6 +125,11 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // the review's counts start fresh.
   if (event === EVENTS.LABELLED_AI_REVIEWING) {
     if (!currentLabels.includes(LABELS.AI_REVIEWING)) return { outcome: "stale_label", event };
+    // The label's check suite can be handled first (CI finishing as it went
+    // on) and have fired the review already. Applying the label's rule now
+    // would clear that pending fire and fire a second review (e2e #729,
+    // 05-10-2026), so the label is already handled.
+    if ((await deps.getPendingFire())?.run === ROUTINES.REVIEW_LOOP) return { outcome: "stale_label", event };
     if (deriveState(currentLabels.filter((l) => l !== LABELS.AI_REVIEWING)) === LABELS.AI_STUCK) {
       await deps.setReviewLoop(null);
       await deps.setCiFix(null);
@@ -134,6 +147,30 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   if (event === EVENTS.REVIEW_FINDINGS && deriveState(currentLabels) === LABELS.AI_REVIEWING) {
     return reviewFindings(deps, input, currentLabels);
   }
+  // The issue's stages after its PR (coordinate/stages.ts).
+  if (event === EVENTS.PR_MERGED) return prMerged(deps, input, currentLabels);
+  if (event === EVENTS.RELEASED) return released(deps, input, currentLabels);
+  // The release split: the review passed (the Worker merges, then fires
+  // release-publish), and release_published (from release-publish, or from
+  // an agent that still publishes itself) closes the issue and hands
+  // released to the issues it ships, with the tag it reported.
+  if (event === EVENTS.RELEASE_APPROVED) return releaseApproved(deps, input, currentLabels);
+  if (event === EVENTS.LABELLED_AUTO_RELEASING && (await deps.getReleaseMerged())) {
+    if (!currentLabels.includes(LABELS.AUTO_RELEASING)) return { outcome: "stale_label", event };
+    return retryReleasePublish(deps, input, currentLabels);
+  }
+  if (event === EVENTS.RELEASE_PUBLISHED) {
+    // It closes issues: only a trusted author's report counts.
+    if (!(await trustedAuthor(deps, input))) return { outcome: "no_event" };
+    const published = await applyEvent(deps, input, event, currentLabels);
+    const outcome = parseOutcomeArtifact(input.payload.comment?.body);
+    if (published.outcome === "applied" && outcome?.outcome === "release_published") {
+      await deps.setReleaseMerged(null);
+      await handOffRelease(deps, input, outcome.version, outcome.tag ?? `v${outcome.version}`);
+    }
+    return published;
+  }
+
   if (event === EVENTS.REVIEW_PASSED) {
     const passed = await applyEvent(deps, input, event, currentLabels);
     if (passed.outcome === "applied") {
@@ -254,5 +291,15 @@ async function handleCheckSuiteCompleted(deps: Deps, input: CoordinateInput): Pr
   const reason = hardBlockReason(facts);
   if (reason) return blockMerge(deps, input, currentLabels, reason);
   if (failedCheckNames(facts).length > 0) return handToRework(deps, input, currentLabels, facts);
+
+  // Green: merge-flow again, once per head commit. merge-flow never signals
+  // completion (its result is the merge itself), so a pending fire can't say
+  // whether one is still running; a second alongside a slow first is
+  // harmless, a merge being idempotent.
+  if (facts.checkRuns.length > 0 && facts.headSha && (await deps.getMergeFiredFor()) !== facts.headSha) {
+    const result = await applyEvent(deps, input, EVENTS.MERGE_GATE_PASSED, currentLabels);
+    if (result.outcome === "applied") await deps.setMergeFiredFor(facts.headSha);
+    return result;
+  }
   return { outcome: "no_event" };
 }

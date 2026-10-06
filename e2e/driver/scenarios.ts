@@ -47,6 +47,10 @@ const MIN = 60_000;
 /** The sandbox's watchdog (tofu's e2e_watchdog_minutes). */
 const WATCHDOG_MINUTES = Number(process.env.E2E_WATCHDOG_MINUTES ?? 2);
 const STUCK_WAIT = (WATCHDOG_MINUTES + 2) * MIN;
+/** How long a review scenario gives each CI run: GitHub Actions can queue a
+ * sandbox run for minutes (05-10-2026: one started 5.5 min after its push),
+ * and the review waits for green CI before it fires. Only spent if CI is slow. */
+const CI_WAIT = 8 * MIN;
 /** The sandbox's CI-fix and review-round caps (tofu's e2e_rework_cap). */
 const CAP = Number(process.env.E2E_REWORK_CAP ?? 1);
 
@@ -134,7 +138,7 @@ const lateOutcome = (n: number, loop: string, outcome: Outcome) => comment(n, ou
 export const scenarios: Scenario[] = [
   // --- The lane --------------------------------------------------------------
   {
-    name: `full lane: build -> PR -> ${LABELS.AUTO_MERGING} -> merged, then release -> published`,
+    name: `full lane: build -> PR -> ${LABELS.AUTO_MERGING} -> merged (issue ${LABELS.READY_FOR_RELEASE}), then release -> published (issue closed)`,
     timeoutMs: 8 * MIN,
     run: () =>
       scoped(async (t) => {
@@ -144,38 +148,69 @@ export const scenarios: Scenario[] = [
         expectLabels(built, issue, LABELS.PR_OPEN);
         expect(hasMarker(built, "issue-build-loop", "build_succeeded"), `#${issue} build_succeeded marker`).toBe(true);
         const pr = t.n(Number(built.comments.join("\n").match(/"outcome":"build_succeeded","pr":(\d+)/)?.[1]));
-
-        await addLabel(pr, LABELS.AUTO_MERGING);
-        const merged = await waitFor(pr, (s) => s.merged, 4 * MIN);
-        expect(merged.merged, `PR #${pr} merged`).toBe(true);
-
-        const release = t.n(await openIssue(`release 0.0.${issue}`, "Release what's on dev.", "published"));
-        await addLabel(release, LABELS.AUTO_RELEASING);
-        const published = await waitFor(release, (s) => s.state === "closed", 2 * MIN);
-        expect(published.state, `#${release}`).toBe("closed");
-        expect(hasMarker(published, "auto-release-loop", "release_published"), `#${release} marker`).toBe(true);
-
-        await expectLogged(
-          issue,
-          { event: "labelled_ai_ready", run: "issue-build-loop" },
-          { event: "build_succeeded", effect: LABELS.PR_OPEN },
-        );
-        await expectLogged(pr, { event: "labelled_auto_merging", run: "merge-flow" }, { event: "merged", effect: "close" });
-        await expectLogged(release, { event: "labelled_auto_releasing", run: "auto-release-loop" }, { event: "release_published", effect: "close" });
-
-        // The live-status view: the built issue shows its last run; a closed
-        // PR or release has no row.
+        // The live-status view: the built issue shows its last run.
         expect(await statusOf(issue), `#${issue} status`).toMatchObject({
           state: LABELS.PR_OPEN,
           routine: "issue-build-loop",
           attempt: 1,
           running: 0,
         });
-        // After the close's own webhooks have all landed (issues.closed comes
-        // after the Worker's own close, and must not put the row back).
-        await sleep(20_000);
-        expect(await statusOf(pr), `PR #${pr} status, closed`).toBeUndefined();
-        expect(await statusOf(release), `#${release} status, closed`).toBeUndefined();
+
+        // The PR merges, and its "Closes #N" moves the issue on.
+        await addLabel(pr, LABELS.AUTO_MERGING);
+        const merged = await waitFor(pr, (s) => s.merged, 4 * MIN);
+        expect(merged.merged, `PR #${pr} merged`).toBe(true);
+        expectLabels(await waitFor(issue, labelsAre(LABELS.READY_FOR_RELEASE), MIN), issue, LABELS.READY_FOR_RELEASE);
+
+        // A release containing the merge closes the issue. The release split:
+        // before (the stub's agent approves), the merge (the orchestrator, as
+        // the App), after (release-publish: the stub tags main as the repo's
+        // workflow would and reports release_published with the tag).
+        const release = t.n(await openIssue("release (e2e, retitled below)", "Release what's on dev.", "approve"));
+        const version = `0.0.${release}`;
+        await gh("PATCH", `/repos/${REPO}/issues/${release}`, { title: `release ${version}` });
+        try {
+          await addLabel(release, LABELS.AUTO_RELEASING);
+          const published = await waitFor(release, (s) => s.state === "closed", 2 * MIN);
+          expect(published.state, `#${release}`).toBe("closed");
+          expect(hasMarker(published, "auto-release-loop", "release_approved"), `#${release} marker`).toBe(true);
+          const shipped = await waitFor(issue, (s) => s.state === "closed", MIN);
+          expect(shipped.state, `#${issue} closed by the release`).toBe("closed");
+
+          await expectLogged(
+            issue,
+            { event: "labelled_ai_ready", run: "issue-build-loop" },
+            { event: "build_succeeded", effect: LABELS.PR_OPEN },
+            { event: "pr_merged", effect: LABELS.READY_FOR_RELEASE },
+            { event: "released", effect: "close" },
+          );
+          await expectLogged(pr, { event: "labelled_auto_merging", run: "merge-flow" }, { event: "merged", effect: "close" });
+          await expectLogged(
+            release,
+            { event: "labelled_auto_releasing", run: "auto-release-loop" },
+            { event: "release_approved" },
+            { event: "release_merged", run: "release-publish" },
+            { event: "release_published", effect: "close" },
+          );
+          const releasePrs = await gh<{ number: number; merged_at: string | null; merge_commit_sha: string | null; head: { ref: string } }[]>(
+            "GET",
+            `/repos/${REPO}/pulls?state=closed&base=main&per_page=20`,
+          );
+          const releasePr = releasePrs.find((p) => p.head.ref === `release/${version}`);
+          expect(releasePr?.merged_at, `release/${version} merged into main by the orchestrator`).toBeTruthy();
+          const merge = await gh<{ parents: unknown[] }>("GET", `/repos/${REPO}/commits/${releasePr?.merge_commit_sha}`);
+          expect(merge.parents.length, "a merge commit, not a squash").toBe(2);
+
+          // After the closes' own webhooks have all landed (issues.closed comes
+          // after the Worker's own close, and must not put a row back).
+          await sleep(20_000);
+          expect(await statusOf(pr), `PR #${pr} status, closed`).toBeUndefined();
+          expect(await statusOf(release), `#${release} status, closed`).toBeUndefined();
+          expect(await statusOf(issue), `#${issue} status, closed`).toBeUndefined();
+        } finally {
+          await gh("DELETE", `/repos/${REPO}/git/refs/tags/v${version}`).catch(() => {});
+          await gh("DELETE", `/repos/${REPO}/git/refs/heads/release/${version}`).catch(() => {});
+        }
       }),
   },
   {
@@ -649,39 +684,43 @@ export const scenarios: Scenario[] = [
   // --- The review (15-agent-splits.md) ---------------------------------------
   {
     name: `review: ${LABELS.AI_REVIEWING} on a green PR -> review-loop -> passed -> unlabelled; re-added -> reviewed again`,
-    timeoutMs: 6 * MIN,
+    timeoutMs: 2 * CI_WAIT + 4 * MIN,
     run: () =>
       scoped(async (t) => {
         const pr = await trackedPr(t, { title: "review pass", hint: "review_pass", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
-        await waitForChecks(pr.number);
+        await waitForChecks(pr.number, CI_WAIT);
         await addLabel(pr.number, LABELS.AI_REVIEWING);
-        const passed = await waitFor(pr.number, (s) => s.labels.length === 0 && hasMarker(s, "review-loop", "review_passed"), 2 * MIN);
+        const passed = await waitFor(pr.number, (s) => s.labels.length === 0 && hasMarker(s, "review-loop", "review_passed"), CI_WAIT);
         expectLabels(passed, pr.number);
-        await expectLogged(
+        // The label's webhook and the check suite's can be handled in either
+        // order. Label first: a labelled_ai_reviewing row, then the gate
+        // fires. Check suite first: it fires, and the label's webhook is
+        // already handled (#226), with no row. Either way, one review.
+        const first = await expectLogged(
           pr.number,
-          "labelled_ai_reviewing",
           { event: "review_ci_passed", run: "review-loop" },
           { event: "review_passed", effect: "unlabel" },
         );
+        expect(first.filter((r) => r.event === "review_ci_passed"), "one review fired").toHaveLength(1);
 
         // A person re-running it (say after editing the PR by hand).
         await addLabel(pr.number, LABELS.AI_REVIEWING);
         const twice = (s: Snapshot) =>
           s.labels.length === 0 && s.comments.filter((c) => c.includes('"outcome":"review_passed"')).length === 2;
-        expectLabels(await waitFor(pr.number, twice, 2 * MIN), pr.number);
+        expectLabels(await waitFor(pr.number, twice, CI_WAIT), pr.number);
         const rows = await transitions(pr.number);
         expect(rows.filter((r) => r.event === "review_ci_passed"), "two reviews fired").toHaveLength(2);
       }),
   },
   {
     name: "review: findings -> rework-loop -> push -> CI -> reviewed again -> passed",
-    timeoutMs: 9 * MIN,
+    timeoutMs: 2 * CI_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
         const pr = await trackedPr(t, { title: "review findings", hint: "review_findings_once", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
         // Labelled at once, before CI has finished: the check_suite path fires the review.
         await addLabel(pr.number, LABELS.AI_REVIEWING);
-        const s = await waitFor(pr.number, (x) => x.labels.length === 0 && hasMarker(x, "review-loop", "review_passed"), 8 * MIN);
+        const s = await waitFor(pr.number, (x) => x.labels.length === 0 && hasMarker(x, "review-loop", "review_passed"), 2 * CI_WAIT);
         expectLabels(s, pr.number);
         expect(hasComment(s, `Review round 1 of ${CAP}`)).toBe(true);
         const commits = await gh<unknown[]>("GET", `/repos/${REPO}/pulls/${pr.number}/commits`);
@@ -698,13 +737,13 @@ export const scenarios: Scenario[] = [
   },
   {
     name: `review: blocked -> ${LABELS.AI_BLOCKED}, waits; a person re-adds ${LABELS.AI_REVIEWING} -> reviewed again -> passed`,
-    timeoutMs: 6 * MIN,
+    timeoutMs: 2 * CI_WAIT + 4 * MIN,
     run: () =>
       scoped(async (t) => {
         const pr = await trackedPr(t, { title: "review block", hint: "review_block", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
-        await waitForChecks(pr.number);
+        await waitForChecks(pr.number, CI_WAIT);
         await addLabel(pr.number, LABELS.AI_REVIEWING);
-        const blocked = await waitFor(pr.number, labelsAre(LABELS.AI_BLOCKED), 2 * MIN);
+        const blocked = await waitFor(pr.number, labelsAre(LABELS.AI_BLOCKED), CI_WAIT);
         expectLabels(blocked, pr.number, LABELS.AI_BLOCKED);
         await expectLogged(pr.number, { event: "review_ci_passed", run: "review-loop" }, { event: "review_blocked", effect: LABELS.AI_BLOCKED });
 
@@ -716,12 +755,12 @@ export const scenarios: Scenario[] = [
   },
   {
     name: `review: CI red under ${LABELS.AI_REVIEWING} -> CI fix -> back to ${LABELS.AI_REVIEWING} -> passed`,
-    timeoutMs: 9 * MIN,
+    timeoutMs: 2 * CI_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
         const pr = await trackedPr(t, { title: "review ci red", hint: "review_ci_fail", files: { "ci-state": "fail\n" } });
         await addLabel(pr.number, LABELS.AI_REVIEWING);
-        const s = await waitFor(pr.number, (x) => x.labels.length === 0 && hasMarker(x, "review-loop", "review_passed"), 8 * MIN);
+        const s = await waitFor(pr.number, (x) => x.labels.length === 0 && hasMarker(x, "review-loop", "review_passed"), 2 * CI_WAIT);
         expectLabels(s, pr.number);
         expect(hasComment(s, "🔧 CI failing", `attempt 1 of ${CAP}`)).toBe(true);
         await expectLogged(
@@ -735,12 +774,13 @@ export const scenarios: Scenario[] = [
   },
   {
     name: `review: findings every round -> ${LABELS.AI_STUCK} once past the cap`,
-    timeoutMs: (5 + 3 * CAP) * MIN,
+    timeoutMs: (CAP + 1) * CI_WAIT + 2 * MIN,
     run: () =>
       scoped(async (t) => {
         const pr = await trackedPr(t, { title: "review never passes", hint: "review_findings_always", files: { [`notes/${Date.now()}.txt`]: "draft\n" } });
         await addLabel(pr.number, LABELS.AI_REVIEWING);
-        const s = await waitFor(pr.number, labelsAre(LABELS.AI_STUCK), (4 + 3 * CAP) * MIN);
+        // A CI run per round: the first, then one after each fix.
+        const s = await waitFor(pr.number, labelsAre(LABELS.AI_STUCK), (CAP + 1) * CI_WAIT);
         expectLabels(s, pr.number, LABELS.AI_STUCK);
         expect(hasComment(s, `asked for changes ${CAP} times`)).toBe(true);
         const rows = await expectLogged(pr.number, { event: "rework_cap_reached", effect: LABELS.AI_STUCK });

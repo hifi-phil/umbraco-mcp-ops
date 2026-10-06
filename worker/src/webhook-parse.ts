@@ -67,7 +67,7 @@ export function toWebhookPayload(body: Record<string, unknown>, eventType: strin
     | undefined;
   const issue = body.issue as { state?: "open" | "closed"; pull_request?: unknown } | undefined;
   const review = body.review as { state?: "approved" | "changes_requested" | "commented" } | undefined;
-  const pullRequest = body.pull_request as { merged?: boolean } | undefined;
+  const pullRequest = body.pull_request as { merged?: boolean; body?: string | null; merge_commit_sha?: string | null } | undefined;
   const checkSuite = body.check_suite as
     | { conclusion?: "success" | "failure" | null; status?: "completed" | "in_progress" }
     | undefined;
@@ -84,7 +84,11 @@ export function toWebhookPayload(body: Record<string, unknown>, eventType: strin
     // "issue" carries a pull_request key.
     issue: issue ? { state: issue.state, is_pr: issue.pull_request !== undefined } : undefined,
     review: review?.state ? { state: review.state } : undefined,
-    pull_request: pullRequest ? { merged: pullRequest.merged } : undefined,
+    // The description and merge commit too: a merged PR hands its commit to
+    // each issue its description closes (coordinate/stages.ts).
+    pull_request: pullRequest
+      ? { merged: pullRequest.merged, body: pullRequest.body ?? null, merge_commit_sha: pullRequest.merge_commit_sha ?? null }
+      : undefined,
     check_suite: checkSuite
       ? { conclusion: checkSuite.conclusion ?? null, status: checkSuite.status ?? "completed" }
       : undefined,

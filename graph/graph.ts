@@ -132,6 +132,25 @@ export const rules: Rule[] = [
     verifiedBy: "external-judgment",
   },
   {
+    // The release split, before: the review passed and the agent's run is
+    // over. coordinate/release.ts merges the PR (the project's merge method,
+    // pinned to the reviewed commit), then raises release_merged.
+    from: LABELS.AUTO_RELEASING,
+    on: EVENTS.RELEASE_APPROVED,
+    to: noop,
+    verifiedBy: "external-judgment", // release-reviewer's verdict
+  },
+  {
+    // The release split, after: the Worker merged it, so release-publish
+    // runs (waits for the repo's tag, the release note, main back into dev)
+    // and reports release_published, which closes the issue (below).
+    from: LABELS.AUTO_RELEASING,
+    on: EVENTS.RELEASE_MERGED,
+    to: noop,
+    run: ROUTINES.RELEASE_PUBLISH,
+    verifiedBy: "deterministic", // the Worker's own merge
+  },
+  {
     from: "none",
     on: EVENTS.LABELLED_AI_DISCUSSING,
     to: label(LABELS.AI_DISCUSSING),
@@ -209,6 +228,17 @@ export const rules: Rule[] = [
     to: label(LABELS.AUTO_MERGING),
     run: ROUTINES.MERGE_FLOW,
     verifiedBy: "deterministic",
+  },
+  {
+    // CI finished green with the label still on: merge-flow again. One that
+    // ran while a check was still queued finished without merging, and
+    // nothing else would retry it (PR #228). coordinate/ fires this once per
+    // head commit.
+    from: LABELS.AUTO_MERGING,
+    on: EVENTS.MERGE_GATE_PASSED,
+    to: noop,
+    run: ROUTINES.MERGE_FLOW,
+    verifiedBy: "deterministic", // the Worker's own re-fetched check runs
   },
   {
     // Needs a human: a merge conflict or requested changes. Checked when
@@ -307,6 +337,30 @@ export const rules: Rule[] = [
     on: EVENTS.REWORK_CAP_REACHED,
     to: label(LABELS.AI_STUCK),
     verifiedBy: "deterministic", // the Worker's own count
+  },
+
+  // --- the issue's stages after its PR ---
+  // A PR whose description closes this issue merged into dev (coordinate/
+  // hands the event over, with the merge commit): the issue waits for a
+  // release. From LABELS.PR_OPEN (the build's PR), or from no label at all
+  // (a person's PR). The release whose tag contains that commit closes it.
+  {
+    from: LABELS.PR_OPEN,
+    on: EVENTS.PR_MERGED,
+    to: label(LABELS.READY_FOR_RELEASE),
+    verifiedBy: "deterministic", // a merge GitHub reported, and the PR's own "Closes #N"
+  },
+  {
+    from: "none",
+    on: EVENTS.PR_MERGED,
+    to: label(LABELS.READY_FOR_RELEASE),
+    verifiedBy: "deterministic",
+  },
+  {
+    from: LABELS.READY_FOR_RELEASE,
+    on: EVENTS.RELEASED,
+    to: close,
+    verifiedBy: "deterministic", // coordinate/ checked the release's tag contains the merge
   },
 
   // --- a loop taking its own trigger label off ---
@@ -434,6 +488,10 @@ export const CONTEXTUAL_EVENTS: ReadonlySet<Event> = new Set([
   EVENTS.UNLABELLED_AUTO_REWORKING,
   EVENTS.UNLABELLED_AUTO_MERGING,
   EVENTS.UNLABELLED_AI_REVIEWING,
+  // Only an issue at the right stage moves; one elsewhere (still under
+  // discussion, say) is left as it is.
+  EVENTS.PR_MERGED,
+  EVENTS.RELEASED,
 ]);
 
 /** Whether a routine fired into `state` should be watched: true exactly

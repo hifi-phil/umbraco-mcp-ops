@@ -88,6 +88,7 @@ describe("act — issue-build-loop", () => {
     expect(await act(gh, fireFor("issue-build-loop"), "success")).toBe("build_succeeded");
     expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: expect.stringMatching(/^refs\/heads\/e2e\/build-7-/), sha: "devsha" });
     expect(gh).toHaveBeenCalledWith("POST", `${R}/pulls`, expect.objectContaining({ base: "dev", body: expect.stringContaining("<!-- e2e: merge -->") }));
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/pulls`, expect.objectContaining({ body: expect.stringContaining("Closes #7") }));
     expect(gh).toHaveBeenLastCalledWith("POST", `${R}/issues/7/comments`, {
       body: expect.stringContaining('{"outcome":"build_succeeded","pr":42}'),
     });
@@ -266,10 +267,32 @@ describe("act — heartbeat and completion signals", () => {
 });
 
 describe("act — auto-release-loop, and silent", () => {
-  it("published -> the release_published marker, then closes the issue (as the real loop does)", async () => {
-    const gh = fakeGh();
+  it("published -> tags dev's head v<version> (as release-tag.yml would), the release_published marker, then closes the issue", async () => {
+    const gh = fakeGh({ [`GET ${R}/git/ref/heads/dev`]: { object: { sha: "dev-head" } } });
     expect(await act(gh, fireFor("auto-release-loop"), "published")).toBe("release_published");
-    expect(calls(gh)).toEqual([`POST ${R}/issues/7/comments`, `PATCH ${R}/issues/7`]);
+    expect(calls(gh)).toEqual([`GET ${R}/git/ref/heads/dev`, `POST ${R}/git/refs`, `POST ${R}/issues/7/comments`, `PATCH ${R}/issues/7`]);
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: "refs/tags/v0.0.7", sha: "dev-head" });
+  });
+
+  it("approve (the release split, before) -> release/<version> PR into main (\"Part of\", not \"Closes\"), release_approved with its head and merge method", async () => {
+    const gh = fakeGh({
+      [`GET ${R}/git/ref/heads/dev`]: { object: { sha: "dev-head" } },
+      [`POST ${R}/pulls`]: { number: 90, head: { sha: "rel-head" } },
+      [`GET ${R}/contents/`]: new Error("404"),
+    });
+    expect(await act(gh, fireFor("auto-release-loop"), "approve")).toBe("release_approved");
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: "refs/heads/release/0.0.7", sha: "dev-head" });
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/pulls`, expect.objectContaining({ head: "release/0.0.7", base: "main", body: expect.stringContaining("Part of #7") }));
+    const approval = gh.mock.calls.find(([m, p]) => m === "POST" && p.endsWith("/issues/7/comments"))!;
+    expect((approval[2] as { body: string }).body).toContain('"outcome":"release_approved","pr":90,"sha":"rel-head","version":"0.0.7","merge_method":"merge"');
+  });
+
+  it("release-publish (the after part) -> tags the merged main v<version>, reports release_published with the tag", async () => {
+    const gh = fakeGh({ [`GET ${R}/git/ref/heads/main`]: { object: { sha: "main-merge" } } });
+    expect(await act(gh, fireFor("release-publish"), "approve")).toBe("release_published");
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/git/refs`, { ref: "refs/tags/v0.0.7", sha: "main-merge" });
+    const published = gh.mock.calls.find(([m, p]) => m === "POST" && p.endsWith("/issues/7/comments"))!;
+    expect((published[2] as { body: string }).body).toContain('"outcome":"release_published","version":"0.0.7","tag":"v0.0.7"');
   });
 
   it("blocked -> the release_blocked marker, issue left open", async () => {
@@ -407,53 +430,16 @@ describe("handleWebhook (the stub's own check_suite webhook)", () => {
   });
 
   it("bad signature -> 401", async () => {
-    const defer = vi.fn();
-    expect((await handleWebhook(await hook(suite(), "sha256=00"), env, defer)).status).toBe(401);
-    expect(defer).not.toHaveBeenCalled();
+    expect((await handleWebhook(await hook(suite(), "sha256=00"), env)).status).toBe(401);
   });
 
-  it("a completed suite on a sandbox PR -> merge-flow's gate runs for that PR", async () => {
-    let work: Promise<unknown> | undefined;
-    const gh = fakeGh({ [`GET ${R}/pulls/7`]: { state: "open", mergeable: true, head: { sha: "h" }, labels: [] } });
-    const res = await handleWebhook(await hook(suite()), env, (w) => (work = w), gh);
-    expect(await res.json()).toEqual({ prs: [7] });
-    await work;
-    expect(gh).toHaveBeenCalledWith("GET", `${R}/pulls/7`);
-  });
-
-  it("a suite GitHub sent with no pull_requests -> its PRs are found by head_sha", async () => {
-    const body = JSON.stringify({
-      action: "completed",
-      repository: { name: "mcp-ops-e2e-testing", owner: { login: "hifi-phil" } },
-      check_suite: { head_sha: "h", pull_requests: [] },
-    });
-    const gh = fakeGh({ [`GET ${R}/commits/h/pulls`]: [{ number: 7, state: "open" }, { number: 8, state: "closed" }] });
-    const res = await handleWebhook(await hook(body), env, vi.fn(), gh);
-    expect(await res.json()).toEqual({ prs: [7] });
-  });
-
-  it("the gate still reads 'CI running' -> re-checked, then merged once it's green", async () => {
-    let work: Promise<unknown> | undefined;
-    let checks = 0;
-    const gh = vi.fn<Gh>(async (method, path) => {
-      if (path.endsWith("/issues/7")) return { body: "<!-- e2e: merge -->" };
-      if (path.endsWith("/pulls/7")) return { state: "open", mergeable: true, head: { sha: "h" }, labels: [{ name: LABELS.AUTO_MERGING }] };
-      if (path.endsWith("/check-runs")) {
-        checks++;
-        return { check_runs: [{ name: "ci", status: checks < 2 ? "in_progress" : "completed", conclusion: checks < 2 ? null : "success" }] };
-      }
-      return {};
-    });
-    await handleWebhook(await hook(suite()), env, (w) => (work = w), gh, 0);
-    await work;
-    expect(checks).toBe(2);
-    expect(gh).toHaveBeenCalledWith("PUT", `${R}/pulls/7/merge`, { merge_method: "squash" });
-  });
-
-  it("another repo, or another event -> ignored", async () => {
-    const defer = vi.fn();
-    await handleWebhook(await hook(suite("umbraco-mcp-ops")), env, defer);
-    await handleWebhook(await hook(suite(), undefined, "issues"), env, defer);
-    expect(defer).not.toHaveBeenCalled();
+  it("a completed suite -> ignored, nothing merged: the orchestrator re-fires merge-flow on green CI itself", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const res = await handleWebhook(await hook(suite()), env);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ignored: expect.any(String) });
+    expect(fetch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

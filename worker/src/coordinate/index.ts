@@ -6,6 +6,8 @@
 //   webhook.ts         a GitHub webhook (and manual_override, check_suite)
 //   merge-gate.ts      LABELS.AUTO_MERGING's hard block and CI-fix hand-off
 //   review-gate.ts     LABELS.AI_REVIEWING's CI gate, and the review's caps
+//   stages.ts          the issue's stages after its PR: hand-offs between items
+//   release.ts         the release split: merge on approval, Slack on the Release
 //   routine-signal.ts  a routine's heartbeat or completion
 //   watchdog.ts        the watchdog's expiry
 //   reconcile.ts       the sweep's left-behind check

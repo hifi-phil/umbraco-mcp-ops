@@ -15,6 +15,10 @@ export const EVENTS = {
   LABELLED_AUTO_RELEASING: "labelled_auto_releasing",
   RELEASE_BLOCKED: "release_blocked",
   RELEASE_PUBLISHED: "release_published",
+  // The pre-publish review passed: the Worker merges the release PR.
+  RELEASE_APPROVED: "release_approved",
+  // The Worker merged it (raised by the Worker itself): the after part runs.
+  RELEASE_MERGED: "release_merged",
   LABELLED_AI_DISCUSSING: "labelled_ai_discussing",
   // A trusted human's reply on an open LABELS.AI_DISCUSSING issue: loop-dispatch fires
   // the next discussion round on it (route-event.sh's issue_comment case).
@@ -39,6 +43,10 @@ export const EVENTS = {
   LABELLED_AUTO_MERGING: "labelled_auto_merging",
   MERGE_GATE_FAILED_SOFT: "merge_gate_failed_soft",
   MERGE_GATE_FAILED_HARD: "merge_gate_failed_hard",
+  // CI finished green on a LABELS.AUTO_MERGING PR (the Worker's own re-check):
+  // merge-flow is fired again, since one that ran while a check was still
+  // queued finished without merging (PR #228, 05-10-2026).
+  MERGE_GATE_PASSED: "merge_gate_passed",
   UNLABELLED_AUTO_MERGING: "unlabelled_auto_merging",
   MERGED: "merged",
   // The review (15-agent-splits.md). LABELS.AI_REVIEWING added (by the build or a
@@ -61,6 +69,12 @@ export const EVENTS = {
   // Still a directly-observed fact, not a guess: "no outcome seen for
   // attempt X by time T" is exactly what the DO knows first-hand.
   WATCHDOG_EXPIRED: "watchdog_expired",
+  // The issue's stages after its PR (07: issue stages). Not from GitHub
+  // either: the Worker hands them from one item to another. pr_merged, from
+  // a merged PR to each issue its description closes; released, from a
+  // published release to each issue waiting for one.
+  PR_MERGED: "pr_merged",
+  RELEASED: "released",
 } as const;
 
 export type Event = (typeof EVENTS)[keyof typeof EVENTS];

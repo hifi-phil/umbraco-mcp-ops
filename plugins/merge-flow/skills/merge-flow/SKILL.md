@@ -61,8 +61,11 @@ For each candidate, all must hold — if any fails, **do not merge** (go to Step
    check-run status*) until nothing is pending, then require **every** check to pass.
    **Never rely on an auto-merge that bypasses this gate** — this org has no branch
    protection, so an auto-merge would land without a real green gate. Wait up to a sane
-   cap (e.g. 15 min); if still pending, treat as not-yet-mergeable and leave it for the
-   next run.
+   cap (e.g. 15 min); if still pending, treat as not-yet-mergeable, **comment on the PR**
+   that CI was still pending at the cap and that it needs a re-trigger (re-add
+   `auto-merging`, or a backstop poll — see *Running as a routine*), and leave the label
+   on. Don't assume a later run will happen on its own: nothing re-fires merge-flow when
+   CI finishes unless one of those is set up.
 3. **Mergeable / no conflicts.** The PR must report mergeable with no conflicts (get
    it via github-ops → *Get a PR*). If it's behind its base, update the branch first,
    then re-check CI (that restarts checks).
@@ -112,6 +115,9 @@ cheapest shape (it only fires when you label — no idle runs) and the most resp
 The skill queries for all `auto-merging` PRs, so a single-PR event just runs one pass of
 the same loop; nothing changes for one-at-a-time.
 
-**Optional backstop:** a low-frequency poll (e.g. once or twice a weekday) catches a PR
-whose CI went green *after* its event run's CI-wait timed out. Not needed if you label
-after CI is green.
+**Backstop (not provisioned by default):** the event trigger fires only on labelling, so a
+PR whose CI went green *after* its run's CI-wait timed out stalls silently — no poll
+exists unless someone creates a scheduled routine (e.g. hourly on weekdays) that runs this
+skill. Without one, either label after CI is green, or re-add `auto-merging` once CI
+passes (the cap comment in Step 2 says so). In orchestrated mode the orchestrator
+re-fires on CI completion, so this gap doesn't apply.

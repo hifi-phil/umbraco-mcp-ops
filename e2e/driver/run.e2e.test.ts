@@ -12,24 +12,38 @@ import { runItems, runLog, scenarios } from "./scenarios";
 const only = process.env.E2E_ONLY?.toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
 const runStart = new Date(Date.now() - 5_000).toISOString().replace(/\.\d+Z$/, "Z");
 
+/**
+ * Each scenario gets one retry: real GitHub has slow moments (05-10-2026:
+ * Actions took 2 min on one PR, so the sandbox's 2-minute watchdog expired
+ * as CI went green). A retry can't hide a real fault: every attempt's
+ * issues and PRs stay in the audit (runItems), and a retry is announced.
+ */
+const RETRIES = 1;
+
 describe.concurrent("scenarios", () => {
   for (const s of scenarios) {
     const run = !only || only.some((o) => s.name.toLowerCase().includes(o)) ? it : it.skip;
+    let attempt = 0;
     run(
       s.name,
       () =>
         inScenario(s.name, async () => {
+          // Each attempt keeps its own number. A timed-out attempt isn't
+          // cancelled (its promise runs on), so once a newer one has started
+          // it says nothing more, rather than logging under the retry's number.
+          const mine = ++attempt;
+          const current = () => mine === attempt;
           const start = Date.now();
-          progress("start");
+          progress(mine === 1 ? "start" : `RETRY ${mine}/${RETRIES + 1}`);
           try {
             await s.run();
-            progress(`PASSED in ${Math.round((Date.now() - start) / 1000)}s`);
+            if (current()) progress(`PASSED in ${Math.round((Date.now() - start) / 1000)}s${mine > 1 ? ` (on attempt ${mine})` : ""}`);
           } catch (e) {
-            progress(`FAILED after ${Math.round((Date.now() - start) / 1000)}s: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
+            if (current()) progress(`FAILED after ${Math.round((Date.now() - start) / 1000)}s: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
             throw e;
           }
         }),
-      s.timeoutMs,
+      { timeout: s.timeoutMs, retry: RETRIES },
     );
   }
 });
@@ -72,6 +86,10 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       const scripted = (d: DeliveryDetail) => d.numbers.includes(runLog.sweepIssue ?? -1) && d.response.includes("scripted fire failure");
       const failed = details.filter((d) => (d.statusCode >= 400 || d.response.includes('"outcome":"error"')) && !scripted(d));
       expect(failed.map(line), "deliveries the Worker failed").toEqual([]);
+      // Answered 202 (the Worker's answer deadline, under GitHub's 10 s):
+      // not a failure, the work finished in the background, but worth seeing.
+      const late = details.filter((d) => d.statusCode === 202);
+      if (late.length > 0) progress(`audit: ${late.length} delivery(s) answered late (202): ${late.map(line).join("; ")}`);
       const noRule = details.filter((d) => d.response.includes('"outcome":"dropped_no_rule"'));
       expect(noRule.map(line), "events the table had no rule for").toEqual([]);
 
@@ -113,10 +131,14 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       );
       expect(refires, "reconcile_refire rows outside the sweep scenario").toEqual([]);
       const guids = new Set(details.map((d) => d.guid));
+      // A hand-off between items (a merged PR to the issue it closes, a
+      // release to the issues it ships) logs under the original delivery's
+      // id plus ":#<item>".
+      const original = (id: string) => id.replace(/:#\d+$/, "");
       const orphans = [...logs].flatMap(([n, rows]) =>
         rows
           .filter((r) =>
-            r.delivery_id === null ? r.event !== "watchdog_expired" && r.event !== "reconcile_refire" : !guids.has(r.delivery_id),
+            r.delivery_id === null ? r.event !== "watchdog_expired" && r.event !== "reconcile_refire" : !guids.has(original(r.delivery_id)),
           )
           .map((r) => `#${n} ${r.event} delivery=${r.delivery_id}`),
       );

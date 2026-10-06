@@ -15,6 +15,7 @@ import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { type WebhookPayload } from "@orchestrator/graph/github/from-github";
 import { type MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
+import { type MergeMethod } from "@orchestrator/graph/outcomes";
 
 // A GitHub label-add webhook is only delivered *after* the label already
 // exists on the issue/PR — so a fresh getLabels() read for a "labelled_X"
@@ -70,6 +71,10 @@ export type PendingFire = {
 
 // returnTo: where the fix's push goes back to, LABELS.AUTO_MERGING (the default) or
 // LABELS.AI_REVIEWING (CI red before the review).
+export type Shipped = { pr: number; sha: string };
+
+export type PullDetails = { headRef: string; headSha: string; baseRef: string; defaultBranch: string; merged: boolean };
+
 export type CiFix = { attempts: number; pending: boolean; returnTo?: Label };
 
 // The review's own rounds on this PR: how many times review-loop has asked
@@ -173,6 +178,34 @@ export type Deps = {
   // How many review rework rounds this PR has had (DO storage).
   getReviewReworks(): Promise<number>;
   setReviewReworks(rounds: number): Promise<void>;
+  // Hands an event to another item's coordinator (a merged PR to the issues
+  // it closes; a release to the issues waiting for one). It runs there, as
+  // that item's own event, deduped on `deliveryId`.
+  forward(ref: IssueRef, payload: WebhookPayload, deliveryId: string): Promise<void>;
+  // The open issues or PRs carrying `label` in a repo.
+  openWithLabel(owner: string, repo: string, label: string): Promise<number[]>;
+  // Whether `ref` (a tag) contains commit `sha`.
+  commitInTag(owner: string, repo: string, sha: string, tag: string): Promise<boolean>;
+  // The merged PR, and its merge commit, that moved this issue to
+  // LABELS.READY_FOR_RELEASE (DO storage), for checking a release against.
+  getShipped(): Promise<Shipped | null>;
+  setShipped(shipped: Shipped): Promise<void>;
+  // The release PR the Worker merged for this release issue (DO storage):
+  // once set, LABELS.AUTO_RELEASING's routine is release-publish, not
+  // auto-release-loop (the sweep, a person re-adding the label). Cleared
+  // when release_published closes the issue.
+  getReleaseMerged(): Promise<Shipped | null>;
+  setReleaseMerged(merged: Shipped | null): Promise<void>;
+  // A PR's branches, head and merge state, and the repo's default branch:
+  // what the release split checks before (and instead of) merging.
+  getPullDetails(owner: string, repo: string, pr: number): Promise<PullDetails>;
+  // The release split: merge a PR the way the project says, pinned to `sha`
+  // (GitHub refuses if the head moved); throws with GitHub's reason.
+  mergePull(owner: string, repo: string, pr: number, sha: string, method: MergeMethod): Promise<void>;
+  // The head commit merge-flow was last re-fired for on green CI (DO
+  // storage), so each green commit gets one re-fire, not one per check suite.
+  getMergeFiredFor(): Promise<string | null>;
+  setMergeFiredFor(sha: string): Promise<void>;
   // review-loop's own rounds on this PR (DO storage).
   getReviewLoop(): Promise<ReviewLoop | null>;
   setReviewLoop(state: ReviewLoop | null): Promise<void>;
@@ -246,6 +279,7 @@ export function shadowDeps(deps: Deps): Deps {
     closeIssue: skip,
     commentOnIssue: skip,
     fireRoutine: skip,
+    mergePull: skip,
     enforced: () => false,
   };
 }

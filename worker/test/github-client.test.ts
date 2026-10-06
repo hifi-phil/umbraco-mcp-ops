@@ -3,6 +3,7 @@ import {
   addLabel,
   closeIssue,
   commentOnIssue,
+  commitInTag,
   getCheckRuns,
   getLabels,
   getLatestReviewState,
@@ -202,5 +203,43 @@ describe("GITHUB_API_BASE_URL override", () => {
       "http://127.0.0.1:9999/repos/hifi-phil/umbraco-mcp-ops/issues/412/labels",
       expect.anything(),
     );
+  });
+});
+
+describe("commitInTag — is a commit in a tag (the release check)", () => {
+  const compare = (status: number, body?: unknown) => vi.fn(async () => new Response(body ? JSON.stringify(body) : "not found", { status }));
+
+  it("the tag is ahead of, or at, the commit -> contained", async () => {
+    for (const s of ["ahead", "identical"]) {
+      const fetchMock = compare(200, { status: s });
+      vi.stubGlobal("fetch", fetchMock);
+      expect(await commitInTag(env, "hifi-phil", "umbraco-mcp-ops", "abc", "v2.1.0"), s).toBe(true);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://api.github.com/repos/hifi-phil/umbraco-mcp-ops/git/ref/tags/v2.1.0",
+        expect.objectContaining({ method: "GET" }),
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://api.github.com/repos/hifi-phil/umbraco-mcp-ops/compare/abc...v2.1.0",
+        expect.objectContaining({ method: "GET" }),
+      );
+    }
+  });
+
+  it("behind or diverged (merged after the release was cut), or a tag or commit that doesn't exist -> not contained", async () => {
+    for (const s of ["behind", "diverged"]) {
+      vi.stubGlobal("fetch", compare(200, { status: s }));
+      expect(await commitInTag(env, "hifi-phil", "umbraco-mcp-ops", "abc", "v2.1.0"), s).toBe(false);
+    }
+    vi.stubGlobal("fetch", compare(404));
+    expect(await commitInTag(env, "hifi-phil", "umbraco-mcp-ops", "abc", "v9.9.9")).toBe(false);
+  });
+
+  it("a branch, not a tag (dev contains everything merged): not contained, and never compared", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes("/git/ref/tags/") ? new Response("not found", { status: 404 }) : new Response(JSON.stringify({ status: "ahead" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await commitInTag(env, "hifi-phil", "umbraco-mcp-ops", "abc", "dev")).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

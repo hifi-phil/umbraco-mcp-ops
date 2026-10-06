@@ -9,6 +9,7 @@ import {
   type Deps,
   type PendingFire,
   type ReviewLoop,
+  type Shipped,
 } from "../../src/coordinate";
 import type { MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 
@@ -27,6 +28,9 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   let ciFix: CiFix | null = null;
   let reviewReworks = 0;
   let reviewLoop: ReviewLoop | null = null;
+  let mergeFiredFor: string | null = null;
+  let shipped: Shipped | null = null;
+  let releaseMerged: Shipped | null = null;
   let reconcileReported: string | null = null;
   let completed: string | null = null;
   return {
@@ -61,6 +65,23 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     }),
     setCiFix: vi.fn(async (state: CiFix | null) => {
       ciFix = state;
+    }),
+    forward: vi.fn(async () => {}),
+    openWithLabel: vi.fn(async () => []),
+    commitInTag: vi.fn(async () => true),
+    getPullDetails: vi.fn(async () => ({ headRef: "release/2.1.0", headSha: "abc1234def", baseRef: "main", defaultBranch: "main", merged: false })),
+    mergePull: vi.fn(async () => {}),
+    getShipped: vi.fn(async () => shipped),
+    setShipped: vi.fn(async (s: Shipped) => {
+      shipped = s;
+    }),
+    getReleaseMerged: vi.fn(async () => releaseMerged),
+    setReleaseMerged: vi.fn(async (m: Shipped | null) => {
+      releaseMerged = m;
+    }),
+    getMergeFiredFor: vi.fn(async () => mergeFiredFor),
+    setMergeFiredFor: vi.fn(async (sha: string) => {
+      mergeFiredFor = sha;
     }),
     getReviewLoop: vi.fn(async () => reviewLoop),
     setReviewLoop: vi.fn(async (state: ReviewLoop | null) => {

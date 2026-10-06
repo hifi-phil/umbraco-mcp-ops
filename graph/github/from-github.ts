@@ -42,7 +42,7 @@ const OUTCOME_MARKER_PATTERN = /<!-- agent-outcome:[a-zA-Z0-9_-]+ -->/;
 // transport in routines/from-routine.ts — see ../outcomes.ts — so the two
 // can't validate against two different ideas of "valid" as the catalog
 // grows.
-function parseOutcomeArtifact(body: string | undefined) {
+export function parseOutcomeArtifact(body: string | undefined) {
   if (!body || !OUTCOME_MARKER_PATTERN.test(body)) return null;
   const match = body.match(/```json\s*([\s\S]*?)\s*```/);
   if (!match) return null;
@@ -60,7 +60,12 @@ export type WebhookPayload = {
   comment?: { body: string; author_association?: string; user_type?: "Bot" | "User" };
   issue?: { state?: "open" | "closed"; is_pr?: boolean };
   review?: { state: "approved" | "changes_requested" | "commented" };
-  pull_request?: { merged?: boolean };
+  pull_request?: { merged?: boolean; body?: string | null; merge_commit_sha?: string | null };
+  // The Worker's own hand-offs between items (coordinate/), never a GitHub
+  // payload: a merged PR's commit to each issue it closes, and a published
+  // release's version to each issue waiting for one.
+  shipped?: { pr: number; sha: string };
+  release?: { version: string; tag: string };
   check_suite?: { conclusion: "success" | "failure" | null; status: "completed" | "in_progress" };
 };
 
@@ -160,6 +165,8 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
             return EVENTS.RELEASE_BLOCKED;
           case "release_published":
             return EVENTS.RELEASE_PUBLISHED;
+          case "release_approved":
+            return EVENTS.RELEASE_APPROVED;
           case "review_passed":
             return EVENTS.REVIEW_PASSED;
           case "review_findings":
@@ -225,6 +232,12 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
     case "pull_request.closed":
       if (payload.pull_request?.merged) return EVENTS.MERGED;
       return null;
+
+    // The Worker's own hand-offs (see WebhookPayload's shipped / release).
+    case "orchestrator.pr_merged":
+      return payload.shipped ? EVENTS.PR_MERGED : null;
+    case "orchestrator.released":
+      return payload.release ? EVENTS.RELEASED : null;
 
     default:
       return null;

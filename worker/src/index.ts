@@ -74,12 +74,27 @@ app.post("/sweep", (c) => handleSweep(c.req.raw, c.env));
 app.get("/transitions", (c) => handleTransitions(c.req.raw, c.env, new URL(c.req.url)));
 app.post("/routine-signal", (c) => handleRoutineSignal(c.req.raw, c.env));
 // GitHub delivers webhooks to the Worker's root; any other POST is read as one.
-app.post("*", (c) => handleWebhook(c.req.raw, c.env));
+app.post("*", (c) => answerInTime(handleWebhook(c.req.raw, c.env), c.executionCtx));
 app.all("*", (c) => c.text("method not allowed", 405));
 
+// A plain call (the tests) has no ExecutionContext; give it one that does nothing.
+const noCtx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
+
 export default {
-  fetch: (request: Request, env: Env, ctx?: ExecutionContext) => app.fetch(request, env, ctx),
+  fetch: (request: Request, env: Env, ctx?: ExecutionContext) => app.fetch(request, env, ctx ?? noCtx),
 };
+
+export const ANSWER_WITHIN_MS = 8_000;
+
+// GitHub drops a webhook it gets no answer to within 10 s, and never retries
+// it (e2e #689, 05-10-2026). So answer by 8 s: the work's own answer if it's
+// done, else 202 while it finishes in the background.
+async function answerInTime(work: Promise<Response>, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
+  const late = Response.json({ accepted: true }, { status: 202 });
+  const res = await Promise.race([work, new Promise<Response>((r) => setTimeout(() => r(late), ANSWER_WITHIN_MS))]);
+  if (res === late) ctx.waitUntil(work);
+  return res;
+}
 
 /** A GitHub webhook: verify, parse, route to the issue's (or each PR's) DO. */
 async function handleWebhook(request: Request, env: Env): Promise<Response> {
