@@ -8,6 +8,7 @@ import {
   handleReview,
   stubGitHub,
   routineSignal,
+  logWriter,
   verifySignature,
   type Gh,
   type StubEnv,
@@ -59,6 +60,13 @@ describe("parseFire / parseHint / outcomeComment", () => {
     expect(parseFire("no route here")).toBeNull();
   });
 
+  it("and the run's log_token, when the fire carries one", () => {
+    expect(parseFire(`${text()} Record decisions …: log_token=eyJvIjoiaCJ9.c2ln-_x (never post it anywhere).`)).toEqual({
+      ...fireFor("issue-build-loop"),
+      logToken: "eyJvIjoiaCJ9.c2ln-_x",
+    });
+  });
+
   it("reads the e2e hint from an HTML comment", () => {
     expect(parseHint("Do a thing.\n\n<!-- e2e: blocked -->")).toBe("blocked");
     expect(parseHint("no hint")).toBeNull();
@@ -92,6 +100,34 @@ describe("act — issue-build-loop", () => {
     expect(gh).toHaveBeenLastCalledWith("POST", `${R}/issues/7/comments`, {
       body: expect.stringContaining('{"outcome":"build_succeeded","pr":42}'),
     });
+  });
+
+  it("success with a log_token -> a decision and a build entry, before the outcome; a failed write doesn't stop it", async () => {
+    const routes = { [`GET ${R}/git/ref/heads/dev`]: { object: { sha: "devsha" } }, [`POST ${R}/pulls`]: { number: 42 } };
+    const log = vi.fn(async (_entry: { kind: string; category?: string; body: string }) => {});
+    expect(await act(fakeGh(routes), fireFor("issue-build-loop"), "success", undefined, log)).toBe("build_succeeded");
+    expect(log.mock.calls.map(([e]) => [e.kind, e.category])).toEqual([
+      ["decision", "judgment-call"],
+      ["build", undefined],
+    ]);
+    const failing = vi.fn(async (_entry: { kind: string; category?: string; body: string }) => Promise.reject(new Error("401")));
+    expect(await act(fakeGh(routes), fireFor("issue-build-loop"), "success", undefined, failing)).toBe("build_succeeded");
+  });
+});
+
+describe("logWriter", () => {
+  it("posts the entry to /log over the service binding, with the fire's token", async () => {
+    const fetch = vi.fn(async (_input: string, _init?: RequestInit) => Response.json({ id: 3 }));
+    await logWriter({ ...env, ORCHESTRATOR: { fetch } }, "tok.sig")({ kind: "build", body: "Commit: x" });
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(new URL(url).pathname).toBe("/log");
+    expect((init!.headers as Record<string, string>).Authorization).toBe("Bearer tok.sig");
+    expect(JSON.parse(init!.body as string)).toEqual({ kind: "build", body: "Commit: x" });
+  });
+
+  it("a refused write throws (the caller swallows it)", async () => {
+    const write = logWriter({ ...env, ORCHESTRATOR: { fetch: async () => new Response("unauthorized", { status: 401 }) } }, "t.s");
+    await expect(write({ kind: "build", body: "x" })).rejects.toThrow(/401/);
   });
 });
 

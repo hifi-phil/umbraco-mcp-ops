@@ -17,7 +17,10 @@ export type Signal = (signal: Record<string, unknown>) => Promise<string>;
  * the loop's comments (so only a human's reply starts the next round). */
 export const DISCUSS_SIGNATURE = "<!-- issue-discuss-loop -->";
 
-export type Fire = { route: string; owner: string; repo: string; number: number };
+export type Fire = { route: string; owner: string; repo: string; number: number; logToken?: string };
+
+/** Adds one work-log entry with the fire's log_token, as log-entry.sh would. */
+export type LogWriter = (entry: { kind: "decision" | "build"; category?: string; body: string }) => Promise<void>;
 
 export type Action =
   | "build_blocked"
@@ -67,7 +70,7 @@ async function putFile(gh: Gh, f: Fire, branch: string, path: string, content: s
   });
 }
 
-export async function act(gh: Gh, fire: Fire, hint: string | null, signal?: Signal): Promise<Action> {
+export async function act(gh: Gh, fire: Fire, hint: string | null, signal?: Signal, log?: LogWriter): Promise<Action> {
   if (hint === "silent") return "none";
   // A routine that reports progress (or finishes) over the direct channel
   // but never posts an outcome: what the watchdog and its heartbeat handle.
@@ -84,7 +87,7 @@ export async function act(gh: Gh, fire: Fire, hint: string | null, signal?: Sign
     case "issue-discuss-loop":
       return discuss(gh, fire, hint);
     case "issue-build-loop":
-      return build(gh, fire, hint);
+      return build(gh, fire, hint, log);
     case "rework-loop":
       return rework(gh, fire, hint);
     case "merge-flow":
@@ -112,7 +115,7 @@ async function discuss(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
   return "discussed";
 }
 
-async function build(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
+async function build(gh: Gh, f: Fire, hint: string | null, log?: LogWriter): Promise<Action> {
   if (hint === "blocked") {
     await comment(gh, f, outcomeComment("issue-build-loop", { outcome: "build_blocked", reason: "e2e stub: scripted block" }));
     return "build_blocked";
@@ -130,6 +133,11 @@ async function build(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
     // "Closes #N", as the real build writes it: the merge moves the issue on.
     body: `Built by the e2e stub. Closes #${f.number}.\n\n<!-- e2e: merge -->`,
   })) as { number: number };
+  // The work log, as the real build writes it (best effort, as there).
+  if (log) {
+    await log({ kind: "decision", category: "judgment-call", body: `Decided: one file per build (e2e #${f.number}).\nWhy: the e2e stub's convention.\nRejected: a shared file.` }).catch(() => {});
+    await log({ kind: "build", body: `Commit: e2e stub\nTests: none (the stub)\nReview: none\nNot verified: everything (it's the stub)` }).catch(() => {});
+  }
   await comment(gh, f, outcomeComment("issue-build-loop", { outcome: "build_succeeded", pr: pr.number }));
   return "build_succeeded";
 }
