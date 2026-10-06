@@ -20,7 +20,7 @@ export type Outcome =
   // `tag`: the release's tag, as the project names it (release-publish
   // reports it); absent from the agent that still publishes itself.
   | { outcome: "release_published"; version: string; tag?: string }
-  // The release split (15-agent-splits.md): the pre-publish review passed.
+  // The release split (17-release-flow.md): the pre-publish review passed.
   // The Worker merges the PR the way the project says (merge_method), pinned
   // to the commit the review saw.
   | { outcome: "release_approved"; pr: number; sha: string; version: string; merge_method: MergeMethod }

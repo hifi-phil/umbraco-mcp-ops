@@ -10,7 +10,7 @@ description: >-
 
 # release-publish
 
-The **after** part of the release split (`docs/agent-orchestration/15-agent-splits.md`).
+The **after** part of the release split (`docs/agent-orchestration/17-release-flow.md`).
 `auto-release-loop` did the before part (prepare, CI green, pre-publish review) and reported
 `release_approved`; the orchestrator merged the release PR as its GitHub App. This run does
 the rest, then reports, and the orchestrator closes the release issue and the issues the
