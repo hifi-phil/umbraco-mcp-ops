@@ -86,9 +86,16 @@ describe("release_approved: the Worker merges, then the after part runs", () => 
     expect(d.fireRoutine).not.toHaveBeenCalled();
   });
 
-  it("shadow: decided and logged, nothing merged, posted or fired", async () => {
+  it("records the merge, so a lost release-publish is never answered with the before part again", async () => {
+    const d = releasing();
+    await coordinateWebhook(d, approved());
+    expect(await d.getReleaseMerged()).toEqual({ pr: 220, sha: "abc1234def" });
+  });
+
+  it("shadow: decided and logged, nothing merged, posted, fired or recorded", async () => {
     const d = releasing({ enforced: () => false });
     await coordinateWebhook(d, approved());
+    expect(await d.getReleaseMerged()).toBeNull();
     expect(d.mergePull).not.toHaveBeenCalled();
     expect(d.commentOnIssue).not.toHaveBeenCalled();
     expect(d.fireRoutine).not.toHaveBeenCalled();
@@ -133,9 +140,39 @@ describe("release_published (from release-publish): the issue closes, released g
     expect(d.forward).not.toHaveBeenCalled();
   });
 
+  it("clears the merge record", async () => {
+    const d = releasing();
+    await d.setReleaseMerged({ pr: 220, sha: "abc1234def" });
+    await coordinateWebhook(d, outcomeComment({ outcome: "release_published", version: "2.1.0", tag: "v2.1.0" }, "OWNER", "hifi-phil", "d-pub"));
+    expect(await d.getReleaseMerged()).toBeNull();
+  });
+
   it("an agent that still publishes itself (no tag reported): v<version>, as it always tagged", async () => {
     const d = releasing({ openWithLabel: vi.fn(async () => [12]) });
     await coordinateWebhook(d, outcomeComment({ outcome: "release_published", version: "2.1.0" }, "OWNER", "hifi-phil", "d-old"));
     expect(d.forward).toHaveBeenCalledWith(expect.anything(), { action: "orchestrator.released", release: { version: "2.1.0", tag: "v2.1.0" } }, "d-old:#12");
+  });
+});
+
+describe(`${LABELS.AUTO_RELEASING} re-added after the Worker merged: the after part again, not the before part`, () => {
+  const relabelled = input({
+    deliveryId: "d-relabel",
+    issueNumber: ISSUE,
+    payload: { action: "issues.labeled", label: { name: LABELS.AUTO_RELEASING }, sender: { login: "hifi-phil", type: "User" } },
+  });
+
+  it(`from ${LABELS.AI_STUCK}: ${LABELS.AI_STUCK} off, release-publish fired and watched`, async () => {
+    const d = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_STUCK, LABELS.AUTO_RELEASING]) });
+    await d.setReleaseMerged({ pr: 220, sha: "abc1234def" });
+    expect(await coordinateWebhook(d, relabelled)).toMatchObject({ outcome: "applied", event: EVENTS.RELEASE_MERGED });
+    expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, ISSUE, LABELS.AI_STUCK);
+    expect(d.fireRoutine).toHaveBeenCalledWith(OWNER, REPO, ISSUE, ROUTINES.RELEASE_PUBLISH);
+    expect(d.fireRoutine).not.toHaveBeenCalledWith(OWNER, REPO, ISSUE, ROUTINES.AUTO_RELEASE_LOOP);
+  });
+
+  it("nothing merged yet: the before part, as always", async () => {
+    const d = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]) });
+    await coordinateWebhook(d, relabelled);
+    expect(d.fireRoutine).toHaveBeenCalledWith(OWNER, REPO, ISSUE, ROUTINES.AUTO_RELEASE_LOOP);
   });
 });

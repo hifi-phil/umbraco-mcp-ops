@@ -190,6 +190,12 @@ export type Deps = {
   // LABELS.READY_FOR_RELEASE (DO storage), for checking a release against.
   getShipped(): Promise<Shipped | null>;
   setShipped(shipped: Shipped): Promise<void>;
+  // The release PR the Worker merged for this release issue (DO storage):
+  // once set, LABELS.AUTO_RELEASING's routine is release-publish, not
+  // auto-release-loop (the sweep, a person re-adding the label). Cleared
+  // when release_published closes the issue.
+  getReleaseMerged(): Promise<Shipped | null>;
+  setReleaseMerged(merged: Shipped | null): Promise<void>;
   // A PR's branches, head and merge state, and the repo's default branch:
   // what the release split checks before (and instead of) merging.
   getPullDetails(owner: string, repo: string, pr: number): Promise<PullDetails>;

@@ -26,7 +26,7 @@ export async function releaseApproved(deps: Deps, input: CoordinateInput, curren
   const result = await applyEvent(deps, input, EVENTS.RELEASE_APPROVED, currentLabels);
   if (result.outcome !== "applied") return result;
 
-  const { io } = depsFor(deps, EVENTS.RELEASE_APPROVED);
+  const { io, mode } = depsFor(deps, EVENTS.RELEASE_APPROVED);
   const where = { owner: input.owner, repo: input.repo };
   const refuse = async (why: string) => {
     await applyEvent(deps, input, EVENTS.RELEASE_BLOCKED, currentLabels);
@@ -56,6 +56,10 @@ export async function releaseApproved(deps: Deps, input: CoordinateInput, curren
       }
     }
   }
+  // Recorded before the after part fires: if that fire is lost, the sweep
+  // (or a person re-adding the label) starts release-publish, never the
+  // before part again on a version already merged. Only a real merge.
+  if (mode === "enforce") await deps.setReleaseMerged({ pr: outcome.pr, sha: outcome.sha });
   // The merge is the Worker's own: the after part runs first (the table's
   // release_merged rule fires release-publish and watches it), so a failed
   // comment can't leave a merged release with nothing watching it.
@@ -78,4 +82,16 @@ export async function trustedAuthor(deps: Deps, input: CoordinateInput): Promise
   const bot = await deps.botLogin();
   if (bot && sender === bot) return true;
   return TRUSTED_ASSOCIATIONS.includes(input.payload.comment?.author_association ?? "");
+}
+
+/**
+ * A person re-adds LABELS.AUTO_RELEASING (from LABELS.AI_STUCK, say) after
+ * the Worker already merged the release PR: the before part is done, so the
+ * after part runs again, not auto-release-loop on a merged version.
+ */
+export async function retryReleasePublish(deps: Deps, input: CoordinateInput, currentLabels: string[]): Promise<CoordinateResult> {
+  const { io } = depsFor(deps, EVENTS.RELEASE_MERGED);
+  const now = currentLabels.filter((l) => l !== LABELS.AI_STUCK);
+  if (now.length !== currentLabels.length) await io.removeLabel(input.owner, input.repo, input.issueNumber, LABELS.AI_STUCK);
+  return applyEvent(deps, input, EVENTS.RELEASE_MERGED, now);
 }
