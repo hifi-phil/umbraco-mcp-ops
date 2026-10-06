@@ -209,13 +209,11 @@ keep their files. The routines read those as well as D1.
 Most of `auto-release-loop` (229 lines, seven steps) is mechanical work
 done by an agent, and the end of the run is where it loses track.
 
-| Stays an agent | Becomes plain code |
-|---|---|
-| Prepare: cut `release/<version>`, bump the version, write the changelog, open the PR | Merge to `main` |
-| Fix CI | Tag and GitHub Release (`release-tag.yml` already does this) |
-| Pre-publish review (`release-reviewer`, already a separate read-only agent; it can block) | Slack post |
-| | Sync `main` back to `dev` (`sync-main-to-dev.yml` exists) |
-| | Comment on and close the issue |
+| Before (🤖 `auto-release-loop`) | Plain code | After (🤖 `release-publish`) |
+|---|---|---|
+| Prepare: cut `release/<version>`, bump the version, write the changelog, open the PR | Merge to `main` (the Worker, as the App) | Wait for the tag |
+| Fix CI | Tag and GitHub Release (the repo's `release-tag.yml`) | Post the release note |
+| Pre-publish review (`release-reviewer`, a read-only sub-agent; it can block) | Close the issue, hand off `released` (the Worker) | Merge `main` back into `dev` |
 
 **Settled (06-10-2026): before, merge, after.** Project knowledge stays in
 skills (composable and swappable, shared across the MCP repos rather than
