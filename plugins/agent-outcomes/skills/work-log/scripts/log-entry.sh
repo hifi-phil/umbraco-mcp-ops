@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 #
-# Adds an entry to, or reads, the agent-orchestration decision log and build
-# log (docs/agent-orchestration/16-work-log.md in umbraco-mcp-ops). The
-# work-log skill says when and what to write.
+# Adds an entry to, or reads, the agent-orchestration work log
+# (docs/agent-orchestration/16-work-log.md in umbraco-mcp-ops): the journal,
+# the decision list derived from it, and the build entries. The work-log
+# skill says when and what to write.
 #
-#   log-entry.sh --token <log_token> add decision <category>   < body
-#   log-entry.sh --token <log_token> add build                 < body
+#   log-entry.sh --token <log_token> add journal <category>                  < body
+#   log-entry.sh --token <log_token> add decision <category> [--refs 7,9]    < one line
+#   log-entry.sh --token <log_token> add build                               < body
 #   log-entry.sh --token <log_token> read <item>
 #
 # The token comes from the Worker's fire text (log_token=…). It names the
@@ -48,19 +50,31 @@ case "$CMD" in
   add)
     KIND="${2:-}"
     CATEGORY="${3:-}"
+    REFS=""
+    if [ "${4:-}" = "--refs" ]; then REFS="${5:-}"; fi
     case "$KIND" in
-      decision)
-        [ -n "$CATEGORY" ] || fail "a decision needs a category: $CATEGORIES"
+      journal | decision)
+        [ -n "$CATEGORY" ] || fail "a $KIND entry needs a category: $CATEGORIES"
         case " $CATEGORIES " in *" $CATEGORY "*) ;; *) fail "unknown category '$CATEGORY': $CATEGORIES" ;; esac
         ;;
       build) CATEGORY="" ;;
-      *) fail "kind must be decision or build" ;;
+      *) fail "kind must be journal, decision or build" ;;
     esac
+    if [ -n "$REFS" ]; then
+      [ "$KIND" = "decision" ] || fail "--refs is for a decision (the journal entries behind it)"
+      case "$REFS" in *[!0-9,]* | ,* | *, | *,,*) fail "--refs takes journal entry ids, like 7,9" ;; esac
+    fi
     BODY="$(cat)"
     [ -n "${BODY//[[:space:]]/}" ] || fail "empty body"
     [ "$(printf '%s' "$BODY" | wc -c | tr -d ' ')" -le "$MAX_BYTES" ] || fail "body over $MAX_BYTES bytes: shorten it"
-    PAYLOAD="$(jq -cn --arg kind "$KIND" --arg category "$CATEGORY" --arg body "$BODY" \
-      '{kind:$kind, body:$body} + (if $category == "" then {} else {category:$category} end)')"
+    if [ "$KIND" = "decision" ]; then
+      BODY="$(printf '%s' "$BODY" | sed -e 's/[[:space:]]*$//')"
+      case "$BODY" in *$'\n'*) fail "a decision is one line (the journal holds the detail)" ;; esac
+    fi
+    PAYLOAD="$(jq -cn --arg kind "$KIND" --arg category "$CATEGORY" --arg body "$BODY" --arg refs "$REFS" \
+      '{kind:$kind, body:$body}
+        + (if $category == "" then {} else {category:$category} end)
+        + (if $refs == "" then {} else {refs:($refs | split(",") | map(tonumber))} end)')"
     if RESPONSE="$(curl -sS -m 10 -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
       -d "$PAYLOAD" -w '\n%{http_code}' "$ENDPOINT" 2>&1)"; then
       STATUS="${RESPONSE##*$'\n'}"
@@ -83,7 +97,7 @@ case "$CMD" in
       [ "$STATUS" = "200" ] || fail "the Worker answered $STATUS"
       printf '%s' "$BODY_OUT" | jq -r '
         if (.entries | length) == 0 then "(no entries)"
-        else .entries[] | "#\(.id) \(.created_at) \(.routine) \(.kind)\(if .category then " · " + .category else "" end)\n\(.body)\n"
+        else .entries[] | "#\(.id) \(.created_at) \(.routine) \(.kind)\(if .category then " · " + .category else "" end)\(if (.refs // []) | length > 0 then " (refs " + ((.refs // []) | map("#" + tostring) | join(", ")) + ")" else "" end)\n\(.body)\n"
         end' 2>/dev/null || fail "unreadable answer"
     else
       fail "couldn't reach the Worker"
@@ -91,7 +105,7 @@ case "$CMD" in
     ;;
   *)
     CMD=add
-    fail "usage: log-entry.sh --token <log_token> add decision <category> | add build | read <item>"
+    fail "usage: log-entry.sh --token <log_token> add journal <category> | add decision <category> [--refs 7,9] | add build | read <item>"
     ;;
 esac
 exit 0

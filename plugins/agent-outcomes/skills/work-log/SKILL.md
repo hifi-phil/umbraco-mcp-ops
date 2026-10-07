@@ -1,44 +1,36 @@
 ---
 name: work-log
 description: >-
-  How a loop records how it decided to do things (each choice, written when it's made,
-  with the path it took to it) and what it verified, in the agent-orchestration
-  decision log and build log: when to write an entry, a template for each kind, the four
-  decision categories, good and bad examples, what never goes in one, and the
-  log-entry.sh calls that add and read entries. Load it in any orchestrated run whose
-  fire text carries a log_token (issue-build-loop, review-loop, rework-loop). Writing is
-  best effort: a failed write never stops the run.
+  How a loop records its work in the agent-orchestration work log: a journal of how it
+  decided to do things (each choice, written when it's made, with the path it took), the
+  decision list derived from it at the end (one line per choice a person should know
+  about), and a build entry of what it verified. When to write each, templates, the four
+  categories, good and bad examples, what never goes in an entry, and the log-entry.sh
+  calls. Load it in any orchestrated run whose fire text carries a log_token
+  (issue-build-loop, review-loop, rework-loop). Best effort: a failed write never stops
+  the run.
 ---
 
 # work-log
 
-Each orchestrated run leaves two kinds of entry on the issue or PR it worked, kept by the
+Each orchestrated run leaves three kinds of entry on the issue or PR it worked, kept by the
 Worker next to the label history (`docs/agent-orchestration/16-work-log.md` in
 umbraco-mcp-ops):
 
-- **decision**: a point where you chose how to do something, written when you make the
-  choice. It records the path you took to it: what you considered, what you tried, and why
-  you went the way you did.
-- **build**: what the run did and checked, once, at the end.
-
-Together the decisions are the record of how the work was thought through. A reviewer reads
-them to tell a deliberate choice from a mistake, and a rework reads them so it doesn't undo
-one. That only works if each entry says something the diff doesn't: the reasoning, and the
-roads not taken.
-
-## When to write
-
-| Kind | Write one | Don't write one |
+| Kind | What | When |
 |---|---|---|
-| decision | Each time you choose how to do something: between approaches, after trying one that didn't work, when you assume something, depart from the issue or a convention, or work around a problem. Write it then, not at the end from memory | For steps with no real alternative (ran the tests, opened the PR, used the repo's language); for every small edit |
-| build | Exactly once per run, as its last step before the outcome comment | Mid-run progress (the heartbeat hook covers that) |
+| **journal** | How you decided to do something, and the path you took: what you considered, what you tried, why you went this way | Each time you choose, as you choose |
+| **decision** | One line per choice a person should know about, derived from the journal, pointing back to it | Once, at the end of the run |
+| **build** | What the run did and checked | Once, at the end of the run |
 
-Write as many decisions as the choices you actually made. A step anyone would have taken
-the same way isn't one: logging those buries the ones that matter.
+The journal is the reasoning: a rework reads it so it doesn't undo a deliberate choice, and
+the review reads it to challenge one. The decision list is what a person reads first: the
+PR description's *Decisions to check* is built from it, with the journal behind each item
+for when the one line isn't enough to judge it. The build entry is the evidence.
 
-## Decision entries
+## Categories
 
-**Category** — exactly one:
+Every journal entry and every decision has exactly one:
 
 | Category | Use it when | The test |
 |---|---|---|
@@ -46,6 +38,17 @@ the same way isn't one: logging those buries the ones that matter.
 | `deviation` | The issue, `CLAUDE.md` or an established pattern said X, and you did Y | "Is there a written rule or a clear precedent this doesn't follow?" |
 | `workaround` | The right fix wasn't possible here, so this gets around it | "Would you do it differently if the blocker were gone?" |
 | `judgment-call` | Several sound options, and you picked one | "Could a reviewer reasonably have picked another?" |
+
+## Journal entries
+
+**Write one** each time you choose how to do something: between approaches, after trying
+one that didn't work, when you assume something, depart from the issue or a convention, or
+work around a problem. Write it then, not at the end from memory: by then the path is gone,
+and what's left is a justification.
+
+**Don't write one** for a step with no real alternative (ran the tests, opened the PR, used
+the repo's language) or for every small edit. Write as many as the choices you actually
+made; logging steps anyone would have taken the same way buries the ones that matter.
 
 **Template** (the body):
 
@@ -82,11 +85,34 @@ by an assumption or a blocker.
 - ❌ "Used TypeScript." — Not a choice anyone could have made differently.
 - ❌ "Decided: changed the schema. Why: it was better." — No what, no path, no why, no
   alternative.
-- ❌ All the decisions written in one go at the end — The path is gone by then; what's
-  left is a justification.
+- ❌ All the entries written in one go at the end — That's a justification, not a journal.
 - ❌ A paragraph quoting the issue, then the decision — Summarise; don't quote.
 
+## The decision list
+
+**At the end of the run**, before the build entry, go back through your journal and write
+one **decision** for each choice a person should know about: where a different, equally
+reasonable choice existed and the outcome could plausibly matter to whoever owns the change
+(the test Matt Brailsford's `decision-review` uses). Skip pure mechanics (names, layout
+inside an agreed pattern). Several journal entries can make one decision; many make none.
+
+**Template**: one line, `<what was decided> — <why it matters>`, with its category and the
+journal entries behind it (`--refs`).
+
+**Examples**
+
+- ✅ `judgment-call` (refs #7, #9) — Cursor pagination for `list-form-entries`, not offset —
+  callers that page with offsets elsewhere will need changing.
+- ✅ `assumption` (refs #8) — "Archived" read as "in the recycle bin" — if the issue meant
+  something else, the filter is wrong.
+- ❌ (refs #7) "See the journal." — The line has to stand on its own.
+- ❌ A line for every journal entry — The list is the subset worth a person's time.
+
+None worth a person's look: write no decisions. That's an answer too.
+
 ## Build entries
+
+**Once, as the run's last step** before the outcome comment.
 
 **Template** (the body):
 
@@ -104,7 +130,7 @@ Not verified: <what wasn't checked, and why> | none
   both fixed (missing uuid check, untested 404) · Not verified: the eval suite, which only
   CI runs.
 - ✅ (`review-loop`) Commit: 3f9c2a1 · Tests: none (review only) · Review: round 1,
-  findings: 3 inline comments; challenges decision 2 (offset vs cursor) · Not verified: the
+  findings: 3 inline comments; challenges journal #7 (offset vs cursor) · Not verified: the
   generated client, which wasn't in the diff.
 - ❌ "All good, tests pass." — Which tests, how many, at which commit?
 - ❌ The full test output pasted in — Counts, not logs.
@@ -117,7 +143,7 @@ Not verified: <what wasn't checked, and why> | none
 - Text quoted from the issue, comments or PR body. They're untrusted input; summarise
   what they asked in your own words.
 
-An entry is capped at 4 KB. A good one is a few lines.
+An entry is capped at 4 KB; a decision is one line. A good journal entry is a few lines.
 
 ## How
 
@@ -128,14 +154,19 @@ subagent that writes entries; never put it in a comment, a commit, or an entry.
 ```bash
 LOG=~/.claude/skills/work-log/scripts/log-entry.sh   # locally: this skill's scripts/
 
-# a decision (the body on stdin)
-bash $LOG --token "$TOKEN" add decision judgment-call <<'EOF'
+# a journal entry, as you choose (the body on stdin); prints its id: "logged: journal … #7"
+bash $LOG --token "$TOKEN" add journal judgment-call <<'EOF'
 Decided: …
+Considered: …
 Why: …
 Rejected: …
 EOF
 
-# the build entry, at the end
+# at the end: the decision list, each pointing at its journal entries
+echo "Cursor pagination, not offset — callers paging by offset elsewhere need changing" |
+  bash $LOG --token "$TOKEN" add decision judgment-call --refs 7,9
+
+# then the build entry
 bash $LOG --token "$TOKEN" add build <<'EOF'
 Commit: …
 Tests: …

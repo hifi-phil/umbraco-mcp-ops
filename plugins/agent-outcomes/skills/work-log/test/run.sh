@@ -36,7 +36,8 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.record(None)
         self.answer(200, {"entries": [
-            {"id": 1, "created_at": "2026-10-07 10:00:00", "routine": "issue-build-loop", "kind": "decision", "category": "judgment-call", "body": "Decided: cursors."},
+            {"id": 1, "created_at": "2026-10-07 10:00:00", "routine": "issue-build-loop", "kind": "journal", "category": "judgment-call", "body": "Decided: cursors."},
+            {"id": 3, "created_at": "2026-10-07 10:20:00", "routine": "issue-build-loop", "kind": "decision", "category": "judgment-call", "refs": [1], "body": "Cursors, not offsets."},
             {"id": 2, "created_at": "2026-10-07 10:30:00", "routine": "issue-build-loop", "kind": "build", "category": None, "body": "Commit: abc1234"}]})
     def log_message(self, *a): pass
 http.server.HTTPServer(("127.0.0.1", int(sys.argv[2])), H).serve_forever()
@@ -59,11 +60,18 @@ last() {
 }
 requests() { wc -l <"$SERVER_LOG" 2>/dev/null | tr -d ' '; }
 
-# 1. A decision: posted with its category and the bearer token.
-out="$(printf 'Decided: cursors.\nWhy: thousands of rows.\nRejected: offsets.' | run WORK_LOG_ENDPOINT="$ENDPOINT" bash "$SCRIPT" --token tok add decision judgment-call)"
+# 1. A journal entry: posted with its category and the bearer token.
+out="$(printf 'Decided: cursors.\nConsidered: offsets first.\nWhy: thousands of rows.\nRejected: offsets.' | run WORK_LOG_ENDPOINT="$ENDPOINT" bash "$SCRIPT" --token tok add journal judgment-call)"
+check journal_logged "$out" "logged: journal (judgment-call) #7"
+last journal_shape '.method == "POST" and .path == "/log" and .auth == "Bearer tok"
+  and .body == {kind:"journal", category:"judgment-call", body:"Decided: cursors.\nConsidered: offsets first.\nWhy: thousands of rows.\nRejected: offsets."}'
+
+# 1b. A decision: one line, with the journal entries behind it.
+out="$(echo 'Cursors, not offsets — offset callers need changing' | run WORK_LOG_ENDPOINT="$ENDPOINT" bash "$SCRIPT" --token tok add decision judgment-call --refs 7,9)"
 check decision_logged "$out" "logged: decision (judgment-call) #7"
-last decision_shape '.method == "POST" and .path == "/log" and .auth == "Bearer tok"
-  and .body == {kind:"decision", category:"judgment-call", body:"Decided: cursors.\nWhy: thousands of rows.\nRejected: offsets."}'
+last decision_shape '.body == {kind:"decision", category:"judgment-call", body:"Cursors, not offsets — offset callers need changing", refs:[7,9]}'
+out="$(echo 'No journal behind it' | run WORK_LOG_ENDPOINT="$ENDPOINT" bash "$SCRIPT" --token tok add decision assumption)"
+last decision_no_refs '.body == {kind:"decision", category:"assumption", body:"No journal behind it"}'
 
 # 2. A build entry: no category sent, token from the env.
 out="$(printf 'Commit: abc1234\nTests: 42/42' | run WORK_LOG_ENDPOINT="$ENDPOINT" WORK_LOG_TOKEN=tok bash "$SCRIPT" add build)"
@@ -77,7 +85,8 @@ last derived_path '.path == "/log"'
 
 # 4. Read: the entries, as text, for the item asked.
 out="$(run WORK_LOG_ENDPOINT="$ENDPOINT" bash "$SCRIPT" --token tok read 412)"
-check read_decision "$out" "#1 2026-10-07 10:00:00 issue-build-loop decision · judgment-call"
+check read_journal "$out" "#1 2026-10-07 10:00:00 issue-build-loop journal · judgment-call"
+check read_refs "$out" "decision · judgment-call (refs #1)"
 check read_build "$out" "Commit: abc1234"
 last read_request '.method == "GET" and .path == "/log?item=412" and .auth == "Bearer tok"'
 
@@ -91,9 +100,13 @@ refuse() { # refuse <name> <expected> <stdin> <args…>
   [ "$code" -eq 0 ] && { echo "PASS [${name}_exit0]"; pass=$((pass+1)); } || { echo "FAIL [${name}_exit0]: exit $code"; fail=$((fail+1)); }
 }
 refuse no_token "not logged: no log_token" "x" add build
-refuse no_category "not logged: a decision needs a category" "x" --token tok add decision
-refuse bad_category "not logged: unknown category 'guess'" "x" --token tok add decision guess
-refuse bad_kind "not logged: kind must be decision or build" "x" --token tok add note
+refuse no_category "not logged: a journal entry needs a category" "x" --token tok add journal
+refuse no_decision_category "not logged: a decision entry needs a category" "x" --token tok add decision
+refuse bad_category "not logged: unknown category 'guess'" "x" --token tok add journal guess
+refuse bad_kind "not logged: kind must be journal, decision or build" "x" --token tok add note
+refuse multiline_decision "not logged: a decision is one line" $'one\ntwo' --token tok add decision judgment-call
+refuse refs_on_journal "not logged: --refs is for a decision" "x" --token tok add journal judgment-call --refs 1
+refuse bad_refs "not logged: --refs takes journal entry ids" "x" --token tok add decision judgment-call --refs 7,x
 refuse empty_body "not logged: empty body" "   " --token tok add build
 refuse too_long "not logged: body over 4096 bytes" "$(head -c 5000 /dev/zero | tr '\0' 'a')" --token tok add build
 refuse bad_item "(log unavailable: read needs an issue or PR number" "" --token tok read abc
