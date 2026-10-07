@@ -131,9 +131,14 @@ repos): never lean on CI to catch a fix's regressions. Never re-push an identica
   chooses how to do something, as it chooses, with the path it took.
 - Write journal entries for the choices you make here too, as you make them (how you
   resolved an `mcp-review` finding the reviewers disagreed on, say).
-- At the end, go back through the journal (yours and the subagent's) and write the
-  **decision list**: one line for each choice a person should know about, with `--refs` to
-  the journal entries behind it. None worth a look: none.
+- At the end, once `mcp-review` is done, spawn a **fresh decision-list subagent** (not the
+  build subagent, and not on its tier: `sonnet`, or `haiku` for a docs-only change; it reads
+  and judges, it doesn't code) with the `log_token`, the issue, and the PR's diff. It follows
+  the `work-log` skill's *The decision list*: it reads the journal, writes one **decision**
+  line for each choice a person should know about (with `--refs`), adds a `(not journalled)`
+  decision for any such choice the diff shows that nobody wrote down, and returns what it
+  wrote. Don't write the list yourself: you made the choices, so fresh eyes judge them
+  better.
 - Then one **build** entry before the outcome comment: the commit, the local tests and
   their counts, what `mcp-review` found and fixed, and what wasn't verified.
 
