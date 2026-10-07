@@ -112,6 +112,7 @@ a.quiet { font-weight: 400; color: var(--ucp-color-text-alt); }
 .panel-facts { padding: 18px 22px; border-bottom: 1px solid var(--ucp-color-divider); }
 .panel-log-title { padding: 14px 22px 6px; font-weight: 700; }
 table.log { min-width: 560px; }
+pre.entry { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; }
 .panel-empty { text-align: center; }
 .button, button { display: inline-flex; align-items: center; height: 36px; padding: 0 18px; border-radius: var(--ucp-border-radius-medium); font: 700 14px Lato, "Helvetica Neue", Helvetica, Arial, sans-serif; background: var(--ucp-color-interactive); color: #fff; border: 1px solid var(--ucp-color-interactive); cursor: pointer; transition: background-color .15s, box-shadow .15s; }
 .button:hover, button:hover { background: var(--ucp-color-default-standalone); color: #fff; text-decoration: none; box-shadow: var(--ucp-shadow-depth-1); }

@@ -4,7 +4,7 @@
 
 ---
 
-**Status:** Being built: steps 1 (#245) and 2 (#246) merged; 3 (the skills, #247) in review. **Date:** 07-10-2026
+**Status:** Being built: steps 1–4 merged (#245–#248); 5, what people see (#249), in review. **Date:** 07-10-2026
 
 Part 2 of the build/review split ([15-agent-splits.md](15-agent-splits.md)),
 and part 4, what people see. Released with part 3 (the skills) as 2.2.0.

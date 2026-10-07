@@ -75,6 +75,9 @@ Name the reviewers that ran and the head SHA reviewed.
 - Findings → `review_findings` with `findings`: how many inline comments you posted.
 - The approach is wrong → `review_blocked` with a one-line `reason`.
 
+**On a pass, with a work log:** add a **Decisions to check** section to the PR's
+description, as [`references/work-log.md`](references/work-log.md) says.
+
 Before that comment, add the review's **build** entry (when you have a `log_token`), as
 [`references/work-log.md`](references/work-log.md) says.
 

@@ -33,14 +33,22 @@ export type NewLogEntry = {
   tokenId: string;
 };
 
+/** Adds the entry, and counts it on the item's dashboard row (migration 0011). */
 export async function add(db: D1Database, e: NewLogEntry): Promise<number> {
+  const owner = e.owner.toLowerCase();
+  const repo = e.repo.toLowerCase();
   const row = await db
     .prepare(
       `INSERT INTO log_entries (owner, repo, item, kind, category, refs, routine, body, token_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     )
-    .bind(e.owner.toLowerCase(), e.repo.toLowerCase(), e.item, e.kind, e.category, e.refs?.length ? JSON.stringify(e.refs) : null, e.routine, e.body, e.tokenId)
+    .bind(owner, repo, e.item, e.kind, e.category, e.refs?.length ? JSON.stringify(e.refs) : null, e.routine, e.body, e.tokenId)
     .first<{ id: number }>();
+  const column = { journal: "journals", decision: "decisions", build: "builds" }[e.kind];
+  await db
+    .prepare(`UPDATE items SET ${column} = ${column} + 1 WHERE owner = ? AND repo = ? AND issue_number = ?`)
+    .bind(owner, repo, e.item)
+    .run();
   return row!.id;
 }
 
