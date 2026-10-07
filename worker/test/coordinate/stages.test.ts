@@ -108,3 +108,44 @@ describe(`the issue: released -> closed, if the release's tag contains its merge
     expect(d.closeIssue).not.toHaveBeenCalled();
   });
 });
+
+describe("a PR merging exports its work log as one comment on the PR", () => {
+  const entry = (item: number, kind: "journal" | "decision" | "build") => ({
+    id: item,
+    item,
+    kind,
+    category: kind === "build" ? null : ("assumption" as const),
+    refs: [],
+    routine: "issue-build-loop",
+    body: `on #${item}`,
+    created_at: "2026-10-07 10:00:00",
+  });
+
+  it("reads the PR's entries and those of the issues it closes, and posts them on the PR", async () => {
+    const d = fakeDeps({ workLogFor: vi.fn(async () => [entry(12, "decision"), entry(50, "build")]) });
+    await coordinateWebhook(d, merged("Closes #12."));
+    expect(d.workLogFor).toHaveBeenCalledWith(OWNER, REPO, [50, 12]);
+    expect(d.commentOnIssue).toHaveBeenCalledWith(OWNER, REPO, 50, expect.stringContaining("📒 **Work log**"));
+  });
+
+  it("nothing logged, or closed without merging: no comment", async () => {
+    const d = fakeDeps();
+    await coordinateWebhook(d, merged("Closes #12."));
+    expect(d.commentOnIssue).not.toHaveBeenCalled();
+    const unmerged = fakeDeps({ workLogFor: vi.fn(async () => [entry(50, "build")]) });
+    await coordinateWebhook(unmerged, merged("Closes #12.", "sha", false));
+    expect(unmerged.workLogFor).not.toHaveBeenCalled();
+  });
+
+  it("shadow: read, but not posted", async () => {
+    const d = fakeDeps({ enforced: () => false, workLogFor: vi.fn(async () => [entry(50, "build")]) });
+    await coordinateWebhook(d, merged("Closes #12."));
+    expect(d.commentOnIssue).not.toHaveBeenCalled();
+  });
+
+  it("a failed read or post never fails the merge's delivery (the hand-offs still go)", async () => {
+    const d = fakeDeps({ workLogFor: vi.fn(async () => Promise.reject(new Error("D1 down"))) });
+    await expect(coordinateWebhook(d, merged("Closes #12."))).resolves.toBeDefined();
+    expect(d.forward).toHaveBeenCalledTimes(1);
+  });
+});

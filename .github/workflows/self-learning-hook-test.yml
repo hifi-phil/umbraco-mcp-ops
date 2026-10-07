@@ -23,3 +23,5 @@ jobs:
         run: bash plugins/self-learning/hooks/test/run.sh
       - name: Run agent-outcomes hook tests (completion + heartbeat signals)
         run: bash plugins/agent-outcomes/hooks/test/run.sh
+      - name: Run work-log script tests (log-entry.sh against a stub Worker)
+        run: bash plugins/agent-outcomes/skills/work-log/test/run.sh

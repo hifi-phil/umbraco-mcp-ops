@@ -10,6 +10,7 @@
 // takes, the row and result types, and the mode switches (shadow/enforce).
 
 import { LABELS, type Label } from "@orchestrator/graph/constants/labels";
+import type { LogEntry } from "../db/log-entries";
 import { type Rule, type State } from "@orchestrator/graph/graph";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { type WebhookPayload } from "@orchestrator/graph/github/from-github";
@@ -188,6 +189,9 @@ export type Deps = {
   commitInTag(owner: string, repo: string, sha: string, tag: string): Promise<boolean>;
   // The merged PR, and its merge commit, that moved this issue to
   // LABELS.READY_FOR_RELEASE (DO storage), for checking a release against.
+  // The decision log and build log's entries for some items (D1), for the
+  // export a merged PR gets.
+  workLogFor(owner: string, repo: string, items: number[]): Promise<LogEntry[]>;
   getShipped(): Promise<Shipped | null>;
   setShipped(shipped: Shipped): Promise<void>;
   // The release PR the Worker merged for this release issue (DO storage):
