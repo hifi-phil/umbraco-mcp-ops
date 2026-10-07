@@ -52,8 +52,9 @@ describe("the export a merged PR gets", () => {
   const entry = (over: Partial<LogEntry>): LogEntry => ({
     id: 1,
     item: 412,
-    kind: "decision",
+    kind: "journal",
     category: "judgment-call",
+    refs: [],
     routine: "issue-build-loop",
     body: "Decided: cursors.\nWhy: thousands of rows.",
     created_at: "2026-10-07 10:00:00",
@@ -64,16 +65,21 @@ describe("the export a merged PR gets", () => {
     expect(exportComment(500, [])).toBeNull();
   });
 
-  it("decisions, then the build log, each quoted, saying which item and routine", () => {
+  it("the decision list first (one line each, pointing at its journal), then the build log, then the journal, quoted", () => {
     const text = exportComment(500, [
       entry({}),
       entry({ id: 2, item: 500, kind: "build", category: null, routine: "review-loop", body: "Commit: abc1234" }),
+      entry({ id: 3, kind: "decision", refs: [1], body: "Cursors, not offsets — offset callers need changing" }),
     ])!;
     expect(text).toContain("📒 **Work log**");
-    expect(text).toContain("### Decisions (1)");
-    expect(text).toContain("**judgment-call** · issue-build-loop · #412 · 2026-10-07 10:00:00 UTC\n\n> Decided: cursors.\n> Why: thousands of rows.");
+    expect(text).toContain(
+      "### Decisions (1)\n\n- **judgment-call** · Cursors, not offsets — offset callers need changing _(issue-build-loop, #412 · from journal #1)_",
+    );
     expect(text).toContain("### Build log (1)");
     expect(text).toContain("**build** · review-loop · this PR ·");
+    expect(text).toContain("### Journal (1)");
+    expect(text).toContain("**#1 judgment-call** · issue-build-loop · #412 · 2026-10-07 10:00:00 UTC\n\n> Decided: cursors.\n> Why: thousands of rows.");
     expect(text.indexOf("Decisions")).toBeLessThan(text.indexOf("Build log"));
+    expect(text.indexOf("Build log")).toBeLessThan(text.indexOf("Journal"));
   });
 });

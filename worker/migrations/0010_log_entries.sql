@@ -1,5 +1,6 @@
--- The decision log and build log (docs/agent-orchestration/16-work-log.md):
--- what each routine decided and checked, one row per entry, written by the
+-- The work log (docs/agent-orchestration/16-work-log.md): each routine's
+-- journal of how it decided, the decision list derived from it, and what it
+-- checked, one row per entry, written by the
 -- routine itself through POST /log with its fire's log_token. Append-only:
 -- nothing edits or deletes an entry. owner and repo lowercased.
 --
@@ -12,8 +13,9 @@ CREATE TABLE log_entries (
   owner TEXT NOT NULL,
   repo TEXT NOT NULL,
   item INTEGER NOT NULL,
-  kind TEXT NOT NULL,           -- "decision" or "build"
-  category TEXT,                -- decisions only: assumption, deviation, workaround, judgment-call
+  kind TEXT NOT NULL,           -- "journal", "decision" or "build"
+  category TEXT,                -- journal and decision: assumption, deviation, workaround, judgment-call
+  refs TEXT,                    -- a decision's journal entries, as JSON ids: [7, 9]
   routine TEXT NOT NULL,
   body TEXT NOT NULL,           -- at most 4 KB
   token_id TEXT NOT NULL,

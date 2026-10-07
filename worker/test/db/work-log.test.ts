@@ -21,20 +21,22 @@ const get = (token: string, item: number | string) => {
 };
 
 describe("POST /log and GET /log", () => {
-  it("adds an entry on the token's own item, with its routine; reads it back", async () => {
+  it("adds the three kinds on the token's own item, with its routine; reads them back, a decision with its refs", async () => {
     const env = { DB: testDb(), ROUTINE_SIGNAL_SECRET: SECRET };
     const token = await tokenFor(412);
-    const res = await handleLogAdd(post(token, { kind: "decision", category: "assumption", body: "Decided: x.\nWhy: y." }), env);
+    const res = await handleLogAdd(post(token, { kind: "journal", category: "assumption", body: "Decided: x.\nWhy: y." }), env);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: 1 });
+    await handleLogAdd(post(token, { kind: "decision", category: "assumption", refs: [1], body: "x — it matters" }), env);
     await handleLogAdd(post(token, { kind: "build", category: "ignored", body: "Commit: abc" }), env);
 
     const [req, url] = get(token, 412);
     const read = await handleLogRead(req, env, url);
     const { entries } = (await read.json()) as { entries: logEntries.LogEntry[] };
-    expect(entries.map((e) => [e.item, e.kind, e.category, e.routine, e.body])).toEqual([
-      [412, "decision", "assumption", "issue-build-loop", "Decided: x.\nWhy: y."],
-      [412, "build", null, "issue-build-loop", "Commit: abc"],
+    expect(entries.map((e) => [e.item, e.kind, e.category, e.refs, e.routine, e.body])).toEqual([
+      [412, "journal", "assumption", [], "issue-build-loop", "Decided: x.\nWhy: y."],
+      [412, "decision", "assumption", [1], "issue-build-loop", "x — it matters"],
+      [412, "build", null, [], "issue-build-loop", "Commit: abc"],
     ]);
   });
 
@@ -61,11 +63,15 @@ describe("POST /log and GET /log", () => {
     expect((await handleLogAdd(post(await tokenFor(1), { kind: "build", body: "x" }), env)).status).toBe(404);
   });
 
-  it("refuses a bad entry: kind, a decision's category, an empty or oversized body", async () => {
+  it("refuses a bad entry: kind, a category, refs, a decision over one line, an empty or oversized body", async () => {
     const env = { DB: testDb(), ROUTINE_SIGNAL_SECRET: SECRET };
     const token = await tokenFor(412);
     expect((await handleLogAdd(post(token, { kind: "note", body: "x" }), env)).status).toBe(400);
+    expect((await handleLogAdd(post(token, { kind: "journal", body: "x" }), env)).status).toBe(400);
     expect((await handleLogAdd(post(token, { kind: "decision", body: "x" }), env)).status).toBe(400);
+    expect((await handleLogAdd(post(token, { kind: "decision", category: "assumption", body: "one\ntwo" }), env)).status).toBe(400);
+    expect((await handleLogAdd(post(token, { kind: "journal", category: "assumption", refs: [1], body: "x" }), env)).status).toBe(400);
+    expect((await handleLogAdd(post(token, { kind: "decision", category: "assumption", refs: ["7"], body: "x" }), env)).status).toBe(400);
     expect((await handleLogAdd(post(token, { kind: "decision", category: "guess", body: "x" }), env)).status).toBe(400);
     expect((await handleLogAdd(post(token, { kind: "build", body: "   " }), env)).status).toBe(400);
     expect((await handleLogAdd(post(token, { kind: "build", body: "a".repeat(4097) }), env)).status).toBe(413);
