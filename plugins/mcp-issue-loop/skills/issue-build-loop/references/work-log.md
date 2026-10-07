@@ -1,6 +1,6 @@
 # The build's work log
 
-Only when the dispatch passed a `log_token`. Load the [`work-log`](../../../../agent-outcomes/skills/work-log/SKILL.md) skill: it has the
+Only when the dispatch passed a `log_token`. Load the `work-log` skill: it has the
 templates, the categories and the `log-entry.sh` calls. A failed write never stops the run.
 
 1. **The build subagent's journal.** Add this to its prompt, after the playbook (the one
