@@ -69,6 +69,7 @@ export function logWriter(env: StubEnv, token: string): LogWriter {
       body: JSON.stringify(entry),
     });
     if (!res.ok) throw new Error(`log failed: ${res.status} ${await res.text()}`);
+    return ((await res.json()) as { id: number }).id;
   };
 }
 

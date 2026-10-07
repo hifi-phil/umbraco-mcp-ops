@@ -20,7 +20,9 @@ export const DISCUSS_SIGNATURE = "<!-- issue-discuss-loop -->";
 export type Fire = { route: string; owner: string; repo: string; number: number; logToken?: string };
 
 /** Adds one work-log entry with the fire's log_token, as log-entry.sh would. */
-export type LogWriter = (entry: { kind: "decision" | "build"; category?: string; body: string }) => Promise<void>;
+export type LogEntry = { kind: "journal" | "decision" | "build"; category?: string; refs?: number[]; body: string };
+/** Adds one work-log entry with the fire's log_token, as log-entry.sh would; its id. */
+export type LogWriter = (entry: LogEntry) => Promise<number>;
 
 export type Action =
   | "build_blocked"
@@ -134,9 +136,22 @@ async function build(gh: Gh, f: Fire, hint: string | null, log?: LogWriter): Pro
     body: `Built by the e2e stub. Closes #${f.number}.\n\n<!-- e2e: merge -->`,
   })) as { number: number };
   // The work log, as the real build writes it (best effort, as there).
+  // The work log, as the real build writes it: a journal entry as it
+  // chooses, then the decision list derived from it and a build entry
+  // (best effort, as there).
   if (log) {
-    await log({ kind: "decision", category: "judgment-call", body: `Decided: one file per build (e2e #${f.number}).\nConsidered: one shared file, then one per build.\nWhy: the e2e stub's convention; a shared file conflicts between builds.\nRejected: a shared file.` }).catch(() => {});
-    await log({ kind: "build", body: `Commit: e2e stub\nTests: none (the stub)\nReview: none\nNot verified: everything (it's the stub)` }).catch(() => {});
+    const journal = await log({
+      kind: "journal",
+      category: "judgment-call",
+      body: `Decided: one file per build (e2e #${f.number}).\nConsidered: one shared file, then one per build.\nWhy: the e2e stub's convention; a shared file conflicts between builds.\nRejected: a shared file.`,
+    }).catch(() => null);
+    await log({
+      kind: "decision",
+      category: "judgment-call",
+      ...(journal ? { refs: [journal] } : {}),
+      body: `One file per build (e2e #${f.number}) — a shared file would conflict between builds`,
+    }).catch(() => null);
+    await log({ kind: "build", body: `Commit: e2e stub\nTests: none (the stub)\nReview: none\nNot verified: everything (it's the stub)` }).catch(() => null);
   }
   await comment(gh, f, outcomeComment("issue-build-loop", { outcome: "build_succeeded", pr: pr.number }));
   return "build_succeeded";

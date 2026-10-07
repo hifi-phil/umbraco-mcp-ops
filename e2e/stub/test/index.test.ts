@@ -13,7 +13,7 @@ import {
   type Gh,
   type StubEnv,
 } from "../src/index";
-import { act, mergeIfGreen } from "../src/loops";
+import { act, mergeIfGreen, type LogEntry } from "../src/loops";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 
 const env: StubEnv = {
@@ -102,23 +102,24 @@ describe("act — issue-build-loop", () => {
     });
   });
 
-  it("success with a log_token -> a decision and a build entry, before the outcome; a failed write doesn't stop it", async () => {
+  it("success with a log_token -> a journal entry, a decision pointing at it, a build entry; a failed write doesn't stop it", async () => {
     const routes = { [`GET ${R}/git/ref/heads/dev`]: { object: { sha: "devsha" } }, [`POST ${R}/pulls`]: { number: 42 } };
-    const log = vi.fn(async (_entry: { kind: string; category?: string; body: string }) => {});
+    const log = vi.fn(async (_entry: LogEntry) => 11);
     expect(await act(fakeGh(routes), fireFor("issue-build-loop"), "success", undefined, log)).toBe("build_succeeded");
-    expect(log.mock.calls.map(([e]) => [e.kind, e.category])).toEqual([
-      ["decision", "judgment-call"],
-      ["build", undefined],
+    expect(log.mock.calls.map(([e]) => [e.kind, e.category, e.refs])).toEqual([
+      ["journal", "judgment-call", undefined],
+      ["decision", "judgment-call", [11]],
+      ["build", undefined, undefined],
     ]);
-    const failing = vi.fn(async (_entry: { kind: string; category?: string; body: string }) => Promise.reject(new Error("401")));
+    const failing = vi.fn(async (_entry: LogEntry): Promise<number> => Promise.reject(new Error("401")));
     expect(await act(fakeGh(routes), fireFor("issue-build-loop"), "success", undefined, failing)).toBe("build_succeeded");
   });
 });
 
 describe("logWriter", () => {
-  it("posts the entry to /log over the service binding, with the fire's token", async () => {
+  it("posts the entry to /log over the service binding, with the fire's token, and gives back its id", async () => {
     const fetch = vi.fn(async (_input: string, _init?: RequestInit) => Response.json({ id: 3 }));
-    await logWriter({ ...env, ORCHESTRATOR: { fetch } }, "tok.sig")({ kind: "build", body: "Commit: x" });
+    expect(await logWriter({ ...env, ORCHESTRATOR: { fetch } }, "tok.sig")({ kind: "build", body: "Commit: x" })).toBe(3);
     const [url, init] = fetch.mock.calls[0]!;
     expect(new URL(url).pathname).toBe("/log");
     expect((init!.headers as Record<string, string>).Authorization).toBe("Bearer tok.sig");
