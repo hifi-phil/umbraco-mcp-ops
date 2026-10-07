@@ -61,12 +61,13 @@ why, rather than changing the code. If there's no such review to act on, don't c
 label and push nothing: say so on the PR and stop, so a person sees it. After your push the
 orchestrator puts `ai-reviewing` back and the review runs again; don't re-request review.
 
-**The decision log** (when the dispatch passed a `log_token`; the
+**The work log** (when the dispatch passed a `log_token`; the
 [`work-log`](../../../agent-outcomes/skills/work-log/SKILL.md) skill's `read`, for the PR
-and the issue it closes): read it before changing anything. A finding that challenges a
-logged decision is a choice between two reasoned positions: keep the decision (reply on the
-thread with its reason) or change it, and record whichever you chose as a decision of your
-own.
+and the issue it closes): read the journal before changing anything. A finding that
+challenges a journal entry is a choice between two reasoned positions: keep the choice
+(reply on the thread with its reason) or change it. Either way, write a journal entry of
+your own with the path you took, and a **decision** line for it with `--refs` to both
+entries: a challenged choice is always one a person should know about.
 
 ## Step 2 — address it (with a local test gate)
 
@@ -97,9 +98,11 @@ Commit and push to the PR branch. The local compile + test gate (Step 2) plus
 `mcp-review` (Step 3) are the only gates this session applies — **do not poll or wait
 for the full CI suite to go green** (see Test gate above).
 
-With a `log_token`: record each **decision** you made fixing it, and one **build** entry
-(the commit, the tests and counts, which findings were fixed or answered, what wasn't
-verified). A failed write never stops the run.
+With a `log_token`: a **journal** entry for each choice you made fixing it, as you made
+it; a **decision** line for any a person should know about; and one **build** entry (the
+commit, the tests and counts, which findings were fixed or answered, which journal entries
+you relied on — `Journal used: #7`, or `none` — and what wasn't verified). A failed write
+never stops the run.
 
 ## Step 5 — reply, re-request & clear the label
 

@@ -126,13 +126,18 @@ repos): never lean on CI to catch a fix's regressions. Never re-push an identica
 (**no-progress guard**).
 
 **The work log** (only when the dispatch passed a `log_token`; load the
-[`work-log`](../../../agent-outcomes/skills/work-log/SKILL.md) skill): pass the token to the
-build subagent, which records each **decision** as it makes it, with the path it took;
-record the decisions you make here too, as you make them (how you resolved an `mcp-review`
-finding the reviewers disagreed on, say); and
-add one **build** entry before the outcome comment: the commit, the local tests and their
-counts, what `mcp-review` found and fixed, and what wasn't verified. A failed write never
-stops the run.
+[`work-log`](../../../agent-outcomes/skills/work-log/SKILL.md) skill):
+- Pass the token to the build subagent, which writes a **journal** entry each time it
+  chooses how to do something, as it chooses, with the path it took.
+- Write journal entries for the choices you make here too, as you make them (how you
+  resolved an `mcp-review` finding the reviewers disagreed on, say).
+- At the end, go back through the journal (yours and the subagent's) and write the
+  **decision list**: one line for each choice a person should know about, with `--refs` to
+  the journal entries behind it. None worth a look: none.
+- Then one **build** entry before the outcome comment: the commit, the local tests and
+  their counts, what `mcp-review` found and fixed, and what wasn't verified.
+
+A failed write never stops the run.
 
 **Then hand the PR to review and stop.** Add `ai-reviewing` to the PR (github-ops → *Add /
 remove a label*), and comment the PR link on the triggering issue. The build doesn't drive
