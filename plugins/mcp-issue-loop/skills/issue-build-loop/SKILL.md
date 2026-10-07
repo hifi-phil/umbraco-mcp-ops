@@ -125,6 +125,10 @@ and the diff's tests on MCP repos; whatever check the content playbook ran on co
 repos): never lean on CI to catch a fix's regressions. Never re-push an identical fix
 (**no-progress guard**).
 
+**The work log** (only when the dispatch passed a `log_token`): the subagent's journal,
+yours, the decision list by a fresh subagent, and the build entry, as
+[`references/work-log.md`](references/work-log.md) says.
+
 **Then hand the PR to review and stop.** Add `ai-reviewing` to the PR (github-ops → *Add /
 remove a label*), and comment the PR link on the triggering issue. The build doesn't drive
 CI or wait for it: the orchestrator watches CI, sends red CI to `rework-loop`, and fires

@@ -79,7 +79,9 @@ triggering label / is still open. If not, **quiet no-op**.
 
 In orchestrated mode (Step 1), start the loop's instructions with "orchestrated mode: the
 orchestrator applies outcome labels; post the agent-outcomes marker, don't swap labels".
-Each loop's skill says exactly which of its label steps that replaces.
+Each loop's skill says exactly which of its label steps that replaces. If the fire text
+carries a `log_token=…`, pass it to the loop too ("record the work log with the work-log
+skill, log_token=…"); never echo it anywhere else.
 
 Invoke the matched skill exactly as its own dedicated routine would, scoped to the
 specific issue/PR, and **follow that skill's instructions verbatim**:

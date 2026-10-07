@@ -61,6 +61,10 @@ why, rather than changing the code. If there's no such review to act on, don't c
 label and push nothing: say so on the PR and stop, so a person sees it. After your push the
 orchestrator puts `ai-reviewing` back and the review runs again; don't re-request review.
 
+**The work log** (when the dispatch passed a `log_token`): read the journal before
+changing anything, and weigh a challenged choice before undoing it, as
+[`references/work-log.md`](references/work-log.md) says.
+
 ## Step 2 — address it (with a local test gate)
 
 Check out the PR's head branch. **As your first action, boot a local Umbraco** so it's
@@ -89,6 +93,9 @@ true` and won't run here. Report only what mcp-review actually found.
 Commit and push to the PR branch. The local compile + test gate (Step 2) plus
 `mcp-review` (Step 3) are the only gates this session applies — **do not poll or wait
 for the full CI suite to go green** (see Test gate above).
+
+With a `log_token`: the rework's journal, decision and build entries, as
+[`references/work-log.md`](references/work-log.md) says.
 
 ## Step 5 — reply, re-request & clear the label
 
