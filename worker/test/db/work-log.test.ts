@@ -91,11 +91,12 @@ describe("POST /log and GET /log", () => {
     const env = { DB: db, ROUTINE_SIGNAL_SECRET: SECRET };
     db.exec(`INSERT INTO items (owner, repo, issue_number) VALUES ('hifi-phil', 'umbraco-mcp-ops', 412)`);
     const token = await tokenFor(412);
+    await handleLogAdd(post(token, { kind: "journal", category: "deviation", body: "w" }), env);
     await handleLogAdd(post(token, { kind: "decision", category: "deviation", body: "x" }), env);
     await handleLogAdd(post(token, { kind: "build", body: "y" }), env);
     await handleLogAdd(post(token, { kind: "build", body: "z" }), env);
-    const row = await db.prepare("SELECT decisions, builds FROM items WHERE issue_number = 412").first();
-    expect(row).toEqual({ decisions: 1, builds: 2 });
+    const row = await db.prepare("SELECT journals, decisions, builds FROM items WHERE issue_number = 412").first();
+    expect(row).toEqual({ journals: 1, decisions: 1, builds: 2 });
     expect((await handleLogAdd(post(await tokenFor(999), { kind: "build", body: "no row" }), env)).status).toBe(200);
   });
 

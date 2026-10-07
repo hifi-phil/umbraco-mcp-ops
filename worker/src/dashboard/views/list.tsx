@@ -96,7 +96,7 @@ function WorkLog({ entries, now }: { entries: LogEntry[]; now: number }) {
             {entries.length === 0 ? (
               <tr>
                 <td colspan={3} class="empty">
-                  No decisions or build entries recorded.
+                  Nothing in the work log yet.
                 </td>
               </tr>
             ) : (
@@ -107,7 +107,12 @@ function WorkLog({ entries, now }: { entries: LogEntry[]; now: number }) {
                     <div class="sub">{ago(e.created_at, now)}</div>
                   </td>
                   <td>
-                    <span class={`tag ${e.kind === "decision" ? "default" : "quiet"}`}>{e.kind === "decision" ? e.category : "build"}</span>
+                    <span class={`tag ${e.kind === "decision" ? "default" : "quiet"}`}>
+                      {e.kind}
+                      {e.category ? ` · ${e.category}` : ""}
+                    </span>{" "}
+                    <span class="muted">#{e.id}</span>
+                    {e.refs.length > 0 && <span class="sub"> from journal {e.refs.map((r) => `#${r}`).join(", ")}</span>}
                     <pre class="entry">{e.body}</pre>
                   </td>
                   <td>{e.routine}</td>
@@ -257,6 +262,10 @@ export function Panel({
   );
 }
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const workLogCounts = (i: Item) =>
+  [plural(i.decisions, "decision", "decisions"), plural(i.journals, "journal entry", "journal entries"), plural(i.builds, "build entry", "build entries")].join(", ");
+
 function Row({ item: i, f, selected, sandbox, now, panel }: { item: Item; f: Filters; selected: boolean; sandbox: boolean; now: number; panel: unknown }) {
   // The link lands back on this row (#id), so the list keeps its place.
   // Closing also drops a Find, which would open its one match again.
@@ -286,10 +295,10 @@ function Row({ item: i, f, selected, sandbox, now, panel }: { item: Item; f: Fil
         <span class="row-sub">
           {i.repo}
           {sandbox && <> <E2e /></>} · <code>{i.lastEvent}</code> · {ago(i.lastAt, now)}
-          {i.decisions + i.builds > 0 && (
+          {i.journals + i.decisions + i.builds > 0 && (
             <>
               {" "}
-              · <span class="work-log-count">{i.decisions} {i.decisions === 1 ? "decision" : "decisions"}, {i.builds} {i.builds === 1 ? "build entry" : "build entries"}</span>
+              · <span class="work-log-count">{workLogCounts(i)}</span>
             </>
           )}
         </span>

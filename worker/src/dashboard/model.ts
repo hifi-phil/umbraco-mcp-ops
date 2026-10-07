@@ -28,7 +28,8 @@ export type ActivityRow = {
   last_at: string;
   events: number;
   pr_hint: number; // 1 if any of its events only happens on a PR
-  decisions?: number; // its work-log counts
+  journals?: number; // its work-log counts
+  decisions?: number;
   builds?: number;
 };
 
@@ -47,6 +48,7 @@ export type Item = {
   lastEvent: string;
   lastAt: string;
   events: number;
+  journals: number;
   decisions: number;
   builds: number;
 };
@@ -159,6 +161,7 @@ export function buildItems(activity: ActivityRow[], status: StatusRow[], items: 
         lastEvent: a.event,
         lastAt: a.last_at,
         events: a.events,
+        journals: a.journals ?? 0,
         decisions: a.decisions ?? 0,
         builds: a.builds ?? 0,
       };

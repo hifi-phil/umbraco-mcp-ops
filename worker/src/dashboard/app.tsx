@@ -101,7 +101,7 @@ dashboard.get("/status", async (c) => {
   // One row per item from its summary (db/items), never the whole log: a
   // load reads about as many rows as there are items.
   const [summary, status] = await Promise.all([itemsDb.listSummaries(env.DB, MAX_ITEMS), issueStatus.list(env.DB)]);
-  const activity = summary.map((r) => ({ owner: r.owner, repo: r.repo, issue_number: r.issue_number, event: r.last_event, last_at: r.last_at, events: r.events, pr_hint: r.pr_hint, decisions: r.decisions, builds: r.builds }));
+  const activity = summary.map((r) => ({ owner: r.owner, repo: r.repo, issue_number: r.issue_number, event: r.last_event, last_at: r.last_at, events: r.events, pr_hint: r.pr_hint, journals: r.journals, decisions: r.decisions, builds: r.builds }));
   const all = buildItems(activity, status, summary, repos);
 
   // Find with exactly one match: open its log straight away.
