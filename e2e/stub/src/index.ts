@@ -12,7 +12,7 @@
 //
 // Only the sandbox repo (E2E_REPO) is ever acted on, whatever a request says.
 
-import { act, mergeIfGreen, type Fire, type Gh, type Signal } from "./loops";
+import { act, mergeIfGreen, type Fire, type Gh, type LogWriter, type Signal } from "./loops";
 import { forgetInstallationToken, installationToken } from "../../../worker/src/github-app";
 import type { LABELS } from "@orchestrator/graph/constants/labels"; // for the {@link LABELS.…} references in its doc comments
 
@@ -56,7 +56,21 @@ export const STUB_DELAY_MS = 2000;
 export function parseFire(text: string): Fire | null {
   const m = text.match(/route=([\w-]+) repo=([\w.-]+)\/([\w.-]+) number=(\d+)/);
   if (!m) return null;
-  return { route: m[1]!, owner: m[2]!, repo: m[3]!, number: Number(m[4]) };
+  const logToken = text.match(/log_token=([\w-]+\.[\w-]+)/)?.[1];
+  return { route: m[1]!, owner: m[2]!, repo: m[3]!, number: Number(m[4]), ...(logToken ? { logToken } : {}) };
+}
+
+/** The work log's POST /log, with the fire's token (work-log.ts). */
+export function logWriter(env: StubEnv, token: string): LogWriter {
+  return async (entry) => {
+    const res = await env.ORCHESTRATOR.fetch("https://orchestrator/log", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(entry),
+    });
+    if (!res.ok) throw new Error(`log failed: ${res.status} ${await res.text()}`);
+    return ((await res.json()) as { id: number }).id;
+  };
 }
 
 export function parseHint(body: string | null | undefined): string | null {
@@ -147,7 +161,7 @@ export async function handleFire(
       const { body } = (await gh("GET", `/repos/${fire.owner}/${fire.repo}/issues/${fire.number}`)) as {
         body: string | null;
       };
-      return act(gh, fire, parseHint(body), signalFor(fire.owner, fire.repo));
+      return act(gh, fire, parseHint(body), signalFor(fire.owner, fire.repo), fire.logToken ? logWriter(env, fire.logToken) : undefined);
     }),
   );
   return Response.json({ accepted: true, route: fire.route, number: fire.number });
