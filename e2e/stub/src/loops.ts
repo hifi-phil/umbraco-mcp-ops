@@ -135,7 +135,7 @@ async function build(gh: Gh, f: Fire, hint: string | null, log?: LogWriter): Pro
   })) as { number: number };
   // The work log, as the real build writes it (best effort, as there).
   if (log) {
-    await log({ kind: "decision", category: "judgment-call", body: `Decided: one file per build (e2e #${f.number}).\nWhy: the e2e stub's convention.\nRejected: a shared file.` }).catch(() => {});
+    await log({ kind: "decision", category: "judgment-call", body: `Decided: one file per build (e2e #${f.number}).\nConsidered: one shared file, then one per build.\nWhy: the e2e stub's convention; a shared file conflicts between builds.\nRejected: a shared file.` }).catch(() => {});
     await log({ kind: "build", body: `Commit: e2e stub\nTests: none (the stub)\nReview: none\nNot verified: everything (it's the stub)` }).catch(() => {});
   }
   await comment(gh, f, outcomeComment("issue-build-loop", { outcome: "build_succeeded", pr: pr.number }));
