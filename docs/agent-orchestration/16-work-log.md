@@ -20,13 +20,22 @@ This follows Matt Brailsford's
 `umbraco/Umbraco.AI`). The difference is that the entries live in D1, not
 in files.
 
-- **Decision log:** each choice the issue didn't settle. One short, dated
-  entry: what was decided, why, and what was rejected. Each entry is tagged
-  with one of his four categories: *assumption*, *deviation*, *workaround*
-  or *judgment call*.
-- **Build log:** what each routine did and checked: the commit, the tests
-  run and their counts, the review round and verdict, and anything it
-  didn't verify.
+Three kinds of entry (settled 07-10-2026):
+
+| Kind | What | When | His equivalent |
+|---|---|---|---|
+| **Journal** | How the agent decided to do the work, and the path it took: what it decided, what it considered or tried first, why, what it rejected | Each time it chooses, as it chooses | None: his builder says this in its report, which is gone when the task ends |
+| **Decision** (the decision list) | One line per choice a person should know about, derived from the journal at the end of the run by a fresh subagent (not the one that chose), pointing back to the journal entries behind it; plus any choice the diff shows that nobody journalled | Once, at the end of a run | `DECISION-LOG.md`, already passed through `decision-review`'s test ("a different, equally reasonable choice existed and the outcome could plausibly matter") |
+| **Build** | What each routine did and checked: the commit, the tests and counts, the review, what wasn't verified | Once, at the end of a run | `BUILD-LOG.md` |
+
+Journal entries and decisions each carry one of his four categories:
+*assumption*, *deviation*, *workaround* or *judgment call*.
+
+**Why both a journal and a list.** The list is what a person reads; the
+journal is the reasoning behind it, which a rework needs so it doesn't
+undo a deliberate choice, and a reviewer needs when one line isn't enough
+to judge. Whether the journal earns its cost is measured in the trial
+(*Measuring the journal*, below), and if it doesn't, only the list stays.
 
 ## Why D1
 
@@ -42,14 +51,88 @@ in files.
   doesn't restart CI and the review.
 - **No lock-in.** It's our own schema, not something tied to GitHub.
 
+## How it works
+
+```mermaid
+flowchart TB
+    subgraph BUILD["🤖 BUILD: issue-build-loop"]
+        direction TB
+        B1["works on the issue"] -- "each time it chooses" --> B2["📓 journal entry<br/>Decided · Considered · Why · Rejected"]
+        B2 --> B1
+        B1 -- "at the end" --> B4["📋 decision list, by a fresh subagent<br/>one line per choice a person should know about<br/>refs → its journal entries<br/>+ choices in the diff nobody journalled"]
+        B4 --> B5["🧾 build entry<br/>commit · tests · review · not verified"]
+    end
+
+    subgraph REVIEW["🤖 REVIEW: review-loop"]
+        direction TB
+        R1["forms its findings from the PR alone"] --> R2["then reads the journal and the list:<br/>a contradicted entry → a challenge"]
+        R2 --> R4["🧾 build entry · Journal used: #…"]
+    end
+
+    subgraph REWORK["🤖 REWORK: rework-loop"]
+        direction TB
+        W1["reads the journal before fixing"] --> W2["a challenged choice, kept or changed<br/>→ 📓 journal + 📋 decision line"]
+        W2 --> W3["🧾 build entry · Journal used: #…"]
+    end
+
+    PRD["👤 PR description: Decisions to check<br/>from the decision list, ranked, with actions<br/>each with its journal folded underneath<br/>☐ needed the journal to judge this"]
+    EXP["📒 merged: one comment on the PR<br/>decisions → build log → journal"]
+
+    DB[("⚙ Worker · D1<br/>log_entries")]
+    DASH["👤 Dashboard<br/>counts per row · every entry when opened"]
+
+    BUILD -- "PR open, CI green" --> REVIEW
+    REVIEW -- "findings" --> REWORK
+    REWORK -- "pushed: reviewed again" --> REVIEW
+    REVIEW -- "pass" --> PRD
+    PRD -- "a person merges" --> EXP
+
+    BUILD -. "writes" .-> DB
+    DB <-. "reads · writes" .-> REVIEW
+    DB <-. "reads · writes" .-> REWORK
+    DB -.-> DASH
+    DB -.-> EXP
+
+    classDef agent fill:#ece8fb,stroke:#7b6fd6,color:#222
+    classDef det fill:#eef6ee,stroke:#5a9a5a,color:#222
+    classDef person fill:#fff6e0,stroke:#c9a227,color:#222
+    class B1,B2,B4,B5,R1,R2,R4,W1,W2,W3 agent
+    class DB,EXP det
+    class PRD,DASH person
+```
+
+**Reading it:** the 📓 journal is written as the work happens; the 📋 decision
+list is derived from it at the end, each line pointing back. People read the
+list (*Decisions to check*, the merge export) and open the journal only when a
+line isn't enough; the agents read the journal itself. The ☐ boxes and the
+`Journal used` lines are the trial's measure of whether it's worth keeping.
+
 ## Who writes what
 
-| Routine | Decision log | Build log |
-|---|---|---|
-| build | Writes its decisions, including what its `mcp-review` changed | Writes its entry |
-| `ai-reviewing` | Reads it, after forming its findings | Writes its verdict, round and findings |
-| `rework-loop` | Reads it, and adds its own decisions | Writes its entry |
-| Worker | — | — (`transitions` is its log) |
+| Routine | Journal | Decision list | Build log |
+|---|---|---|---|
+| build | Writes as it chooses (its build subagent too) | A fresh subagent derives it at the end, and adds choices the diff shows that nobody journalled | Writes its entry |
+| `ai-reviewing` | Reads it, after forming its findings | Reads it; on a pass, turns it into *Decisions to check* | Writes its verdict, round and findings |
+| `rework-loop` | Reads it before fixing; adds its own | Adds a line for a decision it kept or changed under challenge | Writes its entry |
+| Worker | — | — | — (`transitions` is its log) |
+
+## Measuring the journal
+
+The Forms trial (Phase 11) decides whether the journal stays. On each PR:
+- **Did you need the journal?** Each item in *Decisions to check* has its
+  journal entries folded underneath, and a box: *needed the journal to
+  judge this*. Ticked often: the journal earns its place.
+- **Did the agents use it?** Each review and rework build entry names the
+  journal entries it relied on (a challenge raised, a decision kept because
+  of its reason).
+- **Noise:** journal entries per build, against decisions derived from them.
+- **Gaps:** decisions the list subagent marked `(not journalled)`: choices
+  the diff shows that the builder never wrote down. Many means the journal
+  isn't being kept, whatever its value when it is.
+
+Neither happening across the trial means the journal is overhead: keep the
+decision list, written straight from the builder's report as Matt's loop
+does, and drop the journal.
 
 ## How routines reach it
 
@@ -106,13 +189,17 @@ whole. Each step is its own PR, in this order.
 
 **1. The guide: a `work-log` skill** (`plugins/agent-outcomes/skills/work-log/`,
 shipped to routines by `cloud-skill-sync`). Written first: the review's
-challenge step only works if decision entries are specific.
-- **When to write:** a decision entry for each choice the issue didn't
-  settle, at the moment it's made; one build entry at the end of each run.
-  Nothing else.
+challenge step only works if journal entries are specific.
+- **When to write:** a journal entry each time the agent chooses how to
+  do something, written then, with the path it took (no entry for a step
+  with no real alternative); the decision list and one build entry at the
+  end of each run. Nothing else.
 - **A template for each kind.**
-  - *Decision:* category; **Decided** (one line); **Why** (tied to the code
-    or the issue); **Rejected** (the alternative, and why not).
+  - *Journal:* category; **Decided** (one line); **Considered** (the
+    options weighed, what was tried first and how it went); **Why** (tied to
+    the code or the issue); **Rejected** (the alternative, and why not).
+  - *Decision:* category; one line, "what was decided — why it matters";
+    the journal entries behind it.
   - *Build:* routine; **Commit**; **Tests** (suite, run, passed);
     **Review** (what was found, what was fixed); **Not verified** (and why).
 - **The four categories**, each with a one-line test for when it applies:
@@ -120,7 +207,8 @@ challenge step only works if decision entries are specific.
   issue or a convention said X; this does Y), *workaround* (the right fix
   wasn't possible here; this gets around it), *judgment call* (several
   sound options; this one was picked).
-- **Good and bad examples** for each category and for a build entry.
+- **Good and bad examples** for each category, for the decision list and
+  for a build entry.
 - **Never in an entry:** secrets, tokens, customer data, raw tool output,
   or text quoted from the issue or comments (untrusted: summarise it).
 - **How:** the `log-entry.sh` calls, and that a failed write never stops
@@ -128,9 +216,11 @@ challenge step only works if decision entries are specific.
 
 **2. The Worker side.**
 - **D1 migration `0010_log_entries`: one table**, `log_entries`: `id`,
-  `owner`, `repo`, `item` (issue or PR number), `kind` (`decision` or
-  `build`), `category` (decisions only), `routine`, `body` (capped at
-  4 KB), `created_at`. Indexed on (`owner`, `repo`, `item`, `created_at`).
+  `owner`, `repo`, `item` (issue or PR number), `kind` (`journal`,
+  `decision` or `build`), `category` (journal and decisions), `refs` (a
+  decision's journal entries), `routine`, `body` (capped at 4 KB; a
+  decision is one line), `created_at`. Indexed on (`owner`, `repo`,
+  `item`, `created_at`).
   One table keeps an item's timeline a single query.
 - **The token:** when the Worker fires a routine it adds `log_token=…` to
   the fire text: an HMAC over owner, repo, item, routine and an expiry
@@ -139,34 +229,37 @@ challenge step only works if decision entries are specific.
 - **`POST /log`** (bearer: the token): adds one entry to the token's item
   only. At most 50 entries per token.
 - **`GET /log?item=<n>`** (bearer: the token): an item's entries, for any
-  item in the token's repo. The review reads the issue's decisions with a
-  token for the PR.
+  item in the token's repo. The review reads the issue's journal and
+  decisions with a token for the PR.
 - **The export:** when a PR merges, the Worker posts its entries, and those
-  of the issues it closes, as one comment on the PR.
+  of the issues it closes, as one comment on the PR: the decisions first,
+  then the build log, then the journal.
 - Unit tests for the token, both endpoints, the caps and the export.
 
 **3. The skills use it.**
-- `issue-build-loop`: decisions as it builds, a build entry at the end.
-  Its build subagent writes decisions through the same script.
+- `issue-build-loop`: a journal entry as it chooses (its build subagent
+  too), then at the end the decision list and a build entry.
 - `review-loop`: forms its findings first, then reads the issue's and the
-  PR's decisions, turns a contradicting finding into a challenge
-  ("challenges decision 2: …"), and writes its build entry.
-- `rework-loop`: reads the decisions before fixing, writes its own and a
-  build entry.
+  PR's journal, turns a contradicting finding into a challenge
+  ("challenges journal #7: …"), and writes its build entry, naming the
+  journal entries it relied on.
+- `rework-loop`: reads the journal before fixing, writes its own journal
+  entries, a decision for any challenged choice it kept or changed, and a
+  build entry naming the journal entries it relied on.
 - `cloud-skill-sync`: ships `work-log`; `VERSION` bump.
 
-**4. e2e.** The stub writes a decision and a build entry on each build, the
-review reads them, and a scenario checks the entries and the export
+**4. e2e.** The stub writes a journal entry, a decision pointing at it and
+a build entry on each build, and a scenario checks all three in the export
 comment.
 
 **5. Part 4, what people see.**
 - **PR description:** on a pass, `review-loop` adds a short *Decisions to
   check* section to the PR's description, in the style of
-  `decision-review`: only the entries a person should look at, ranked, each
-  with a recommended action. It has already read them all.
-- **Dashboard:** each row shows its counts (decisions by category, build
-  entries); opening an item shows its full timeline, `transitions` and the
-  log merged. Only an opened item reads its log, to stay inside the D1 read
+  `decision-review`, from the decision list: ranked, each with a recommended
+  action, its journal entries folded underneath, and a *needed the journal
+  to judge this* box (*Measuring the journal*, above).
+- **Dashboard:** each row shows its counts (decisions, journal entries,
+  build entries); opening an item shows its log beside `transitions`. Only an opened item reads its log, to stay inside the D1 read
   budget.
 
 Then release 2.2.0, re-save the cloud environment, and run the e2e suite.
