@@ -1,6 +1,6 @@
 # The rework's work log
 
-Only when the dispatch passed a `log_token`. Load the [`work-log`](../../../../agent-outcomes/skills/work-log/SKILL.md) skill: it has the
+Only when the dispatch passed a `log_token`. Load the `work-log` skill: it has the
 templates, the categories and the `log-entry.sh` calls. A failed read or write never stops
 the run.
 
