@@ -162,6 +162,18 @@ export const scenarios: Scenario[] = [
         expect(merged.merged, `PR #${pr} merged`).toBe(true);
         expectLabels(await waitFor(issue, labelsAre(LABELS.READY_FOR_RELEASE), MIN), issue, LABELS.READY_FOR_RELEASE);
 
+        // The work log (16-work-log.md): the stub's build wrote a journal entry,
+        // a decision pointing at it and a build entry on the issue with its
+        // fire's log_token, and the merge exported them as one comment on the PR.
+        const exported = (s: { comments: string[] }) => s.comments.find((c) => c.startsWith("📒 **Work log**"));
+        const log = exported(await waitFor(pr, (s) => !!exported(s), MIN));
+        expect(log, `PR #${pr} work log`).toMatch(
+          new RegExp(`### Decisions \\(1\\)\\n\\n- \\*\\*judgment-call\\*\\* · One file per build \\(e2e #${issue}\\) — .* · from journal #\\d+\\)_`),
+        );
+        expect(log, `PR #${pr} work log`).toContain("### Build log (1)");
+        expect(log, `PR #${pr} work log`).toContain("### Journal (1)");
+        expect(log, `PR #${pr} work log`).toContain(`Decided: one file per build (e2e #${issue}).`);
+
         // A release containing the merge closes the issue. The release split:
         // before (the stub's agent approves), the merge (the orchestrator, as
         // the App), after (release-publish: the stub tags main as the repo's
