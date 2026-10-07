@@ -149,3 +149,36 @@ describe("a PR merging exports its work log as one comment on the PR", () => {
     expect(d.forward).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("a merged PR from an orchestrated build with no work log says so", () => {
+  it("built by the loop, nothing logged: a ⚠️ comment naming the issue, instead of the export", async () => {
+    const d = fakeDeps({ builtByLoop: vi.fn(async () => [12]) });
+    await coordinateWebhook(d, merged("Closes #12."));
+    expect(d.builtByLoop).toHaveBeenCalledWith(OWNER, REPO, [12]);
+    expect(d.commentOnIssue).toHaveBeenCalledWith(OWNER, REPO, 50, expect.stringContaining("⚠️ **No work log recorded.** An orchestrated build finished #12"));
+  });
+
+  it("not built by the loop (a person's PR), or no issue closed: nothing said, and no lookup without an issue", async () => {
+    const d = fakeDeps();
+    await coordinateWebhook(d, merged("Closes #12."));
+    expect(d.commentOnIssue).not.toHaveBeenCalled();
+    const noIssue = fakeDeps({ builtByLoop: vi.fn(async () => [12]) });
+    await coordinateWebhook(noIssue, merged("No closing keyword."));
+    expect(noIssue.builtByLoop).not.toHaveBeenCalled();
+    expect(noIssue.commentOnIssue).not.toHaveBeenCalled();
+  });
+
+  it("a log there is: the export, not the warning, and no lookup", async () => {
+    const entry = { id: 1, item: 12, kind: "build" as const, category: null, refs: [], routine: "issue-build-loop", body: "Commit: x", created_at: "2026-10-07 10:00:00" };
+    const d = fakeDeps({ workLogFor: vi.fn(async () => [entry]), builtByLoop: vi.fn(async () => [12]) });
+    await coordinateWebhook(d, merged("Closes #12."));
+    expect(d.builtByLoop).not.toHaveBeenCalled();
+    expect(d.commentOnIssue).toHaveBeenCalledWith(OWNER, REPO, 50, expect.stringContaining("📒 **Work log**"));
+  });
+
+  it("shadow: decided, not posted", async () => {
+    const d = fakeDeps({ enforced: () => false, builtByLoop: vi.fn(async () => [12]) });
+    await coordinateWebhook(d, merged("Closes #12."));
+    expect(d.commentOnIssue).not.toHaveBeenCalled();
+  });
+});

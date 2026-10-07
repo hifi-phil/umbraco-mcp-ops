@@ -130,6 +130,17 @@ export async function handleLogRead(request: Request, env: WorkLogEnv, url: URL)
   return Response.json({ entries: await logEntries.forItems(env.DB, claims.owner, claims.repo, [item]) });
 }
 
+/** The comment a merged PR gets instead of its work log when an
+ * orchestrated build made it and nothing was logged: the build, review and
+ * rework skipped the work log (16-work-log.md). */
+export function missingLogComment(builtIssues: number[]): string {
+  return (
+    `⚠️ **No work log recorded.** An orchestrated build finished ${builtIssues.map((n) => `#${n}`).join(", ")}, ` +
+    `but no journal, decision or build entries reached the log for this PR or the issues it closes. ` +
+    `The routines may have skipped the \`work-log\` skill, or every write failed. (Automatic, from the orchestrator.)`
+  );
+}
+
 /** The comment a merged PR gets: its entries and those of the issues it
  * closes, as a permanent copy (D1 goes with the deployment): the decision
  * list first, then the build log, then the journal behind them. Null when

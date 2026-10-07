@@ -126,6 +126,9 @@ The Forms trial (Phase 11) decides whether the journal stays. On each PR:
   journal entries it relied on (a challenge raised, a decision kept because
   of its reason).
 - **Noise:** journal entries per build, against decisions derived from them.
+- **Skipped logs:** a merged PR from an orchestrated build with no entries
+  at all gets "⚠️ No work log recorded" instead of the export, so a run
+  that skipped the `work-log` skill shows on the PR.
 - **Gaps:** decisions the list subagent marked `(not journalled)`: choices
   the diff shows that the builder never wrote down. Many means the journal
   isn't being kept, whatever its value when it is.
