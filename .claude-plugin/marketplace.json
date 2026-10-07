@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Cross-repo ops tooling and autonomous workflows for the Umbraco MCP repos — issue automation, branch housekeeping, and the self-learning loop that feeds improvements back into the repos and shared skills.",
-    "version": "2.1.1",
+    "version": "2.2.0",
     "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops"
   },
   "plugins": [
@@ -14,7 +14,7 @@
       "name": "mcp-issue-loop",
       "source": "./plugins/mcp-issue-loop",
       "description": "Label-driven loops that take an issue from rough idea to merged PR: `ai-discussing` talks it into shape before anyone builds it, `ai-ready` builds it to a CI-green PR, `auto-reworking` acts on your review feedback. Bundles issue-discuss-loop, issue-build-loop, rework-loop, and mcp-review. Runs locally (worktrees + parallel subagents + local tests) or as a cloud routine. Repo-agnostic.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
@@ -61,7 +61,7 @@
       "name": "release-flow",
       "source": "./plugins/release-flow",
       "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions. Bundles release-and-branching, sync-dev, and auto-release-loop (issue+label-triggered release with two automated gates — green CI + an Opus pre-publish review against a growing checklist — no approval pause, Claude push notifications).",
-      "version": "2.1.1",
+      "version": "2.2.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
@@ -107,7 +107,7 @@
       "name": "agent-outcomes",
       "source": "./plugins/agent-outcomes",
       "description": "Shared skill for writing the structured outcome artifact a loop appends to a comment it already posts, so the agent-orchestration reducer prototype (graph/github/from-github.ts) can eventually read what happened without relying on a self-swapped label as the only signal. One marker format, one growing catalog of outcome shapes; loop plugins point here instead of each inventing their own. Always additive — never a replacement for the loop's existing load-bearing action until something real is deployed to own that instead. Bundles a PostToolUse hook that fires automatically when a loop posts the artifact and forwards it on a fast, non-authoritative path — the GitHub write stays the only authoritative signal.",
-      "version": "2.1.0",
+      "version": "2.2.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
@@ -130,7 +130,7 @@
       "name": "github-ops",
       "source": "./plugins/github-ops",
       "description": "Shared reference for GitHub operations in both environments — gh CLI + git locally, the GitHub MCP server (mcp__github__*) on Claude web / in routines. One operation catalog, two reference files; the loop plugins point here instead of each re-explaining the dual path.",
-      "version": "1.2.0",
+      "version": "1.4.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",
@@ -221,7 +221,7 @@
       "name": "loop-dispatch",
       "source": "./plugins/loop-dispatch",
       "description": "Single front door for a repo's automation loops so one routine per repo can handle every loop event instead of one routine per event. Deterministically routes each triggering GitHub event to the matching loop (via route-event.sh); a non-matching event is a quiet no-op. Router only; each loop owns its guardrails. Also bundles new-loop-routine — the standard config + canonical prompts + UI wiring for standing up one routine per repo. Requires github-ops + the loop skills.",
-      "version": "2.1.0",
+      "version": "2.2.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",

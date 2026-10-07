@@ -8,6 +8,7 @@ import * as controls from "../../src/db/controls";
 import * as issueStatus from "../../src/db/issue-status";
 import * as items from "../../src/db/items";
 import * as transitions from "../../src/db/transitions";
+import * as logEntries from "../../src/db/log-entries";
 import type { TransitionRow } from "../../src/coordinate";
 import { testDb, type TestDb } from "../db/sqlite-d1";
 import { LABELS } from "@orchestrator/graph/constants/labels";
@@ -178,7 +179,7 @@ describe("GET /status — the list", () => {
     expect((await items.listSummaries(db)).find((i) => i.issue_number === 1)).toMatchObject({ title: "Looked up", gh_state: "closed" });
   });
 
-  it("a list load never reads the transition log", async () => {
+  it("a list load never reads the transition log, or the work log", async () => {
     const db = testDb();
     await log(db, 1, "labelled_ai_ready");
     const sql: string[] = [];
@@ -186,6 +187,47 @@ describe("GET /status — the list", () => {
     db.prepare = ((q: string) => (sql.push(q), prepare(q))) as typeof db.prepare;
     await get(db, "/status");
     expect(sql.some((q) => /FROM transitions/.test(q))).toBe(false);
+    expect(sql.some((q) => /FROM log_entries/.test(q))).toBe(false);
+  });
+
+  const entry = (db: TestDb, item: number, kind: "journal" | "decision" | "build", body: string, refs?: number[]) =>
+    logEntries.add(db, {
+      owner: "hifi-phil",
+      repo: "umbraco-mcp-ops",
+      item,
+      kind,
+      category: kind === "build" ? null : "assumption",
+      refs,
+      routine: "issue-build-loop",
+      body,
+      tokenId: "t1",
+    });
+  it("a row with a work log shows its counts, from its items row", async () => {
+    const db = await seeded();
+    await entry(db, 1, "journal", "Decided: a.");
+    await entry(db, 1, "journal", "Decided: b.");
+    await entry(db, 1, "decision", "a — it matters", [1]);
+    await entry(db, 1, "build", "Commit: c");
+    const html = await (await get(db, "/status")).text();
+    expect(html).toContain('<span class="work-log-count">1 decision, 2 journal entries, 1 build entry</span>');
+  });
+
+  it("?open= shows that item's work log too, oldest first: each entry's kind, category, id, refs and text", async () => {
+    const db = await seeded();
+    const journal = await entry(db, 3, "journal", "Decided: <cursors>.\nWhy: rows.");
+    await entry(db, 3, "decision", "Cursors — it matters", [journal]);
+    await entry(db, 3, "build", "Commit: abc");
+    const html = await (await get(db, `/status?open=${OPS}/3`)).text();
+    expect(html).toMatch(/Work log <span class="muted">\(3, oldest first\)/);
+    expect(html).toContain('<span class="tag quiet">journal · assumption</span> <span class="muted">#1</span><pre class="entry">Decided: &lt;cursors&gt;.\nWhy: rows.</pre>');
+    expect(html).toContain('<span class="tag default">decision · assumption</span> <span class="muted">#2</span><span class="sub"> from journal #1</span>');
+    expect(html.indexOf("Decided:")).toBeLessThan(html.indexOf("Commit: abc"));
+    expect(html.indexOf("Work log")).toBeLessThan(html.indexOf("Transitions"));
+  });
+
+  it("?open= an item with no work log says so", async () => {
+    const html = await (await get(await seeded(), `/status?open=${OPS}/3`)).text();
+    expect(html).toContain("Nothing in the work log yet.");
   });
 
   it("?format=json: the issue_status rows (scripts, e2e)", async () => {

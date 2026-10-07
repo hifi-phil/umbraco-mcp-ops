@@ -1,4 +1,4 @@
-// The release split (15-agent-splits.md): before (the agent prepares and
+// The release split (17-release-flow.md): before (the agent prepares and
 // reviews, then reports release_approved), the merge (the Worker, as the
 // App), and after (release-publish, a skinny agent fired once merged). The
 // Worker holds no project conventions: the merge method comes in the

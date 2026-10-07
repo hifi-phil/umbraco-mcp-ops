@@ -49,6 +49,8 @@ import { appBotLogin, appConfigured } from "./github-app";
 import { fireRoutine } from "./routines-client";
 import type { GitHubEnv } from "./github-client";
 import type { RoutinesEnv } from "./routines-client";
+import { mintLogToken } from "./work-log";
+import * as logEntries from "./db/log-entries";
 import type { MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 import type { LABELS } from "@orchestrator/graph/constants/labels"; // for the {@link LABELS.…} references in its doc comments
 
@@ -68,6 +70,8 @@ export type IssueCoordinatorEnv = GitHubEnv &
     CAP_OVERRIDES_JSON?: string;
     // Its own namespace, for handing an event to another item (Deps.forward).
     ISSUE_COORDINATOR?: DurableObjectNamespace;
+    // Signs each fire's log_token (work-log.ts); unset, fires carry none.
+    ROUTINE_SIGNAL_SECRET?: string;
   };
 
 /** One DO per issue/PR, as index.ts routes them (lowercased owner/repo). */
@@ -209,8 +213,15 @@ export class IssueCoordinator {
         githubClient.closeIssue(this.env, owner, repo, issueNumber),
       commentOnIssue: (owner: string, repo: string, issueNumber: number, body: string) =>
         githubClient.commentOnIssue(this.env, owner, repo, issueNumber, body),
-      fireRoutine: (owner: string, repo: string, issueNumber: number, routine: string) =>
-        fireRoutine(this.env, owner, repo, issueNumber, routine),
+      fireRoutine: async (owner: string, repo: string, issueNumber: number, routine: string) => {
+        // The run's log_token (work-log.ts), good for twice its watchdog.
+        const secret = this.env.ROUTINE_SIGNAL_SECRET;
+        const token = secret
+          ? await mintLogToken(secret, { owner, repo, item: issueNumber, routine }, 2 * watchdogMinutes(routine))
+          : undefined;
+        await fireRoutine(this.env, owner, repo, issueNumber, routine, token);
+      },
+      workLogFor: (owner: string, repo: string, items: number[]) => logEntries.forItems(this.env.DB, owner, repo, items),
       logTransition: async (row: TransitionRow) => {
         await this.insertTransition(row);
       },

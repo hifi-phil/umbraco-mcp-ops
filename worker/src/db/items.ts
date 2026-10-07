@@ -19,6 +19,9 @@ export type ItemSummary = {
   last_at: string;
   events: number;
   pr_hint: number;
+  journals: number; // work-log counts (migration 0011)
+  decisions: number;
+  builds: number;
 };
 
 /** Events only a pull request can have: an item that logged one is a PR. */
@@ -66,7 +69,7 @@ export async function recordLogged(db: D1Database, owner: string, repo: string, 
 export async function listSummaries(db: D1Database, limit = 5000): Promise<ItemSummary[]> {
   const { results } = await db
     .prepare(
-      `SELECT owner, repo, issue_number, kind, title, gh_state, last_event, last_at, events, pr_hint
+      `SELECT owner, repo, issue_number, kind, title, gh_state, last_event, last_at, events, pr_hint, journals, decisions, builds
          FROM items WHERE events > 0 ORDER BY last_at DESC LIMIT ?`,
     )
     .bind(limit)

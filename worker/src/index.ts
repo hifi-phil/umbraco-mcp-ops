@@ -19,6 +19,7 @@ import { Hono } from "hono";
 import { dashboard } from "./dashboard/app";
 import { upsertMeta } from "./db/items";
 import * as transitions from "./db/transitions";
+import { handleLogAdd, handleLogRead } from "./work-log";
 
 export { IssueCoordinator, Scheduler };
 
@@ -73,6 +74,9 @@ app.route("/", dashboard);
 app.post("/sweep", (c) => handleSweep(c.req.raw, c.env));
 app.get("/transitions", (c) => handleTransitions(c.req.raw, c.env, new URL(c.req.url)));
 app.post("/routine-signal", (c) => handleRoutineSignal(c.req.raw, c.env));
+// The decision log and build log (work-log.ts), with a fire's log_token.
+app.post("/log", (c) => handleLogAdd(c.req.raw, c.env));
+app.get("/log", (c) => handleLogRead(c.req.raw, c.env, new URL(c.req.url)));
 // GitHub delivers webhooks to the Worker's root; any other POST is read as one.
 app.post("*", (c) => answerInTime(handleWebhook(c.req.raw, c.env), c.executionCtx));
 app.all("*", (c) => c.text("method not allowed", 405));

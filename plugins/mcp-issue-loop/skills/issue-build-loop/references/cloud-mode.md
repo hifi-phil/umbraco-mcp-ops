@@ -13,8 +13,7 @@ there's nothing extra to add over local mode: resolve the repo's shape as in `SK
 *Config*, triage + dispatch a single build subagent per step 1 below on
 [`content-playbook.md`](content-playbook.md) instead of `mcp-playbook.md`, working
 directly in the session's checkout (content repos have no worktree hooks to lose either
-way), then drive CI green and run `mcp-review` per steps 3–5 below — those steps are
-shape-agnostic.
+way), then review and hand off per step 3 below — that step is shape-agnostic.
 
 **Know the environment first.** Before triaging, consult the **[`worker-env`](../../../../loop-dispatch/skills/worker-env/SKILL.md)** skill
 (`cat /root/env-manifest.md`) — it tells you what this cloud worker provides (.NET SDK,
@@ -61,33 +60,22 @@ open `ai-ready` issue; none → quiet no-op):
      for each area you touched.
 
      Fix locally until green **before** pushing. Because the local run is SQL Server
-     (CI-parity), a green local gate means CI passes first time — much quicker than pushing
-     and looping on remote CI failures (the 8-attempt cap). Don't run eval suites as part
+     (CI-parity), a green local gate means CI passes first time — much quicker than a
+     red CI going round `rework-loop`. Don't run eval suites as part
      of this gate (`mcp-playbook.md` step 4) — CI's own gated `evals` job covers those.
    - **The build subagent does NOT review its own code, and does NOT drive CI.** Don't
      run `/security-review`/`/code-review` here — see `SKILL.md`'s Rules for why. Once
-     local tests are green, **commit, push,
-     and open the PR** against `<base>` (github-ops → *Create a PR*), linking the issue
-     (`Closes #N`), ready for review, not draft — then **return**. Driving that PR's CI
-     green (step 3) and reviewing it with `mcp-review` (step 4) are the **base session's**
-     job, not yours — you do not poll CI or wait for review.
-3. **Drive CI green — from the base session, not the subagent.** Same procedure as
-   `SKILL.md` Step 3 (poll checks, 8-attempt cap, re-dispatch into the same checkout on a
-   failing check, no-progress guard). Since you tested on SQL Server (CI-parity), CI
-   should pass first time — this is usually just a confirmation, not a fix loop; a
-   surprise failure usually means the local run was on SQLite or the diff wasn't fully
-   covered by `test:changed`.
-4. **Review the PR with `mcp-review` — from the base session, not the subagent.** Same
-   mechanics and rationale as `SKILL.md` Step 3's mcp-review paragraph. Fix any surviving
-   findings by **dispatching a fix on the build subagent's model** (or fix inline) — the
-   base session itself stays on its cheap model, so a fix re-dispatch must not silently
-   inherit that tier. The local re-test gate to re-run before re-pushing a fix is the same
-   SQL Server gate from step 2.
-5. **Mark the issue complete, then stop at the CI-green PR.** Same outcome-label swap and
-   hand-off as `SKILL.md` Step 3/Step 4. Removing `ai-ready` is what stops this
-   routine re-firing on the same issue.
+     local tests are green, **commit, push, and open the PR** against `<base>` (github-ops →
+     *Create a PR*), linking the issue (`Closes #N`), ready for review, not draft — then
+     **return**. Reviewing it (step 3) is the **base session's** job.
+3. **Review the PR with `mcp-review`, then hand it to `ai-reviewing` — from the base
+   session.** As `SKILL.md` Step 3: fix any surviving findings by **dispatching a fix on the
+   build subagent's model** (or fix inline; the base session stays on its cheap model, so a
+   fix must not silently inherit that tier), re-run the SQL Server gate from step 2, push,
+   then add `ai-reviewing` and mark the outcome. Removing `ai-ready` (by you, or by the
+   orchestrator in orchestrated mode) is what stops this routine re-firing on the issue.
+   Then stop: no CI polling.
 
 **Not used in cloud mode:** the cap-3 queue, worktrees, and the review-response phase. The
-same guardrails in `SKILL.md`'s Rules still apply — plus Step 3's: never leave CI red,
-and a blocked issue (cap or no-progress guard tripped) gets labelled `ai-blocked` +
-a comment, then stop.
+same guardrails in `SKILL.md`'s Rules still apply — plus Step 3's: a blocked issue
+(no-progress guard tripped) gets a comment (and `ai-blocked`, unorchestrated), then stop.

@@ -50,7 +50,20 @@ re-armable.
 checks' logs (github-ops → *Get PR CI / check-run status*) and fix what failed; there
 may be no review at all. Read the logs once, don't poll. For this kind of rework, Step 5
 has no threads to reply to and no reviewer to re-request. The orchestrator swaps
-`auto-reworking` back to `auto-merging` when it sees your push.
+`auto-reworking` back to the label it came from (`auto-merging` or `ai-reviewing`) when it
+sees your push.
+
+**The review's findings (orchestrated mode).** If the orchestrator added `auto-reworking`
+with a "🔍 Review round" comment, the feedback is `review-loop`'s latest PR review: its
+inline comments, and its body. Fix each one; reread the issue the PR closes, so a fix
+doesn't drift from what it asked for. A finding you judge wrong: reply on its thread saying
+why, rather than changing the code. If there's no such review to act on, don't clear the
+label and push nothing: say so on the PR and stop, so a person sees it. After your push the
+orchestrator puts `ai-reviewing` back and the review runs again; don't re-request review.
+
+**The work log** (when the dispatch passed a `log_token`): read the journal before
+changing anything, and weigh a challenged choice before undoing it, as
+[`references/work-log.md`](references/work-log.md) says.
 
 ## Step 2 — address it (with a local test gate)
 
@@ -80,6 +93,9 @@ true` and won't run here. Report only what mcp-review actually found.
 Commit and push to the PR branch. The local compile + test gate (Step 2) plus
 `mcp-review` (Step 3) are the only gates this session applies — **do not poll or wait
 for the full CI suite to go green** (see Test gate above).
+
+With a `log_token`: the rework's journal, decision and build entries, as
+[`references/work-log.md`](references/work-log.md) says.
 
 ## Step 5 — reply, re-request & clear the label
 

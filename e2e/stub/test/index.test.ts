@@ -8,11 +8,12 @@ import {
   handleReview,
   stubGitHub,
   routineSignal,
+  logWriter,
   verifySignature,
   type Gh,
   type StubEnv,
 } from "../src/index";
-import { act, mergeIfGreen } from "../src/loops";
+import { act, mergeIfGreen, type LogEntry } from "../src/loops";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 
 const env: StubEnv = {
@@ -59,6 +60,13 @@ describe("parseFire / parseHint / outcomeComment", () => {
     expect(parseFire("no route here")).toBeNull();
   });
 
+  it("and the run's log_token, when the fire carries one", () => {
+    expect(parseFire(`${text()} Record decisions …: log_token=eyJvIjoiaCJ9.c2ln-_x (never post it anywhere).`)).toEqual({
+      ...fireFor("issue-build-loop"),
+      logToken: "eyJvIjoiaCJ9.c2ln-_x",
+    });
+  });
+
   it("reads the e2e hint from an HTML comment", () => {
     expect(parseHint("Do a thing.\n\n<!-- e2e: blocked -->")).toBe("blocked");
     expect(parseHint("no hint")).toBeNull();
@@ -93,10 +101,41 @@ describe("act — issue-build-loop", () => {
       body: expect.stringContaining('{"outcome":"build_succeeded","pr":42}'),
     });
   });
+
+  it("success with a log_token -> a journal entry, a decision pointing at it, a build entry; a failed write doesn't stop it", async () => {
+    const routes = { [`GET ${R}/git/ref/heads/dev`]: { object: { sha: "devsha" } }, [`POST ${R}/pulls`]: { number: 42 } };
+    const log = vi.fn(async (_entry: LogEntry) => 11);
+    expect(await act(fakeGh(routes), fireFor("issue-build-loop"), "success", undefined, log)).toBe("build_succeeded");
+    expect(log.mock.calls.map(([e]) => [e.kind, e.category, e.refs])).toEqual([
+      ["journal", "judgment-call", undefined],
+      ["decision", "judgment-call", [11]],
+      ["build", undefined, undefined],
+    ]);
+    const failing = vi.fn(async (_entry: LogEntry): Promise<number> => Promise.reject(new Error("401")));
+    expect(await act(fakeGh(routes), fireFor("issue-build-loop"), "success", undefined, failing)).toBe("build_succeeded");
+  });
+});
+
+describe("logWriter", () => {
+  it("posts the entry to /log over the service binding, with the fire's token, and gives back its id", async () => {
+    const fetch = vi.fn(async (_input: string, _init?: RequestInit) => Response.json({ id: 3 }));
+    expect(await logWriter({ ...env, ORCHESTRATOR: { fetch } }, "tok.sig")({ kind: "build", body: "Commit: x" })).toBe(3);
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(new URL(url).pathname).toBe("/log");
+    expect((init!.headers as Record<string, string>).Authorization).toBe("Bearer tok.sig");
+    expect(JSON.parse(init!.body as string)).toEqual({ kind: "build", body: "Commit: x" });
+  });
+
+  it("a refused write throws (the caller swallows it)", async () => {
+    const write = logWriter({ ...env, ORCHESTRATOR: { fetch: async () => new Response("unauthorized", { status: 401 }) } }, "t.s");
+    await expect(write({ kind: "build", body: "x" })).rejects.toThrow(/401/);
+  });
 });
 
 describe("act — rework-loop", () => {
   const pr = { [`GET ${R}/pulls/7`]: { head: { ref: "feature" } } };
+
+  const reviewed = { [`GET ${R}/pulls/7/reviews`]: [{ body: "e2e stub (review-loop): review\nreview_findings" }] };
 
   it.each([
     ["rework", "rework/7.txt"],
@@ -106,10 +145,16 @@ describe("act — rework-loop", () => {
     ["review_findings_once", "rework/7.txt"],
     ["review_findings_always", "rework/7.txt"],
   ])("%s -> one push to the PR's branch (%s), labels untouched", async (hint, path) => {
-    const gh = fakeGh({ ...pr, [`GET ${R}/contents/`]: { sha: "old" } });
+    const gh = fakeGh({ ...reviewed, ...pr, [`GET ${R}/contents/`]: { sha: "old" } });
     expect(await act(gh, fireFor("rework-loop"), hint)).toBe("pushed");
     expect(gh).toHaveBeenCalledWith("PUT", `${R}/contents/${path}`, expect.objectContaining({ branch: "feature", sha: "old" }));
     expect(calls(gh).some((c) => c.includes("/labels"))).toBe(false);
+  });
+
+  it("the review's findings with no PR review to act on (left in a comment, say) -> no push", async () => {
+    const gh = fakeGh({ [`GET ${R}/pulls/7/reviews`]: [], ...pr, [`GET ${R}/contents/`]: { sha: "old" } });
+    expect(await act(gh, fireFor("rework-loop"), "review_findings_once")).toBe("none");
+    expect(calls(gh).some((c) => c.startsWith("PUT"))).toBe(false);
   });
 
   it("ci_fail writes ci-state = pass", async () => {
@@ -136,6 +181,8 @@ describe("act — review-loop", () => {
     expect(await act(gh, fireFor("review-loop"), hint)).toBe(outcome.outcome);
     expect(verdictOf(gh)).toEqual(outcome);
     expect(calls(gh).some((c) => c.includes("/labels"))).toBe(false);
+    // Findings and a block are a PR review too; a pass is only the verdict.
+    expect(calls(gh).includes(`POST ${R}/pulls/7/reviews`)).toBe(outcome.outcome !== "review_passed");
   });
 
   it("review_findings_once -> findings on the first round, a pass once it has asked", async () => {
