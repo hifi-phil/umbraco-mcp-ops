@@ -51,20 +51,10 @@ asked, and is the approach sound? Something that can't be fixed by changing line
 the approach itself is wrong (the wrong place, the wrong mechanism, a requirement missed
 entirely), is a **block**, not a finding.
 
-**Then, and only then, read the work log** (when the dispatch passed a `log_token`; the
-[`work-log`](../../../agent-outcomes/skills/work-log/SKILL.md) skill's `read`, for the
-issue the PR closes and for the PR): the journal, and the decision list derived from it.
-Your findings are already formed, so the log can't talk you out of seeing something. Check
-each finding against the journal:
-- A finding that contradicts a journal entry becomes a **challenge** to it: say so in its
-  comment ("challenges journal #7 (judgment-call): …"), weighing its reason and the path
-  behind it. It still counts as a finding: `rework-loop` decides, with the reason in front
-  of it.
-- A journal entry whose reason doesn't hold up is a finding too, even with no line to point
-  at.
-- A journal entry that answers a finding (its reason covers it) drops that finding.
-- A choice the journal shows that the decision list leaves out, and a person should know
-  about: note it for *Decisions to check*.
+**Then, and only then, read the work log** (when the dispatch passed a `log_token`), and
+check your findings against its journal: challenges, findings it answers, choices the
+decision list leaves out. [`references/work-log.md`](references/work-log.md) says how.
+Your findings must be formed first, so the log can't talk you out of seeing something.
 
 ## Step 3 — post the review
 
@@ -85,24 +75,11 @@ Name the reviewers that ran and the head SHA reviewed.
 - Findings → `review_findings` with `findings`: how many inline comments you posted.
 - The approach is wrong → `review_blocked` with a one-line `reason`.
 
-**On a pass, with a work log:** add a **Decisions to check** section to the end of the
-PR's description (github-ops → *Update a PR's body*; replace the section if one is already
-there). It's for the person who reviews next, in the style of `decision-review`, built from
-the decision list (plus any choice you noted that the list left out):
-- Only what a person should look at: an `assumption` or `deviation` always, a `workaround`
-  that leaves debt, a `judgment-call` with a real alternative. Not the rest.
-- Ranked, most consequential first; at most five.
-- Each item: the decision's line, its category, and a recommended action ("confirm the
-  issue meant X", "accept", "open a follow-up for Y"); under it, its journal entries in a
-  folded `<details>` (summarised, not quoted), and one checkbox: `- [ ] needed the journal
-  to judge this`. The ticks are how the trial measures whether the journal earns its place
-  (`16-work-log.md`, *Measuring the journal*): never tick them yourself.
-- None worth a look: one line saying the logged decisions need no action.
+**On a pass, with a work log:** add a **Decisions to check** section to the PR's
+description, as [`references/work-log.md`](references/work-log.md) says.
 
-Before that comment, add one **build** entry (when you have a `log_token`): the head SHA
-reviewed, the reviewers that ran, the verdict, how many findings, which journal entries were
-challenged, and which you relied on to drop or shape a finding (`Journal used: #7, #9`, or
-`none`). A failed write never stops the run.
+Before that comment, add the review's **build** entry (when you have a `log_token`), as
+[`references/work-log.md`](references/work-log.md) says.
 
 Then stop.
 
