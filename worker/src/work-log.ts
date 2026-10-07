@@ -11,7 +11,7 @@
 // that read hostile text can at worst add short entries to its own item.
 
 import * as logEntries from "./db/log-entries";
-import { LOG_CATEGORIES, type LogCategory, type LogEntry } from "./db/log-entries";
+import { LOG_CATEGORIES, LOG_KINDS, type LogCategory, type LogEntry, type LogEntryKind } from "./db/log-entries";
 
 export const MAX_BODY_BYTES = 4096;
 export const MAX_ENTRIES_PER_TOKEN = 50;
@@ -85,18 +85,24 @@ async function claimsFrom(request: Request, env: WorkLogEnv): Promise<LogClaims 
 export async function handleLogAdd(request: Request, env: WorkLogEnv): Promise<Response> {
   const claims = await claimsFrom(request, env);
   if (claims instanceof Response) return claims;
-  let input: { kind?: unknown; category?: unknown; body?: unknown };
+  let input: { kind?: unknown; category?: unknown; refs?: unknown; body?: unknown };
   try {
     input = await request.json();
   } catch {
     return new Response("invalid JSON body", { status: 400 });
   }
-  const { kind, category, body } = input;
-  if (kind !== "decision" && kind !== "build") return new Response("kind must be decision or build", { status: 400 });
-  if (kind === "decision" && !LOG_CATEGORIES.includes(category as LogCategory)) {
-    return new Response(`a decision needs a category: ${LOG_CATEGORIES.join(", ")}`, { status: 400 });
+  const { category, refs, body } = input;
+  const kind = input.kind as LogEntryKind;
+  if (!LOG_KINDS.includes(kind)) return new Response(`kind must be one of: ${LOG_KINDS.join(", ")}`, { status: 400 });
+  const categorised = kind !== "build";
+  if (categorised && !LOG_CATEGORIES.includes(category as LogCategory)) {
+    return new Response(`a ${kind} entry needs a category: ${LOG_CATEGORIES.join(", ")}`, { status: 400 });
+  }
+  if (refs !== undefined && (kind !== "decision" || !Array.isArray(refs) || !refs.every((r) => Number.isInteger(r) && r > 0))) {
+    return new Response("refs: a decision's journal entry ids", { status: 400 });
   }
   if (typeof body !== "string" || body.trim() === "") return new Response("body is required", { status: 400 });
+  if (kind === "decision" && body.trim().includes("\n")) return new Response("a decision is one line", { status: 400 });
   if (enc.encode(body).length > MAX_BODY_BYTES) return new Response(`body over ${MAX_BODY_BYTES} bytes`, { status: 413 });
   if ((await logEntries.countForToken(env.DB, claims.jti)) >= MAX_ENTRIES_PER_TOKEN) {
     return new Response(`this run has added ${MAX_ENTRIES_PER_TOKEN} entries, the most it may`, { status: 429 });
@@ -106,7 +112,8 @@ export async function handleLogAdd(request: Request, env: WorkLogEnv): Promise<R
     repo: claims.repo,
     item: claims.item,
     kind,
-    category: kind === "decision" ? (category as LogCategory) : null,
+    category: categorised ? (category as LogCategory) : null,
+    refs: (refs as number[] | undefined) ?? [],
     routine: claims.routine,
     body,
     tokenId: claims.jti,
@@ -124,24 +131,28 @@ export async function handleLogRead(request: Request, env: WorkLogEnv, url: URL)
 }
 
 /** The comment a merged PR gets: its entries and those of the issues it
- * closes, as a permanent copy (D1 goes with the deployment). Null when
+ * closes, as a permanent copy (D1 goes with the deployment): the decision
+ * list first, then the build log, then the journal behind them. Null when
  * there's nothing to export. */
 export function exportComment(pr: number, entries: LogEntry[]): string | null {
   if (entries.length === 0) return null;
-  const decisions = entries.filter((e) => e.kind === "decision");
-  const builds = entries.filter((e) => e.kind === "build");
+  const of = (kind: LogEntryKind) => entries.filter((e) => e.kind === kind);
   const where = (e: LogEntry) => (e.item === pr ? "this PR" : `#${e.item}`);
+  const refs = (e: LogEntry) => (e.refs.length ? ` · from journal ${e.refs.map((r) => `#${r}`).join(", ")}` : "");
+  const decision = (e: LogEntry) => `- **${e.category}** · ${e.body.trim()} _(${e.routine}, ${where(e)}${refs(e)})_`;
   const block = (e: LogEntry) =>
-    `**${e.kind === "decision" ? e.category : "build"}** · ${e.routine} · ${where(e)} · ${e.created_at} UTC\n\n` +
+    `**${e.kind === "build" ? "build" : `#${e.id} ${e.category}`}** · ${e.routine} · ${where(e)} · ${e.created_at} UTC\n\n` +
     e.body
       .trim()
       .split("\n")
       .map((l) => `> ${l}`)
       .join("\n");
+  const decisions = of("decision");
   const section = (title: string, list: LogEntry[]) => (list.length === 0 ? [] : [`### ${title} (${list.length})`, ...list.map(block)]);
   return [
     `📒 **Work log** for this PR and the issues it closes, as the routines recorded it. (Automatic, from the orchestrator.)`,
-    ...section("Decisions", decisions),
-    ...section("Build log", builds),
+    ...(decisions.length === 0 ? [] : [`### Decisions (${decisions.length})`, decisions.map(decision).join("\n")]),
+    ...section("Build log", of("build")),
+    ...section("Journal", of("journal")),
   ].join("\n\n");
 }
