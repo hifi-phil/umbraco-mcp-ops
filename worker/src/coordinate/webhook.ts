@@ -11,7 +11,7 @@ import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from 
 import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 import { reviewFindings, reviewGate } from "./review-gate";
-import { handOffMerged, handOffRelease, prMerged, released } from "./stages";
+import { exportWorkLog, handOffMerged, handOffRelease, prMerged, released } from "./stages";
 import { releaseApproved, retryReleasePublish, trustedAuthor } from "./release";
 import { parseOutcomeArtifact } from "@orchestrator/graph/github/from-github";
 
@@ -55,7 +55,10 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
   // Merged (by anyone, labelled or not): the issues its description closes
   // move to their next stage. Failing here fails the delivery, so it can be
   // redelivered; each issue dedupes its hand-off.
-  if (input.payload.action === "pull_request.closed") await handOffMerged(deps, input);
+  if (input.payload.action === "pull_request.closed") {
+    await handOffMerged(deps, input);
+    await exportWorkLog(deps, input);
+  }
   // Closed by anyone (a merge, a person, a release): off the dashboard,
   // which shows open issues. Last, so the close's own rule (issue_closed is
   // a noop that would otherwise re-write the row) can't put it back.

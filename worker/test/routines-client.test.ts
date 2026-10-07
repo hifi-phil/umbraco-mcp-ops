@@ -50,6 +50,18 @@ describe("dispatchText", () => {
     expect(text).toContain("orchestrated=true");
     expect(text).toContain("does not swap labels itself");
   });
+
+  it("carries the run's log_token when there is one, and says nothing of it otherwise", () => {
+    expect(dispatchText("issue-build-loop", "hifi-phil", "umbraco-mcp-ops", 7, "tok.sig")).toContain(
+      "with the work-log skill: log_token=tok.sig (never post it anywhere).",
+    );
+    expect(dispatchText("issue-build-loop", "hifi-phil", "umbraco-mcp-ops", 7)).not.toContain("log_token");
+  });
+
+  it("the token never breaks the result line the outcome hook reads", () => {
+    const text = dispatchText("review-loop", "hifi-phil", "umbraco-mcp-ops", 9, "tok.sig");
+    expect(text).toMatch(/route=review-loop repo=hifi-phil\/umbraco-mcp-ops number=9\./);
+  });
 });
 
 describe("fireRoutine", () => {
