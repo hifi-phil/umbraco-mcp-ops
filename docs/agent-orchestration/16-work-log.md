@@ -25,7 +25,7 @@ Three kinds of entry (settled 07-10-2026):
 | Kind | What | When | His equivalent |
 |---|---|---|---|
 | **Journal** | How the agent decided to do the work, and the path it took: what it decided, what it considered or tried first, why, what it rejected | Each time it chooses, as it chooses | None: his builder says this in its report, which is gone when the task ends |
-| **Decision** (the decision list) | One line per choice a person should know about, derived from the journal at the end of the run, pointing back to the journal entries behind it | Once, at the end of a run | `DECISION-LOG.md`, already passed through `decision-review`'s test ("a different, equally reasonable choice existed and the outcome could plausibly matter") |
+| **Decision** (the decision list) | One line per choice a person should know about, derived from the journal at the end of the run by a fresh subagent (not the one that chose), pointing back to the journal entries behind it; plus any choice the diff shows that nobody journalled | Once, at the end of a run | `DECISION-LOG.md`, already passed through `decision-review`'s test ("a different, equally reasonable choice existed and the outcome could plausibly matter") |
 | **Build** | What each routine did and checked: the commit, the tests and counts, the review, what wasn't verified | Once, at the end of a run | `BUILD-LOG.md` |
 
 Journal entries and decisions each carry one of his four categories:
@@ -59,7 +59,7 @@ flowchart TB
         direction TB
         B1["works on the issue"] -- "each time it chooses" --> B2["📓 journal entry<br/>Decided · Considered · Why · Rejected"]
         B2 --> B1
-        B1 -- "at the end" --> B4["📋 decision list<br/>one line per choice a person should know about<br/>refs → its journal entries"]
+        B1 -- "at the end" --> B4["📋 decision list, by a fresh subagent<br/>one line per choice a person should know about<br/>refs → its journal entries<br/>+ choices in the diff nobody journalled"]
         B4 --> B5["🧾 build entry<br/>commit · tests · review · not verified"]
     end
 
@@ -111,7 +111,7 @@ line isn't enough; the agents read the journal itself. The ☐ boxes and the
 
 | Routine | Journal | Decision list | Build log |
 |---|---|---|---|
-| build | Writes as it chooses (its subagent too) | Derives it at the end | Writes its entry |
+| build | Writes as it chooses (its build subagent too) | A fresh subagent derives it at the end, and adds choices the diff shows that nobody journalled | Writes its entry |
 | `ai-reviewing` | Reads it, after forming its findings | Reads it; on a pass, turns it into *Decisions to check* | Writes its verdict, round and findings |
 | `rework-loop` | Reads it before fixing; adds its own | Adds a line for a decision it kept or changed under challenge | Writes its entry |
 | Worker | — | — | — (`transitions` is its log) |
@@ -126,6 +126,9 @@ The Forms trial (Phase 11) decides whether the journal stays. On each PR:
   journal entries it relied on (a challenge raised, a decision kept because
   of its reason).
 - **Noise:** journal entries per build, against decisions derived from them.
+- **Gaps:** decisions the list subagent marked `(not journalled)`: choices
+  the diff shows that the builder never wrote down. Many means the journal
+  isn't being kept, whatever its value when it is.
 
 Neither happening across the trial means the journal is overhead: keep the
 decision list, written straight from the builder's report as Matt's loop

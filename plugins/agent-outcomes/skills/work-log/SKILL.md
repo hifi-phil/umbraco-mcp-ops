@@ -20,7 +20,7 @@ umbraco-mcp-ops):
 | Kind | What | When |
 |---|---|---|
 | **journal** | How you decided to do something, and the path you took: what you considered, what you tried, why you went this way | Each time you choose, as you choose |
-| **decision** | One line per choice a person should know about, derived from the journal, pointing back to it | Once, at the end of the run |
+| **decision** | One line per choice a person should know about, derived from the journal by a fresh subagent, pointing back to it | Once, at the end of the run |
 | **build** | What the run did and checked | Once, at the end of the run |
 
 The journal is the reasoning: a rework reads it so it doesn't undo a deliberate choice, and
@@ -90,11 +90,26 @@ by an assumption or a blocker.
 
 ## The decision list
 
-**At the end of the run**, before the build entry, go back through your journal and write
-one **decision** for each choice a person should know about: where a different, equally
-reasonable choice existed and the outcome could plausibly matter to whoever owns the change
-(the test Matt Brailsford's `decision-review` uses). Skip pure mechanics (names, layout
-inside an agreed pattern). Several journal entries can make one decision; many make none.
+**Written by a fresh subagent, not the agent that made the choices**, at the end of the
+run, before the build entry. The one who chose tends to find all its choices obvious; fresh
+eyes judge better which ones a person needs to know about. The run that owns the work
+(`issue-build-loop`'s orchestrator) spawns it, on a cheaper model (it reads and judges, it
+doesn't code), with the `log_token`, the issue, and the diff. The subagent:
+
+1. **Reads the journal** (`read` the item, and the issue a PR closes), the issue and the
+   diff. It is not the builder, and has none of its context: the journal and the diff are
+   what it has.
+2. **Writes one decision** for each choice a person should know about: where a different,
+   equally reasonable choice existed and the outcome could plausibly matter to whoever owns
+   the change (the test Matt Brailsford's `decision-review` uses). Skip pure mechanics
+   (names, layout inside an agreed pattern). Several journal entries can make one decision;
+   many make none.
+3. **Checks the diff for choices nobody journalled**: a deviation from the issue or a
+   convention, an assumption baked into the code. Each one worth a person's look gets a
+   decision starting `(not journalled)`, with no `--refs`. How often this happens is one of
+   the trial's measures of how well the journal is kept.
+4. Returns the decisions it wrote (ids and lines). It never writes journal or build
+   entries.
 
 **Template**: one line, `<what was decided> — <why it matters>`, with its category and the
 journal entries behind it (`--refs`).
@@ -105,6 +120,8 @@ journal entries behind it (`--refs`).
   callers that page with offsets elsewhere will need changing.
 - ✅ `assumption` (refs #8) — "Archived" read as "in the recycle bin" — if the issue meant
   something else, the filter is wrong.
+- ✅ `deviation` (no refs) — (not journalled) The list tool returns 50 rows, not the
+  convention's 100 — callers relying on the default page size get fewer.
 - ❌ (refs #7) "See the journal." — The line has to stand on its own.
 - ❌ A line for every journal entry — The list is the subset worth a person's time.
 
