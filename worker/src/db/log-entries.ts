@@ -3,7 +3,8 @@
 // (idx_log_entries_item), never the whole table: D1's free plan allows 5M
 // rows read a day.
 
-export type LogEntryKind = "decision" | "build";
+export type LogEntryKind = "journal" | "decision" | "build";
+export const LOG_KINDS: readonly LogEntryKind[] = ["journal", "decision", "build"];
 
 export const LOG_CATEGORIES = ["assumption", "deviation", "workaround", "judgment-call"] as const;
 export type LogCategory = (typeof LOG_CATEGORIES)[number];
@@ -14,6 +15,7 @@ export type LogEntry = {
   item: number;
   kind: LogEntryKind;
   category: LogCategory | null;
+  refs: number[]; // a decision's journal entries
   routine: string;
   body: string;
   created_at: string;
@@ -25,6 +27,7 @@ export type NewLogEntry = {
   item: number;
   kind: LogEntryKind;
   category: LogCategory | null;
+  refs?: number[];
   routine: string;
   body: string;
   tokenId: string;
@@ -33,10 +36,10 @@ export type NewLogEntry = {
 export async function add(db: D1Database, e: NewLogEntry): Promise<number> {
   const row = await db
     .prepare(
-      `INSERT INTO log_entries (owner, repo, item, kind, category, routine, body, token_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      `INSERT INTO log_entries (owner, repo, item, kind, category, refs, routine, body, token_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     )
-    .bind(e.owner.toLowerCase(), e.repo.toLowerCase(), e.item, e.kind, e.category, e.routine, e.body, e.tokenId)
+    .bind(e.owner.toLowerCase(), e.repo.toLowerCase(), e.item, e.kind, e.category, e.refs?.length ? JSON.stringify(e.refs) : null, e.routine, e.body, e.tokenId)
     .first<{ id: number }>();
   return row!.id;
 }
@@ -51,11 +54,11 @@ export async function forItems(db: D1Database, owner: string, repo: string, item
   if (items.length === 0) return [];
   const { results } = await db
     .prepare(
-      `SELECT id, item, kind, category, routine, body, created_at FROM log_entries
+      `SELECT id, item, kind, category, refs, routine, body, created_at FROM log_entries
        WHERE owner = ? AND repo = ? AND item IN (${items.map(() => "?").join(", ")})
        ORDER BY created_at, id`,
     )
     .bind(owner.toLowerCase(), repo.toLowerCase(), ...items)
-    .all<LogEntry>();
-  return results;
+    .all<Omit<LogEntry, "refs"> & { refs: string | null }>();
+  return results.map((r) => ({ ...r, refs: r.refs ? (JSON.parse(r.refs) as number[]) : [] }));
 }

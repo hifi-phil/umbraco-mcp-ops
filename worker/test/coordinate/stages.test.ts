@@ -110,11 +110,12 @@ describe(`the issue: released -> closed, if the release's tag contains its merge
 });
 
 describe("a PR merging exports its work log as one comment on the PR", () => {
-  const entry = (item: number, kind: "decision" | "build") => ({
+  const entry = (item: number, kind: "journal" | "decision" | "build") => ({
     id: item,
     item,
     kind,
-    category: kind === "decision" ? ("assumption" as const) : null,
+    category: kind === "build" ? null : ("assumption" as const),
+    refs: [],
     routine: "issue-build-loop",
     body: `on #${item}`,
     created_at: "2026-10-07 10:00:00",
