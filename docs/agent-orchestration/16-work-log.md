@@ -20,10 +20,13 @@ This follows Matt Brailsford's
 `umbraco/Umbraco.AI`). The difference is that the entries live in D1, not
 in files.
 
-- **Decision log:** each choice the issue didn't settle. One short, dated
-  entry: what was decided, why, and what was rejected. Each entry is tagged
-  with one of his four categories: *assumption*, *deviation*, *workaround*
-  or *judgment call*.
+- **Decision log:** how the agent decided to do the work, and the path it
+  took. One short, dated entry for each point where it chose how to do
+  something, written when it makes the choice: what it decided, what it
+  considered or tried first, why it went that way, and what it rejected.
+  Each entry is tagged with one of his four categories: *assumption*,
+  *deviation*, *workaround* or *judgment call*. (Redefined 07-10-2026: it
+  was only the choices the issue left open.)
 - **Build log:** what each routine did and checked: the commit, the tests
   run and their counts, the review round and verdict, and anything it
   didn't verify.
@@ -107,12 +110,14 @@ whole. Each step is its own PR, in this order.
 **1. The guide: a `work-log` skill** (`plugins/agent-outcomes/skills/work-log/`,
 shipped to routines by `cloud-skill-sync`). Written first: the review's
 challenge step only works if decision entries are specific.
-- **When to write:** a decision entry for each choice the issue didn't
-  settle, at the moment it's made; one build entry at the end of each run.
-  Nothing else.
+- **When to write:** a decision entry each time the agent chooses how to
+  do something, written then, with the path it took (no entry for a step
+  with no real alternative); one build entry at the end of each run.
+  Nothing else. *(Before 07-10-2026 this was only the choices the issue left open.)*
 - **A template for each kind.**
-  - *Decision:* category; **Decided** (one line); **Why** (tied to the code
-    or the issue); **Rejected** (the alternative, and why not).
+  - *Decision:* category; **Decided** (one line); **Considered** (the
+    options weighed, what was tried first and how it went); **Why** (tied to
+    the code or the issue); **Rejected** (the alternative, and why not).
   - *Build:* routine; **Commit**; **Tests** (suite, run, passed);
     **Review** (what was found, what was fixed); **Not verified** (and why).
 - **The four categories**, each with a one-line test for when it applies:
