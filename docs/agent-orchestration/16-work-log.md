@@ -51,6 +51,62 @@ to judge. Whether the journal earns its cost is measured in the trial
   doesn't restart CI and the review.
 - **No lock-in.** It's our own schema, not something tied to GitHub.
 
+## How it works
+
+```mermaid
+flowchart TB
+    subgraph BUILD["🤖 BUILD: issue-build-loop"]
+        direction TB
+        B1["works on the issue"] -- "each time it chooses" --> B2["📓 journal entry<br/>Decided · Considered · Why · Rejected"]
+        B2 --> B1
+        B1 -- "at the end" --> B4["📋 decision list<br/>one line per choice a person should know about<br/>refs → its journal entries"]
+        B4 --> B5["🧾 build entry<br/>commit · tests · review · not verified"]
+    end
+
+    subgraph REVIEW["🤖 REVIEW: review-loop"]
+        direction TB
+        R1["forms its findings from the PR alone"] --> R2["then reads the journal and the list:<br/>a contradicted entry → a challenge"]
+        R2 --> R4["🧾 build entry · Journal used: #…"]
+    end
+
+    subgraph REWORK["🤖 REWORK: rework-loop"]
+        direction TB
+        W1["reads the journal before fixing"] --> W2["a challenged choice, kept or changed<br/>→ 📓 journal + 📋 decision line"]
+        W2 --> W3["🧾 build entry · Journal used: #…"]
+    end
+
+    PRD["👤 PR description: Decisions to check<br/>from the decision list, ranked, with actions<br/>each with its journal folded underneath<br/>☐ needed the journal to judge this"]
+    EXP["📒 merged: one comment on the PR<br/>decisions → build log → journal"]
+
+    DB[("⚙ Worker · D1<br/>log_entries")]
+    DASH["👤 Dashboard<br/>counts per row · every entry when opened"]
+
+    BUILD -- "PR open, CI green" --> REVIEW
+    REVIEW -- "findings" --> REWORK
+    REWORK -- "pushed: reviewed again" --> REVIEW
+    REVIEW -- "pass" --> PRD
+    PRD -- "a person merges" --> EXP
+
+    BUILD -. "writes" .-> DB
+    DB <-. "reads · writes" .-> REVIEW
+    DB <-. "reads · writes" .-> REWORK
+    DB -.-> DASH
+    DB -.-> EXP
+
+    classDef agent fill:#ece8fb,stroke:#7b6fd6,color:#222
+    classDef det fill:#eef6ee,stroke:#5a9a5a,color:#222
+    classDef person fill:#fff6e0,stroke:#c9a227,color:#222
+    class B1,B2,B4,B5,R1,R2,R4,W1,W2,W3 agent
+    class DB,EXP det
+    class PRD,DASH person
+```
+
+**Reading it:** the 📓 journal is written as the work happens; the 📋 decision
+list is derived from it at the end, each line pointing back. People read the
+list (*Decisions to check*, the merge export) and open the journal only when a
+line isn't enough; the agents read the journal itself. The ☐ boxes and the
+`Journal used` lines are the trial's measure of whether it's worth keeping.
+
 ## Who writes what
 
 | Routine | Journal | Decision list | Build log |
