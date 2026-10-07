@@ -127,8 +127,9 @@ repos): never lean on CI to catch a fix's regressions. Never re-push an identica
 
 **The work log** (only when the dispatch passed a `log_token`; load the
 [`work-log`](../../../agent-outcomes/skills/work-log/SKILL.md) skill): pass the token to the
-build subagent, which records each **decision** as it makes it; record any decision you
-make here (how you resolved an `mcp-review` finding the reviewers disagreed on, say); and
+build subagent, which records each **decision** as it makes it, with the path it took;
+record the decisions you make here too, as you make them (how you resolved an `mcp-review`
+finding the reviewers disagreed on, say); and
 add one **build** entry before the outcome comment: the commit, the local tests and their
 counts, what `mcp-review` found and fixed, and what wasn't verified. A failed write never
 stops the run.
