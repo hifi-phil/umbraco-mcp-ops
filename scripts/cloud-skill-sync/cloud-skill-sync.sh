@@ -30,7 +30,7 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="32"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="33"                                  # bump to force an env-cache rebuild / re-clone
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
@@ -71,23 +71,27 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
       fi
     done
     # Permissions: a routine runs unattended, so a command that would need approval is
-    # refused. Allow what every loop has to do: the work-log skill's script (both
-    # spellings of its path, 16-work-log.md), and committing, fetching and pushing its
-    # own branch (a build's commit-and-push was refused on #273). Force-pushing stays
-    # denied; the skills forbid it too. Idempotent.
+    # refused. Allow what every loop has to do, and no more: the work-log skill's script
+    # (16-work-log.md), local git (add, commit, fetch, ls-remote, switch, checkout), and
+    # pushing its own branch through github-ops' push-branch.sh, which pushes only the
+    # current branch, never forces and refuses main/dev. NOT `git push` itself: a prefix
+    # rule can't rule out `--force` later in the line, a `+ref`, `--delete` or `--mirror`
+    # (release 2.2.4's review, #278), so any other push still needs a person. Each path is
+    # allowed in both spellings (~ and expanded). Idempotent; also removes the broad
+    # `git push` rule an earlier version added.
     if command -v jq >/dev/null 2>&1; then
       [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
       tmp="$(mktemp)"
       if jq --arg a "Bash(bash ~/.claude/skills/work-log/scripts/log-entry.sh:*)" \
-            --arg b "Bash(bash $SKILLS_DEST/work-log/scripts/log-entry.sh:*)" '
+            --arg b "Bash(bash $SKILLS_DEST/work-log/scripts/log-entry.sh:*)" \
+            --arg c "Bash(bash ~/.claude/skills/github-ops/scripts/push-branch.sh:*)" \
+            --arg d "Bash(bash $SKILLS_DEST/github-ops/scripts/push-branch.sh:*)" '
             .permissions = (.permissions // {})
-            | .permissions.allow = (((.permissions.allow // []) + [$a, $b,
-                "Bash(git add:*)", "Bash(git commit:*)", "Bash(git fetch:*)", "Bash(git push:*)",
+            | .permissions.allow = (((.permissions.allow // []) - ["Bash(git push:*)"] + [$a, $b, $c, $d,
+                "Bash(git add:*)", "Bash(git commit:*)", "Bash(git fetch:*)",
                 "Bash(git ls-remote:*)", "Bash(git switch:*)", "Bash(git checkout:*)"]) | unique)
-            | .permissions.deny = (((.permissions.deny // []) + [
-                "Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(git push --force-with-lease:*)"]) | unique)
           ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
-        mv "$tmp" "$SETTINGS"; echo "allowed: work-log log-entry.sh, git add/commit/fetch/push (no force-push)"
+        mv "$tmp" "$SETTINGS"; echo "allowed: log-entry.sh, push-branch.sh, local git (no git push)"
       else
         rm -f "$tmp"; echo "WARN: could not allow log-entry.sh (jq merge failed)"
       fi
