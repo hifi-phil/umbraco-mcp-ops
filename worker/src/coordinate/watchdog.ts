@@ -43,7 +43,9 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   // was refused or never started), so a second run can't duplicate its work,
   // and a one-off failure costs minutes, not a person. A run that reported
   // progress may have pushed half its work: that goes to a person, as before.
-  if (!pending.retried && !pending.lastStep && deps.enforced(EVENTS.WATCHDOG_EXPIRED)) {
+  // Only for a repo that turned it on (deps.watchdogRetry): "never reported a
+  // step" only means "never started" where the routines send heartbeats.
+  if (deps.watchdogRetry && !pending.retried && !pending.lastStep && deps.enforced(EVENTS.WATCHDOG_EXPIRED)) {
     const labels = await deps.getLabels(pending.owner, pending.repo, pending.issueNumber);
     const state = deriveState(labels);
     if (state !== "ambiguous" && reduce(state, EVENTS.WATCHDOG_EXPIRED) !== null) {

@@ -93,6 +93,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     // enforcement have their own describe blocks.
     enforced: () => true,
     watchdogMinutes: watchdogMinutesFor,
+    watchdogRetry: false,
     caps: DEFAULT_CAPS,
     botLogin: async () => null,
     lastActivityAt: async () => null,
