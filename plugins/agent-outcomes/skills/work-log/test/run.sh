@@ -140,10 +140,17 @@ for flag in --help -h; do
   check "help_${flag}_sources" "$out" "WORK_LOG_ENDPOINT"
   [ "$code" -eq 0 ] && { echo "PASS [help_${flag}_exit0]"; pass=$((pass+1)); } || { echo "FAIL [help_${flag}_exit0]: exit $code"; fail=$((fail+1)); }
 done
-# 9b. --help / -h anywhere in the arguments, e.g. after --token or a subcommand.
+# 9b. Same with the stub's endpoint set, so "sends nothing" is a real check: a
+# script that posted on --help would reach the stub and show up in the count.
+# --help / -h anywhere in the arguments, e.g. after --token or a subcommand.
+for flag in --help -h; do
+  out="$(run WORK_LOG_ENDPOINT="$ENDPOINT" bash "$SCRIPT" "$flag")"; code=$?
+  check "help_endpoint_${flag}_usage" "$out" "Usage:"
+  [ "$code" -eq 0 ] && { echo "PASS [help_endpoint_${flag}_exit0]"; pass=$((pass+1)); } || { echo "FAIL [help_endpoint_${flag}_exit0]: exit $code"; fail=$((fail+1)); }
+done
 for args in "--token t --help" "--token t -h" "--token t add --help" "--token t add journal --help"; do
   # shellcheck disable=SC2086
-  out="$(run bash "$SCRIPT" $args)"; code=$?
+  out="$(run WORK_LOG_ENDPOINT="$ENDPOINT" WORK_LOG_TOKEN=tok bash "$SCRIPT" $args)"; code=$?
   check "help_after_[$args]_usage" "$out" "Usage:"
   [ "$code" -eq 0 ] && { echo "PASS [help_after_[$args]_exit0]"; pass=$((pass+1)); } || { echo "FAIL [help_after_[$args]_exit0]: exit $code"; fail=$((fail+1)); }
 done
