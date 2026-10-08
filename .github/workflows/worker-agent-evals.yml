@@ -41,7 +41,7 @@ jobs:
       - name: "Install (npm workspaces: one install at the root)"
         run: npm ci
 
-      - name: Run outcome-reporting evals
+      - name: Run agent evals (outcome reporting, work log)
         working-directory: worker
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

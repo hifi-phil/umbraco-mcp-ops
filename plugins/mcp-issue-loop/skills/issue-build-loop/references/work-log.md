@@ -11,8 +11,8 @@ templates, the categories and the `log-entry.sh` calls. A failed write never sto
 2. **Your own journal.** Write journal entries for the choices you make here too, as you make
    them (how you resolved an `mcp-review` finding the reviewers disagreed on, say).
 3. **The decision list, by a fresh subagent.** Once `mcp-review` is done, spawn a
-   decision-list subagent (not the build subagent, and not on its tier: `sonnet`, or `haiku`
-   for a docs-only change; it reads and judges, it doesn't code) with the `log_token`, the
+   decision-list subagent on `haiku` (not the build subagent, and not on its tier: it reads
+   and judges, it doesn't code; the work-log eval passes on Haiku) with the `log_token`, the
    issue, and the PR's diff. It follows the `work-log` skill's *The decision list*: it reads
    the journal, writes one **decision** line for each choice a person should know about (with
    `--refs`), adds a `(not journalled)` decision for any such choice the diff shows that
