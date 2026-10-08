@@ -34,8 +34,10 @@ case "$BRANCH" in
 esac
 
 # Refuse rather than force: a branch that has diverged from its remote needs a person.
-if ! git -C "$DIR" push --no-force-with-lease --set-upstream origin "refs/heads/$BRANCH:refs/heads/$BRANCH"; then
+git -C "$DIR" push --no-force-with-lease --set-upstream origin "refs/heads/$BRANCH:refs/heads/$BRANCH"
+rc=$?
+if [ "$rc" -ne 0 ]; then
   echo "push-branch: push of '$BRANCH' failed" >&2
-  exit 1
+  exit "$rc"
 fi
 echo "push-branch: pushed $BRANCH -> origin/$BRANCH at $(git -C "$DIR" rev-parse --short HEAD)"

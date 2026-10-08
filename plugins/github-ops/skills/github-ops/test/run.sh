@@ -41,13 +41,15 @@ bash "$SCRIPT" -C "$R" >/dev/null 2>&1 && [ "$(remote_sha fix/thing)" = "$(git -
 # 3. Diverged from origin (history rewritten): refused, origin untouched.
 before="$(remote_sha fix/thing)"
 git -C "$R" reset -q --hard HEAD~1 && git -C "$R" commit -q --allow-empty -m rewritten
-if bash "$SCRIPT" -C "$R" >/dev/null 2>&1; then no no_force "a diverged push went through"; else [ "$(remote_sha fix/thing)" = "$before" ] && ok no_force || no no_force "origin changed"; fi
+out="$(bash "$SCRIPT" -C "$R" 2>&1)" && no no_force "a diverged push went through" || { [ "$(remote_sha fix/thing)" = "$before" ] && [[ "$out" == *"push-branch: push of 'fix/thing' failed"* ]] && [[ "$out" != *"push-branch: pushed "* ]] && ok no_force || no no_force "origin changed or no failure message: $out"; }
 
-# 3b. A failed push (origin gone): non-zero, a reason, and no "pushed" line.
+# 3b. A failed push (origin gone): non-zero, a reason, and no "pushed" line. Reset onto
+# origin first so the push would otherwise be a plain fast-forward.
+git -C "$R" reset -q --hard "$(remote_sha fix/thing)" && git -C "$R" commit -q --allow-empty -m three
 mv "$WORK/origin.git" "$WORK/origin.gone"
 out="$(bash "$SCRIPT" -C "$R" 2>&1)"; code=$?
 mv "$WORK/origin.gone" "$WORK/origin.git"
-[ "$code" -ne 0 ] && [[ "$out" == *"failed"* ]] && [[ "$out" != *"pushed fix/thing"* ]] && ok failed_push_reports || no failed_push_reports "code=$code out=$out"
+[ "$code" -ne 0 ] && [[ "$out" == *"push-branch: push of 'fix/thing' failed"* ]] && [[ "$out" != *"push-branch: pushed "* ]] && ok failed_push_reports || no failed_push_reports "code=$code out=$out"
 
 # 4. main and dev: refused, nothing sent.
 for b in main dev; do
