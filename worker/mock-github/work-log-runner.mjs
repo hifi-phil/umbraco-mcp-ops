@@ -180,6 +180,9 @@ export async function runWorkLogStep({ step }) {
     prompt: config.prompt(),
     options: {
       systemPrompt: systemPrompt(config),
+      // Pinned: the default model refused these sessions on a content
+      // check before acting (worker-agent-evals run 37687625893).
+      model: "claude-sonnet-5",
       tools: [],
       mcpServers: { work_log: buildServer(log) },
       allowedTools: ["mcp__work_log__log_entry"],
