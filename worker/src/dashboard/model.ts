@@ -220,7 +220,8 @@ export function when(at: string): string {
 /** The portal's tag colour for a state: trouble, waiting on a person, or done. */
 export function tone(state: string): string {
   if (state === LABELS.AI_STUCK || state === LABELS.MERGE_BLOCKED) return "danger";
-  if (state === LABELS.AI_BLOCKED) return "warning";
+  // Both wait for a person: LABELS.READY_FOR_REVIEW is a PR the review passed.
+  if (state === LABELS.AI_BLOCKED || state === LABELS.READY_FOR_REVIEW) return "warning";
   if (state === LABELS.PR_OPEN) return "positive";
   return "default";
 }

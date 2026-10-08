@@ -312,8 +312,37 @@ export const rules: Rule[] = [
   {
     from: LABELS.AI_REVIEWING,
     on: EVENTS.REVIEW_PASSED,
-    to: unlabel, // ready for a person
+    to: label(LABELS.READY_FOR_REVIEW), // waiting for a person
     verifiedBy: "external-judgment", // review-loop's verdict
+  },
+  // A person's move on a PR the review passed. Each takes LABELS.READY_FOR_REVIEW
+  // off: they approve the merge, ask for changes, or run the review again; or
+  // the PR merges.
+  {
+    from: LABELS.READY_FOR_REVIEW,
+    on: EVENTS.LABELLED_AUTO_MERGING,
+    to: label(LABELS.AUTO_MERGING),
+    run: ROUTINES.MERGE_FLOW,
+    verifiedBy: "external-judgment", // the LABELS.AUTO_MERGING label IS the human approval signal
+  },
+  {
+    from: LABELS.READY_FOR_REVIEW,
+    on: EVENTS.LABELLED_AUTO_REWORKING,
+    to: label(LABELS.AUTO_REWORKING),
+    run: ROUTINES.REWORK_LOOP,
+    verifiedBy: "external-judgment", // a person asked for changes
+  },
+  {
+    from: LABELS.READY_FOR_REVIEW,
+    on: EVENTS.LABELLED_AI_REVIEWING,
+    to: label(LABELS.AI_REVIEWING),
+    verifiedBy: "external-judgment", // a person asked for another review
+  },
+  {
+    from: LABELS.READY_FOR_REVIEW,
+    on: EVENTS.MERGED,
+    to: close, // a person merged it by hand
+    verifiedBy: "deterministic",
   },
   {
     // Fixes are rework-loop's, never the reviewer's own. coordinate/ counts
@@ -430,7 +459,7 @@ export const rules: Rule[] = [
   { from: LABELS.AI_STUCK, on: EVENTS.RELEASE_PUBLISHED, to: close, verifiedBy: "external-judgment" },
   { from: LABELS.AI_STUCK, on: EVENTS.REWORK_PUSHED, to: unlabel, verifiedBy: "deterministic" },
   { from: LABELS.AI_STUCK, on: EVENTS.MERGED, to: close, verifiedBy: "deterministic" },
-  { from: LABELS.AI_STUCK, on: EVENTS.REVIEW_PASSED, to: unlabel, verifiedBy: "external-judgment" },
+  { from: LABELS.AI_STUCK, on: EVENTS.REVIEW_PASSED, to: label(LABELS.READY_FOR_REVIEW), verifiedBy: "external-judgment" },
   { from: LABELS.AI_STUCK, on: EVENTS.REVIEW_BLOCKED, to: label(LABELS.AI_BLOCKED), verifiedBy: "external-judgment" },
   {
     from: LABELS.AI_STUCK,

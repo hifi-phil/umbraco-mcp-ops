@@ -155,8 +155,10 @@ describe("reduce — the review (15-agent-splits.md)", () => {
     expect(red?.run).toBe(ROUTINES.REWORK_LOOP);
   });
 
-  it(`the review's outcomes: pass -> unlabelled; findings -> rework-loop; block -> ${LABELS.AI_BLOCKED}, nothing fired`, () => {
-    expect(reduce(LABELS.AI_REVIEWING, EVENTS.REVIEW_PASSED)?.to).toEqual(unlabel);
+  it(`the review's outcomes: pass -> ${LABELS.READY_FOR_REVIEW}; findings -> rework-loop; block -> ${LABELS.AI_BLOCKED}, nothing fired`, () => {
+    const passed = reduce(LABELS.AI_REVIEWING, EVENTS.REVIEW_PASSED);
+    expect(passed?.to).toEqual(label(LABELS.READY_FOR_REVIEW));
+    expect(passed?.run).toBeUndefined();
     const findings = reduce(LABELS.AI_REVIEWING, EVENTS.REVIEW_FINDINGS);
     expect(findings?.to).toEqual(label(LABELS.AUTO_REWORKING));
     expect(findings?.run).toBe(ROUTINES.REWORK_LOOP);
@@ -177,8 +179,33 @@ describe("reduce — the review (15-agent-splits.md)", () => {
 
   it(`a review that was running is watched; a late verdict still lands from ${LABELS.AI_STUCK}`, () => {
     expect(isWatched(LABELS.AI_REVIEWING)).toBe(true);
-    expect(reduce(LABELS.AI_STUCK, EVENTS.REVIEW_PASSED)?.to).toEqual(unlabel);
+    expect(reduce(LABELS.AI_STUCK, EVENTS.REVIEW_PASSED)?.to).toEqual(label(LABELS.READY_FOR_REVIEW));
     expect(reduce(LABELS.AI_STUCK, EVENTS.REVIEW_BLOCKED)?.to).toEqual(label(LABELS.AI_BLOCKED));
+  });
+});
+
+describe(`reduce — ${LABELS.READY_FOR_REVIEW}: waiting for a person`, () => {
+  it(`a person approves (${LABELS.AUTO_MERGING}): merge-flow, the label swapped`, () => {
+    const rule = reduce(LABELS.READY_FOR_REVIEW, EVENTS.LABELLED_AUTO_MERGING);
+    expect(rule?.to).toEqual(label(LABELS.AUTO_MERGING));
+    expect(rule?.run).toBe(ROUTINES.MERGE_FLOW);
+  });
+
+  it(`a person asks for changes (${LABELS.AUTO_REWORKING}): rework-loop, the label swapped`, () => {
+    const rule = reduce(LABELS.READY_FOR_REVIEW, EVENTS.LABELLED_AUTO_REWORKING);
+    expect(rule?.to).toEqual(label(LABELS.AUTO_REWORKING));
+    expect(rule?.run).toBe(ROUTINES.REWORK_LOOP);
+  });
+
+  it(`a person asks for another review (${LABELS.AI_REVIEWING}): the CI gate again, nothing fired yet`, () => {
+    const rule = reduce(LABELS.READY_FOR_REVIEW, EVENTS.LABELLED_AI_REVIEWING);
+    expect(rule?.to).toEqual(label(LABELS.AI_REVIEWING));
+    expect(rule?.run).toBeUndefined();
+  });
+
+  it("merged by hand: closed; nothing is watched while it waits", () => {
+    expect(reduce(LABELS.READY_FOR_REVIEW, EVENTS.MERGED)?.to).toEqual(close);
+    expect(isWatched(LABELS.READY_FOR_REVIEW)).toBe(false);
   });
 });
 

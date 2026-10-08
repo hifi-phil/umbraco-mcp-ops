@@ -91,7 +91,7 @@ A new routine, `review-loop`, on its own label, `ai-reviewing`, running on a
 
 | Outcome | What happens |
 |---|---|
-| **pass** | `ai-reviewing` comes off. The PR is ready for a person. |
+| **pass** | `ai-reviewing` is swapped for `ready-for-review`: the PR is waiting for a person, who approves the merge (`auto-merging`), asks for changes (`auto-reworking`) or runs the review again (`ai-reviewing`), and the label comes off. |
 | **findings** | `auto-reworking`, with the findings in the comment. |
 | **block** ("the approach is wrong") | `ai-blocked`. It **waits for a person**; nothing rebuilds automatically. |
 
