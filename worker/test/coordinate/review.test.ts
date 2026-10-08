@@ -190,6 +190,13 @@ describe("review-loop's verdicts", () => {
     expect(await d.getCiFix()).toBeNull();
   });
 
+  it(`or asks for another review: ${LABELS.READY_FOR_REVIEW} swapped for ${LABELS.AI_REVIEWING}, and the review fires on green CI`, async () => {
+    const d = deps([LABELS.READY_FOR_REVIEW, LABELS.AI_REVIEWING]);
+    await coordinateWebhook(d, labelled(LABELS.AI_REVIEWING));
+    expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.READY_FOR_REVIEW);
+    expect(d.fireRoutine).toHaveBeenCalledWith(OWNER, REPO, PR, ROUTINES.REVIEW_LOOP);
+  });
+
   it(`then a person approves: ${LABELS.READY_FOR_REVIEW} swapped for ${LABELS.AUTO_MERGING}, merge-flow fired`, async () => {
     const d = deps([LABELS.READY_FOR_REVIEW, LABELS.AUTO_MERGING]);
     expect(await coordinateWebhook(d, labelled(LABELS.AUTO_MERGING))).toMatchObject({ event: EVENTS.LABELLED_AUTO_MERGING });
