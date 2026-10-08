@@ -72,6 +72,8 @@ const oneOf = (s, words) => words.some((w) => s.toLowerCase().includes(w));
 const CONFIGS = {
   journal: {
     role: "the build subagent of issue-build-loop, given a log_token",
+    // The lowest tier a code-touching build runs on.
+    model: "claude-sonnet-5",
     seed: [],
     prompt: () =>
       "You are building issue #412, \"List form entries\": add a tool that lists a form's entries. " +
@@ -102,6 +104,8 @@ const CONFIGS = {
   },
   "decision-list": {
     role: "the fresh decision-list subagent that issue-build-loop spawns at the end of a build",
+    // Trying the cheapest tier: if this passes, the skill can spawn it on Haiku.
+    model: "claude-haiku-4-5-20251001",
     seed: [
       { kind: "journal", category: "judgment-call", body: "Decided: cursor pagination for list-form-entries.\nConsidered: offset paging first; the test adding entries mid-read skipped rows.\nWhy: thousands of entries; every other list tool uses cursors.\nRejected: offset paging." },
       { kind: "journal", category: "assumption", body: "Decided: \"archived\" means in the recycle bin.\nConsidered: a custom archived property, the recycle bin.\nWhy: Forms has no archive flag.\nRejected: the property, which the API can't filter on." },
@@ -130,6 +134,7 @@ const CONFIGS = {
   },
   "build-entry": {
     role: "issue-build-loop's orchestrator, at the end of a build, with a log_token",
+    model: "claude-sonnet-5",
     seed: [],
     prompt: () =>
       "Issue #412. The build subagent has returned and journalled its choices; the decision-list " +
@@ -180,9 +185,9 @@ export async function runWorkLogStep({ step }) {
     prompt: config.prompt(),
     options: {
       systemPrompt: systemPrompt(config),
-      // Pinned: the default model refused these sessions on a content
-      // check before acting (worker-agent-evals run 37687625893).
-      model: "claude-sonnet-5",
+      // Each step on the model that role runs on (also: the default model
+      // refused these sessions before acting, run 37687625893).
+      model: config.model,
       tools: [],
       mcpServers: { work_log: buildServer(log) },
       allowedTools: ["mcp__work_log__log_entry"],
