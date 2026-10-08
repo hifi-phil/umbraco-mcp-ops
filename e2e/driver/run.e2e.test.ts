@@ -140,7 +140,9 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       const orphans = [...logs].flatMap(([n, rows]) =>
         rows
           .filter((r) =>
-            r.delivery_id === null ? r.event !== "watchdog_expired" && r.event !== "reconcile_refire" : !guids.has(original(r.delivery_id)),
+            r.delivery_id === null
+              ? !["watchdog_expired", "watchdog_retried", "reconcile_refire"].includes(r.event)
+              : !guids.has(original(r.delivery_id)),
           )
           .map((r) => `#${n} ${r.event} delivery=${r.delivery_id}`),
       );

@@ -46,7 +46,9 @@ export type Scenario = { name: string; timeoutMs: number; run: () => Promise<voi
 const MIN = 60_000;
 /** The sandbox's watchdog (tofu's e2e_watchdog_minutes). */
 const WATCHDOG_MINUTES = Number(process.env.E2E_WATCHDOG_MINUTES ?? 2);
-const STUCK_WAIT = (WATCHDOG_MINUTES + 2) * MIN;
+// Two timeouts: a run that never reports a step is fired once more before it's stuck
+// (coordinate/watchdog.ts); one that did report goes straight there, well inside this.
+const STUCK_WAIT = (2 * WATCHDOG_MINUTES + 2) * MIN;
 /** How long a review scenario gives each CI run: GitHub Actions can queue a
  * sandbox run for minutes (05-10-2026: one started 5.5 min after its push),
  * and the review waits for green CI before it fires. Only spent if CI is slow. */
@@ -492,6 +494,9 @@ export const scenarios: Scenario[] = [
         const issue = t.n(await openIssue("Say nothing (late success)", "The agent reports long after the watchdog.", "silent"));
         const stuck = await expectStuck(issue, LABELS.AI_READY);
         expect(hasComment(stuck, "No progress step was ever reported")).toBe(true);
+        // A run that never reported a step got one more fire before it was stuck.
+        expect(hasComment(stuck, "Firing it once more"), `#${issue} retry comment`).toBe(true);
+        await expectLogged(issue, { event: "watchdog_retried" }, { event: "watchdog_expired", effect: LABELS.AI_STUCK });
         await lateOutcome(issue, "issue-build-loop", { outcome: "build_succeeded", pr: 1 });
         expectLabels(await waitFor(issue, labelsAre(LABELS.PR_OPEN), MIN), issue, LABELS.PR_OPEN);
       }),

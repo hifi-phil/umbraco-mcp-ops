@@ -425,6 +425,7 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
     repo: "umbraco-mcp-ops",
     issueNumber: 412,
     run: "issue-build-loop",
+    retried: true, // the second expiry: the first, silent one is retried
   };
 
   it(`fires: comments, swaps ${LABELS.AI_READY} -> ${LABELS.AI_STUCK} for real, logs a watchdog_expired row to D1, clears pendingFire`, async () => {
