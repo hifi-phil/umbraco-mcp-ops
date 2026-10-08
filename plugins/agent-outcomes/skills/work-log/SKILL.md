@@ -168,11 +168,13 @@ The fire text carries `log_token=<token>`. It names the issue or PR this run wor
 routine, and lets you add entries there and read any item in the repo. Pass it to any
 subagent that writes entries; never put it in a comment, a commit, or an entry.
 
-```bash
-LOG=~/.claude/skills/work-log/scripts/log-entry.sh   # locally: this skill's scripts/
+Call the script **by its full path, exactly as below**: a routine runs unattended, and only
+this spelling is allowed to run without asking (`cloud-skill-sync` allows it). Don't put
+the path in a variable or chain it after a `cd`: a refused call writes nothing.
 
-# a journal entry, as you choose (the body on stdin); prints its id: "logged: journal … #7"
-bash $LOG --token "$TOKEN" add journal judgment-call <<'EOF'
+```bash
+# a journal entry, when you decide (the body on stdin); prints its id: "logged: journal … #7"
+bash ~/.claude/skills/work-log/scripts/log-entry.sh --token "$TOKEN" add journal judgment-call <<'EOF'
 Decision: …
 Options: …
 Rationale: …
@@ -180,11 +182,10 @@ Rejected: …
 EOF
 
 # at the end: the decision list, each pointing at its journal entries
-echo "Cursor pagination, not offset — callers paging by offset elsewhere need changing" |
-  bash $LOG --token "$TOKEN" add decision judgment-call --refs 7,9
+bash ~/.claude/skills/work-log/scripts/log-entry.sh --token "$TOKEN" add decision judgment-call --refs 7,9 <<< "Cursor pagination, not offset — callers paging by offset elsewhere need changing"
 
 # then the build entry
-bash $LOG --token "$TOKEN" add build <<'EOF'
+bash ~/.claude/skills/work-log/scripts/log-entry.sh --token "$TOKEN" add build <<'EOF'
 Commit: …
 Tests: …
 Review: …
@@ -192,7 +193,7 @@ Not verified: …
 EOF
 
 # read an item's entries (the issue a PR closes, say)
-bash $LOG --token "$TOKEN" read 412
+bash ~/.claude/skills/work-log/scripts/log-entry.sh --token "$TOKEN" read 412
 ```
 
 The script needs `curl` and `jq`, and finds the Worker from `WORK_LOG_ENDPOINT`, else from

@@ -1,9 +1,10 @@
 #!/bin/bash
 # cloud-skill-sync — deliver the Umbraco MCP ops skills AND agents to a Claude Code cloud env.
 #
-# Paste this into a cloud environment's **Setup script** field (Claude Code on the web →
-# environment settings). It runs once when the environment builds, BEFORE the session
-# starts, clones the PUBLIC umbraco-mcp-ops repo, and copies:
+# Don't paste this into a cloud environment's Setup field: paste the two lines in
+# env-setup-stub.sh, which clone the repo and run it from there (directly for a
+# skills-only environment, or through env-setup.sh). It runs once when the environment builds,
+# BEFORE the session starts, and copies:
 #   - the listed skills             → the session skills dir  ($HOME/.claude/skills)
 #   - every plugin agent definition → the session agents dir  ($HOME/.claude/agents)
 #   - Anthropic's pr-review-toolkit code-review agents (used by mcp-review), fetched at a
@@ -29,7 +30,7 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="30"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="31"                                  # bump to force an env-cache rebuild / re-clone
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
@@ -69,6 +70,24 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
         echo "NOT FOUND in source: $s"
       fi
     done
+    # Permissions: a routine runs unattended, so a command that would need approval is
+    # refused. Allow the work-log skill's script (both spellings of its path), so the
+    # loops can write and read the work log (16-work-log.md). Idempotent.
+    if command -v jq >/dev/null 2>&1; then
+      [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+      tmp="$(mktemp)"
+      if jq --arg a "Bash(bash ~/.claude/skills/work-log/scripts/log-entry.sh:*)" \
+            --arg b "Bash(bash $SKILLS_DEST/work-log/scripts/log-entry.sh:*)" '
+            .permissions = (.permissions // {})
+            | .permissions.allow = (((.permissions.allow // []) + [$a, $b]) | unique)
+          ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
+        mv "$tmp" "$SETTINGS"; echo "allowed: work-log log-entry.sh"
+      else
+        rm -f "$tmp"; echo "WARN: could not allow log-entry.sh (jq merge failed)"
+      fi
+    else
+      echo "WARN: jq missing — log-entry.sh NOT allowed; work-log writes will be refused"
+    fi
     # Agents: copy every plugin agent definition (e.g. release-reviewer) into the agents dir.
     find "$OPS_DIR/plugins" -type f -path "*/agents/*.md" 2>/dev/null | while read -r a; do
       cp "$a" "$AGENTS_DEST/" && echo "installed agent: $(basename "$a")"
