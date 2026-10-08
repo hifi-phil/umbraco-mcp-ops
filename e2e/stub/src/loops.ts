@@ -143,7 +143,7 @@ async function build(gh: Gh, f: Fire, hint: string | null, log?: LogWriter): Pro
     const journal = await log({
       kind: "journal",
       category: "judgment-call",
-      body: `Decided: one file per build (e2e #${f.number}).\nConsidered: one shared file, then one per build.\nWhy: the e2e stub's convention; a shared file conflicts between builds.\nRejected: a shared file.`,
+      body: `Decision: one file per build (e2e #${f.number}).\nOptions: one shared file, then one per build.\nRationale: the e2e stub's convention; a shared file conflicts between builds.\nRejected: a shared file.`,
     }).catch(() => null);
     await log({
       kind: "decision",

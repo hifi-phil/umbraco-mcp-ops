@@ -192,6 +192,9 @@ export type Deps = {
   // The decision log and build log's entries for some items (D1), for the
   // export a merged PR gets.
   workLogFor(owner: string, repo: string, items: number[]): Promise<LogEntry[]>;
+  // Which of these issues an orchestrated build finished (D1): their PR
+  // should come with a work log, so its absence is worth saying.
+  builtByLoop(owner: string, repo: string, issues: number[]): Promise<number[]>;
   getShipped(): Promise<Shipped | null>;
   setShipped(shipped: Shipped): Promise<void>;
   // The release PR the Worker merged for this release issue (DO storage):

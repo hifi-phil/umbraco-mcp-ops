@@ -8,7 +8,7 @@ import { LABELS } from "@orchestrator/graph/constants/labels";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { closingIssues } from "@orchestrator/graph/github/closing-refs";
 import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
-import { exportComment } from "../work-log";
+import { exportComment, missingLogComment } from "../work-log";
 import { applyEvent, deriveState } from "./apply";
 
 /** A delivery id for a hand-off: the original's, plus the item it's for, so
@@ -29,14 +29,21 @@ export async function handOffMerged(deps: Deps, input: CoordinateInput): Promise
 }
 
 /** A PR merged: its work log, and that of the issues it closes, as one
- * comment on the PR (16-work-log.md), the permanent copy. Never fails the
- * delivery: the log is a record, not a step. */
+ * comment on the PR (16-work-log.md), the permanent copy. A PR an
+ * orchestrated build made that arrives with no log at all says so instead:
+ * the loops' logging was skipped, which nothing else would show. Never
+ * fails the delivery: the log is a record, not a step. */
 export async function exportWorkLog(deps: Deps, input: CoordinateInput): Promise<void> {
   const pr = input.payload.pull_request;
   if (!pr?.merged) return;
   try {
-    const items = [input.issueNumber, ...closingIssues(pr.body).filter((n) => n !== input.issueNumber)];
-    const body = exportComment(input.issueNumber, await deps.workLogFor(input.owner, input.repo, items));
+    const closes = closingIssues(pr.body).filter((n) => n !== input.issueNumber);
+    const items = [input.issueNumber, ...closes];
+    let body = exportComment(input.issueNumber, await deps.workLogFor(input.owner, input.repo, items));
+    if (!body && closes.length > 0) {
+      const built = await deps.builtByLoop(input.owner, input.repo, closes);
+      if (built.length > 0) body = missingLogComment(built);
+    }
     if (body) await depsFor(deps, EVENTS.MERGED).io.commentOnIssue(input.owner, input.repo, input.issueNumber, body);
   } catch (e) {
     console.error("work log export failed:", e instanceof Error ? e.message : e);

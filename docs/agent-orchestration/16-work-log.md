@@ -24,7 +24,7 @@ Three kinds of entry (settled 07-10-2026):
 
 | Kind | What | When | His equivalent |
 |---|---|---|---|
-| **Journal** | How the agent decided to do the work, and the path it took: what it decided, what it considered or tried first, why, what it rejected | Each time it chooses, as it chooses | None: his builder says this in its report, which is gone when the task ends |
+| **Journal** | A decision record for each design decision: the decision, the options considered (including one tried and dropped), why, what it rejected | Each time it chooses, as it chooses | None: his builder says this in its report, which is gone when the task ends |
 | **Decision** (the decision list) | One line per choice a person should know about, derived from the journal at the end of the run by a fresh subagent (not the one that chose), pointing back to the journal entries behind it; plus any choice the diff shows that nobody journalled | Once, at the end of a run | `DECISION-LOG.md`, already passed through `decision-review`'s test ("a different, equally reasonable choice existed and the outcome could plausibly matter") |
 | **Build** | What each routine did and checked: the commit, the tests and counts, the review, what wasn't verified | Once, at the end of a run | `BUILD-LOG.md` |
 
@@ -32,7 +32,7 @@ Journal entries and decisions each carry one of his four categories:
 *assumption*, *deviation*, *workaround* or *judgment call*.
 
 **Why both a journal and a list.** The list is what a person reads; the
-journal is the reasoning behind it, which a rework needs so it doesn't
+journal is the rationale behind it, which a rework needs so it doesn't
 undo a deliberate choice, and a reviewer needs when one line isn't enough
 to judge. Whether the journal earns its cost is measured in the trial
 (*Measuring the journal*, below), and if it doesn't, only the list stays.
@@ -57,7 +57,7 @@ to judge. Whether the journal earns its cost is measured in the trial
 flowchart TB
     subgraph BUILD["🤖 BUILD: issue-build-loop"]
         direction TB
-        B1["works on the issue"] -- "each time it chooses" --> B2["📓 journal entry<br/>Decided · Considered · Why · Rejected"]
+        B1["works on the issue"] -- "each time it chooses" --> B2["📓 journal entry<br/>Decision · Options · Rationale · Rejected"]
         B2 --> B1
         B1 -- "at the end" --> B4["📋 decision list, by a fresh subagent<br/>one line per choice a person should know about<br/>refs → its journal entries<br/>+ choices in the diff nobody journalled"]
         B4 --> B5["🧾 build entry<br/>commit · tests · review · not verified"]
@@ -126,6 +126,9 @@ The Forms trial (Phase 11) decides whether the journal stays. On each PR:
   journal entries it relied on (a challenge raised, a decision kept because
   of its reason).
 - **Noise:** journal entries per build, against decisions derived from them.
+- **Skipped logs:** a merged PR from an orchestrated build with no entries
+  at all gets "⚠️ No work log recorded" instead of the export, so a run
+  that skipped the `work-log` skill shows on the PR.
 - **Gaps:** decisions the list subagent marked `(not journalled)`: choices
   the diff shows that the builder never wrote down. Many means the journal
   isn't being kept, whatever its value when it is.
@@ -191,12 +194,12 @@ whole. Each step is its own PR, in this order.
 shipped to routines by `cloud-skill-sync`). Written first: the review's
 challenge step only works if journal entries are specific.
 - **When to write:** a journal entry each time the agent chooses how to
-  do something, written then, with the path it took (no entry for a step
+  do something, written then, with its options and rationale (no entry for a step
   with no real alternative); the decision list and one build entry at the
   end of each run. Nothing else.
 - **A template for each kind.**
-  - *Journal:* category; **Decided** (one line); **Considered** (the
-    options weighed, what was tried first and how it went); **Why** (tied to
+  - *Journal:* category; **Decision** (one line); **Options** (the
+    options considered, including one tried and dropped); **Rationale** (tied to
     the code or the issue); **Rejected** (the alternative, and why not).
   - *Decision:* category; one line, "what was decided — why it matters";
     the journal entries behind it.

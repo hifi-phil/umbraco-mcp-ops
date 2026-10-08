@@ -8,8 +8,7 @@ the run.
 
 Read the journal for the PR and the issue it closes. A finding that challenges a journal
 entry is a choice between two reasoned positions: keep the choice (reply on the thread with
-its reason) or change it. Either way, write a **journal** entry of your own with the path you
-took, and a **decision** line for it with `--refs` to both entries: a challenged choice is
+its reason) or change it. Either way, write a **journal** entry of your own with the options and rationale, and a **decision** line for it with `--refs` to both entries: a challenged choice is
 always one a person should know about.
 
 ## After pushing (Step 4)

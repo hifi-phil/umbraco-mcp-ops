@@ -69,7 +69,7 @@ changing anything, and weigh a challenged choice before undoing it, as
 
 Check out the PR's head branch. **As your first action, boot a local Umbraco** so it's
 ready by the time you test — follow
-[`worker-env`](../../../loop-dispatch/skills/worker-env/SKILL.md)'s own boot + wait +
+`worker-env`'s own boot + wait +
 test-running guidance exactly rather than re-typing it here.
 
 Then make the changes that resolve the feedback, **following the established MCP skills**
@@ -80,7 +80,7 @@ catch.
 
 ## Step 3 — review the rework with `mcp-review`
 
-Before pushing, run the **[`mcp-review`](../mcp-review/SKILL.md)** skill over your rework
+Before pushing, run the **`mcp-review`** skill over your rework
 diff — the faithful 5-lens code review + security scan. This session is top-level, so it
 can spawn mcp-review's independent review subagents (the reviewers didn't write the change,
 so it's a real review, not self-grading). Fix anything that survives its confidence

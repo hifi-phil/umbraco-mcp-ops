@@ -68,7 +68,7 @@ Step 3's recurrence threshold**; otherwise **hold** it rather than mis-filing
 Read the inbox (Config above). Each row's fields (`Category`, `Guessed Home`,
 etc.) follow the
 [proto-learning schema](../proto-learning-capture/references/proto-learning-schema.md)
-— see [`proto-learning-capture`](../proto-learning-capture/SKILL.md) for the capture
+— see `proto-learning-capture` for the capture
 half this inbox comes from. Keep each row's position (needed in Step 5 to update it). If
 the inbox is empty, report "nothing to triage" and stop.
 

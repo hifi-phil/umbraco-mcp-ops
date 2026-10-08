@@ -222,6 +222,7 @@ export class IssueCoordinator {
         await fireRoutine(this.env, owner, repo, issueNumber, routine, token);
       },
       workLogFor: (owner: string, repo: string, items: number[]) => logEntries.forItems(this.env.DB, owner, repo, items),
+      builtByLoop: (owner: string, repo: string, issues: number[]) => transitions.builtByLoop(this.env.DB, owner, repo, issues),
       logTransition: async (row: TransitionRow) => {
         await this.insertTransition(row);
       },

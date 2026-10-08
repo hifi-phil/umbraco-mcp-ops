@@ -72,6 +72,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     getPullDetails: vi.fn(async () => ({ headRef: "release/2.1.0", headSha: "abc1234def", baseRef: "main", defaultBranch: "main", merged: false })),
     mergePull: vi.fn(async () => {}),
     workLogFor: vi.fn(async () => []),
+    builtByLoop: vi.fn(async () => []),
     getShipped: vi.fn(async () => shipped),
     setShipped: vi.fn(async (s: Shipped) => {
       shipped = s;

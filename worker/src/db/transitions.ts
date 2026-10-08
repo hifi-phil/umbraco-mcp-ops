@@ -66,6 +66,22 @@ export async function lastActivityAt(db: D1Database, owner: string, repo: string
   return row?.at ?? null;
 }
 
+/** Which of these issues an orchestrated build finished (a logged
+ * build_succeeded): the ones whose PR should come with a work log. One
+ * indexed read (idx_transitions_issue_number). */
+export async function builtByLoop(db: D1Database, owner: string, repo: string, issues: number[]): Promise<number[]> {
+  if (issues.length === 0) return [];
+  const { results } = await db
+    .prepare(
+      `SELECT DISTINCT issue_number FROM transitions
+        WHERE issue_number IN (${issues.map(() => "?").join(", ")})
+          AND LOWER(owner) = LOWER(?) AND LOWER(repo) = LOWER(?) AND event = 'build_succeeded'`,
+    )
+    .bind(...issues, owner, repo)
+    .all<{ issue_number: number }>();
+  return results.map((r) => r.issue_number);
+}
+
 /** One issue's rows: oldest first (the e2e audit) or newest first (the
  * dashboard's log panel), at most `limit`. */
 export async function forIssue(

@@ -172,7 +172,7 @@ export const scenarios: Scenario[] = [
         );
         expect(log, `PR #${pr} work log`).toContain("### Build log (1)");
         expect(log, `PR #${pr} work log`).toContain("### Journal (1)");
-        expect(log, `PR #${pr} work log`).toContain(`Decided: one file per build (e2e #${issue}).`);
+        expect(log, `PR #${pr} work log`).toContain(`Decision: one file per build (e2e #${issue}).`);
 
         // A release containing the merge closes the issue. The release split:
         // before (the stub's agent approves), the merge (the orchestrator, as
