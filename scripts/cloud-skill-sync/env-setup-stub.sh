@@ -5,11 +5,13 @@
 # skills/agents/hooks and installs the credential-free heavy bits (.NET SDK, and — for a
 # SQL Server env — Docker + the mssql image). The demo-site itself is bootstrapped per
 # SESSION by run-umbraco.sh (env-build has no git creds for the private repo). All logic
-# lives in the repo (boot.sh -> env-setup.sh -> cloud-skill-sync.sh), edited via PRs —
-# you only re-paste THIS, and it's two lines.
+# lives in the repo (env-setup.sh -> cloud-skill-sync.sh), edited via PRs — you only
+# re-paste THIS, and it's two lines.
 #
-# THREE KINDS OF ENVIRONMENT — the last word on the curl line:
-#   skills     skills, agents, hooks and permissions only: no Umbraco.
+# THREE KINDS OF ENVIRONMENT:
+#   skills     skills, agents, hooks and permissions only (no Umbraco): end the line with
+#              `OPS_SRC=/tmp/ops bash /tmp/ops/scripts/cloud-skill-sync/cloud-skill-sync.sh`
+#              instead of env-setup.sh.
 #   sqlite     lean env: SDK + skills. Sessions run Umbraco on server-less SQLite.
 #   sqlserver  CI-parity env: also installs Docker + caches the mssql:2022 image (~2.3 GB)
 #              so sessions can run Umbraco on SQL Server exactly as GH Actions does.
@@ -19,6 +21,6 @@
 # itself when the repo script changes. Bump the number to re-pull.
 #
 # NOTE: owner is `hifi-phil` until the repo moves to the `umbraco` org (ops #40); after the
-#       move, change the URL here and in boot.sh to umbraco/umbraco-mcp-ops.
+#       move, change the clone URL to umbraco/umbraco-mcp-ops.
 # rebuild: 1
-curl -fsSL https://raw.githubusercontent.com/hifi-phil/umbraco-mcp-ops/main/scripts/cloud-skill-sync/boot.sh -o /tmp/boot.sh && bash /tmp/boot.sh sqlite   # or: sqlserver
+rm -rf /tmp/ops && git clone --depth 1 https://github.com/hifi-phil/umbraco-mcp-ops /tmp/ops && bash /tmp/ops/scripts/cloud-skill-sync/env-setup.sh --provider sqlite   # or: sqlserver

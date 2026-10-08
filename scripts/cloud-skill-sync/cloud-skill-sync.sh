@@ -2,8 +2,8 @@
 # cloud-skill-sync — deliver the Umbraco MCP ops skills AND agents to a Claude Code cloud env.
 #
 # Don't paste this into a cloud environment's Setup field: paste the two lines in
-# env-setup-stub.sh, which run it from a fresh clone (boot.sh `skills` for skills only,
-# or `sqlite`/`sqlserver` via env-setup.sh). It runs once when the environment builds,
+# env-setup-stub.sh, which clone the repo and run it from there (directly for a
+# skills-only environment, or through env-setup.sh). It runs once when the environment builds,
 # BEFORE the session starts, and copies:
 #   - the listed skills             → the session skills dir  ($HOME/.claude/skills)
 #   - every plugin agent definition → the session agents dir  ($HOME/.claude/agents)
