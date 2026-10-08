@@ -35,9 +35,9 @@ jobs:
           # Pinned, not `main`: repos still on this old caller-workflow pattern haven't
           # cut over to the Worker and still carry the pre-#218 label names. main's
           # route-event.sh moved on (label rename, PR #218) and no longer recognizes
-          # them. Pinned to 29d0ec4, the last commit before the orchestrator work
-          # (#109) started changing this path.
-          ref: 29d0ec4dabeef52f766d30ec6997bce9e92141b9
+          # them. Tag points at the last commit before the orchestrator work (#109)
+          # started changing this path.
+          ref: pin/loop-dispatch-pre-orchestrator
           path: ops
 
       - name: Decide the route (deterministic, at the edge)
