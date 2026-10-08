@@ -96,9 +96,9 @@ const CONFIGS = {
         wroteJournal: journal.length >= 2,
         streamingJournalled: journal.some((e) => oneOf(e.body, ["stream"])),
         timezoneJournalled: journal.some((e) => oneOf(e.body, ["utc", "timezone", "time zone"])),
-        usedTemplate: journal.length > 0 && journal.every((e) => /Decided:/i.test(e.body) && /Considered:/i.test(e.body)),
+        usedTemplate: journal.length > 0 && journal.every((e) => /Decision:/i.test(e.body) && /Options:/i.test(e.body)),
         triedFirstIsInThePath: journal.some((e) => oneOf(e.body, ["stream"]) && oneOf(e.body, ["memory"])),
-        noNoiseEntries: !journal.some((e) => /^Decided:[^\n]*(ran the tests|tocsvrow|37 passed)/i.test(e.body)),
+        noNoiseEntries: !journal.some((e) => /^Decision:[^\n]*(ran the tests|tocsvrow|37 passed)/i.test(e.body)),
         notTooMany: journal.length <= 3,
         onlyJournal: log.added.every((e) => e.kind === "journal"),
       };
@@ -109,9 +109,9 @@ const CONFIGS = {
     // Trying the cheapest tier: if this passes, the skill can spawn it on Haiku.
     model: "claude-haiku-4-5-20251001",
     seed: [
-      { kind: "journal", category: "judgment-call", body: "Decided: stream the CSV rows out as they're read.\nConsidered: building the whole CSV in memory first; the 50,000-submission test ran out of memory.\nWhy: exports can be large; streaming keeps memory flat.\nRejected: the in-memory build." },
-      { kind: "journal", category: "assumption", body: "Decided: submission dates written as UTC, said in the header.\nConsidered: the server's local time, UTC.\nWhy: the API returns UTC with no zone; the issue doesn't say.\nRejected: local time, which would differ by server." },
-      { kind: "journal", category: "judgment-call", body: "Decided: call the helper toCsvRow.\nConsidered: formatRow.\nWhy: matches the names around it.\nRejected: formatRow." },
+      { kind: "journal", category: "judgment-call", body: "Decision: stream the CSV rows out as they're read.\nOptions: building the whole CSV in memory first; the 50,000-submission test ran out of memory.\nRationale: exports can be large; streaming keeps memory flat.\nRejected: the in-memory build." },
+      { kind: "journal", category: "assumption", body: "Decision: submission dates written as UTC, said in the header.\nOptions: the server's local time, UTC.\nRationale: the API returns UTC with no zone; the issue doesn't say.\nRejected: local time, which would differ by server." },
+      { kind: "journal", category: "judgment-call", body: "Decision: call the helper toCsvRow.\nOptions: formatRow.\nRationale: matches the names around it.\nRejected: formatRow." },
     ],
     prompt: () =>
       "Issue #530, \"Export form submissions\". The build is done and mcp-review has passed. The journal " +

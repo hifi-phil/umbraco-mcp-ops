@@ -36,7 +36,7 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.record(None)
         self.answer(200, {"entries": [
-            {"id": 1, "created_at": "2026-10-07 10:00:00", "routine": "issue-build-loop", "kind": "journal", "category": "judgment-call", "body": "Decided: cursors."},
+            {"id": 1, "created_at": "2026-10-07 10:00:00", "routine": "issue-build-loop", "kind": "journal", "category": "judgment-call", "body": "Decision: cursors."},
             {"id": 3, "created_at": "2026-10-07 10:20:00", "routine": "issue-build-loop", "kind": "decision", "category": "judgment-call", "refs": [1], "body": "Cursors, not offsets."},
             {"id": 2, "created_at": "2026-10-07 10:30:00", "routine": "issue-build-loop", "kind": "build", "category": None, "body": "Commit: abc1234"}]})
     def log_message(self, *a): pass
@@ -61,10 +61,10 @@ last() {
 requests() { wc -l <"$SERVER_LOG" 2>/dev/null | tr -d ' '; }
 
 # 1. A journal entry: posted with its category and the bearer token.
-out="$(printf 'Decided: cursors.\nConsidered: offsets first.\nWhy: thousands of rows.\nRejected: offsets.' | run WORK_LOG_ENDPOINT="$ENDPOINT" bash "$SCRIPT" --token tok add journal judgment-call)"
+out="$(printf 'Decision: cursors.\nOptions: offsets first.\nRationale: thousands of rows.\nRejected: offsets.' | run WORK_LOG_ENDPOINT="$ENDPOINT" bash "$SCRIPT" --token tok add journal judgment-call)"
 check journal_logged "$out" "logged: journal (judgment-call) #7"
 last journal_shape '.method == "POST" and .path == "/log" and .auth == "Bearer tok"
-  and .body == {kind:"journal", category:"judgment-call", body:"Decided: cursors.\nConsidered: offsets first.\nWhy: thousands of rows.\nRejected: offsets."}'
+  and .body == {kind:"journal", category:"judgment-call", body:"Decision: cursors.\nOptions: offsets first.\nRationale: thousands of rows.\nRejected: offsets."}'
 
 # 1b. A decision: one line, with the journal entries behind it.
 out="$(echo 'Cursors, not offsets — offset callers need changing' | run WORK_LOG_ENDPOINT="$ENDPOINT" bash "$SCRIPT" --token tok add decision judgment-call --refs 7,9)"

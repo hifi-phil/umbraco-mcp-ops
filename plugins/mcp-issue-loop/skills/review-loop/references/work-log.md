@@ -9,7 +9,7 @@ Read the work log for the issue the PR closes and for the PR: the journal, and t
 list derived from it. Your findings are already formed, so the log can't talk you out of
 seeing something. Check each finding against the journal:
 - A finding that contradicts a journal entry becomes a **challenge** to it: say so in its
-  comment ("challenges journal #7 (judgment-call): …"), weighing its reason and the path
+  comment ("challenges journal #7 (judgment-call): …"), weighing its rationale and the options
   behind it. It still counts as a finding: `rework-loop` decides, with the reason in front
   of it.
 - A journal entry whose reason doesn't hold up is a finding too, even with no line to point

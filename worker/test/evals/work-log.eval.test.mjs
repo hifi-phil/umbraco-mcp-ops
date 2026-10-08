@@ -20,7 +20,7 @@ function expectAllChecksPassed(checks) {
 }
 
 const STEPS = [
-  ["journal", "the build subagent journals its choices, with the path, and not its routine steps"],
+  ["journal", "the build subagent records its design decisions (options, rationale), and not its routine steps"],
   ["decision-list", "a fresh subagent derives the decision list (refs), leaves out the trivial, flags the unjournalled"],
   ["build-entry", "the orchestrator's build entry: commit, tests, review, not verified"],
 ];
