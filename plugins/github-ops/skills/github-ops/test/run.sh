@@ -28,6 +28,12 @@ git -C "$R" commit -q --allow-empty -m one
 if bash "$SCRIPT" -C "$R" >/dev/null 2>&1 && [ "$(remote_sha fix/thing)" = "$(git -C "$R" rev-parse HEAD)" ]; then ok pushes_current_branch; else no pushes_current_branch "not on origin"; fi
 [ "$(git -C "$R" rev-parse --abbrev-ref '@{u}' 2>/dev/null)" = "origin/fix/thing" ] && ok sets_upstream || no sets_upstream "no upstream"
 
+# 1b. Success prints one line naming the branch, the remote branch and the short SHA.
+git -C "$R" commit -q --allow-empty -m one-b
+out="$(bash "$SCRIPT" -C "$R" 2>/dev/null | tail -n 1)"
+want="push-branch: pushed fix/thing -> origin/fix/thing at $(git -C "$R" rev-parse --short HEAD)"
+[ "$out" = "$want" ] && ok reports_pushed || no reports_pushed "got: $out"
+
 # 2. A later commit: pushed as a fast-forward.
 git -C "$R" commit -q --allow-empty -m two
 bash "$SCRIPT" -C "$R" >/dev/null 2>&1 && [ "$(remote_sha fix/thing)" = "$(git -C "$R" rev-parse HEAD)" ] && ok fast_forward || no fast_forward "second push failed"
@@ -35,7 +41,9 @@ bash "$SCRIPT" -C "$R" >/dev/null 2>&1 && [ "$(remote_sha fix/thing)" = "$(git -
 # 3. Diverged from origin (history rewritten): refused, origin untouched.
 before="$(remote_sha fix/thing)"
 git -C "$R" reset -q --hard HEAD~1 && git -C "$R" commit -q --allow-empty -m rewritten
-if bash "$SCRIPT" -C "$R" >/dev/null 2>&1; then no no_force "a diverged push went through"; else [ "$(remote_sha fix/thing)" = "$before" ] && ok no_force || no no_force "origin changed"; fi
+out="$(bash "$SCRIPT" -C "$R" 2>&1)"; code=$?
+if [ "$code" -eq 0 ]; then no no_force "a diverged push went through"; else [ "$(remote_sha fix/thing)" = "$before" ] && ok no_force || no no_force "origin changed"; fi
+[[ "$out" != *"pushed fix/thing"* ]] && ok no_report_on_failure || no no_report_on_failure "reported a push that failed"
 
 # 4. main and dev: refused, nothing sent.
 for b in main dev; do

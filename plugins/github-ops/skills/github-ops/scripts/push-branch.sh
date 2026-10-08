@@ -9,6 +9,7 @@
 #   push-branch.sh            push the current branch (sets its upstream)
 #   push-branch.sh -C <dir>   the same, for the repo at <dir>
 #
+# On success, prints one line: the branch, the remote branch and the short SHA pushed.
 # Exits non-zero, with the reason, on anything it won't do or when the push fails.
 set -uo pipefail
 
@@ -31,4 +32,7 @@ case "$BRANCH" in
 esac
 
 # Refuse rather than force: a branch that has diverged from its remote needs a person.
-exec git -C "$DIR" push --no-force-with-lease --set-upstream origin "refs/heads/$BRANCH:refs/heads/$BRANCH"
+git -C "$DIR" push --no-force-with-lease --set-upstream origin "refs/heads/$BRANCH:refs/heads/$BRANCH" || exit $?
+
+SHA="$(git -C "$DIR" rev-parse --short "refs/heads/$BRANCH")" || exit $?
+echo "push-branch: pushed $BRANCH -> origin/$BRANCH at $SHA"
