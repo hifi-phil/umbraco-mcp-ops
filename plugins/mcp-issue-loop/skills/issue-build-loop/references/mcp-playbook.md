@@ -129,7 +129,7 @@ green. If state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename th
 **Do not run `/security-review` or `/code-review` yourself** — see `SKILL.md`'s Rules for
 why they're inert in a subagent; a subagent grading its own code is weak anyway. You also
 do **not** drive CI — once you return, **the orchestrator** runs the
-[`mcp-review`](../../mcp-review/SKILL.md) skill over the PR, handing you back any surviving
+`mcp-review` skill over the PR, handing you back any surviving
 findings to fix in this worktree. CI is watched later, after the PR goes to `ai-reviewing`.
 Just build well and return; don't claim a review ran or that CI is green.
 

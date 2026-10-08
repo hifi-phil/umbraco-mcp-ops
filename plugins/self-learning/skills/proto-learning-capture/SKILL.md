@@ -18,7 +18,7 @@ description: >-
 
 The **capture half** of the self-learning system — hook-driven, not run on
 demand. The mechanism (hooks, analyzer prompts) lives in
-[`../../hooks/`](../../hooks/); see [`triage-learnings`](../triage-learnings/SKILL.md)
+[`../../hooks/`](../../hooks/); see `triage-learnings`
 for the **triage half**, run weekly.
 
 ## What happens

@@ -15,7 +15,7 @@ there's nothing extra to add over local mode: resolve the repo's shape as in `SK
 directly in the session's checkout (content repos have no worktree hooks to lose either
 way), then review and hand off per step 3 below — that step is shape-agnostic.
 
-**Know the environment first.** Before triaging, consult the **[`worker-env`](../../../../loop-dispatch/skills/worker-env/SKILL.md)** skill
+**Know the environment first.** Before triaging, consult the **`worker-env`** skill
 (`cat /root/env-manifest.md`) — it tells you what this cloud worker provides (.NET SDK,
 whether SQL Server is available, the ops `run-umbraco.sh`). Cloud sessions **do** get a
 local Umbraco now: the build subagent boots one and runs a real local test gate (below) —
@@ -40,7 +40,7 @@ open `ai-ready` issue; none → quiet no-op):
    with two substitutions for playbook steps 1 and 4:
    - **Instead of the worktree (playbook step 1):** work directly in the session checkout.
    - **Instead of `npm run start:umbraco` + `npm run test:all` (playbook step 4):** bring up
-     a local Umbraco via the **[`worker-env`](../../../../loop-dispatch/skills/worker-env/SKILL.md)**
+     a local Umbraco via the **`worker-env`**
      skill and run a local test gate **on SQL Server**. As your **first action** (so Umbraco
      boots while you implement — first boot runs the unattended install, ~1–2 min):
      ```

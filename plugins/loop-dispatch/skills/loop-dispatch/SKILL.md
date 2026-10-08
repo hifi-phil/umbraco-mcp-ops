@@ -126,5 +126,5 @@ loop skill directly.)
 ## Wiring it
 
 To stand up the one routine per repo, use the
-[`new-loop-routine`](../new-loop-routine/SKILL.md) skill — it owns the standardised
+`new-loop-routine` skill — it owns the standardised
 config, the locked prompt template, and the event-wiring steps.

@@ -116,7 +116,7 @@ Triage the issue's scope and pass the fitting tier as the Agent `model`.
 Track each subagent's returned report (shape per `mcp-playbook.md` step 7).
 A build subagent's job is done when its PR is open — it does not poll CI or block on it.
 
-**Review it with [`mcp-review`](../mcp-review/SKILL.md), here on the orchestrator/main
+**Review it with `mcp-review`, here on the orchestrator/main
 thread.** Once a subagent returns an open PR, run `mcp-review` over it. **The build subagent
 does not review its own code**: running the review at the orchestrator level is what makes
 it independent. If it raises findings, fix them (re-dispatch into that worktree, or fix
@@ -132,7 +132,7 @@ yours, the decision list by a fresh subagent, and the build entry, as
 **Then hand the PR to review and stop.** Add `ai-reviewing` to the PR (github-ops → *Add /
 remove a label*), and comment the PR link on the triggering issue. The build doesn't drive
 CI or wait for it: the orchestrator watches CI, sends red CI to `rework-loop`, and fires
-[`review-loop`](../review-loop/SKILL.md), a second, independent review on a stronger model,
+`review-loop`, a second, independent review on a stronger model,
 once it's green (`docs/agent-orchestration/15-agent-splits.md`).
 
 **Mark the outcome** in that same comment, the one place the modes differ:
@@ -157,7 +157,7 @@ has been through `mcp-review` and handed to `ai-reviewing` (or its issue is bloc
 
 Once an issue has a PR that `mcp-review` passed, handed to `ai-reviewing`, it's **done in
 this loop**.
-**Human reviews are actioned by [`rework-loop`](../rework-loop/SKILL.md), not this one.** Do
+**Human reviews are actioned by `rework-loop`, not this one.** Do
 not watch for the human's review, respond to change-requests, or merge:
 
 - **Human change-requests** → the reviewer leaves comments and adds the `auto-reworking` label,
