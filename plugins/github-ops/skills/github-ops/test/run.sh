@@ -28,6 +28,12 @@ git -C "$R" commit -q --allow-empty -m one
 if bash "$SCRIPT" -C "$R" >/dev/null 2>&1 && [ "$(remote_sha fix/thing)" = "$(git -C "$R" rev-parse HEAD)" ]; then ok pushes_current_branch; else no pushes_current_branch "not on origin"; fi
 [ "$(git -C "$R" rev-parse --abbrev-ref '@{u}' 2>/dev/null)" = "origin/fix/thing" ] && ok sets_upstream || no sets_upstream "no upstream"
 
+# 1b. On success, one line says what was pushed: branch, remote branch, short SHA.
+git -C "$R" commit -q --allow-empty -m one-b
+out="$(bash "$SCRIPT" -C "$R" 2>/dev/null)"; code=$?
+want="push-branch: pushed fix/thing -> origin/fix/thing at $(git -C "$R" rev-parse --short HEAD)"
+[ "$code" -eq 0 ] && [ "$(printf '%s\n' "$out" | grep -c '^push-branch: pushed ')" -eq 1 ] && [[ "$out" == *"$want" ]] && ok says_what_pushed || no says_what_pushed "code=$code out=$out"
+
 # 2. A later commit: pushed as a fast-forward.
 git -C "$R" commit -q --allow-empty -m two
 bash "$SCRIPT" -C "$R" >/dev/null 2>&1 && [ "$(remote_sha fix/thing)" = "$(git -C "$R" rev-parse HEAD)" ] && ok fast_forward || no fast_forward "second push failed"
@@ -36,6 +42,12 @@ bash "$SCRIPT" -C "$R" >/dev/null 2>&1 && [ "$(remote_sha fix/thing)" = "$(git -
 before="$(remote_sha fix/thing)"
 git -C "$R" reset -q --hard HEAD~1 && git -C "$R" commit -q --allow-empty -m rewritten
 if bash "$SCRIPT" -C "$R" >/dev/null 2>&1; then no no_force "a diverged push went through"; else [ "$(remote_sha fix/thing)" = "$before" ] && ok no_force || no no_force "origin changed"; fi
+
+# 3b. A failed push (origin gone): non-zero, a reason, and no "pushed" line.
+mv "$WORK/origin.git" "$WORK/origin.gone"
+out="$(bash "$SCRIPT" -C "$R" 2>&1)"; code=$?
+mv "$WORK/origin.gone" "$WORK/origin.git"
+[ "$code" -ne 0 ] && [[ "$out" == *"failed"* ]] && [[ "$out" != *"pushed fix/thing"* ]] && ok failed_push_reports || no failed_push_reports "code=$code out=$out"
 
 # 4. main and dev: refused, nothing sent.
 for b in main dev; do
