@@ -244,6 +244,9 @@ export type Deps = {
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;
+  // Whether the watchdog may re-fire a run that never reported a step, for
+  // this issue's repo (its WATCHDOG_OVERRIDES_JSON `retry`; off by default).
+  watchdogRetry: boolean;
   // The live-status row (StatusUpdate). Never throws: a failed write is
   // logged and the transition goes on.
   recordStatus(ref: IssueRef, update: StatusUpdate): Promise<void>;
@@ -326,7 +329,10 @@ export function watchdogMinutesFor(routine: string): number {
  * `minutes` shortens every routine's timeout so a scenario can watch an
  * expiry happen. Unset or `{}` means no overrides.
  */
-export type WatchdogOverride = { mode?: string; minutes?: number };
+// retry: the watchdog's one re-fire of a run that never reported a step
+// (watchdog.ts). Off unless a repo sets it: it relies on heartbeats, and a
+// repo whose routines don't send them would have every quiet run re-fired.
+export type WatchdogOverride = { mode?: string; minutes?: number; retry?: boolean };
 
 export function watchdogOverrideFor(
   raw: string | undefined,

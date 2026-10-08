@@ -122,12 +122,14 @@ resource "cloudflare_workers_script" "worker" {
     { type = "plain_text", name = "MODE", text = var.mode },
     { type = "plain_text", name = "WATCHDOG", text = var.watchdog },
     # The sandbox's own watchdog: real, with a short timeout a scenario can
-    # wait out. Every other repo keeps `watchdog` and the default minutes.
+    # wait out, and the one retry of a run that never reported a step (the
+    # e2e suite tests it). Every other repo keeps `watchdog`, the default
+    # minutes and no retry, until its routines are known to send heartbeats.
     {
       type = "plain_text",
       name = "WATCHDOG_OVERRIDES_JSON",
       text = jsonencode(local.e2e ? {
-        "${var.github_owner}/${var.e2e_repo}" = { mode = "enforce", minutes = var.e2e_watchdog_minutes }
+        "${var.github_owner}/${var.e2e_repo}" = { mode = "enforce", minutes = var.e2e_watchdog_minutes, retry = true }
       } : {}),
     },
     # The sandbox's CI-fix and review-round caps, so its cap scenarios run

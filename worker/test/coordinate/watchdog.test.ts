@@ -119,8 +119,15 @@ describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
 describe("coordinateWatchdogExpired — the one retry of a run that never started", () => {
   const silent: PendingFire = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.ISSUE_BUILD_LOOP };
 
-  it("a first expiry with no step ever reported -> fired once more, watched again and marked retried; labels untouched", async () => {
+  it("off unless the repo turns it on (no heartbeats, no way to tell 'never started' from 'went quiet'): straight to stuck", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await deps.setPendingFire(silent);
+    expect(await coordinateWatchdogExpired(deps)).toMatchObject({ outcome: "applied", event: EVENTS.WATCHDOG_EXPIRED });
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("a first expiry with no step ever reported -> fired once more, watched again and marked retried; labels untouched", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), watchdogRetry: true });
     await deps.setPendingFire(silent);
     expect(await coordinateWatchdogExpired(deps)).toEqual({ outcome: "retried", run: ROUTINES.ISSUE_BUILD_LOOP });
     expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.ISSUE_BUILD_LOOP);
@@ -132,7 +139,7 @@ describe("coordinateWatchdogExpired — the one retry of a run that never starte
   });
 
   it(`then a second silent expiry -> ${LABELS.AI_STUCK}, as before`, async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), watchdogRetry: true });
     await deps.setPendingFire(silent);
     await coordinateWatchdogExpired(deps);
     expect(await coordinateWatchdogExpired(deps)).toMatchObject({ outcome: "applied", event: EVENTS.WATCHDOG_EXPIRED });
@@ -141,14 +148,14 @@ describe("coordinateWatchdogExpired — the one retry of a run that never starte
   });
 
   it(`a run that reported progress is never retried (it may have pushed half its work): ${LABELS.AI_STUCK}, for a person`, async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), watchdogRetry: true });
     await deps.setPendingFire({ ...silent, lastStep: "Bash: run the tests", lastStepAt: "2026-10-08T10:00:00Z" });
     expect(await coordinateWatchdogExpired(deps)).toMatchObject({ outcome: "applied", event: EVENTS.WATCHDOG_EXPIRED });
     expect(deps.fireRoutine).not.toHaveBeenCalled();
   });
 
   it("a heartbeat after the retry keeps it marked retried", async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), watchdogRetry: true });
     await deps.setPendingFire(silent);
     await coordinateWatchdogExpired(deps);
     const p = (await deps.getPendingFire())!;
@@ -157,18 +164,18 @@ describe("coordinateWatchdogExpired — the one retry of a run that never starte
   });
 
   it("shadow watchdog, or labels with no expiry rule (a person moved it on): no retry", async () => {
-    const shadow = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), enforced: () => false });
+    const shadow = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), enforced: () => false, watchdogRetry: true });
     await shadow.setPendingFire(silent);
     await coordinateWatchdogExpired(shadow);
     expect(shadow.fireRoutine).not.toHaveBeenCalled();
-    const moved = fakeDeps({ getLabels: vi.fn(async () => [LABELS.PR_OPEN]) });
+    const moved = fakeDeps({ getLabels: vi.fn(async () => [LABELS.PR_OPEN]), watchdogRetry: true });
     await moved.setPendingFire(silent);
     expect(await coordinateWatchdogExpired(moved)).not.toMatchObject({ outcome: "retried" });
     expect(moved.fireRoutine).not.toHaveBeenCalled();
   });
 
   it(`the re-fire itself refused -> the expiry carries on to ${LABELS.AI_STUCK}`, async () => {
-    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), fireRoutine: vi.fn(async () => Promise.reject(new Error("503"))) });
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), fireRoutine: vi.fn(async () => Promise.reject(new Error("503"))), watchdogRetry: true });
     await deps.setPendingFire(silent);
     expect(await coordinateWatchdogExpired(deps)).toMatchObject({ outcome: "applied", event: EVENTS.WATCHDOG_EXPIRED });
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);

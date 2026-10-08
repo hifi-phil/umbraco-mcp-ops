@@ -189,6 +189,7 @@ export class IssueCoordinator {
     return {
       enforced: resolveEnforced(this.env.MODE, override?.mode ?? this.env.WATCHDOG),
       watchdogMinutes,
+      watchdogRetry: override?.retry === true,
       caps: ref ? capsFor(this.env.CAP_OVERRIDES_JSON, ref.owner, ref.repo) : DEFAULT_CAPS,
       botLogin: async () => (appConfigured(this.env) ? appBotLogin(this.env) : null),
       markCompleted: async (at: string) => {

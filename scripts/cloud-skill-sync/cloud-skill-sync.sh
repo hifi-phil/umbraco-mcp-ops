@@ -30,7 +30,7 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="33"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="34"                                  # bump to force an env-cache rebuild / re-clone
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
@@ -140,6 +140,38 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
       fi
     else
       echo "NOT FOUND in source: self-learning hooks"
+    fi
+    # The heartbeat hook: agent-outcomes' report-completion.sh, on PostToolUse. It tells
+    # the Worker the run is alive and what step it's on (pushing its watchdog back, and
+    # what an expiry quotes), and signals completion when an outcome is posted. Without
+    # it a routine never reports a step, so the Worker can't tell a run that never
+    # started from one that went quiet. It sends only when the environment sets
+    # AGENT_OUTCOMES_ENDPOINT and AGENT_OUTCOMES_TOKEN; otherwise it only logs.
+    ao="$(find "$OPS_DIR/plugins" -maxdepth 1 -type d -name agent-outcomes 2>/dev/null | head -1)"
+    if [ -n "$ao" ] && [ -f "$ao/hooks/report-completion.sh" ]; then
+      AO_HOOKS="$HOME/.claude/agent-outcomes-hooks"
+      rm -rf "$AO_HOOKS"; mkdir -p "$AO_HOOKS"
+      cp "$ao/hooks/report-completion.sh" "$AO_HOOKS/"; chmod +x "$AO_HOOKS/report-completion.sh"
+      if command -v jq >/dev/null 2>&1; then
+        [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+        cmd="bash $AO_HOOKS/report-completion.sh"
+        tmp="$(mktemp)"
+        if jq --arg cmd "$cmd" '
+              .hooks = (.hooks // {})
+              | .hooks.PostToolUse = (.hooks.PostToolUse // [])
+              | if any(.hooks.PostToolUse[]?; any(.hooks[]?; .command == $cmd)) then .
+                else .hooks.PostToolUse += [ {"hooks": [ {"type":"command","command":$cmd,"async":true} ]} ] end
+            ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
+          mv "$tmp" "$SETTINGS"; echo "registered hook: PostToolUse -> report-completion (heartbeats)"
+        else
+          rm -f "$tmp"; echo "WARN: could not register the heartbeat hook (jq merge failed)"
+        fi
+      else
+        echo "WARN: jq missing — heartbeat hook copied but NOT registered"
+      fi
+      [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] || echo "NOTE: AGENT_OUTCOMES_ENDPOINT isn't set in this environment: the heartbeat hook will only log"
+    else
+      echo "NOT FOUND in source: agent-outcomes hook"
     fi
   else
     echo "ERROR: no source available (clone failed: $REPO, and no OPS_SRC provided)"
