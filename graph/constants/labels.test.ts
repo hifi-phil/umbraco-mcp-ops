@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ALL_LABELS, LABELS } from "./labels";
 
 describe("LABELS — the absolute list", () => {
-  it("has exactly the eleven tracked labels, none blank or duplicated", () => {
-    expect(ALL_LABELS).toHaveLength(11);
-    expect(new Set(ALL_LABELS).size).toBe(11);
+  it("has exactly the twelve tracked labels, none blank or duplicated", () => {
+    expect(ALL_LABELS).toHaveLength(12);
+    expect(new Set(ALL_LABELS).size).toBe(12);
     expect(ALL_LABELS.every((l) => l.length > 0)).toBe(true);
   });
 
