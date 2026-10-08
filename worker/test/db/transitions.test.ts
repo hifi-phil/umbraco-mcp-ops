@@ -81,3 +81,29 @@ describe("db/transitions — the log, against real SQLite", () => {
     expect(log.join(" ")).not.toMatch(/SCAN transitions(?! USING)/);
   });
 });
+
+describe("db/transitions.builtByLoop — the issues an orchestrated build finished", () => {
+  it("only those with a logged build_succeeded, in that repo, any spelling of it", async () => {
+    const db = testDb();
+    const row = (issueNumber: number, event: string, repo = "umbraco-mcp-ops") =>
+      transitions.insert(db, {
+        deliveryId: null, owner: "Hifi-Phil", repo, issueNumber, fromState: "none", event,
+        toEffect: null, run: null, droppedReason: null, mode: "enforce", actor: null,
+      });
+    await row(12, "labelled_ai_ready");
+    await row(12, "build_succeeded");
+    await row(13, "build_blocked");
+    await row(14, "build_succeeded", "other-repo");
+    expect(await transitions.builtByLoop(db, "hifi-phil", "Umbraco-MCP-Ops", [12, 13, 14])).toEqual([12]);
+    expect(await transitions.builtByLoop(db, "hifi-phil", "umbraco-mcp-ops", [])).toEqual([]);
+  });
+
+  it("reads through the issue_number index, not a scan", () => {
+    const db = testDb();
+    const plan = db.queryPlan(
+      `SELECT DISTINCT issue_number FROM transitions WHERE issue_number IN (?, ?) AND LOWER(owner) = LOWER(?) AND LOWER(repo) = LOWER(?) AND event = 'build_succeeded'`,
+      12, 13, "o", "r",
+    );
+    expect(plan.join(" ")).toMatch(/idx_transitions_issue_number|idx_transitions_issue/);
+  });
+});
