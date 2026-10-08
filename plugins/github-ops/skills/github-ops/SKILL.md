@@ -86,7 +86,8 @@ These are policy, not mechanism — they apply whichever reference you use:
 
 - **Never merge without green CI + approval** (poll status; don't rely on an
   auto-merge that bypasses the gate). See `merge-flow`.
-- **Never force-push; never edit a protected branch directly.**
+- **Never force-push; never edit a protected branch directly.** `push-branch.sh` enforces
+  both for the one push a loop makes.
 - Branch model / base branch is **detected via `release-and-branching`**, not assumed.
 
 ## File edits: check for a working tree first
@@ -96,9 +97,11 @@ inside a checked-out clone with node/npm installed. Before editing repo files, r
 `git rev-parse --show-toplevel` (or `git status`) to check.
 
 - **Working tree exists (on either path):** edit locally and use the native tooling
-  (`npm version`, `npm install --package-lock-only`, formatters, tests). Commit and
-  `git push` from there. If the push is refused (no auth), push the edited files with
-  the MCP `push_files` tool instead.
+  (`npm version`, `npm install --package-lock-only`, formatters, tests). Commit, then push
+  the branch with **`bash ~/.claude/skills/github-ops/scripts/push-branch.sh`** (`-C <dir>` for another repo): it pushes the
+  current branch only, never forces, and refuses `main`/`dev`. In a routine it's the only
+  push allowed to run without asking, so use it there rather than `git push`. If the push
+  is refused (no auth), push the edited files with the MCP `push_files` tool instead.
 - **No working tree:** use the MCP content API (`get_file_contents` /
   `create_or_update_file` / `push_files`). This only works for small files. A token-limit
   error on `get_file_contents` (lockfiles, generated code) means stop and re-check the

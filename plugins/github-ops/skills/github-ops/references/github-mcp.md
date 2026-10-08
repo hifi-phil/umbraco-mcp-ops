@@ -85,5 +85,5 @@ Defer to `release-and-branching` for gitflow vs main-only. To inspect: `list_bra
   routine leaving a merged branch behind is expected, not a bug.
 - **No `gh`:** `gh` isn't installed here, so GitHub *API* operations (issues, PRs,
   merges, CI) all go through `mcp__github__*`. **`git` is separate:** if a clone exists,
-  local git works for edits and commits. Try `git push`, and fall back to `push_files`
-  only if the push is refused.
+  local git works for edits and commits. Push with `bash ~/.claude/skills/github-ops/scripts/push-branch.sh`, and fall back
+  to `push_files` only if the push is refused.

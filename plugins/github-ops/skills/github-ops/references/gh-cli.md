@@ -43,14 +43,14 @@ Locally you have a working tree — do it with `git`, then open the PR with `gh`
 git clone https://github.com/<repo> && cd <name>
 git checkout -b chore/<slug>
 # …edit files…
-git commit -am "<msg>" && git push -u origin chore/<slug>
+git commit -am "<msg>" && bash ~/.claude/skills/github-ops/scripts/push-branch.sh
 gh pr create --base <base> --head chore/<slug> --title "<t>" --body "<b>"
 ```
 
 | Operation | Command |
 |-----------|---------|
-| Create branch | `git checkout -b <branch>` (then `git push -u origin <branch>`) |
-| Create / update / push file(s) | edit in the working tree → `git add` → `git commit` → `git push` |
+| Create branch | `git checkout -b <branch>` (then `bash ~/.claude/skills/github-ops/scripts/push-branch.sh`) |
+| Create / update / push file(s) | edit in the working tree → `git add` → `git commit` → `bash ~/.claude/skills/github-ops/scripts/push-branch.sh` (the current branch only; no force) |
 | Get file contents | `git show <ref>:<path>` (or just read the file in the clone) |
 | **List branches (name + protection)** | `gh api repos/<repo>/branches --paginate --jq '.[] \| {name, protected, sha: .commit.sha}'` |
 | **Get repo metadata** (`default_branch`, `delete_branch_on_merge`, `archived`) | `gh api repos/<repo> --jq '{default_branch, delete_branch_on_merge, archived}'` |
