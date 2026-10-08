@@ -44,11 +44,15 @@ export const LABELS = {
   // release. Set from the PR's "Closes #N" when it merges; the release that
   // contains the merge closes the issue.
   READY_FOR_RELEASE: "ready-for-release",
+  // A PR the review passed, waiting for a person: they approve the merge
+  // (LABELS.AUTO_MERGING), ask for changes (LABELS.AUTO_REWORKING) or run the
+  // review again (LABELS.AI_REVIEWING), and the label comes off.
+  READY_FOR_REVIEW: "ready-for-review",
 } as const;
 
 export type Label = (typeof LABELS)[keyof typeof LABELS];
 
-/** Same eleven values as LABELS, as an array — for anything that needs to
+/** Same twelve values as LABELS, as an array — for anything that needs to
  * iterate all of them (a dashboard, a check against a live repo's actual
  * label set, a "does this string name a tracked label" guard). */
 export const ALL_LABELS: readonly Label[] = Object.values(LABELS);

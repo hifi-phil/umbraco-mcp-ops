@@ -68,6 +68,9 @@ export type PendingFire = {
   // watchdog alarm that started before a newer fire (or heartbeat) replaced
   // this one finds it not yet due, and leaves it to that fire's own alarm.
   dueAt?: number;
+  // Set when the watchdog has already fired this run once more (watchdog.ts):
+  // a second silent expiry goes to LABELS.AI_STUCK. A new fire starts clean.
+  retried?: boolean;
 };
 
 // returnTo: where the fix's push goes back to, LABELS.AUTO_MERGING (the default) or

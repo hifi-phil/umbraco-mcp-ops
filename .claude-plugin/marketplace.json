@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Cross-repo ops tooling and autonomous workflows for the Umbraco MCP repos — issue automation, branch housekeeping, and the self-learning loop that feeds improvements back into the repos and shared skills.",
-    "version": "2.2.4",
+    "version": "2.3.0",
     "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops"
   },
   "plugins": [
@@ -130,7 +130,7 @@
       "name": "github-ops",
       "source": "./plugins/github-ops",
       "description": "Shared reference for GitHub operations in both environments — gh CLI + git locally, the GitHub MCP server (mcp__github__*) on Claude web / in routines. One operation catalog, two reference files; the loop plugins point here instead of each re-explaining the dual path.",
-      "version": "1.4.1",
+      "version": "1.5.0",
       "category": "workflow",
       "author": {
         "name": "Phil W",

@@ -13,6 +13,7 @@ import {
   type ActivityRow,
   type Filters,
   type ItemRow,
+  tone,
 } from "../../src/dashboard/model";
 import type { StatusRow } from "../../src/db/issue-status";
 import { LABELS } from "@orchestrator/graph/constants/labels";
@@ -137,5 +138,12 @@ describe("formatting", () => {
     expect(actorLabel("umbraco-agent-orchestrator[bot]")).toEqual({ text: "umbraco-agent-orchestrator[bot]", person: false });
     expect(actorLabel("hifi-phil")).toEqual({ text: "hifi-phil", person: true });
     expect(actorLabel(null)).toBeNull();
+  });
+});
+
+describe("tone: what each state looks like", () => {
+  it(`${LABELS.READY_FOR_REVIEW} waits for a person, like ${LABELS.AI_BLOCKED}: a warning, so it shows under "needs attention"`, () => {
+    expect(tone(LABELS.READY_FOR_REVIEW)).toBe("warning");
+    expect(tone(LABELS.AI_BLOCKED)).toBe("warning");
   });
 });

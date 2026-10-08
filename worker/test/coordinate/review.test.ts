@@ -178,14 +178,23 @@ describe("review-loop's verdicts", () => {
     expect(d.commentOnIssue).toHaveBeenCalledWith(OWNER, REPO, PR, expect.stringMatching(/asked for changes 3 times/));
   });
 
-  it(`pass: ${LABELS.AI_REVIEWING} comes off, and the counts reset for the next stage`, async () => {
+  it(`pass: ${LABELS.AI_REVIEWING} swapped for ${LABELS.READY_FOR_REVIEW}, and the counts reset for the next stage`, async () => {
     const d = deps([LABELS.AI_REVIEWING]);
     await d.setReviewLoop({ botRounds: 2, fixPending: false });
     await d.setCiFix({ attempts: 2, pending: false, returnTo: LABELS.AI_REVIEWING });
     expect(await coordinateWebhook(d, verdict({ outcome: "review_passed" }))).toMatchObject({ event: EVENTS.REVIEW_PASSED });
     expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_REVIEWING);
+    expect(d.addLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.READY_FOR_REVIEW);
+    expect(d.fireRoutine).not.toHaveBeenCalled();
     expect(await d.getReviewLoop()).toBeNull();
     expect(await d.getCiFix()).toBeNull();
+  });
+
+  it(`then a person approves: ${LABELS.READY_FOR_REVIEW} swapped for ${LABELS.AUTO_MERGING}, merge-flow fired`, async () => {
+    const d = deps([LABELS.READY_FOR_REVIEW, LABELS.AUTO_MERGING]);
+    expect(await coordinateWebhook(d, labelled(LABELS.AUTO_MERGING))).toMatchObject({ event: EVENTS.LABELLED_AUTO_MERGING });
+    expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.READY_FOR_REVIEW);
+    expect(d.fireRoutine).toHaveBeenCalledWith(OWNER, REPO, PR, ROUTINES.MERGE_FLOW);
   });
 
   it(`block: ${LABELS.AI_BLOCKED}, nothing fired, waits for a person`, async () => {
