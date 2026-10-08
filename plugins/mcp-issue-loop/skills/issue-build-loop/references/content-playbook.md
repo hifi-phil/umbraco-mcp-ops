@@ -26,7 +26,7 @@ the per-issue prompt substituted into each build subagent, in place of the MCP s
 4. **Review is the orchestrator's job — don't do it.** Don't run
    `/security-review` / `/code-review` — see `SKILL.md`'s Rules for why they can't run
    in a subagent. After you return an open PR, the orchestrator runs
-   [`mcp-review`](../../mcp-review/SKILL.md) over it and hands back any findings. For a
+   `mcp-review` over it and hands back any findings. For a
    pure-prose change the review will find little — that's fine.
 5. **Commit, push, open the PR** against the base branch (detect via
    `release-and-branching` — never assume it; these repos don't share one model).

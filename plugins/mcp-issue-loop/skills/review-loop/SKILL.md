@@ -38,7 +38,7 @@ and confirm it is **open** and still carries `ai-reviewing`; if not, quiet no-op
 ## Step 2 — review
 
 **The reviewer.** If the repo's `CLAUDE.md` names a reviewer skill (under a *Review*
-section), use that one. Otherwise use [`mcp-review`](../mcp-review/SKILL.md), which fits
+section), use that one. Otherwise use `mcp-review`, which fits
 both repo shapes: it picks its reviewer agents from what changed.
 
 Run it in **report-only mode**: its steps 1–4 (resolve the change, select the agents, spawn
