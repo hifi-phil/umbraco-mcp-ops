@@ -5,8 +5,9 @@ Only when the dispatch passed a `log_token`. Load the `work-log` skill: it has t
 
 ## Reading it (Step 2, after your findings are formed)
 
-Read the work log for the issue the PR closes and for the PR: the journal, and the decision
-list derived from it. Your findings are already formed, so the log can't talk you out of
+Make **two reads**: `read <issue>` for the issue the PR closes (its `Closes #N`) and
+`read <PR>` for the PR. The build writes its journal, decision list and build entry on the
+**issue**, so reading the PR alone misses them. Your findings are already formed, so the log can't talk you out of
 seeing something. Check each finding against the journal:
 - A finding that contradicts a journal entry becomes a **challenge** to it: say so in its
   comment ("challenges journal #7 (judgment-call): …"), weighing its rationale and the options
@@ -26,7 +27,7 @@ entries were challenged, and which you relied on to drop or shape a finding
 
 ## Decisions to check (Step 4, on a pass)
 
-Add a **Decisions to check** section to the end of the PR's description (github-ops →
+Always, on a pass with a `log_token`, even when the log has no decisions. Add a **Decisions to check** section to the end of the PR's description (github-ops →
 *Update a PR's body*; replace the section if one is already there). It's for the person who
 reviews next, in the style of `decision-review`, built from the decision list (plus any
 choice you noted that the list left out):
