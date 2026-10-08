@@ -8,7 +8,8 @@
 # lives in the repo (boot.sh -> env-setup.sh -> cloud-skill-sync.sh), edited via PRs —
 # you only re-paste THIS, and it's two lines.
 #
-# TWO ENVIRONMENTS — the last word on the curl line:
+# THREE KINDS OF ENVIRONMENT — the last word on the curl line:
+#   skills     skills, agents, hooks and permissions only: no Umbraco.
 #   sqlite     lean env: SDK + skills. Sessions run Umbraco on server-less SQLite.
 #   sqlserver  CI-parity env: also installs Docker + caches the mssql:2022 image (~2.3 GB)
 #              so sessions can run Umbraco on SQL Server exactly as GH Actions does.
