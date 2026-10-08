@@ -6,7 +6,7 @@ templates, the categories and the `log-entry.sh` calls. A failed write never sto
 1. **The build subagent's journal.** Add this to its prompt, after the playbook (the one
    place it's said, for both playbooks): "Load the `work-log` skill. `log_token=<the token>`.
    Write a **journal** entry each time you choose how to do something, as you choose, with
-   the path you took, and report their ids when you return. Not the decision list or the
+   the options and rationale, and report their ids when you return. Not the decision list or the
    build entry: the orchestrator writes those."
 2. **Your own journal.** Write journal entries for the choices you make here too, as you make
    them (how you resolved an `mcp-review` finding the reviewers disagreed on, say).

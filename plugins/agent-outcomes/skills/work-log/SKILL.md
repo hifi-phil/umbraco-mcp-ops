@@ -2,7 +2,7 @@
 name: work-log
 description: >-
   How a loop records its work in the agent-orchestration work log: a journal of how it
-  decided to do things (each choice, written when it's made, with the path it took), the
+  made its design decisions (a record of each, written when it's made), the
   decision list derived from it at the end (one line per choice a person should know
   about), and a build entry of what it verified. When to write each, templates, the four
   categories, good and bad examples, what never goes in an entry, and the log-entry.sh
@@ -19,11 +19,11 @@ umbraco-mcp-ops):
 
 | Kind | What | When |
 |---|---|---|
-| **journal** | How you decided to do something, and the path you took: what you considered, what you tried, why you went this way | Each time you choose, as you choose |
+| **journal** | A decision record for each design decision: the decision, the options considered, the rationale, what was rejected | Each time you choose, as you choose |
 | **decision** | One line per choice a person should know about, derived from the journal by a fresh subagent, pointing back to it | Once, at the end of the run |
 | **build** | What the run did and checked | Once, at the end of the run |
 
-The journal is the reasoning: a rework reads it so it doesn't undo a deliberate choice, and
+The journal is the rationale behind the change: a rework reads it so it doesn't undo a deliberate choice, and
 the review reads it to challenge one. The decision list is what a person reads first: the
 PR description's *Decisions to check* is built from it, with the journal behind each item
 for when the one line isn't enough to judge it. The build entry is the evidence.
@@ -43,7 +43,7 @@ Every journal entry and every decision has exactly one:
 
 **Write one** each time you choose how to do something: between approaches, after trying
 one that didn't work, when you assume something, depart from the issue or a convention, or
-work around a problem. Write it then, not at the end from memory: by then the path is gone,
+work around a problem. Write it then, not at the end from memory: by then the details are gone,
 and what's left is a justification.
 
 **Don't write one** for a step with no real alternative (ran the tests, opened the PR, used
@@ -53,37 +53,37 @@ made; logging steps anyone would have taken the same way buries the ones that ma
 **Template** (the body):
 
 ```
-Decided: <what, one line>
-Considered: <the options you weighed, and what you tried first and how it went>
-Why: <why this one, tied to the code, a test, the issue or a convention>
+Decision: <what, one line>
+Options: <the options considered, including an approach tried first and why it was dropped>
+Rationale: <why this one, tied to the code, a test, the issue or a convention>
 Rejected: <what you didn't do, and why not>
 ```
 
-**Considered** is the path: the dead end you backed out of, the test that changed your mind.
+**Options** includes an approach tried and dropped: the failing test that ruled it out.
 It's often what a reviewer most needs. "Only this one" is a fine answer for a choice forced
 by an assumption or a blocker.
 
 **Examples**
 
-- ✅ `judgment-call` — Decided: cursor pagination for `list-form-entries`. Considered:
+- ✅ `judgment-call` — Decision: cursor pagination for `list-form-entries`. Options:
   offset paging first, as the API's own docs show; the test adding entries mid-read skipped
-  rows. Why: entries can number in the thousands, and every other list tool in `tools/`
+  rows. Rationale: entries can number in the thousands, and every other list tool in `tools/`
   uses cursors. Rejected: offset paging, for the skipped rows.
-- ✅ `assumption` — Decided: "archived forms" means forms in the recycle bin. Considered:
-  a custom "archived" property, and the recycle bin. Why: Forms has no archive flag; the
+- ✅ `assumption` — Decision: "archived forms" means forms in the recycle bin. Options:
+  a custom "archived" property, and the recycle bin. Rationale: Forms has no archive flag; the
   recycle bin is the only state that hides a form from the list. Rejected: the property,
   which the API can't filter on.
-- ✅ `deviation` — Decided: the tool returns the raw validation error, not
-  `confirmAction`'s summary. Considered: the summary, then the raw error. Why: the summary
+- ✅ `deviation` — Decision: the tool returns the raw validation error, not
+  `confirmAction`'s summary. Options: the summary, then the raw error. Rationale: the summary
   drops the field name, which is what the issue needs to show. Rejected: following the
   convention, which hides the field.
-- ✅ `workaround` — Decided: retry the export once on a 409. Considered: waiting on a
-  status endpoint (there isn't one), polling, one retry. Why: the API returns 409 while a
+- ✅ `workaround` — Decision: retry the export once on a 409. Options: waiting on a
+  status endpoint (there isn't one), polling, one retry. Rationale: the API returns 409 while a
   previous export is still being written (reproduced locally). Rejected: polling, with
   nothing to poll.
 - ❌ "Decided to implement the feature as requested." — Not a choice; the issue made it.
 - ❌ "Used TypeScript." — Not a choice anyone could have made differently.
-- ❌ "Decided: changed the schema. Why: it was better." — No what, no path, no why, no
+- ❌ "Decision: changed the schema. Rationale: it was better." — No what, no path, no why, no
   alternative.
 - ❌ All the entries written in one go at the end — That's a justification, not a journal.
 - ❌ A paragraph quoting the issue, then the decision — Summarise; don't quote.
@@ -173,9 +173,9 @@ LOG=~/.claude/skills/work-log/scripts/log-entry.sh   # locally: this skill's scr
 
 # a journal entry, as you choose (the body on stdin); prints its id: "logged: journal … #7"
 bash $LOG --token "$TOKEN" add journal judgment-call <<'EOF'
-Decided: …
-Considered: …
-Why: …
+Decision: …
+Options: …
+Rationale: …
 Rejected: …
 EOF
 
