@@ -143,8 +143,11 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     }
     const labelled = await applyEvent(deps, input, event, currentLabels);
     if (labelled.outcome !== "applied") return labelled;
-    // What's on the PR now: the rule took off LABELS.AI_STUCK or LABELS.AI_BLOCKED.
-    const now = currentLabels.filter((l) => l !== LABELS.AI_STUCK && l !== LABELS.AI_BLOCKED);
+    // What's on the PR now: the rule took off whichever state it came from,
+    // LABELS.AI_STUCK, LABELS.AI_BLOCKED or LABELS.READY_FOR_REVIEW (a person
+    // asking for another review of a passed PR). Leaving one in would read as
+    // two states, and the gate would never fire the review.
+    const now = currentLabels.filter((l) => l !== LABELS.AI_STUCK && l !== LABELS.AI_BLOCKED && l !== LABELS.READY_FOR_REVIEW);
     const gated = await reviewGate(deps, input, now);
     return gated.outcome === "no_event" ? labelled : gated;
   }
