@@ -1,6 +1,6 @@
 {
   "name": "mcp-issue-loop",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Label-driven loops that take an issue from rough idea to merged PR: `ai-discussing` talks it into shape before anyone builds it, `ai-ready` builds it to a CI-green PR, `ai-reviewing` reviews the PR independently, `auto-reworking` acts on review feedback. Bundles issue-discuss-loop, issue-build-loop, review-loop, rework-loop, and mcp-review. Runs locally (worktrees + parallel subagents + local tests) or as a cloud routine. Repo-agnostic.",
   "author": {
     "name": "Phil W",
