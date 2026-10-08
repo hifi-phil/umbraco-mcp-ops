@@ -21,7 +21,7 @@ describe("who caused each log row (actor)", () => {
 
   it("the watchdog's expiry is the watchdog's", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
-    await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP });
+    await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP, retried: true });
     await coordinateWatchdogExpired(deps);
     expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.WATCHDOG_EXPIRED, actor: "watchdog" }));
   });
@@ -97,7 +97,7 @@ describe("the live-status row (recordStatus): what each step tells the dashboard
       enforced: (e) => e !== EVENTS.WATCHDOG_EXPIRED,
       getLabels: vi.fn(async () => [LABELS.AI_READY]),
     });
-    await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP });
+    await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP, retried: true });
     await coordinateWatchdogExpired(deps);
     expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "done" });
   });
@@ -112,14 +112,14 @@ describe("the live-status row (recordStatus): what each step tells the dashboard
 
   it(`a watchdog expiry -> ${LABELS.AI_STUCK}, no routine fired, not running`, async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
-    await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP });
+    await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP, retried: true });
     await coordinateWatchdogExpired(deps);
     expect(deps.recordStatus).toHaveBeenCalledWith(expect.anything(), { kind: "transition", state: LABELS.AI_STUCK, run: null, running: false });
   });
 
   it("a heartbeat -> its step; a completion -> done", async () => {
     const deps = fakeDeps();
-    await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP });
+    await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP, retried: true });
     await coordinateRoutineSignal(deps, { owner: "hifi-phil", repo: "umbraco-mcp-ops", signal: { kind: "process", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, step: "running tests" } });
     expect(deps.recordStatus).toHaveBeenCalledWith(expect.objectContaining(ref), expect.objectContaining({ kind: "step", step: "running tests" }));
     await coordinateRoutineSignal(deps, {
