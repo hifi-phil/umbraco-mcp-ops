@@ -8,20 +8,28 @@ description: Branching, merge, and release workflow for any repo. Detects whethe
 This skill works in **any** repo. Do not assume a `dev` branch exists — first detect which
 branching model the repo uses, then follow the matching reference file.
 
-## Step 1 — detect the model
+## Step 1 — the repo's own docs first
+
+If the repo's `CLAUDE.md` (or `README`) documents its branching model, **that is the model**:
+follow it, and skip the detection below. If it names a branch that doesn't exist on the
+remote (`git ls-remote --heads origin <branch>` prints nothing), **stop and say so**. Never
+fall back to `main` or another branch instead.
+
+## Step 2 — otherwise, detect the model from the remote
+
+Ask the **remote**, not the local clone: a cloud session or a CI job often starts from a
+single-branch clone of the default branch, where `git branch -a` shows only `main` even
+when `dev` exists.
 
 ```bash
-git branch -a --format='%(refname:short)' | sed 's#^origin/##' | sort -u
+git ls-remote --heads origin | sed 's#.*refs/heads/##' | sort -u
 ```
 
-- Repo has **both** a `dev` branch **and** a `main` branch → **two-branch gitflow**. Read
-  `references/gitflow.md`.
-- Repo has **only** `main`, no `dev` → **main-only**. Read `references/main-only.md`.
+- Remote has **both** a `dev` branch **and** a `main` branch → **two-branch gitflow**. Read
+  `references/gitflow.md`. Fetch `dev` before branching from it (`git fetch origin dev`).
+- Remote has **only** `main`, no `dev` → **main-only**. Read `references/main-only.md`.
 - Neither / mixed / genuinely unclear → **ask the user which model to follow** before doing
   anything. Never invent a `dev` branch.
-
-If the repo's own `CLAUDE.md`/`README` documents a branching model, that wins over this
-detection — follow it.
 
 ## Rules common to both models
 

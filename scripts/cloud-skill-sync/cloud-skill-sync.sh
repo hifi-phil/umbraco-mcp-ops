@@ -30,7 +30,7 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="31"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="32"                                  # bump to force an env-cache rebuild / re-clone
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
@@ -71,17 +71,23 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
       fi
     done
     # Permissions: a routine runs unattended, so a command that would need approval is
-    # refused. Allow the work-log skill's script (both spellings of its path), so the
-    # loops can write and read the work log (16-work-log.md). Idempotent.
+    # refused. Allow what every loop has to do: the work-log skill's script (both
+    # spellings of its path, 16-work-log.md), and committing, fetching and pushing its
+    # own branch (a build's commit-and-push was refused on #273). Force-pushing stays
+    # denied; the skills forbid it too. Idempotent.
     if command -v jq >/dev/null 2>&1; then
       [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
       tmp="$(mktemp)"
       if jq --arg a "Bash(bash ~/.claude/skills/work-log/scripts/log-entry.sh:*)" \
             --arg b "Bash(bash $SKILLS_DEST/work-log/scripts/log-entry.sh:*)" '
             .permissions = (.permissions // {})
-            | .permissions.allow = (((.permissions.allow // []) + [$a, $b]) | unique)
+            | .permissions.allow = (((.permissions.allow // []) + [$a, $b,
+                "Bash(git add:*)", "Bash(git commit:*)", "Bash(git fetch:*)", "Bash(git push:*)",
+                "Bash(git ls-remote:*)", "Bash(git switch:*)", "Bash(git checkout:*)"]) | unique)
+            | .permissions.deny = (((.permissions.deny // []) + [
+                "Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(git push --force-with-lease:*)"]) | unique)
           ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
-        mv "$tmp" "$SETTINGS"; echo "allowed: work-log log-entry.sh"
+        mv "$tmp" "$SETTINGS"; echo "allowed: work-log log-entry.sh, git add/commit/fetch/push (no force-push)"
       else
         rm -f "$tmp"; echo "WARN: could not allow log-entry.sh (jq merge failed)"
       fi

@@ -48,7 +48,7 @@ issue is handed off or blocked.
 |-------|----------------|---------|
 | Repo | identify the current repo (github-ops → *Detect base branch / repo*) | current repo |
 | AI label | fixed | `ai-ready` |
-| Base branch | detect via the `release-and-branching` skill (gitflow → `dev`) | `dev` |
+| Base branch | the repo's `CLAUDE.md` if it names one, else the `release-and-branching` skill's detection **from the remote** (gitflow → `dev`). A shallow clone may not show `dev` locally: never take `main` because `dev` isn't in the clone | `dev` |
 | Concurrency cap | fixed | **3** |
 
 **Resolve the repo's shape first — don't go by what the repo is "for".** Check for a
