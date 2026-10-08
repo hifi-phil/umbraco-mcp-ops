@@ -27,6 +27,38 @@ set -uo pipefail
 MAX_BYTES=4096
 CATEGORIES="assumption deviation workaround judgment-call"
 
+usage() {
+  cat <<'USAGE'
+log-entry.sh: add to, or read, the agent-orchestration work log.
+
+Usage:
+  log-entry.sh --token <log_token> add journal <category>                 < body
+  log-entry.sh --token <log_token> add decision <category> [--refs 7,9]   < one line
+  log-entry.sh --token <log_token> add build                              < body
+  log-entry.sh --token <log_token> read <item>
+  log-entry.sh --help | -h
+
+Kinds (add):
+  journal    a decision record, written as you choose
+  decision   one line per choice a person should know about
+  build      what the run did and checked (no category)
+
+Categories (journal and decision): assumption, deviation, workaround, judgment-call
+
+--refs 7,9   decision only: the journal entry ids behind it.
+read <item>  an issue or PR number; prints its entries.
+
+Token:    --token <log_token>, else WORK_LOG_TOKEN. The log_token comes from the
+          Worker's fire text.
+Endpoint: WORK_LOG_ENDPOINT (the Worker's .../log URL), else derived from
+          AGENT_OUTCOMES_ENDPOINT (.../routine-signal -> .../log).
+
+Bodies are capped at 4096 bytes. It never fails a run: every path exits 0.
+USAGE
+}
+
+case "${1:-}" in -h | --help) usage; exit 0 ;; esac
+
 TOKEN="${WORK_LOG_TOKEN:-}"
 if [ "${1:-}" = "--token" ]; then TOKEN="${2:-}"; shift 2 || true; fi
 CMD="${1:-}"

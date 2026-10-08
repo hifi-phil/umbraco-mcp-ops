@@ -128,5 +128,19 @@ check unreachable "$out" "not logged: couldn't reach the Worker"
 out="$(run WORK_LOG_ENDPOINT="http://127.0.0.1:1/log" bash "$SCRIPT" --token tok read 1)"
 check unreachable_read "$out" "(log unavailable: couldn't reach the Worker"
 
+# 9. --help / -h: usage on stdout, exit 0, no token or endpoint, nothing sent.
+before="$(requests)"
+for flag in --help -h; do
+  out="$(run bash "$SCRIPT" "$flag")"; code=$?
+  check "help_${flag}_usage" "$out" "Usage:"
+  check "help_${flag}_forms" "$out" "add journal <category>"
+  check "help_${flag}_read" "$out" "read <item>"
+  check "help_${flag}_categories" "$out" "assumption, deviation, workaround, judgment-call"
+  check "help_${flag}_refs" "$out" "--refs"
+  check "help_${flag}_sources" "$out" "WORK_LOG_ENDPOINT"
+  [ "$code" -eq 0 ] && { echo "PASS [help_${flag}_exit0]"; pass=$((pass+1)); } || { echo "FAIL [help_${flag}_exit0]: exit $code"; fail=$((fail+1)); }
+done
+[ "$before" = "$(requests)" ] && { echo "PASS [help_sends_nothing]"; pass=$((pass+1)); } || { echo "FAIL [help_sends_nothing]"; fail=$((fail+1)); }
+
 echo "work-log tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
