@@ -57,7 +57,9 @@ Bodies are capped at 4096 bytes. It never fails a run: every path exits 0.
 USAGE
 }
 
-case "${1:-}" in -h | --help) usage; exit 0 ;; esac
+for arg in "$@"; do
+  case "$arg" in -h | --help) usage; exit 0 ;; esac
+done
 
 TOKEN="${WORK_LOG_TOKEN:-}"
 if [ "${1:-}" = "--token" ]; then TOKEN="${2:-}"; shift 2 || true; fi

@@ -140,6 +140,13 @@ for flag in --help -h; do
   check "help_${flag}_sources" "$out" "WORK_LOG_ENDPOINT"
   [ "$code" -eq 0 ] && { echo "PASS [help_${flag}_exit0]"; pass=$((pass+1)); } || { echo "FAIL [help_${flag}_exit0]: exit $code"; fail=$((fail+1)); }
 done
+# 9b. --help / -h anywhere in the arguments, e.g. after --token or a subcommand.
+for args in "--token t --help" "--token t -h" "--token t add --help" "--token t add journal --help"; do
+  # shellcheck disable=SC2086
+  out="$(run bash "$SCRIPT" $args)"; code=$?
+  check "help_after_[$args]_usage" "$out" "Usage:"
+  [ "$code" -eq 0 ] && { echo "PASS [help_after_[$args]_exit0]"; pass=$((pass+1)); } || { echo "FAIL [help_after_[$args]_exit0]: exit $code"; fail=$((fail+1)); }
+done
 [ "$before" = "$(requests)" ] && { echo "PASS [help_sends_nothing]"; pass=$((pass+1)); } || { echo "FAIL [help_sends_nothing]"; fail=$((fail+1)); }
 
 echo "work-log tests: $pass passed, $fail failed"
