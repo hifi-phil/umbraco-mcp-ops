@@ -32,7 +32,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: hifi-phil/umbraco-mcp-ops
-          ref: main
+          # Pinned, not `main`: repos still on this old caller-workflow pattern haven't
+          # cut over to the Worker and still carry the pre-#218 label names. main's
+          # route-event.sh moved on (label rename, PR #218) and no longer recognizes
+          # them. Pinned to 29d0ec4, the last commit before the orchestrator work
+          # (#109) started changing this path.
+          ref: 29d0ec4dabeef52f766d30ec6997bce9e92141b9
           path: ops
 
       - name: Decide the route (deterministic, at the edge)
