@@ -15,8 +15,27 @@ import {
   type CoordinateResult,
   type Deps,
   type IssueRef,
+  type PendingFire,
   type StatusUpdate,
 } from "./types";
+
+/**
+ * Every watched fire goes through here: a rule's run (applyEvent), the
+ * sweep's re-fire (reconcile.ts) and the watchdog's one retry (watchdog.ts).
+ * The watchdog is armed BEFORE the fire (Phase 9), so a crash between
+ * deciding to fire and firing leaves it to notice, never a silent lost
+ * attempt. A refused fire wasn't lost: nothing's running, so it disarms
+ * (the sweep re-fires a trigger left with nothing watching it) and throws.
+ */
+export async function fireWatched(deps: Deps, ref: IssueRef, run: string, extra: Partial<PendingFire> = {}): Promise<void> {
+  await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run, ...extra });
+  try {
+    await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
+  } catch (e) {
+    await deps.clearPendingFire();
+    throw e;
+  }
+}
 
 /** The shared reduce() -> labelOps() -> fire/log tail, once an Event has
  * been decided (however it was decided) and the current labels are
@@ -90,22 +109,10 @@ export async function applyEvent(
     // Armed before the fire (Phase 9): a crash between deciding to fire and
     // firing leaves the watchdog to notice, never a silent lost attempt.
     if (watched) {
-      await deps.setPendingFire({
-        owner: input.owner,
-        repo: input.repo,
-        issueNumber: input.issueNumber,
-        run: rule.run,
-      });
+      await fireWatched(deps, input, rule.run);
     } else {
       await deps.clearPendingFire();
-    }
-    try {
       await deps.fireRoutine(input.owner, input.repo, input.issueNumber, rule.run);
-    } catch (e) {
-      // The fire was refused, not lost: nothing's running, so disarm (the
-      // sweep re-fires a trigger left with nothing watching it), and fail.
-      if (watched) await deps.clearPendingFire();
-      throw e;
     }
   } else {
     await deps.clearPendingFire();

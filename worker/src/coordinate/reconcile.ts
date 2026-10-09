@@ -6,7 +6,7 @@ import { reduce } from "@orchestrator/graph/graph";
 import { deriveMergeGateOutcome, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
 import { type CoordinateResult, type Deps, type IssueRef } from "./types";
-import { applyEvent, deriveState } from "./apply";
+import { applyEvent, deriveState, fireWatched } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 import { reviewGate } from "./review-gate";
 
@@ -161,14 +161,7 @@ export async function coordinateReconcile(
   }
 
   if (enforced) {
-    // Armed before the fire, as on the webhook path (coordinate/apply.ts).
-    await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run });
-    try {
-      await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
-    } catch (e) {
-      await deps.clearPendingFire();
-      throw e;
-    }
+    await fireWatched(deps, ref, run);
     await deps.recordStatus(ref, { kind: "transition", state, run, running: true });
   } else {
     // Shadow: one row per idle stretch. Until the issue sees new activity,

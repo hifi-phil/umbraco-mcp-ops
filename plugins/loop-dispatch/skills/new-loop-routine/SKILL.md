@@ -43,7 +43,7 @@ Never use `fable`. Never put secrets in the prompt or config.
    `ai-discussing` (see `self-learning-system.md`'s "Setup § 2. Labels"); `auto-releasing` and
    `release-blocked` are `auto-release-loop`'s own (see that skill's `SKILL.md`).
 2. **Skills reach the env** — `loop-dispatch` (and the loops) are in the
-   `cloud-skill-sync` `SKILLS` list and the env has been rebuilt (bump `VERSION`, re-paste).
+   `cloud-skill-sync` `SKILLS` list on `main` (each session start pulls it; no rebuild).
 3. **Org Actions policy** allows calling a reusable workflow from `hifi-phil/umbraco-mcp-ops`
    (if the org restricts actions to "selected", allowlist it).
 4. **Heartbeats to the Worker** (only for repos the agent-orchestration Worker
@@ -74,8 +74,8 @@ and caller-workflow repos alike.
 2. **Network access.** If the environment limits outbound hosts, allow the Worker's host
    (`<script>.<subdomain>.workers.dev`).
 3. **The plugin is in the env.** `agent-outcomes` is in the `cloud-skill-sync` `SKILLS`
-   list, as it already is for orchestrated mode. Rebuild the env after any of these
-   (bump `VERSION`, re-paste).
+   list, as it already is for orchestrated mode. A `SKILLS` change reaches the next
+   session once it's on `main`; network access is an environment setting.
 
 **How it behaves:**
 - Each heartbeat pushes the run's watchdog deadline back, so a run expires only after a

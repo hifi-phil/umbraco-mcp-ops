@@ -22,22 +22,24 @@
 #
 # github-ops is the shared dependency every loop references by name, so keep it listed.
 #
-# Refreshing: the environment snapshot is cached (~7 days); making the source repo change
-# does NOT bust the cache — only editing this script (or the env's allowed hosts) does.
-# Bump VERSION below and re-save to force a re-clone after a skill/agent changes.
+# Refreshing: the environment snapshot is cached (~7 days), but this script also registers
+# a SessionStart hook (session-refresh.sh) that pulls main and re-runs this script at each
+# session start. So a skill, agent, hook or permission change reaches the next session
+# with no rebuild. Only a change to the setup itself (env-setup.sh) needs the stub's
+# `rebuild:` bump. If the pull fails, the session runs the skills from the build.
 #
 # Debugging: the run log is written to $HOME/skill-sync.log (readable from inside the
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="34"                                  # bump to force an env-cache rebuild / re-clone
+VERSION="35"                                  # log marker only: busting the env cache is the stub's `rebuild:`
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
 HOOKS_ROOT="$HOME/.claude/ops-hooks"          # plugin-root stand-in for the capture hooks
 SETTINGS="$HOME/.claude/settings.json"
 SKILLS="github-ops loop-dispatch worker-env merge-flow triage-learnings proto-learning-capture dependabot-rollup auto-release-loop release-publish release-and-branching sync-dev rework-loop review-loop agent-outcomes work-log issue-build-loop mcp-review issue-discuss-loop open-work-report branch-housekeeping"
-LOG="$HOME/skill-sync.log"
+LOG="${SKILL_SYNC_LOG:-$HOME/skill-sync.log}"   # session-refresh.sh logs elsewhere
 
 # Anthropic's pr-review-toolkit code-review agents, used by the mcp-review skill. Routines
 # can't use the marketplace and there's no other channel, so we fetch them from the public
@@ -61,6 +63,7 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     if git clone --depth 1 "$REPO" /tmp/ops; then OPS_DIR=/tmp/ops; CLONED=1; fi
   fi
   if [ -n "${OPS_DIR:-}" ]; then
+    SRC_COMMIT="$(git -C "$OPS_DIR" rev-parse HEAD 2>/dev/null || true)"
     # Skills: copy each listed skill dir into the skills dir.
     for s in $SKILLS; do
       src="$(find "$OPS_DIR/plugins" -type d -path "*/skills/$s" 2>/dev/null | head -1)"
@@ -173,6 +176,33 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     else
       echo "NOT FOUND in source: agent-outcomes hook"
     fi
+    # The session-start refresh: copy session-refresh.sh out of the checkout (it's
+    # removed below) and register it on SessionStart, synchronously, so a session's
+    # skills are current before its first turn. Idempotent; re-run by the refresh itself.
+    if [ -f "$OPS_DIR/scripts/cloud-skill-sync/session-refresh.sh" ]; then
+      RF_DIR="$HOME/.claude/ops-refresh"
+      mkdir -p "$RF_DIR"
+      cp "$OPS_DIR/scripts/cloud-skill-sync/session-refresh.sh" "$RF_DIR/"; chmod +x "$RF_DIR/session-refresh.sh"
+      if command -v jq >/dev/null 2>&1; then
+        [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+        cmd="bash $RF_DIR/session-refresh.sh"
+        tmp="$(mktemp)"
+        if jq --arg cmd "$cmd" '
+              .hooks = (.hooks // {})
+              | .hooks.SessionStart = (.hooks.SessionStart // [])
+              | if any(.hooks.SessionStart[]?; any(.hooks[]?; .command == $cmd)) then .
+                else .hooks.SessionStart += [ {"matcher":"startup","hooks": [ {"type":"command","command":$cmd,"timeout":180} ]} ] end
+            ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
+          mv "$tmp" "$SETTINGS"; echo "registered hook: SessionStart -> session-refresh (pulls main)"
+        else
+          rm -f "$tmp"; echo "WARN: could not register the session refresh (jq merge failed)"
+        fi
+      else
+        echo "WARN: jq missing — session refresh NOT registered; skills stay as built"
+      fi
+    else
+      echo "NOT FOUND in source: session-refresh.sh"
+    fi
   else
     echo "ERROR: no source available (clone failed: $REPO, and no OPS_SRC provided)"
   fi
@@ -181,19 +211,30 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
   # Anthropic's review agents — fetch the pinned commit shallowly and copy the agent files.
   # A single-commit fetch keeps it light; on failure the loop still runs with our own
   # security-reviewer, just without the pr-review-toolkit code lenses, so this never aborts.
+  # Skipped when this commit's agents are already in place (the session refresh re-runs
+  # this script at every session start).
   rt="$(mktemp -d)"
-  if git -C "$rt" init -q 2>>"$LOG" \
+  if [ "$(cat "$AGENTS_DEST/.review-ref" 2>/dev/null)" = "$REVIEW_REF" ]; then
+    echo "review agents already at ${REVIEW_REF:0:7}"
+  elif git -C "$rt" init -q 2>>"$LOG" \
      && git -C "$rt" remote add origin "$REVIEW_REPO" 2>>"$LOG" \
      && git -C "$rt" fetch -q --depth 1 origin "$REVIEW_REF" 2>>"$LOG" \
      && git -C "$rt" checkout -q FETCH_HEAD 2>>"$LOG" \
      && ls "$rt/$REVIEW_SUBPATH"/*.md >/dev/null 2>&1; then
     cp "$rt/$REVIEW_SUBPATH"/*.md "$AGENTS_DEST/" \
+      && echo "$REVIEW_REF" > "$AGENTS_DEST/.review-ref" \
       && echo "installed review agents from $REVIEW_REPO@${REVIEW_REF:0:7}: $(ls -1 "$rt/$REVIEW_SUBPATH"/*.md | xargs -n1 basename | tr '\n' ' ')"
   else
     echo "WARN: could not fetch review agents ($REVIEW_REPO@${REVIEW_REF:0:7}) — mcp-review will run with security-reviewer only"
   fi
   rm -rf "$rt"
 
+  # The commit delivered, so session-refresh.sh skips a session start when main
+  # hasn't moved. Written last: a sync that dies part-way leaves the old one.
+  if [ -n "${SRC_COMMIT:-}" ]; then
+    mkdir -p "$HOME/.claude/ops-refresh"; echo "$SRC_COMMIT" > "$HOME/.claude/ops-refresh/synced-commit"
+    echo "synced commit: ${SRC_COMMIT:0:7}"
+  fi
   echo "skills present: $(ls -1 "$SKILLS_DEST" 2>/dev/null | tr '\n' ' ')"
   echo "agents present: $(ls -1 "$AGENTS_DEST" 2>/dev/null | tr '\n' ' ')"
   echo "hooks present:  $(ls -1 "$HOOKS_ROOT/hooks" 2>/dev/null | tr '\n' ' ')"

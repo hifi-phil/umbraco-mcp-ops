@@ -1,9 +1,11 @@
 # Tags + publishes a GitHub Release when the marketplace version changes on
 # main. Copied from
 # plugins/release-flow/skills/release-and-branching/assets/release-tag.yml
-# with one adjustment: reads .claude-plugin/marketplace.json
+# with two adjustments: reads .claude-plugin/marketplace.json
 # (metadata.version, the repo's release version — see CLAUDE.md and the
-# release-versioning skill), not a root package.json.
+# release-versioning skill), not a root package.json; and deploys the
+# orchestrator once a release is published (deploy.yml, a reusable workflow:
+# a release created with GITHUB_TOKEN doesn't trigger other workflows).
 #
 # Idempotent: computes v<version> from the manifest and skips if that tag
 # already exists, so it only actually tags + releases when the version is
@@ -22,6 +24,9 @@ permissions:
 jobs:
   tag-and-release:
     runs-on: ubuntu-latest
+    outputs:
+      created: ${{ steps.check.outputs.exists == 'false' }}
+      tag: v${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,3 +54,14 @@ jobs:
           git tag "$VERSION"
           git push origin "$VERSION"
           gh release create "$VERSION" --title "$VERSION" --generate-notes
+
+  deploy:
+    needs: tag-and-release
+    if: needs.tag-and-release.outputs.created == 'true'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      tag: ${{ needs.tag-and-release.outputs.tag }}
+    secrets: inherit
