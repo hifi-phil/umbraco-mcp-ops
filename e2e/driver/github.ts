@@ -202,12 +202,28 @@ export async function merge(number: number): Promise<void> {
 
 export type CheckRun = { name: string; status: string; conclusion: string | null; completed_at: string | null };
 
+/**
+ * The CI results for a commit: the jobs of its Actions runs (the sandbox's CI
+ * is one Actions job). Read through the Actions API, not check-runs: a
+ * fine-grained token, as the deploy workflow's E2E_GITHUB_TOKEN is, can't read
+ * check-runs on a private repo, but can read Actions with Actions: read.
+ */
+export async function ciRuns(sha: string): Promise<CheckRun[]> {
+  const { workflow_runs } = await gh<{ workflow_runs: { id: number }[] }>("GET", `${R}/actions/runs?head_sha=${sha}&per_page=100`);
+  const jobs: CheckRun[] = [];
+  for (const run of workflow_runs) {
+    const page = await gh<{ jobs: CheckRun[] }>("GET", `${R}/actions/runs/${run.id}/jobs?per_page=100`);
+    jobs.push(...page.jobs.map(({ name, status, conclusion, completed_at }) => ({ name, status, conclusion, completed_at })));
+  }
+  return jobs;
+}
+
 /** Waits until every check on the PR's head has finished, and returns them. */
 export async function waitForChecks(number: number, timeoutMs = 3 * 60_000): Promise<CheckRun[]> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const { head } = await gh<{ head: { sha: string } }>("GET", `${R}/pulls/${number}`);
-    const { check_runs } = await gh<{ check_runs: CheckRun[] }>("GET", `${R}/commits/${head.sha}/check-runs`);
+    const check_runs = await ciRuns(head.sha);
     if ((check_runs.length > 0 && check_runs.every((r) => r.status === "completed")) || Date.now() >= deadline) return check_runs;
     await sleep(3000);
   }
