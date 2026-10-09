@@ -37,7 +37,9 @@ as configured, and lowers the sandbox's CI-fix and review-round caps to 1
 (`e2e_rework_cap`; the driver reads `E2E_REWORK_CAP`, default 1), so the
 cap scenarios run one round instead of three. The sandbox can be private: the Worker reads CI through
 its GitHub App, and so does the stub (only for check-runs, which a
-fine-grained token can't read on a private repo).
+fine-grained token can't read on a private repo). The driver reads CI
+through the Actions API instead, so a fine-grained token works for it
+(the deploy workflow's `E2E_GITHUB_TOKEN`; it needs Actions: read).
 
 Latest full run (01-10-2026): all 21 scenarios and the audit pass in about
 8 minutes.

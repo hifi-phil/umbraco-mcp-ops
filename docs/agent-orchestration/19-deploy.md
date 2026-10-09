@@ -47,7 +47,7 @@ bucket later: add the backend, `tofu init -migrate-state`, same encryption.
    | `TOFU_STATE_PASSPHRASE` | `openssl rand -base64 32`. **Keep a copy outside GitHub** (a password manager): without it the state can't be read. |
    | `TFVARS` | the whole `worker/terraform/terraform.tfvars`: `gh secret set TFVARS --env orchestrator-prod < worker/terraform/terraform.tfvars` |
    | `CLOUDFLARE_API_TOKEN` | a token limited to this account: Workers Scripts edit, D1 edit, and whatever else today's local token has that the plan needs (start from the same scopes) |
-   | `E2E_GITHUB_TOKEN` | a fine-grained token on the sandbox only (`mcp-ops-e2e-testing`): Contents, Issues, Pull requests and Webhooks, read and write. Used by tofu's github provider and by the e2e driver |
+   | `E2E_GITHUB_TOKEN` | a fine-grained token on the sandbox only (`mcp-ops-e2e-testing`): Contents, Issues, Pull requests and Webhooks, read and write, and Actions, read (the driver reads the sandbox's CI through it). Used by tofu's github provider and by the e2e driver |
 
 5. **Move today's state in** (from the checkout that has it, with the same
    passphrase exported as `TOFU_STATE_PASSPHRASE`):
