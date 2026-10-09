@@ -18,6 +18,14 @@ t() { if command -v timeout >/dev/null 2>&1; then timeout "$@"; else shift; "$@"
 
 {
   echo "===== session-refresh $(date -u +%Y-%m-%dT%H:%M:%SZ) ($REF) ====="
+  # Skip the clone and copy when the last sync (the build's, or a previous
+  # session's) delivered the commit $REF is at now.
+  head="$(t 20 git ls-remote "$REPO" "refs/heads/$REF" 2>/dev/null | cut -f1)"
+  last="$(cat "$HOME/.claude/ops-refresh/synced-commit" 2>/dev/null)"
+  if [ -n "$head" ] && [ "$head" = "$last" ]; then
+    echo "up to date at ${head:0:7}"
+    exit 0
+  fi
   src="$(mktemp -d)"
   if t 60 git clone -q --depth 1 --branch "$REF" "$REPO" "$src" \
      && [ -f "$src/scripts/cloud-skill-sync/cloud-skill-sync.sh" ]; then

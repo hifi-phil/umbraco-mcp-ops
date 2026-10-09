@@ -32,7 +32,7 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="35"                                  # log marker; session-refresh.sh keeps skills current
+VERSION="35"                                  # log marker only: busting the env cache is the stub's `rebuild:`
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
@@ -63,6 +63,7 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     if git clone --depth 1 "$REPO" /tmp/ops; then OPS_DIR=/tmp/ops; CLONED=1; fi
   fi
   if [ -n "${OPS_DIR:-}" ]; then
+    SRC_COMMIT="$(git -C "$OPS_DIR" rev-parse HEAD 2>/dev/null || true)"
     # Skills: copy each listed skill dir into the skills dir.
     for s in $SKILLS; do
       src="$(find "$OPS_DIR/plugins" -type d -path "*/skills/$s" 2>/dev/null | head -1)"
@@ -228,6 +229,12 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
   fi
   rm -rf "$rt"
 
+  # The commit delivered, so session-refresh.sh skips a session start when main
+  # hasn't moved. Written last: a sync that dies part-way leaves the old one.
+  if [ -n "${SRC_COMMIT:-}" ]; then
+    mkdir -p "$HOME/.claude/ops-refresh"; echo "$SRC_COMMIT" > "$HOME/.claude/ops-refresh/synced-commit"
+    echo "synced commit: ${SRC_COMMIT:0:7}"
+  fi
   echo "skills present: $(ls -1 "$SKILLS_DEST" 2>/dev/null | tr '\n' ' ')"
   echo "agents present: $(ls -1 "$AGENTS_DEST" 2>/dev/null | tr '\n' ' ')"
   echo "hooks present:  $(ls -1 "$HOOKS_ROOT/hooks" 2>/dev/null | tr '\n' ' ')"
