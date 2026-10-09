@@ -1,0 +1,157 @@
+# Deploys the orchestrator (Worker, D1, e2e stub) with tofu, then runs the e2e
+# suite against it. Called by release-tag.yml when it publishes a release, or
+# run by hand for a tag. See docs/agent-orchestration/19-deploy.md for what it
+# needs (the state repo, its deploy key, the environment's secrets).
+#
+# The state lives encrypted (OpenTofu state encryption, AES-GCM) in a private
+# repo, checked out next to this one. It's committed back even when the apply
+# fails, so a partial apply is never lost. The concurrency group is the lock:
+# one deploy at a time, queued, never cancelled mid-apply.
+
+name: deploy
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to deploy (e.g. v2.3.1)
+        type: string
+        required: true
+      e2e:
+        description: Run the e2e suite after the apply
+        type: boolean
+        default: true
+
+concurrency:
+  group: orchestrator-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write # the result on the release issue
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Its secrets, and (if set) its required reviewer: one click to approve.
+    environment: orchestrator-prod
+    env:
+      TAG: ${{ inputs.tag }}
+      STATE_REPO: ${{ vars.STATE_REPO || 'hifi-phil/umbraco-mcp-ops-state' }}
+      STATE_FILE: ${{ github.workspace }}/state/terraform.tfstate
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # The github provider (the stub's webhook on the sandbox) and the e2e driver.
+      GITHUB_TOKEN: ${{ secrets.E2E_GITHUB_TOKEN }}
+      TOFU_STATE_PASSPHRASE: ${{ secrets.TOFU_STATE_PASSPHRASE }}
+      TF_IN_AUTOMATION: '1'
+      TF_INPUT: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Check out the state repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.STATE_REPO }}
+          ssh-key: ${{ secrets.STATE_DEPLOY_KEY }}
+          path: state
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version: 1.11.6
+          tofu_wrapper: false # the e2e driver reads `tofu output -raw`
+
+      - name: Install (all workspaces, from the root lockfile)
+        run: npm ci
+
+      - name: Build the Worker and the e2e stub
+        run: |
+          (cd worker && npm run build)
+          (cd e2e && npm run build)
+
+      - name: Configure tofu
+        env:
+          TFVARS: ${{ secrets.TFVARS }}
+        run: |
+          # Never create a fresh state: an apply against an empty one would try
+          # to create every resource again next to the live ones.
+          [ -f "$STATE_FILE" ] || { echo "::error::no state at $STATE_REPO/terraform.tfstate (see 19-deploy.md: migrate it once)"; exit 1; }
+          printf '%s\n' "$TFVARS" > worker/terraform/terraform.tfvars
+          d="ENC_$(openssl rand -hex 8)"
+          { echo "TF_ENCRYPTION<<$d"; scripts/deploy/tofu-encryption.sh; echo "$d"; } >> "$GITHUB_ENV"
+
+      - name: tofu init
+        id: init
+        working-directory: worker/terraform
+        run: tofu init -backend-config="path=$STATE_FILE"
+
+      # This repo's Actions logs are public: the full plan and apply output
+      # stay on the runner. The log gets each resource's planned action, and
+      # the error blocks if a step fails.
+      - name: tofu plan
+        id: plan
+        working-directory: worker/terraform
+        run: |
+          tofu plan -no-color -out=tfplan > plan.log 2>&1 || { grep -A12 '^│ Error\|^Error' plan.log; exit 1; }
+          grep -E '^  # .* (will|must) be|^Plan:|^No changes' plan.log || true
+
+      - name: tofu apply
+        id: apply
+        working-directory: worker/terraform
+        run: |
+          tofu apply -no-color tfplan > apply.log 2>&1 || { grep -A12 '^│ Error\|^Error' apply.log; exit 1; }
+          grep -E '^Apply complete' apply.log
+
+      - name: Commit the state
+        if: always() && steps.init.outcome == 'success'
+        working-directory: state
+        run: |
+          git config user.name "orchestrator-deploy"
+          git config user.email "orchestrator-deploy@users.noreply.github.com"
+          git add terraform.tfstate
+          if git diff --cached --quiet; then echo "state unchanged"; exit 0; fi
+          git commit -q -m "deploy $TAG (${{ steps.apply.outcome }}): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          git push -q
+
+      - name: e2e
+        id: e2e
+        if: steps.apply.outcome == 'success' && (github.event_name != 'workflow_dispatch' || inputs.e2e)
+        working-directory: e2e
+        run: npm run e2e
+
+      - name: Report on the release issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN: ${{ steps.plan.outcome }}
+          APPLY: ${{ steps.apply.outcome }}
+          E2E: ${{ steps.e2e.outcome }}
+        run: |
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "$APPLY" = success ] && [ "$E2E" != failure ]; then verdict="✅ Deployed $TAG"; else verdict="❌ Deploy of $TAG needs a look"; fi
+          body="$verdict
+
+          | Step | Outcome |
+          |---|---|
+          | tofu plan | ${PLAN:-skipped} |
+          | tofu apply | ${APPLY:-skipped} |
+          | e2e | ${E2E:-skipped} |
+
+          [Run]($run_url)"
+          echo "$body" >> "$GITHUB_STEP_SUMMARY"
+          v="${TAG#v}"
+          issue="$(gh issue list -R "${{ github.repository }}" --state all --search "\"release $v\" in:title" --json number,title \
+            --jq "[.[] | select(.title | test(\"^release $v\$\"; \"i\"))][0].number // empty")"
+          if [ -n "$issue" ]; then gh issue comment "$issue" -R "${{ github.repository }}" --body "$body"
+          else echo "no 'release $v' issue found; the result is in the run summary only"; fi
