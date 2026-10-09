@@ -16,9 +16,12 @@
 #   sqlserver  CI-parity env: also installs Docker + caches the mssql:2022 image (~2.3 GB)
 #              so sessions can run Umbraco on SQL Server exactly as GH Actions does.
 #
-# FORCE A REBUILD: bump the `rebuild:` number and re-save. The env snapshot is cached and
-# only busts when THIS field's text changes — a stub that always pulls `main` won't rebuild
-# itself when the repo script changes. Bump the number to re-pull.
+# SKILL CHANGES NEED NOTHING: the setup registers a SessionStart hook (session-refresh.sh)
+# that pulls main and re-delivers skills, agents, hooks and permissions at each session start.
+#
+# FORCE A REBUILD only for a change to the setup itself (env-setup.sh: SDKs, Docker, images):
+# bump the `rebuild:` number and re-save. The env snapshot is cached and only busts when
+# THIS field's text changes.
 #
 # NOTE: owner is `hifi-phil` until the repo moves to the `umbraco` org (ops #40); after the
 #       move, change the clone URL to umbraco/umbraco-mcp-ops.
