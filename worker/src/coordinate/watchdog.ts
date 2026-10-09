@@ -5,7 +5,7 @@ import { LABELS } from "@orchestrator/graph/constants/labels";
 import { reduce } from "@orchestrator/graph/graph";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
-import { applyEvent, deriveState } from "./apply";
+import { applyEvent, deriveState, fireWatched } from "./apply";
 
 export type WatchdogResult =
   | { outcome: "no_pending_fire" }
@@ -86,9 +86,8 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
  * refused, so the expiry carries on as usual. */
 async function retryOnce(deps: Deps, pending: PendingFire): Promise<WatchdogResult | null> {
   const minutes = deps.watchdogMinutes(pending.run);
-  await deps.setPendingFire({ owner: pending.owner, repo: pending.repo, issueNumber: pending.issueNumber, run: pending.run, retried: true });
   try {
-    await deps.fireRoutine(pending.owner, pending.repo, pending.issueNumber, pending.run);
+    await fireWatched(deps, pending, pending.run, { retried: true });
   } catch (e) {
     console.error("watchdog retry fire failed:", e instanceof Error ? e.message : e);
     return null;
