@@ -13,6 +13,9 @@ terraform {
   #   tofu init -backend-config="path=$HOME/.local/state/umbraco-mcp-ops/agent-orchestration-worker.tfstate"
   # The state holds every secret in plain text. Never commit it (.gitignore
   # here still catches a stray in-repo copy).
+  # Once deploys run from releases (.github/workflows/deploy.yml), the state
+  # lives encrypted in a private state repo instead: see
+  # docs/agent-orchestration/19-deploy.md.
   backend "local" {}
 }
 
