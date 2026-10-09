@@ -165,9 +165,11 @@ environment can invoke the skills and spawn the agents.
   script always looks for the `self-learning` plugin in the cloned repo and wires its
   hooks into `settings.json` regardless of which loop skills this particular environment
   lists, since capture should apply to whatever loop actually runs there.
-- **Refresh after a skill change:** bump `VERSION` in the script and re-save (the env
-  snapshot is cached ~7 days; changing the source repo alone doesn't bust it). The repo
-  stays the source of truth.
+- **Refresh after a skill change: nothing to do.** The script registers a SessionStart
+  hook (`session-refresh.sh`) that pulls `main` and re-runs the sync at each session
+  start, so the next session has the change once it's released. Only a change to the
+  setup itself (`env-setup.sh`) needs the stub's `rebuild:` bump. If the pull fails, the
+  session runs the skills from the last build (`~/skill-refresh.log` says which).
 
 ### 2. Labels
 
