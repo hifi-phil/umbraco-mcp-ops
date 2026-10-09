@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Cross-repo ops tooling and autonomous workflows for the Umbraco MCP repos — issue automation, branch housekeeping, and the self-learning loop that feeds improvements back into the repos and shared skills.",
-    "version": "2.3.1",
+    "version": "2.3.2",
     "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops"
   },
   "plugins": [
@@ -221,7 +221,7 @@
       "name": "loop-dispatch",
       "source": "./plugins/loop-dispatch",
       "description": "Single front door for a repo's automation loops so one routine per repo can handle every loop event instead of one routine per event. Deterministically routes each triggering GitHub event to the matching loop (via route-event.sh); a non-matching event is a quiet no-op. Router only; each loop owns its guardrails. Also bundles new-loop-routine — the standard config + canonical prompts + UI wiring for standing up one routine per repo. Requires github-ops + the loop skills.",
-      "version": "2.2.1",
+      "version": "2.2.2",
       "category": "workflow",
       "author": {
         "name": "Phil W",
