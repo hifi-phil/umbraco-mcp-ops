@@ -35,7 +35,10 @@ bucket later: add the backend, `tofu init -migrate-state`, same encryption.
    (`ssh-keygen -t ed25519 -N "" -f state-deploy`), add `state-deploy.pub`
    to it as a deploy key **with write access**, keep the private half for 4.
 3. **The `orchestrator-prod` environment** in umbraco-mcp-ops (Settings →
-   Environments). Optionally a required reviewer, and limit it to tags `v*`.
+   Environments). Optionally a required reviewer. If you limit which refs can
+   deploy, allow the branch `main`: the job runs on `main` (the release's push,
+   or the branch a manual run is started from), not on the tag, so a tag-only
+   rule blocks every deploy.
 4. **Its secrets:**
 
    | Secret | Value |
