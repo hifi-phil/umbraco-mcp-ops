@@ -45,6 +45,9 @@ export function githubConfigured(env: GitHubEnv): boolean {
  * first e2e run). Only removeLabel opts out, since there a 404 really does
  * mean the label was already gone.
  */
+const GET_RETRY_STATUSES = new Set([502, 503, 504]);
+const GET_RETRY_DELAY_MS = 1000;
+
 async function gh(
   env: GitHubEnv,
   method: string,
@@ -66,6 +69,14 @@ async function gh(
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   let res = await call();
+  // GitHub has brief outages (a 503 on a GET failed 2.3.6's e2e audit). A read
+  // is safe to repeat, so a GET gets one more try after a short pause; a write
+  // isn't retried here, since GitHub may have applied it. One pause stays well
+  // inside the Worker's answer deadline (index.ts).
+  if (method === "GET" && GET_RETRY_STATUSES.has(res.status)) {
+    await new Promise((r) => setTimeout(r, GET_RETRY_DELAY_MS));
+    res = await call();
+  }
   const repo = path.match(/^\/repos\/([^/]+)\/([^/]+)\//);
   if (res.status === 403 && appConfigured(env) && repo) {
     forgetInstallationToken(repo[1]!, repo[2]!);

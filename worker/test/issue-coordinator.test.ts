@@ -278,7 +278,7 @@ describe("IssueCoordinator — one request at a time per issue", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url.includes("/labels") && (init?.method ?? "GET") === "GET" && ++calls === 1) {
-          return new Response("bad gateway", { status: 502 });
+          return new Response("internal error", { status: 500 }); // not a status a GET retries
         }
         return apiFetch(url, init);
       }),
