@@ -58,19 +58,22 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
    - **Already released** — the release PR for `release/<version>` is merged, or `v<version>`
      is tagged: stop, comment `already released: stopped`, touch nothing.
    - **`release/<version>` exists** — merge `<dev>` into it with a **merge commit** (no rebase,
-     no force-push, so the open PR stays valid), **before** item 2's bump so a re-run never
+     no force-push, so the open PR stays valid; locally `git merge --no-ff origin/<dev>`; on the
+     MCP path the merges endpoint with base `release/<version>`, head `<dev>` — never
+     `update_pull_request_branch`, which merges `<main>`), **before** item 2's bump so a re-run never
      pushes a bump onto a stale branch. Then skip item 1 and continue at item 2.
      - Conflict: stop, comment `conflict merging <dev>: stopped, PR left open`; the loop
        never resolves it.
      - Already up to date: push nothing; comment `already up to date with <dev>`.
      - Merged: comment `re-run: release/<version> existed, merged <dev> (N new commits: #a,
-       #b, #c)` — PR numbers only, capped at 20, then `and N more`.
+       #b, #c)` — PR numbers only, capped at 20, then `and M more` (M = PRs past the first 20).
    - Item 2 then re-bumps only if the version files or changelog differ from what the merge
      left. Steps 2 and 2.5 run unchanged on the new head.
 1. From up-to-date `<dev>`, cut `release/<version>` (only when it doesn't already exist).
 2. Bump the repo's **version-file list** (from its `CLAUDE.md`) and the changelog — use
    the repo's own release skill if it has one (e.g. `umbraco-mcp-skills:release`).
-3. Push and open a PR **`release/<version>` → `<main>`**, referencing the triggering issue
+3. Push and open a PR **`release/<version>` → `<main>`** (on a re-run where that PR is already
+   open, reuse it: open no second PR, push only if item 0 or 2 made a commit), referencing the triggering issue
    (`Closes #<n>`; in **orchestrated mode** `Part of #<n>` instead: on the default branch
    `Closes` would close the issue at the merge, before `release-publish` has run). Send a
    **Claude push notification** (the `PushNotification` tool)
