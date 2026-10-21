@@ -116,7 +116,7 @@ export async function applyEvent(
         await deps.fireRoutine(input.owner, input.repo, input.issueNumber, rule.run);
       }
     } catch (e) {
-      await reportRefusedFire(deps, input, { deliveryId, actor, mode, current, event, rule, target }, e);
+      await reportRefusedFire(deps, input, { deliveryId, actor, mode, current, event, rule }, e);
       throw e;
     }
   } else {
@@ -149,12 +149,14 @@ export async function applyEvent(
  * running, and the sweep may not re-fire it for hours. So it's said where a
  * person looks: a log row with the reason, and a comment on the issue. The
  * delivery still fails (the caller rethrows), so it can be redelivered.
+ * The comment is the webhook path's only: the sweep and other retries keep
+ * the log row but stay quiet, or a persistent refusal would repeat it.
  * Reporting never masks the refusal: its own errors are only logged.
  */
 async function reportRefusedFire(
   deps: Deps,
   input: IssueRef,
-  at: Pick<Parameters<Deps["logTransition"]>[0], "deliveryId" | "actor" | "mode"> & { current: State; event: Event; rule: Rule; target: State },
+  at: Pick<Parameters<Deps["logTransition"]>[0], "deliveryId" | "actor" | "mode"> & { current: State; event: Event; rule: Rule },
   e: unknown,
 ): Promise<void> {
   const reason = (e instanceof Error ? e.message : String(e)).slice(0, 300);
@@ -172,7 +174,16 @@ async function reportRefusedFire(
       droppedReason: `fire refused: ${reason}`,
       mode: at.mode,
     });
-    const retry = at.target !== "none" ? `Re-add the \`${at.target}\` label to try again.` : "Re-add the label to try again.";
+  } catch (report) {
+    console.error("refused-fire log failed:", report instanceof Error ? report.message : report);
+  }
+  if (!at.deliveryId || at.actor === "sweep") return;
+  // Only the label this event's webhook added can be re-added to retry; a
+  // rule's target (e.g. AUTO_REWORKING after a failed gate) would start a
+  // different transition.
+  const trigger = LABEL_JUST_ADDED_BY[at.event];
+  const retry = trigger ? `Re-add the \`${trigger}\` label to try again.` : "Ask for it to be run again.";
+  try {
     await deps.commentOnIssue(
       input.owner,
       input.repo,
@@ -181,7 +192,7 @@ async function reportRefusedFire(
         `Nothing is running for this. ${retry} (Automatic, from the orchestrator.)`,
     );
   } catch (report) {
-    console.error("refused-fire report failed:", report instanceof Error ? report.message : report);
+    console.error("refused-fire comment failed:", report instanceof Error ? report.message : report);
   }
 }
 

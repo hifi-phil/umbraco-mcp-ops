@@ -86,6 +86,16 @@ describe("a fire's watchdog is armed before the fire", () => {
     await expect(coordinateWebhook(deps, readyLabel)).rejects.toThrow("fire refused");
   });
 
+  it("a refused fire's log row survives a failing comment, and a failing log row doesn't suppress the comment", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      fireRoutine: vi.fn(async () => Promise.reject(new Error("fire refused"))),
+      logTransition: vi.fn(async () => Promise.reject(new Error("D1 down"))),
+    });
+    await expect(coordinateWebhook(deps, readyLabel)).rejects.toThrow("fire refused");
+    expect(deps.commentOnIssue).toHaveBeenCalledTimes(1);
+  });
+
   it("the sweep's re-fire: armed, then fired; a refused one disarms", async () => {
     const ref = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 };
     const opts = { enforced: true, now: Date.parse("2026-10-04T12:00:00Z") };
@@ -98,5 +108,7 @@ describe("a fire's watchdog is armed before the fire", () => {
     const refused = fakeDeps({ ...left, fireRoutine: vi.fn(async () => Promise.reject(new Error("fire refused"))) });
     await expect(coordinateReconcile(refused, ref, opts)).rejects.toThrow("fire refused");
     expect(await refused.getPendingFire()).toBeNull();
+    // Not commented: a persistent refusal would repeat it every sweep.
+    expect(refused.commentOnIssue).not.toHaveBeenCalled();
   });
 });
