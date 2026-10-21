@@ -171,23 +171,44 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
     expect(after.addLabel).not.toHaveBeenCalled();
   });
 
-  it("a rework the rule doesn't apply to leaves the review state unchanged", async () => {
-    const d = deps([LABELS.READY_FOR_REVIEW, LABELS.AUTO_REWORKING], green, {
+  it("a failed fire keeps the restart, so the redelivered rework's push still goes to review", async () => {
+    const d = deps([LABELS.AI_STUCK, LABELS.AUTO_REWORKING], green, {
       fireRoutine: vi.fn(async () => {
         throw new Error("boom");
       }),
     });
     await d.setReviewLoop({ botRounds: 2, fixPending: false });
-    await coordinateWebhook(d, labelled(LABELS.AUTO_REWORKING)).catch(() => undefined);
-    expect(await d.getReviewLoop()).toEqual({ botRounds: 2, fixPending: false });
+    await expect(coordinateWebhook(d, labelled(LABELS.AUTO_REWORKING))).rejects.toThrow("boom");
+    expect(await d.getReviewLoop()).toEqual({ botRounds: 0, fixPending: true });
     expect(d.commentOnIssue).not.toHaveBeenCalledWith(OWNER, REPO, PR, expect.stringMatching(/back to .*fresh review counts/));
+    const after = deps([LABELS.AUTO_REWORKING]);
+    await after.setReviewLoop(await d.getReviewLoop());
+    expect(await coordinateWebhook(after, pushed())).toMatchObject({ event: EVENTS.REVIEW_FIX_PUSHED });
+  });
+
+  it("a late push after the watchdog moved the PR to AI_STUCK is not rewritten to review_fix_pushed", async () => {
+    const d = deps([LABELS.AI_STUCK, LABELS.AUTO_REWORKING]);
+    await d.setReviewLoop({ botRounds: 1, fixPending: true });
+    expect(await coordinateWebhook(d, pushed())).toMatchObject({ event: EVENTS.REWORK_PUSHED });
+  });
+
+  it("a restart resets the CI-fix count", async () => {
+    const d = deps([LABELS.AI_STUCK, LABELS.AUTO_REWORKING]);
+    await d.setReviewLoop({ botRounds: 1, fixPending: false });
+    await d.setCiFix({ attempts: MAX_CI_FIX_ATTEMPTS, pending: false, returnTo: LABELS.AI_REVIEWING });
+    await coordinateWebhook(d, labelled(LABELS.AUTO_REWORKING));
+    expect(await d.getCiFix()).toBeNull();
   });
 
   it("a person's rework from a stuck PR with a CI fix pending is left to the CI-fix path", async () => {
     const d = deps([LABELS.AI_STUCK, LABELS.AUTO_REWORKING]);
+    await d.setReviewLoop({ botRounds: 1, fixPending: false });
     await d.setCiFix({ attempts: 1, pending: true });
     await coordinateWebhook(d, labelled(LABELS.AUTO_REWORKING));
     expect(await d.getReviewLoop()).toBeNull();
+    const after = deps([LABELS.AUTO_REWORKING]);
+    await after.setCiFix(await d.getCiFix());
+    expect(await coordinateWebhook(after, pushed())).toMatchObject({ event: EVENTS.CI_FIX_PUSHED });
     expect(d.commentOnIssue).not.toHaveBeenCalled();
   });
 
