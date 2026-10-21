@@ -161,7 +161,7 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
     expect(await after.getReviewLoop()).toEqual({ botRounds: 0, fixPending: false });
   });
 
-  it("a person's rework from ai-stuck with a CI fix pending is left to the CI-fix path", async () => {
+  it("a person's rework from a stuck PR with a CI fix pending is left to the CI-fix path", async () => {
     const d = deps([LABELS.AI_STUCK, LABELS.AUTO_REWORKING]);
     await d.setCiFix({ attempts: 1, pending: true });
     await coordinateWebhook(d, labelled(LABELS.AUTO_REWORKING));
