@@ -146,6 +146,21 @@ describe("a fire's watchdog is armed before the fire", () => {
     expect(await deps.getPendingFire()).toBeNull();
   });
 
+  it("a deferred fire refused at its alarm for another reason is said on the issue and rethrown, not dropped silently", async () => {
+    for (const unwatched of [false, true]) {
+      const deps = fakeDeps({
+        getLabels: vi.fn(async () => [LABELS.AI_READY]),
+        fireRoutine: vi.fn(async () => Promise.reject(new Error("routine fire failed: 503"))),
+      });
+      await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: 1000, unwatched });
+      await expect(coordinateWatchdogExpired(deps, 2000)).rejects.toThrow("503");
+      expect(await deps.getPendingFire()).toBeNull();
+      const [, , , body] = vi.mocked(deps.commentOnIssue).mock.calls[0]!;
+      expect(body).toContain("couldn't start when its time came");
+      expect(body).toContain("Re-add the label");
+    }
+  });
+
   it("the sweep's re-fire: armed, then fired; a refused one disarms", async () => {
     const ref = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 };
     const opts = { enforced: true, now: Date.parse("2026-10-04T12:00:00Z") };

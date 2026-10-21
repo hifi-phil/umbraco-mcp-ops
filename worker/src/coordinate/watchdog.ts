@@ -40,12 +40,18 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   }
 
   // A fire the routines API rate-limited (apply.ts's deferFire): send it now.
-  // Rate-limited again, it defers itself again; any other refusal throws, and
-  // the alarm's retry tries once more.
+  // Rate-limited again, it defers itself again. Any other refusal has already
+  // cleared the pending fire (so the alarm's retry finds nothing to send): it's
+  // said on the issue, where a person looks, and rethrown.
   if (pending.deferUntil !== undefined) {
     const { deferUntil: _deferred, unwatched, dueAt: _due, ...ref } = pending;
-    if (unwatched) await fireUnwatched(deps, ref, ref.run);
-    else await fireWatched(deps, ref, ref.run, ref.retried ? { retried: true } : {});
+    try {
+      if (unwatched) await fireUnwatched(deps, ref, ref.run);
+      else await fireWatched(deps, ref, ref.run, ref.retried ? { retried: true } : {});
+    } catch (e) {
+      await reportDeferredFireFailed(deps, pending, e);
+      throw e;
+    }
     return { outcome: "deferred_fire_sent", run: pending.run };
   }
 
@@ -125,4 +131,22 @@ async function retryOnce(deps: Deps, pending: PendingFire): Promise<WatchdogResu
   });
   await deps.recordStatus(pending, { kind: "transition", state: "none", run: pending.run, running: true });
   return { outcome: "retried", run: pending.run };
+}
+
+/** A deferred fire refused at its alarm for any reason but the rate limit:
+ * nothing is running and nothing is armed, so tell the person who was told
+ * "nothing to do". Reporting never masks the refusal: its own errors are only logged. */
+async function reportDeferredFireFailed(deps: Deps, pending: PendingFire, e: unknown): Promise<void> {
+  const reason = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+  try {
+    await deps.commentOnIssue(
+      pending.owner,
+      pending.repo,
+      pending.issueNumber,
+      `⚠️ The \`${pending.run}\` routine was waiting out a rate limit, but couldn't start when its time came: the routines API refused it (\`${reason}\`). ` +
+        `Nothing is running for this. Re-add the label that started it to try again. (Automatic, from the orchestrator.)`,
+    );
+  } catch (report) {
+    console.error("deferred-fire failure comment failed:", report instanceof Error ? report.message : report);
+  }
 }
