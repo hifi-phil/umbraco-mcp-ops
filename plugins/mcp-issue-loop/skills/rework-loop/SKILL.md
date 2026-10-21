@@ -102,7 +102,11 @@ With a `log_token`: the rework's journal, decision and build entries, as
 Immediately after pushing (no waiting for CI): **reply briefly on each addressed thread**
 (what changed), **re-request review** from the original reviewer (github-ops → *Re-request
 review*), and **remove the `auto-reworking` label** from the PR (github-ops → *Add / remove a
-label*). The label means "rework pending" — clearing it marks the round done and re-arms
+label*). **Every round that pushes, even a one-line fix, also post one short summary comment
+on the PR** (what was fixed, the commit, what was checked), **with no `agent-outcome`
+marker**: per the `agent-outcomes` skill's catalog, the push is a native GitHub event the
+Worker already sees, so `rework_pushed` is deliberately not reported.
+The label means "rework pending" — clearing it marks the round done and re-arms
 the trigger, so a later review can re-add `auto-reworking` to fire the next round.
 **Orchestrated mode** (the dispatch said so): don't remove the label after a push. The
 orchestrator removes it when it sees your push. If you pushed nothing (no actionable
