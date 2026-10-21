@@ -17,6 +17,7 @@ const env = { GITHUB_APP_TOKEN: "test-token" };
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("no GitHub access configured", () => {
@@ -69,7 +70,6 @@ describe("openWithLabel", () => {
     await vi.runAllTimersAsync();
     expect(await labels).toEqual([LABELS.AI_READY]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
   });
 
   it("only once: a second 503 throws, with the status", async () => {
@@ -81,7 +81,6 @@ describe("openWithLabel", () => {
     await vi.runAllTimersAsync();
     await assertion;
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
   });
 
   it("a write isn't retried on a 503: GitHub may have applied it", async () => {

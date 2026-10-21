@@ -478,7 +478,7 @@ describe("IssueCoordinator.alarm() — the watchdog", () => {
   it("a failing GitHub call throws (so Cloudflare retries the alarm) and leaves pendingFire for that retry", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("bad gateway", { status: 502 })),
+      vi.fn(async () => new Response("bad gateway", { status: 500 })),
     );
     const { ctx, storage } = fakeCtx();
     await storage.put("pendingFire", pendingBuild);
