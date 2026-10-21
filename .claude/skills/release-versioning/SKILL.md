@@ -19,3 +19,7 @@ to `CLAUDE.md` for the version files; `CLAUDE.md` points here.
    from `marketplace.json` when the release lands on `main`.
 
 Plugins and `worker/` never get tags of their own.
+
+## Re-run mode
+
+When `auto-release-loop` re-runs on an existing `release/<version>` (after merging `dev` into it), don't call `scripts/bump.mjs`: it exits 1 when the marketplace already reads `<version>`, and would compound component bumps. Instead bump by hand only each plugin or `worker/` that has changes since the last `v*` tag and whose version still equals the one at that tag, and add the newly merged PRs to the changelog's `<version>` entry. Nothing to change: no commit.
