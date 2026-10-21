@@ -115,6 +115,12 @@ describe("a fire's watchdog is armed before the fire", () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
     await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: 1000 });
     expect(await coordinateWatchdogExpired(deps, 2000)).toEqual({ outcome: "deferred_fire_sent", run: ROUTINES.ISSUE_BUILD_LOOP });
+    expect(deps.recordStatus).toHaveBeenCalledWith(expect.objectContaining({ issueNumber: 7 }), {
+      kind: "transition",
+      state: LABELS.AI_READY,
+      run: ROUTINES.ISSUE_BUILD_LOOP,
+      running: true,
+    });
     expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 7, ROUTINES.ISSUE_BUILD_LOOP);
     const after = await deps.getPendingFire();
     expect(after).toMatchObject({ run: ROUTINES.ISSUE_BUILD_LOOP });
@@ -178,6 +184,7 @@ describe("a fire's watchdog is armed before the fire", () => {
       expect(body).toContain("a person needs to restart it");
       expect(body).not.toContain("Re-add");
       expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ actor: "watchdog", droppedReason: expect.stringContaining("fire refused: routine fire failed: 503") }));
+      expect(deps.recordStatus).toHaveBeenCalledWith(expect.anything(), { kind: "done" });
     }
   });
 

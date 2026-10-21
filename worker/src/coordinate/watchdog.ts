@@ -93,9 +93,20 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
         : await fireWatched(deps, ref, ref.run, ref.retried ? { retried: true } : {}, true);
     } catch (e) {
       await reportDeferredFireFailed(deps, pending, e);
+      // Nothing is running now: end the status row the deferral left waiting.
+      try {
+        await deps.recordStatus(pending, { kind: "done" });
+      } catch (status) {
+        console.error("deferred-fire status write failed:", status instanceof Error ? status.message : status);
+      }
       throw e;
     }
-    return fired === "sent" ? { outcome: "deferred_fire_sent", run: pending.run } : { outcome: "deferred_again", run: pending.run };
+    if (fired === "deferred") return { outcome: "deferred_again", run: pending.run };
+    // Sent: the deferral wrote the row as not running; a watched run now is.
+    if (!unwatched && state !== "ambiguous") {
+      await deps.recordStatus(pending, { kind: "transition", state, run: pending.run, running: true });
+    }
+    return { outcome: "deferred_fire_sent", run: pending.run };
   }
 
   // Once, a run that never reported a single step is fired again instead of
