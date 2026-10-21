@@ -60,7 +60,7 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
      outcome artifact: the release didn't fail. If `release-publish` isn't running to close out, the
      watchdog retries once and then moves the issue to `ai-stuck`; that is expected.
    - **`release/<version>` exists** — merge `<dev>` into it with a **merge commit** (no rebase,
-     no force-push, so the open PR stays valid; run `git merge --no-ff origin/<dev>` in a clone —
+     no force-push, so the open PR stays valid; in a clone run `git fetch origin` and `git switch -C release/<version> origin/release/<version>`, then `git merge --no-ff origin/<dev>` —
      on the MCP path push the result with github-ops' push script — never `update_pull_request_branch`, which merges `<main>`; if the push script refuses, stop and comment `could not push merge of <dev>: stopped, PR left open` (plus a `release_blocked` artifact in **orchestrated mode**) and never fall back to `push_files`, which can't carry a merge commit), **before** item 2's bump so a re-run never
      pushes a bump onto a stale branch. Then skip item 1 and continue at item 2.
      - No clone to merge in: stop, comment `no clone to merge <dev>: stopped, PR left open`. In
