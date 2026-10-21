@@ -80,6 +80,15 @@ resource "cloudflare_workers_script" "worker" {
   compatibility_date  = "2026-08-25"
   compatibility_flags = ["nodejs_compat"]
 
+  # Workers Logs (dashboard -> the Worker -> Observability): every request
+  # and the Worker's console lines. The D1 log records what the Worker did;
+  # this shows what it received and when, e.g. a webhook that arrived late or
+  # an error before anything was logged. Free plan: 200k events a day.
+  observability = {
+    enabled = true
+    logs    = { enabled = true, invocation_logs = true }
+  }
+
   # Cloudflare rejects an upload whose old_tag doesn't match the tag already
   # deployed (412, "Actor migration tag precondition failed"). The provider
   # can't read the deployed tag, hence the var. v1 created IssueCoordinator;
