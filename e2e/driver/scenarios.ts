@@ -36,6 +36,7 @@ import {
   transitions,
   waitFor,
   waitForChecks,
+  ciRuns,
   waitForMergeable,
   type LogRow,
   type Snapshot,
@@ -372,11 +373,8 @@ export const scenarios: Scenario[] = [
         const s = await waitFor(pr.number, (x) => x.merged, 7 * MIN);
         expect(s.merged, `PR #${pr.number} merged`).toBe(true);
         // The path under test: the first red CI finished after the label went on.
-        const { check_runs } = await gh<{ check_runs: { completed_at: string }[] }>(
-          "GET",
-          `/repos/${REPO}/commits/${head.sha}/check-runs`,
-        );
-        expect(labelled! < check_runs[0]!.completed_at, "label added before CI finished (else the setup raced)").toBe(true);
+        const check_runs = await ciRuns(head.sha);
+        expect(labelled! < check_runs[0]!.completed_at!, "label added before CI finished (else the setup raced)").toBe(true);
         expect(hasComment(s, "🔧 CI failing", `attempt 1 of ${CAP}`)).toBe(true);
         await expectLogged(
           pr.number,

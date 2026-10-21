@@ -35,6 +35,8 @@ bumped only when files under their folder changed since the last `v*` tag.
 - Sync back: `.github/workflows/sync-main-to-dev.yml` opens a PR merging
   `main` back into `dev` after a release, so `dev` picks up the bump.
 
-`worker/` is not deployed anywhere yet (see `worker/wrangler.toml`'s
-header) — cutting a release today just produces a tagged GitHub Release
-of the source, not a live deployment.
+Deploy: a published release deploys `worker/` (and the e2e stub) and runs
+the e2e suite, via `.github/workflows/deploy.yml` from `release-tag.yml`,
+after a required reviewer approves. State is encrypted in a private state
+repo; nobody runs `tofu apply` after a release. See
+`docs/agent-orchestration/19-deploy.md`.
