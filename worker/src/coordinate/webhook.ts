@@ -127,6 +127,18 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
       // From LABELS.AI_STUCK, the review's own count starts fresh too.
       if (before === LABELS.AI_STUCK) await deps.setReviewLoop(null);
     }
+    // A person's rework on a PR from the review flow goes back to review after
+    // its push, as a rework the review handed out does (REVIEW_FIX_PUSHED).
+    // From "none" the PR was never in review, so the push just clears the label.
+    if (before === LABELS.READY_FOR_REVIEW || before === LABELS.AI_STUCK) {
+      await deps.setReviewLoop({ botRounds: 0, fixPending: true });
+      await depsFor(deps, EVENTS.LABELLED_AUTO_REWORKING).io.commentOnIssue(
+        input.owner,
+        input.repo,
+        input.issueNumber,
+        `🔁 A person's rework on a PR in review: after its push this goes back to \`${LABELS.AI_REVIEWING}\`, with fresh review counts. (Automatic, from the orchestrator.)`,
+      );
+    }
   }
 
   // LABELS.AI_REVIEWING added (by the build or a person): the label, then the CI gate,
