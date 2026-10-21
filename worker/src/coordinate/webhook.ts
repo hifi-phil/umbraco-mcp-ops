@@ -118,8 +118,18 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // label changes never arrive as events). Counted per PR; past
   // caps.reviewReworks it goes to a person instead of looping. A person
   // retrying from LABELS.AI_STUCK starts a fresh count.
+  let restartReview = false;
   if (event === EVENTS.LABELLED_AUTO_REWORKING) {
     const before = deriveState(currentLabels.filter((l) => l !== LABELS.AUTO_REWORKING));
+    // A person's rework on a PR from the review flow goes back to review after
+    // its push, as a rework the review handed out does (REVIEW_FIX_PUSHED). From
+    // LABELS.AI_STUCK that's only so when the PR has review state: the graph also
+    // reaches it from a rework cap or the watchdog, where it was never in review.
+    // Read before the fresh count below clears it. From "none" the PR was never in
+    // review, so the push just clears the label. A CI fix still pending takes the
+    // CI-fix path on its push instead.
+    const inReview =
+      before === LABELS.READY_FOR_REVIEW || (before === LABELS.AI_STUCK && (await deps.getReviewLoop()) !== null);
     if (before === "none" || before === LABELS.AI_STUCK) {
       const rounds = before === LABELS.AI_STUCK ? 1 : (await deps.getReviewReworks()) + 1;
       if (rounds > deps.caps.reviewReworks) return capReviewRework(deps, input, currentLabels, rounds - 1);
@@ -127,19 +137,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
       // From LABELS.AI_STUCK, the review's own count starts fresh too.
       if (before === LABELS.AI_STUCK) await deps.setReviewLoop(null);
     }
-    // A person's rework on a PR from the review flow goes back to review after
-    // its push, as a rework the review handed out does (REVIEW_FIX_PUSHED).
-    // From "none" the PR was never in review, so the push just clears the label.
-    // A CI fix still pending takes the CI-fix path on its push instead.
-    if ((before === LABELS.READY_FOR_REVIEW || before === LABELS.AI_STUCK) && !(await deps.getCiFix())?.pending) {
-      await deps.setReviewLoop({ botRounds: 0, fixPending: true });
-      await depsFor(deps, EVENTS.LABELLED_AUTO_REWORKING).io.commentOnIssue(
-        input.owner,
-        input.repo,
-        input.issueNumber,
-        `🔁 A person's rework on a PR in review: after its push this goes back to \`${LABELS.AI_REVIEWING}\`, with fresh review counts. (Automatic, from the orchestrator.)`,
-      );
-    }
+    restartReview = inReview && !(await deps.getCiFix())?.pending;
   }
 
   // LABELS.AI_REVIEWING added (by the build or a person): the label, then the CI gate,
@@ -223,6 +221,19 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   }
 
   const result = await applyEvent(deps, input, event, currentLabels);
+  if (restartReview && result.outcome === "applied") {
+    await deps.setReviewLoop({ botRounds: 0, fixPending: true });
+    try {
+      await depsFor(deps, EVENTS.LABELLED_AUTO_REWORKING).io.commentOnIssue(
+        input.owner,
+        input.repo,
+        input.issueNumber,
+        `🔁 A person's rework on a PR in review: after its push this goes back to \`${LABELS.AI_REVIEWING}\`, with fresh review counts. (Automatic, from the orchestrator.)`,
+      );
+    } catch (e) {
+      console.error("review restart comment failed", e);
+    }
+  }
   // A contextual event the table ignores here (say LABELS.AUTO_MERGING removed from
   // a LABELS.MERGE_BLOCKED PR) is still a person's edit worth a row.
   return result.outcome === "ignored" && human ? logManualOverride(deps, input, human, currentLabels) : result;
