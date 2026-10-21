@@ -56,8 +56,8 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
 0. **Re-run handling (before anything else).** A re-label after a block lands on a branch
    and PR that may already exist; bring them up to `<dev>` rather than reusing them stale.
    - **Already released** — the release PR for `release/<version>` is merged, or `v<version>`
-     is tagged: stop, comment `already released: stopped`, touch nothing. In **orchestrated mode** also
-     append a `release_blocked` artifact whose `reason` is that line.
+     is tagged: stop, comment `already released: stopped`, touch nothing. In **orchestrated mode** post no
+     outcome artifact: the release didn't fail, and `release-publish` owns close-out.
    - **`release/<version>` exists** — merge `<dev>` into it with a **merge commit** (no rebase,
      no force-push, so the open PR stays valid; run `git merge --no-ff origin/<dev>` in a clone —
      on the MCP path push the result with github-ops' push script — never `update_pull_request_branch`, which merges `<main>`; if the push script refuses, stop and comment `could not push merge of <dev>: stopped, PR left open` (plus a `release_blocked` artifact in **orchestrated mode**) and never fall back to `push_files`, which can't carry a merge commit), **before** item 2's bump so a re-run never
