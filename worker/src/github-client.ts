@@ -72,10 +72,11 @@ async function gh(
   let res = await call();
   // GitHub has brief outages (a 503 on a GET failed 2.3.6's e2e audit). A read
   // is safe to repeat, so a GET gets one more try after a short pause; a write
-  // isn't retried here, since GitHub may have applied it. One pause stays well
+  // isn't retried on a 5xx, since GitHub may have applied it (a 403 refusal is
+  // retried below, for any method: nothing was applied). One pause stays well
   // inside the Worker's answer deadline (index.ts).
   if (method === "GET" && GET_RETRY_STATUSES.has(res.status)) {
-    await res.body?.cancel();
+    await res.body?.cancel().catch(() => {}); // a body broken mid-outage mustn't stop the retry
     await new Promise((r) => setTimeout(r, GET_RETRY_DELAY_MS));
     res = await call();
   }
