@@ -122,6 +122,20 @@ arrive"), then the D1 log ("what did it do").
 - **The D1 log** (`agent-orchestration-log`, the `transitions` table): what the Worker *did* for an issue, one row per transition, with `dropped_reason` when it chose not to act. A narrow query by `owner`, `repo` and `issue_number` (the indexed columns) in the D1 console. Free plan: 5M rows read a day, so never an unfiltered scan.
 - **The GitHub App's Recent Deliveries**: whether GitHub sent the webhook, and **Redeliver** for one that failed.
 
+### When the routines API refuses a fire
+
+Each repo has **one** loop-dispatch routine, and every loop (build, review,
+rework, merge, release) fires it, so they share its limits. Two refusals were
+seen on 21-10-2026:
+
+| The refusal | What it means | What happens |
+|---|---|---|
+| `429 rate_limit_error`: "This routine's fire rate limit has been reached. Try again in 30m21s." | Too many fires in a short time: about 15 in 30 minutes stalled every loop for half an hour | Since 2.3.6 (#322) the fire is **deferred** to the time given: the issue says "⏳ will start at about HH:MM UTC" and the Worker sends it then. Nothing to do |
+| `403 forbidden`: "Request not allowed", for **one issue** while others go through | Something about that issue on the routines side: #316 was refused 6 times out of 6, on two routes, with budget to spare. The same issue re-filed as #326 built at once | The issue gets "⚠️ Couldn't start …" (since 2.3.5, #319). Re-adding the label won't help: **re-file the issue** under a new number |
+
+When testing or running many items at once, pace them: about one
+review-and-rework cycle at a time per repo.
+
 ## Changing a setting
 
 A tfvars value (a routine URL, a watchdog override, `deployed_do_migration_tag`
