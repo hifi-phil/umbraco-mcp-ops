@@ -1,0 +1,50 @@
+name: tofu validate
+
+# Checks worker/terraform/ on every PR that touches it: formatting, and that
+# the configuration is valid against the pinned providers. Nothing else in CI
+# reads the tofu files, so before this a broken change was first caught by the
+# release's deploy (deploy.yml), against the live Worker.
+#
+# No state, no credentials, no plan: `init -backend=false` only installs the
+# providers, and validate needs no account. The two bundles main.tf hashes
+# (filesha256) are empty placeholders: validate checks the configuration, not
+# what's uploaded. No tfvars here either (it's gitignored), so `fmt -check`
+# can only print file names.
+
+on:
+  pull_request:
+    paths:
+      - 'worker/terraform/**'
+      - '.github/workflows/tofu-validate.yml'
+  push:
+    branches: [main, dev]
+    paths:
+      - 'worker/terraform/**'
+
+jobs:
+  tofu-validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version: 1.11.6 # the same as deploy.yml
+          tofu_wrapper: false
+
+      - name: Format
+        run: tofu fmt -check
+
+      - name: Placeholder bundles
+        run: |
+          mkdir -p ../dist ../../e2e/stub/dist
+          touch ../dist/index.js ../../e2e/stub/dist/index.js
+
+      - name: Init (providers only)
+        run: tofu init -backend=false -input=false
+
+      - name: Validate
+        run: tofu validate
