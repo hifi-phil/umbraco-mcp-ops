@@ -181,9 +181,20 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
     await expect(coordinateWebhook(d, labelled(LABELS.AUTO_REWORKING))).rejects.toThrow("boom");
     expect(await d.getReviewLoop()).toEqual({ botRounds: 0, fixPending: true });
     expect(d.commentOnIssue).not.toHaveBeenCalledWith(OWNER, REPO, PR, expect.stringMatching(/back to .*fresh review counts/));
-    const after = deps([LABELS.AUTO_REWORKING]);
-    await after.setReviewLoop(await d.getReviewLoop());
-    expect(await coordinateWebhook(after, pushed())).toMatchObject({ event: EVENTS.REVIEW_FIX_PUSHED });
+    // The redelivery: the labels now read "none" (the rule already moved them) and the fire works.
+    d.getLabels = vi.fn(async () => [LABELS.AUTO_REWORKING]);
+    d.fireRoutine = vi.fn(async () => undefined);
+    await coordinateWebhook(d, labelled(LABELS.AUTO_REWORKING));
+    expect(await d.getReviewLoop()).toEqual({ botRounds: 0, fixPending: true });
+    expect(await coordinateWebhook(d, pushed())).toMatchObject({ event: EVENTS.REVIEW_FIX_PUSHED });
+  });
+
+  it("a stuck PR whose CI fixes returned to review, with no findings round, goes back to review", async () => {
+    const d = deps([LABELS.AI_STUCK, LABELS.AUTO_REWORKING]);
+    await d.setCiFix({ attempts: MAX_CI_FIX_ATTEMPTS, pending: false, returnTo: LABELS.AI_REVIEWING });
+    await coordinateWebhook(d, labelled(LABELS.AUTO_REWORKING));
+    expect(await d.getReviewLoop()).toEqual({ botRounds: 0, fixPending: true });
+    expect(await d.getCiFix()).toBeNull();
   });
 
   it("a late push after the watchdog moved the PR to AI_STUCK is not rewritten to review_fix_pushed", async () => {

@@ -121,19 +121,20 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // caps.reviewReworks it goes to a person instead of looping. A person
   // retrying from LABELS.AI_STUCK starts a fresh count.
   let restartReview = false;
-  let restartPrior: Awaited<ReturnType<Deps["getReviewLoop"]>> = null;
   if (event === EVENTS.LABELLED_AUTO_REWORKING) {
     const before = deriveState(currentLabels.filter((l) => l !== LABELS.AUTO_REWORKING));
     // A person's rework on a PR from the review flow goes back to review after
     // its push, as a rework the review handed out does (REVIEW_FIX_PUSHED). From
-    // LABELS.AI_STUCK that's only so when the PR has review state: the graph also
-    // reaches it from a rework cap or the watchdog, where it had no review state.
-    // Read before the fresh count below clears it. From "none" the PR isn't in the
-    // review flow now, so the push just clears the label. A CI fix still pending
-    // takes the CI-fix path on its push instead.
-    const priorReviewLoop = await deps.getReviewLoop();
-    const inReview =
-      before === LABELS.READY_FOR_REVIEW || (before === LABELS.AI_STUCK && priorReviewLoop !== null);
+    // LABELS.AI_STUCK that's only so when the PR was stuck in the review flow: a
+    // findings round left review state, or its CI fixes returned to review. The graph
+    // also reaches it from a rework cap or the watchdog elsewhere, and there the push
+    // just clears the label. Read before the fresh count below clears them. From
+    // "none" the PR isn't in the review flow now. A CI fix still pending takes the
+    // CI-fix path on its push instead.
+    const stuckInReview =
+      before === LABELS.AI_STUCK &&
+      ((await deps.getReviewLoop()) !== null || (await deps.getCiFix())?.returnTo === LABELS.AI_REVIEWING);
+    const inReview = before === LABELS.READY_FOR_REVIEW || stuckInReview;
     if (before === "none" || before === LABELS.AI_STUCK) {
       const rounds = before === LABELS.AI_STUCK ? 1 : (await deps.getReviewReworks()) + 1;
       if (rounds > deps.caps.reviewReworks) return capReviewRework(deps, input, currentLabels, rounds - 1);
@@ -143,12 +144,11 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     }
     restartReview = inReview && !(await deps.getCiFix())?.pending;
     // Written before the rule runs, so a refused fire that is redelivered (the
-    // labels then read "none") still sends the PR back to review on its push.
-    // Undone below if the rule doesn't apply.
+    // labels then read "none") still sends the PR back to review on its push. From
+    // LABELS.READY_FOR_REVIEW and LABELS.AI_STUCK the rule always exists, so it applies.
     if (restartReview) {
       await deps.setReviewLoop({ botRounds: 0, fixPending: true });
       await deps.setCiFix(null);
-      restartPrior = priorReviewLoop;
     }
   }
 
@@ -233,7 +233,6 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   }
 
   const result = await applyEvent(deps, input, event, currentLabels);
-  if (restartReview && result.outcome !== "applied") await deps.setReviewLoop(restartPrior);
   if (restartReview && result.outcome === "applied") {
     try {
       await depsFor(deps, EVENTS.LABELLED_AUTO_REWORKING).io.commentOnIssue(
