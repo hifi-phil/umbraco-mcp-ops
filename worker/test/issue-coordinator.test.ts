@@ -421,6 +421,28 @@ describe("IssueCoordinator — /reconcile's idle clock", () => {
   });
 });
 
+describe("IssueCoordinator — a rate-limited fire", () => {
+  it("arms the alarm at deferUntil and stores it as dueAt, not at the watchdog timeout", async () => {
+    const base = fakeApiFetch();
+    const retryAfter = Date.now() + 31 * 60_000;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) =>
+        url.startsWith("https://routines.example/fire/")
+          ? new Response(JSON.stringify({ error: { message: "Try again in 30m0s.", type: "rate_limit_error" } }), { status: 429 })
+          : base(url, init),
+      ),
+    );
+    const { ctx, storage, setAlarm } = fakeCtx();
+    const coordinator = new IssueCoordinator(ctx, fakeEnv());
+    await coordinator.fetch(fetchRequest(labeledInput()));
+    const pending = (await storage.get("pendingFire")) as { deferUntil: number; dueAt: number };
+    expect(pending.deferUntil).toBeGreaterThanOrEqual(retryAfter - 5_000);
+    expect(pending.dueAt).toBe(pending.deferUntil);
+    expect(setAlarm).toHaveBeenLastCalledWith(pending.deferUntil);
+  });
+});
+
 describe("IssueCoordinator.alarm() — the watchdog", () => {
   const pendingBuild = {
     owner: "hifi-phil",

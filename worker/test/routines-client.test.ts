@@ -132,6 +132,15 @@ describe("fireRoutine", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("a 429 with no readable wait is deferred 30 minutes (plus the minute)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse("2026-10-21T18:00:00Z"));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("slow down", { status: 429 })));
+    const err = await fireRoutine(env, "hifi-phil", "umbraco-mcp-ops", 1, "review-loop").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(FireRateLimited);
+    expect((err as FireRateLimited).retryAt).toBe(Date.parse("2026-10-21T18:00:00Z") + 31 * 60_000);
+  });
+
   it("reads the wait in any of h/m/s, and none when there isn't one", () => {
     expect(retryAfterMs("Try again in 30m21s.")).toBe((30 * 60 + 21) * 1000);
     expect(retryAfterMs("try again in 45s")).toBe(45_000);

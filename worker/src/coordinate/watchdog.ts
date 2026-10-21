@@ -5,7 +5,7 @@ import { LABELS } from "@orchestrator/graph/constants/labels";
 import { reduce, rules } from "@orchestrator/graph/graph";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
-import { applyEvent, deriveState, fireUnwatched, fireWatched } from "./apply";
+import { applyEvent, deriveState, fireUnwatched, fireWatched, type FireOutcome } from "./apply";
 
 export type WatchdogResult =
   | { outcome: "no_pending_fire" }
@@ -13,6 +13,7 @@ export type WatchdogResult =
   | { outcome: "retried"; run: string }
   | { outcome: "deferred_fire_sent"; run: string }
   | { outcome: "deferred_fire_dropped"; run: string }
+  | { outcome: "deferred_again"; run: string }
   | CoordinateResult;
 
 // An alarm can be invoked a little before its time is reached; a pending
@@ -49,8 +50,14 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
     // A person may have taken the issue out of the flow while it waited
     // (removing a label like the discussion one raises no event). A closed issue clears the
     // pending fire in the webhook, so only the labels are checked here.
-    const labels = await deps.getLabels(pending.owner, pending.repo, pending.issueNumber);
-    const state = deriveState(labels);
+    // If the labels can't be read, send anyway (as for an ambiguous state):
+    // a late run is better than a fire left pending with no alarm behind it.
+    let state: ReturnType<typeof deriveState> = "ambiguous";
+    try {
+      state = deriveState(await deps.getLabels(pending.owner, pending.repo, pending.issueNumber));
+    } catch (e) {
+      console.error("deferred-fire label check failed:", e instanceof Error ? e.message : e);
+    }
     if (!stillWanted(state, pending.run)) {
       try {
         await deps.logTransition({
@@ -79,14 +86,16 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
       await deps.recordStatus(pending, { kind: "done" });
       return { outcome: "deferred_fire_dropped", run: pending.run };
     }
+    let fired: FireOutcome;
     try {
-      if (unwatched) await fireUnwatched(deps, ref, ref.run, true);
-      else await fireWatched(deps, ref, ref.run, ref.retried ? { retried: true } : {}, true);
+      fired = unwatched
+        ? await fireUnwatched(deps, ref, ref.run, true)
+        : await fireWatched(deps, ref, ref.run, ref.retried ? { retried: true } : {}, true);
     } catch (e) {
       await reportDeferredFireFailed(deps, pending, e);
       throw e;
     }
-    return { outcome: "deferred_fire_sent", run: pending.run };
+    return fired === "sent" ? { outcome: "deferred_fire_sent", run: pending.run } : { outcome: "deferred_again", run: pending.run };
   }
 
   // Once, a run that never reported a single step is fired again instead of
@@ -146,7 +155,10 @@ function stillWanted(state: ReturnType<typeof deriveState>, run: string): boolea
 async function retryOnce(deps: Deps, pending: PendingFire): Promise<WatchdogResult | null> {
   const minutes = deps.watchdogMinutes(pending.run);
   try {
-    await fireWatched(deps, pending, pending.run, { retried: true });
+    // Rate-limited: it's pending with its alarm, and already said on the issue.
+    if ((await fireWatched(deps, pending, pending.run, { retried: true })) === "deferred") {
+      return { outcome: "deferred_again", run: pending.run };
+    }
   } catch (e) {
     console.error("watchdog retry fire failed:", e instanceof Error ? e.message : e);
     return null;
@@ -203,7 +215,7 @@ async function reportDeferredFireFailed(deps: Deps, pending: PendingFire, e: unk
       pending.repo,
       pending.issueNumber,
       `⚠️ The \`${pending.run}\` routine was waiting out a rate limit, but couldn't start when its time came: the routines API refused it (\`${reason}\`). ` +
-        `Nothing is running for this. Re-add the label that started it to try again. (Automatic, from the orchestrator.)`,
+        `Nothing is running for this; a person needs to restart it. (Automatic, from the orchestrator.)`,
     );
   } catch (report) {
     console.error("deferred-fire failure comment failed:", report instanceof Error ? report.message : report);
