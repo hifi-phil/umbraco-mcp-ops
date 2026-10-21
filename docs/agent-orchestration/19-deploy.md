@@ -113,6 +113,15 @@ bucket later: add the backend, `tofu init -migrate-state`, same encryption.
 | e2e: `403` on `/actions/…` | `E2E_GITHUB_TOKEN` lacks Actions: read |
 | Locally: `Unsupported state file format` | `TF_ENCRYPTION` isn't set in that terminal |
 
+## Where to look
+
+When a deploy or a webhook looks stuck, check Workers Logs first ("did it
+arrive"), then the D1 log ("what did it do").
+
+- **Workers Logs**: Cloudflare dashboard → Workers & Pages → `agent-orchestration-worker` → Observability. Every request with its time and status, plus the Worker's `console.error` lines. Shows when a webhook arrived and whether it errored. On since 2.3.4 (#307).
+- **The D1 log** (`agent-orchestration-log`, the `transitions` table): what the Worker *did* for an issue, one row per transition, with `dropped_reason` when it chose not to act. A narrow query by `owner`, `repo` and `issue_number` (the indexed columns) in the D1 console. Free plan: 5M rows read a day, so never an unfiltered scan.
+- **The GitHub App's Recent Deliveries**: whether GitHub sent the webhook, and **Redeliver** for one that failed.
+
 ## Changing a setting
 
 A tfvars value (a routine URL, a watchdog override, `deployed_do_migration_tag`
