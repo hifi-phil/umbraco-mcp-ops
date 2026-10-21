@@ -201,6 +201,8 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
     const d = deps([LABELS.AI_STUCK, LABELS.AUTO_REWORKING]);
     await d.setReviewLoop({ botRounds: 1, fixPending: true });
     expect(await coordinateWebhook(d, pushed())).toMatchObject({ event: EVENTS.REWORK_PUSHED });
+    expect(await d.getReviewLoop()).toEqual({ botRounds: 1, fixPending: false });
+    expect(d.addLabel).not.toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_REVIEWING);
   });
 
   it("a restart resets the CI-fix count", async () => {

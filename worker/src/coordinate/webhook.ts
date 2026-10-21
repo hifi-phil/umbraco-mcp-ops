@@ -97,7 +97,8 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // A push by a rework this Worker started: for failing CI, back to
   // LABELS.AUTO_MERGING (or LABELS.AI_REVIEWING, if CI failed before the review); for the
   // review's findings, back to LABELS.AI_REVIEWING. Instead of just clearing
-  // LABELS.AUTO_REWORKING, as a person's review rework does.
+  // LABELS.AUTO_REWORKING, as a person's rework outside the review flow does
+  // (one inside it sets fixPending in the LABELLED_AUTO_REWORKING block below).
   if (event === EVENTS.REWORK_PUSHED || event === EVENTS.UNLABELLED_AUTO_REWORKING) {
     const ciFix = await deps.getCiFix();
     const reviewLoop = ciFix?.pending ? null : await deps.getReviewLoop();
@@ -128,7 +129,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     // LABELS.AI_STUCK that's only so when the PR was stuck in the review flow: a
     // findings round left review state, or its CI fixes returned to review. The graph
     // also reaches it from a rework cap or the watchdog elsewhere, and there the push
-    // just clears the label. Read before the fresh count below clears them. From
+    // just clears the label. Read before the fresh count below clears the review's state. From
     // "none" the PR isn't in the review flow now. A CI fix still pending takes the
     // CI-fix path on its push instead.
     const stuckInReview =
