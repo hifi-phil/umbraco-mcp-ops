@@ -130,7 +130,8 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     // A person's rework on a PR from the review flow goes back to review after
     // its push, as a rework the review handed out does (REVIEW_FIX_PUSHED).
     // From "none" the PR was never in review, so the push just clears the label.
-    if (before === LABELS.READY_FOR_REVIEW || before === LABELS.AI_STUCK) {
+    // A CI fix still pending takes the CI-fix path on its push instead.
+    if ((before === LABELS.READY_FOR_REVIEW || before === LABELS.AI_STUCK) && !(await deps.getCiFix())?.pending) {
       await deps.setReviewLoop({ botRounds: 0, fixPending: true });
       await depsFor(deps, EVENTS.LABELLED_AUTO_REWORKING).io.commentOnIssue(
         input.owner,
