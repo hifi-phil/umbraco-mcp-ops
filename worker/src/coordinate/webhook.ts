@@ -66,6 +66,8 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
   // doesn't put it back (the DO remembers the close until it's reopened).
   if (input.payload.action === "issues.closed" || input.payload.action === "pull_request.closed") {
     await deps.recordStatus(input, { kind: "gone", closed: true });
+    // A fire still deferred by the rate limit would start on a closed issue.
+    if ((await deps.getPendingFire())?.deferUntil !== undefined) await deps.clearPendingFire();
   }
   if (input.payload.action === "issues.reopened" || input.payload.action === "pull_request.reopened") {
     await deps.recordStatus(input, { kind: "reopened" });

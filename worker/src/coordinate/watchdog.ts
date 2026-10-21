@@ -2,15 +2,18 @@
 // webhook.
 
 import { LABELS } from "@orchestrator/graph/constants/labels";
-import { reduce } from "@orchestrator/graph/graph";
+import { reduce, rules } from "@orchestrator/graph/graph";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
-import { applyEvent, deriveState, fireWatched } from "./apply";
+import { applyEvent, deriveState, fireUnwatched, fireWatched, type FireOutcome } from "./apply";
 
 export type WatchdogResult =
   | { outcome: "no_pending_fire" }
   | { outcome: "not_due"; dueAt: number }
   | { outcome: "retried"; run: string }
+  | { outcome: "deferred_fire_sent"; run: string }
+  | { outcome: "deferred_fire_dropped"; run: string }
+  | { outcome: "deferred_again"; run: string }
   | CoordinateResult;
 
 // An alarm can be invoked a little before its time is reached; a pending
@@ -36,6 +39,74 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   const margin = Math.min(WATCHDOG_DUE_MARGIN_MS, (deps.watchdogMinutes(pending.run) * 60_000) / 2);
   if (pending.dueAt !== undefined && now < pending.dueAt - margin) {
     return { outcome: "not_due", dueAt: pending.dueAt };
+  }
+
+  // A fire the routines API rate-limited (apply.ts's deferFire): send it now.
+  // Rate-limited again, it defers itself again. Any other refusal has already
+  // cleared the pending fire (so the alarm's retry finds nothing to send): it's
+  // said on the issue, where a person looks, and rethrown.
+  if (pending.deferUntil !== undefined) {
+    const { deferUntil: _deferred, unwatched, dueAt: _due, ...ref } = pending;
+    // A person may have taken the issue out of the flow while it waited
+    // (removing a label like the discussion one raises no event). A closed issue clears the
+    // pending fire in the webhook, so only the labels are checked here.
+    // If the labels can't be read, send anyway (as for an ambiguous state):
+    // a late run is better than a fire left pending with no alarm behind it.
+    let state: ReturnType<typeof deriveState> = "ambiguous";
+    try {
+      state = deriveState(await deps.getLabels(pending.owner, pending.repo, pending.issueNumber));
+    } catch (e) {
+      console.error("deferred-fire label check failed:", e instanceof Error ? e.message : e);
+    }
+    if (!stillWanted(state, pending.run)) {
+      try {
+        await deps.logTransition({
+          deliveryId: null,
+          owner: pending.owner,
+          repo: pending.repo,
+          issueNumber: pending.issueNumber,
+          fromState: state,
+          event: "deferred_fire_dropped",
+          actor: "watchdog",
+          toEffect: JSON.stringify({ kind: "noop" }),
+          run: pending.run,
+          droppedReason: "deferred fire no longer wanted: the issue's labels no longer lead to this run",
+          mode: "enforce",
+        });
+        await deps.commentOnIssue(
+          pending.owner,
+          pending.repo,
+          pending.issueNumber,
+          `ℹ️ The \`${pending.run}\` routine was waiting out a rate limit, but isn't being started: this no longer carries the label that asked for it. (Automatic, from the orchestrator.)`,
+        );
+      } catch (report) {
+        console.error("deferred-fire drop report failed:", report instanceof Error ? report.message : report);
+      }
+      await deps.clearPendingFire();
+      await deps.recordStatus(pending, { kind: "done" });
+      return { outcome: "deferred_fire_dropped", run: pending.run };
+    }
+    let fired: FireOutcome;
+    try {
+      fired = unwatched
+        ? await fireUnwatched(deps, ref, ref.run, true)
+        : await fireWatched(deps, ref, ref.run, ref.retried ? { retried: true } : {}, true);
+    } catch (e) {
+      await reportDeferredFireFailed(deps, pending, e);
+      // Nothing is running now: end the status row the deferral left waiting.
+      try {
+        await deps.recordStatus(pending, { kind: "done" });
+      } catch (status) {
+        console.error("deferred-fire status write failed:", status instanceof Error ? status.message : status);
+      }
+      throw e;
+    }
+    if (fired === "deferred") return { outcome: "deferred_again", run: pending.run };
+    // Sent: the deferral wrote the row as not running; a watched run now is.
+    if (!unwatched && state !== "ambiguous") {
+      await deps.recordStatus(pending, { kind: "transition", state, run: pending.run, running: true });
+    }
+    return { outcome: "deferred_fire_sent", run: pending.run };
   }
 
   // Once, a run that never reported a single step is fired again instead of
@@ -81,13 +152,24 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   return result;
 }
 
+/** Whether the issue's tracked label is still one that fires `run`: the
+ * target of a rule that runs it (or, for a rule that stays put, its source). */
+function stillWanted(state: ReturnType<typeof deriveState>, run: string): boolean {
+  // Ambiguous is no reason to drop it: nothing would re-fire it later.
+  if (state === "ambiguous") return true;
+  return rules.some((r) => r.run === run && (r.to.kind === "label" ? r.to.value : r.from) === state);
+}
+
 /** The one re-fire (see coordinateWatchdogExpired): watched again, marked so
  * a second silent expiry goes to LABELS.AI_STUCK. Null if the fire itself is
  * refused, so the expiry carries on as usual. */
 async function retryOnce(deps: Deps, pending: PendingFire): Promise<WatchdogResult | null> {
   const minutes = deps.watchdogMinutes(pending.run);
   try {
-    await fireWatched(deps, pending, pending.run, { retried: true });
+    // Rate-limited: it's pending with its alarm, and already said on the issue.
+    if ((await fireWatched(deps, pending, pending.run, { retried: true })) === "deferred") {
+      return { outcome: "deferred_again", run: pending.run };
+    }
   } catch (e) {
     console.error("watchdog retry fire failed:", e instanceof Error ? e.message : e);
     return null;
@@ -114,4 +196,39 @@ async function retryOnce(deps: Deps, pending: PendingFire): Promise<WatchdogResu
   });
   await deps.recordStatus(pending, { kind: "transition", state: "none", run: pending.run, running: true });
   return { outcome: "retried", run: pending.run };
+}
+
+/** A deferred fire refused at its alarm for any reason but the rate limit:
+ * nothing is running and nothing is armed, so tell the person who was told
+ * "nothing to do". Reporting never masks the refusal: its own errors are only logged. */
+async function reportDeferredFireFailed(deps: Deps, pending: PendingFire, e: unknown): Promise<void> {
+  const reason = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+  try {
+    await deps.logTransition({
+      deliveryId: null,
+      owner: pending.owner,
+      repo: pending.repo,
+      issueNumber: pending.issueNumber,
+      fromState: "none",
+      event: "deferred_fire_refused",
+      actor: "watchdog",
+      toEffect: JSON.stringify({ kind: "noop" }),
+      run: pending.run,
+      droppedReason: `fire refused: ${reason}`,
+      mode: "enforce",
+    });
+  } catch (report) {
+    console.error("deferred-fire log failed:", report instanceof Error ? report.message : report);
+  }
+  try {
+    await deps.commentOnIssue(
+      pending.owner,
+      pending.repo,
+      pending.issueNumber,
+      `⚠️ The \`${pending.run}\` routine was waiting out a rate limit, but couldn't start when its time came: the routines API refused it (\`${reason}\`). ` +
+        `Nothing is running for this; a person needs to restart it. (Automatic, from the orchestrator.)`,
+    );
+  } catch (report) {
+    console.error("deferred-fire failure comment failed:", report instanceof Error ? report.message : report);
+  }
 }

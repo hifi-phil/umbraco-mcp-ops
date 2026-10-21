@@ -119,4 +119,18 @@ describe("coordinateRoutineSignal — the direct routine-to-DO heartbeat channel
     expect(result).toEqual({ outcome: "invalid_signal" });
     expect(deps.clearPendingFire).not.toHaveBeenCalled();
   });
+
+  it("a signal while a fire is deferred (an earlier run of the same routine) -> no_pending_fire: it neither clears nor extends the deferred fire", async () => {
+    const deps = fakeDeps();
+    const pending = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: 5000 };
+    await deps.setPendingFire(pending);
+    vi.mocked(deps.setPendingFire).mockClear();
+    const completion = await coordinateRoutineSignal(deps, signalInput({ kind: "completion", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, outcome: { outcome: "build_succeeded", pr: 123 } }));
+    const heartbeat = await coordinateRoutineSignal(deps, signalInput({ kind: "process", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, step: "merging" }));
+    expect(completion).toEqual({ outcome: "no_pending_fire" });
+    expect(heartbeat).toEqual({ outcome: "no_pending_fire" });
+    expect(deps.clearPendingFire).not.toHaveBeenCalled();
+    expect(deps.setPendingFire).not.toHaveBeenCalled();
+    expect(await deps.getPendingFire()).toEqual(pending);
+  });
 });

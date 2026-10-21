@@ -6,6 +6,8 @@ import { EVENTS } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { MAX_REVIEW_REWORKS, coordinateReconcile, coordinateWebhook } from "../../src/coordinate";
 import { fakeDeps, input } from "./helpers";
+import { FireRateLimited } from "../../src/coordinate/types";
+import { coordinateWatchdogExpired } from "../../src/coordinate";
 
 const reworkLabel = (deliveryId: string) =>
   input({ deliveryId, payload: { action: "pull_request.labeled", label: { name: LABELS.AUTO_REWORKING }, sender: { login: "reviewer", type: "User" } } });
@@ -94,6 +96,152 @@ describe("a fire's watchdog is armed before the fire", () => {
     });
     await expect(coordinateWebhook(deps, readyLabel)).rejects.toThrow("fire refused");
     expect(deps.commentOnIssue).toHaveBeenCalledTimes(1);
+  });
+
+  it("webhook path: a rate-limited fire is deferred, not dropped: still armed, at the API's time, and said on the issue", async () => {
+    const retryAt = Date.parse("2026-10-21T19:24:57Z");
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      fireRoutine: vi.fn(async () => Promise.reject(new FireRateLimited("rate-limited: 429", retryAt))),
+    });
+    expect(await coordinateWebhook(deps, readyLabel)).toMatchObject({ outcome: "applied" });
+    expect(await deps.getPendingFire()).toMatchObject({ run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: retryAt + 22_000 }); // 412 % 30 s of jitter
+    const [, , , body] = vi.mocked(deps.commentOnIssue).mock.calls[0]!;
+    expect(body).toContain("start automatically at about 19:25 UTC");
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.LABELLED_AI_READY, droppedReason: null }));
+  });
+
+  it("the alarm sends a deferred fire, watched again and no longer deferred; still limited, it defers again", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: 1000 });
+    expect(await coordinateWatchdogExpired(deps, 2000)).toEqual({ outcome: "deferred_fire_sent", run: ROUTINES.ISSUE_BUILD_LOOP });
+    expect(deps.recordStatus).toHaveBeenCalledWith(expect.objectContaining({ issueNumber: 7 }), {
+      kind: "transition",
+      state: LABELS.AI_READY,
+      run: ROUTINES.ISSUE_BUILD_LOOP,
+      running: true,
+    });
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 7, ROUTINES.ISSUE_BUILD_LOOP);
+    const after = await deps.getPendingFire();
+    expect(after).toMatchObject({ run: ROUTINES.ISSUE_BUILD_LOOP });
+    expect(after?.deferUntil).toBeUndefined();
+    expect(deps.addLabel).not.toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 7, LABELS.AI_STUCK);
+
+    const limited = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      fireRoutine: vi.fn(async () => Promise.reject(new FireRateLimited("429", 9000))),
+    });
+    await limited.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: 1000 });
+    await coordinateWatchdogExpired(limited, 2000);
+    expect(await limited.getPendingFire()).toMatchObject({ deferUntil: 16_000 }); // 7 % 30 s of jitter
+    // Said once, when first deferred: the re-deferral stays quiet.
+    expect(limited.commentOnIssue).not.toHaveBeenCalled();
+  });
+
+  it("a deferred fire the labels no longer lead to is dropped, not sent: a person removed the label, or closed the issue", async () => {
+    const seed = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, deferUntil: 1000 };
+    const noLabel = fakeDeps({ getLabels: vi.fn(async () => []) });
+    await noLabel.setPendingFire({ ...seed, run: ROUTINES.ISSUE_DISCUSS_LOOP, unwatched: true });
+    expect(await coordinateWatchdogExpired(noLabel, 2000)).toEqual({ outcome: "deferred_fire_dropped", run: ROUTINES.ISSUE_DISCUSS_LOOP });
+    expect(noLabel.fireRoutine).not.toHaveBeenCalled();
+    expect(await noLabel.getPendingFire()).toBeNull();
+    expect(noLabel.logTransition).toHaveBeenCalledWith(expect.objectContaining({ run: ROUTINES.ISSUE_DISCUSS_LOOP, droppedReason: expect.stringContaining("no longer wanted") }));
+
+    const closed = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await closed.setPendingFire({ ...seed, run: ROUTINES.ISSUE_BUILD_LOOP });
+    await coordinateWebhook(closed, input({ payload: { action: "issues.closed", issue: { state: "closed" } } }));
+    expect(await closed.getPendingFire()).toBeNull();
+    expect(closed.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("an unwatched fire (a discussion) defers too, and is disarmed once it's out", async () => {
+    const discuss = input({ payload: { action: "issues.labeled", label: { name: LABELS.AI_DISCUSSING } } });
+    const limited = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]),
+      fireRoutine: vi.fn(async () => Promise.reject(new FireRateLimited("429", 5000))),
+    });
+    await coordinateWebhook(limited, discuss);
+    expect(await limited.getPendingFire()).toMatchObject({ run: ROUTINES.ISSUE_DISCUSS_LOOP, deferUntil: 27_000, unwatched: true });
+
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
+    await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, run: ROUTINES.ISSUE_DISCUSS_LOOP, deferUntil: 1000, unwatched: true });
+    await coordinateWatchdogExpired(deps, 2000);
+    expect(deps.fireRoutine).toHaveBeenCalledTimes(1);
+    expect(await deps.getPendingFire()).toBeNull();
+  });
+
+  it("a deferred fire refused at its alarm for another reason is said on the issue and rethrown, not dropped silently", async () => {
+    for (const unwatched of [false, true]) {
+      const deps = fakeDeps({
+        getLabels: vi.fn(async () => [LABELS.AI_READY]),
+        fireRoutine: vi.fn(async () => Promise.reject(new Error("routine fire failed: 503"))),
+      });
+      await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: 1000, unwatched });
+      await expect(coordinateWatchdogExpired(deps, 2000)).rejects.toThrow("503");
+      expect(await deps.getPendingFire()).toBeNull();
+      const [, , , body] = vi.mocked(deps.commentOnIssue).mock.calls[0]!;
+      expect(body).toContain("couldn't start when its time came");
+      expect(body).toContain("a person needs to restart it");
+      expect(body).not.toContain("Re-add");
+      expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ actor: "watchdog", droppedReason: expect.stringContaining("fire refused: routine fire failed: 503") }));
+      expect(deps.recordStatus).toHaveBeenCalledWith(expect.anything(), { kind: "done" });
+    }
+  });
+
+  it("a deferred fire whose labels can't be read is sent anyway, not left pending with no alarm", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => Promise.reject(new Error("GitHub 502"))) });
+    await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: 1000 });
+    expect(await coordinateWatchdogExpired(deps, 2000)).toEqual({ outcome: "deferred_fire_sent", run: ROUTINES.ISSUE_BUILD_LOOP });
+    expect(deps.fireRoutine).toHaveBeenCalledTimes(1);
+  });
+
+  it("a deferred rule that stays put (review-loop, release-publish) is kept while its source label is there, dropped otherwise", async () => {
+    const seed = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, deferUntil: 1000 };
+    for (const [run, label] of [
+      [ROUTINES.REVIEW_LOOP, LABELS.AI_REVIEWING],
+      [ROUTINES.RELEASE_PUBLISH, LABELS.AUTO_RELEASING],
+    ] as const) {
+      const kept = fakeDeps({ getLabels: vi.fn(async () => [label]) });
+      await kept.setPendingFire({ ...seed, run });
+      expect(await coordinateWatchdogExpired(kept, 2000)).toEqual({ outcome: "deferred_fire_sent", run });
+
+      const gone = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+      await gone.setPendingFire({ ...seed, run });
+      expect(await coordinateWatchdogExpired(gone, 2000)).toEqual({ outcome: "deferred_fire_dropped", run });
+      expect(gone.fireRoutine).not.toHaveBeenCalled();
+    }
+  });
+
+  it("a rate-limited re-fire is not reported as running: the watchdog's one retry, and the sweep's re-fire", async () => {
+    const limited = (labels: string[]) =>
+      fakeDeps({
+        getLabels: vi.fn(async () => labels),
+        fireRoutine: vi.fn(async () => Promise.reject(new FireRateLimited("429", 9000))),
+        watchdogRetry: true,
+      });
+    const retry = limited([LABELS.AI_READY]);
+    await retry.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.ISSUE_BUILD_LOOP });
+    expect(await coordinateWatchdogExpired(retry)).toEqual({ outcome: "deferred_again", run: ROUTINES.ISSUE_BUILD_LOOP });
+    expect(retry.commentOnIssue).toHaveBeenCalledTimes(1); // deferFire's, not "Firing it once more"
+    expect(vi.mocked(retry.commentOnIssue).mock.calls[0]![3]).toContain("rate-limiting");
+    expect(retry.logTransition).not.toHaveBeenCalledWith(expect.objectContaining({ event: "watchdog_retried" }));
+    expect(retry.recordStatus).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ running: true }));
+    expect(await retry.getPendingFire()).toMatchObject({ deferUntil: expect.any(Number) });
+
+    const sweep = limited([LABELS.AI_READY]);
+    const ref = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 };
+    await coordinateReconcile(sweep, ref, { enforced: true, now: Date.parse("2026-10-04T12:00:00Z") });
+    expect(sweep.recordStatus).toHaveBeenCalledWith(ref, expect.objectContaining({ running: false }));
+    expect(sweep.recordStatus).not.toHaveBeenCalledWith(ref, expect.objectContaining({ running: true }));
+  });
+
+  it("webhook path: a deferred fire is recorded as not running", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      fireRoutine: vi.fn(async () => Promise.reject(new FireRateLimited("429", 9000))),
+    });
+    await coordinateWebhook(deps, readyLabel);
+    expect(deps.recordStatus).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: "transition", running: false }));
   });
 
   it("the sweep's re-fire: armed, then fired; a refused one disarms", async () => {

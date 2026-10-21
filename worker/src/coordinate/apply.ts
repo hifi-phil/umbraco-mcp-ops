@@ -15,6 +15,7 @@ import {
   type CoordinateResult,
   type Deps,
   type IssueRef,
+  FireRateLimited,
   type PendingFire,
   type StatusUpdate,
 } from "./types";
@@ -26,15 +27,81 @@ import {
  * deciding to fire and firing leaves it to notice, never a silent lost
  * attempt. A refused fire wasn't lost: nothing's running, so it disarms
  * (the sweep re-fires a trigger left with nothing watching it) and throws.
+ * The exception is a rate limit ({@link FireRateLimited}): that stays armed
+ * with `deferUntil`, returns "deferred" instead of throwing, and the
+ * watchdog's alarm sends it (its fourth caller, with `redeferral`). A caller
+ * that reports "running" must check for "deferred" first.
  */
-export async function fireWatched(deps: Deps, ref: IssueRef, run: string, extra: Partial<PendingFire> = {}): Promise<void> {
+export async function fireWatched(
+  deps: Deps,
+  ref: IssueRef,
+  run: string,
+  extra: Partial<PendingFire> = {},
+  redeferral = false,
+): Promise<FireOutcome> {
   await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run, ...extra });
   try {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
   } catch (e) {
+    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, extra, redeferral);
     await deps.clearPendingFire();
     throw e;
   }
+  return "sent";
+}
+
+/** Whether a fire went out, or was rate-limited and is waiting for its alarm. */
+export type FireOutcome = "sent" | "deferred";
+
+/** An unwatched fire (a discussion): no watchdog, but a rate-limited one is
+ * still deferred, and disarmed again once it's out. */
+export async function fireUnwatched(deps: Deps, ref: IssueRef, run: string, redeferral = false): Promise<FireOutcome> {
+  await deps.clearPendingFire();
+  try {
+    await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
+  } catch (e) {
+    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, { unwatched: true }, redeferral);
+    throw e;
+  }
+  return "sent";
+}
+
+/**
+ * The routines API rate-limited the fire: it wasn't sent, but it isn't lost.
+ * Keep it pending with its alarm at the time the API gave (watchdog.ts sends
+ * it then), and say so on the issue, since nothing runs until then. A later
+ * event for the issue replaces or clears the pending fire as usual; a label
+ * removed without an event (the discussion one) is caught by the watchdog's
+ * `stillWanted` check before it sends.
+ *
+ * Said once: a re-deferral at the alarm stays quiet. Every issue shares the
+ * repo's one routine, so each is nudged a few seconds apart (by its number)
+ * instead of all re-tripping the limit at the same instant.
+ */
+async function deferFire(
+  deps: Deps,
+  ref: IssueRef,
+  run: string,
+  e: FireRateLimited,
+  extra: Partial<PendingFire>,
+  redeferral: boolean,
+): Promise<FireOutcome> {
+  const deferUntil = e.retryAt + (ref.issueNumber % 30) * 1000;
+  await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run, ...extra, deferUntil });
+  if (redeferral) return "deferred";
+  const at = new Date(deferUntil).toISOString().slice(11, 16);
+  try {
+    await deps.commentOnIssue(
+      ref.owner,
+      ref.repo,
+      ref.issueNumber,
+      `⏳ The routines API is rate-limiting this repo's routine, so \`${run}\` couldn't start now. ` +
+        `It will start automatically at about ${at} UTC. Nothing to do. (Automatic, from the orchestrator.)`,
+    );
+  } catch (report) {
+    console.error("deferred-fire comment failed:", report instanceof Error ? report.message : report);
+  }
+  return "deferred";
 }
 
 /** The shared reduce() -> labelOps() -> fire/log tail, once an Event has
@@ -100,6 +167,7 @@ export async function applyEvent(
     }
   }
 
+  let fired: FireOutcome = "sent";
   if (rule.run) {
     // Only arm the watchdog where the table says what an expiry means —
     // see graph.ts's watchdog section (issue-discuss-loop never reports an
@@ -109,12 +177,7 @@ export async function applyEvent(
     // Armed before the fire (Phase 9): a crash between deciding to fire and
     // firing leaves the watchdog to notice, never a silent lost attempt.
     try {
-      if (watched) {
-        await fireWatched(deps, input, rule.run);
-      } else {
-        await deps.clearPendingFire();
-        await deps.fireRoutine(input.owner, input.repo, input.issueNumber, rule.run);
-      }
+      fired = watched ? await fireWatched(deps, input, rule.run) : await fireUnwatched(deps, input, rule.run);
     } catch (e) {
       await reportRefusedFire(deps, input, { deliveryId, actor, mode, current, event, rule }, e);
       throw e;
@@ -138,7 +201,8 @@ export async function applyEvent(
   });
 
   // Only what really happened: a shadow event's labels never moved.
-  if (mode === "enforce") await allDeps.recordStatus(input, statusAfter(current, rule));
+  // A deferred fire isn't running yet: the status says so until the alarm sends it.
+  if (mode === "enforce") await allDeps.recordStatus(input, statusAfter(current, rule, fired));
 
   return { outcome: "applied", from: current, event, rule };
 }
@@ -197,10 +261,10 @@ async function reportRefusedFire(
 }
 
 /** The live-status change an applied rule makes. */
-function statusAfter(current: State, rule: Rule): StatusUpdate {
+function statusAfter(current: State, rule: Rule, fired: FireOutcome): StatusUpdate {
   if (rule.to.kind === "close") return { kind: "gone" };
   const state = rule.to.kind === "label" ? rule.to.value : rule.to.kind === "unlabel" ? "none" : current;
-  const running = !!rule.run && isWatched(rule.to.kind === "label" ? rule.to.value : current);
+  const running = !!rule.run && fired === "sent" && isWatched(rule.to.kind === "label" ? rule.to.value : current);
   // Untracked, and nothing out for it: nothing to show.
   if (state === "none" && !rule.run) return { kind: "gone" };
   return { kind: "transition", state, run: rule.run ?? null, running };
