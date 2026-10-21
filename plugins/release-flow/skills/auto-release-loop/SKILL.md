@@ -120,12 +120,25 @@ hands the agent already-materialized content as plain text. Do this sequence
    so it cannot tell that an expected version file was **missed entirely** (checklist row 1,
    and row 4's "files outside the expected set" in the missed-file direction). Pass the list
    even when every file in it was bumped.
-3. **Pass all of it to `release-reviewer` as its task input** — PR number, **PR title**, **PR
-   body**, head branch, head SHA, base, version, triggering issue title, diff (changed files
-   + size), CI status, mergeability, **the repo's `CLAUDE.md` version-file list**, **and the
-   pinned file contents from step 2**. (See `release-reviewer`'s own "What you're given"
-   section — it must match this list.) It returns **VERDICT: PASS** or **VERDICT: BLOCK +
-   findings**; the loop acts on the verdict (the agent can't publish anything itself).
+3. **Write all of it to one input file, verbatim, and pass the reviewer its path.** Use
+   `/tmp/release-review-<version>.md`, with one section per fact: PR number, **PR title**,
+   **PR body**, head branch, head SHA, base, version, triggering issue title, **changed
+   files**, **CI**, **mergeability**, **the repo's `CLAUDE.md` version-file list**, **and the
+   pinned file contents from step 2** (plus any `could not fetch` notes). Copy what the API
+   returned; never summarise, abbreviate or recount it:
+   - **Changed files:** one line per entry from the file list (`get_files` / `files`):
+     status, path, `+additions −deletions`. Every entry, no patch text. Then the PR's own
+     `changed_files`, `additions` and `deletions`.
+   - **CI:** one line per check run on the head SHA: name, status, conclusion.
+   - **Mergeability:** `mergeable` and the literal `mergeable_state` from the PR object.
+
+   **Check the file before handing it over:** the changed-file lines must number
+   `changed_files`, and their additions and deletions must sum to the PR's totals. If they
+   don't, page through the file list again (it pages at 30 on the MCP path) and rewrite the
+   section. Then invoke `release-reviewer` with the file's path. (See its "What you're given"
+   section — it must match this list.) It returns **VERDICT: PASS**, **VERDICT: BLOCK +
+   findings**, or **VERDICT: INCOMPLETE + the missing facts**; the loop acts on the verdict
+   (the agent can't publish anything itself).
 4. **If the branch moved, go back to Step 2, then re-do steps 1–2.** Compare the head SHA
    from step 1's fresh re-fetch against **the SHA Step 2 last confirmed CI green on**. If
    they differ, someone pushed mid-flight, so the recorded green CI belongs to the old
@@ -154,6 +167,11 @@ hands the agent already-materialized content as plain text. Do this sequence
 > the **preconditions** at the top of `references/release-review-checklist.md`, and **BLOCK**
 > if it can't.
 
+- **INCOMPLETE** → a gap in this loop's hand-off, not a verdict on the release. Fetch exactly
+  the facts it names (github-ops), correct those sections of the input file, and invoke the
+  reviewer again. At most **2 re-runs**; if it still says INCOMPLETE, treat it as a BLOCK
+  below, and say in the blocked issue that it's an evidence gap with no defect found, listing
+  the facts that couldn't be supplied.
 - Any **BLOCK** finding → **do not merge/tag/publish.** Leave the release PR open, then:
   1. **Create a new issue** in the repo titled `Release <version> blocked by pre-publish
      review`, detailing the reviewer's BLOCK findings plus links to the release PR and

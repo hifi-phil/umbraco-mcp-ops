@@ -7,7 +7,10 @@ below before merging/tagging/publishing.
 - A **BLOCK** finding **must stop the publish**; a **WARN** finding **must not** — see
   `auto-release-loop`'s Step 2.5 for exactly what happens on each.
 - Judge each check from what's observable on the PR (title/branch/issue, the diff, CI,
-  mergeability). If a check can't be evaluated, treat it as a BLOCK and say why.
+  mergeability). If a check can't be evaluated because a fact is missing or contradicts
+  another, return **INCOMPLETE** naming exactly which facts: that's a gap in the hand-off,
+  not a defect in the release, and the caller re-fetches them and asks again. Only once the
+  caller's retries are spent does a still-missing fact become a BLOCK.
 - **Precondition — this is the caller's job, not the reviewer's.** Before the review starts,
   `auto-release-loop` (Step 2.5) must have **re-fetched the PR's facts fresh** via
   `github-ops` — never reusing facts gathered earlier in the run — and then fetched **the
@@ -16,7 +19,8 @@ below before merging/tagging/publishing.
   as plain text. The reviewer fetches nothing itself and has no tool to; if the material it
   was handed doesn't support a row below — a needed file's content is missing, a
   `could not fetch <path> at <sha>` note covers it, or the facts contradict each other —
-  **BLOCK that row with that reason** rather than guessing. Never judge these rows against
+  **INCOMPLETE on that row, naming the fact**, rather than guessing (a BLOCK once the
+  caller's retries are spent). Never judge these rows against
   substitute or stale state. This binds whoever runs the review, including a loop doing it
   inline instead of spawning the `release-reviewer` agent — inline, it must do the same
   fetch-and-pin first.
@@ -44,10 +48,10 @@ below before merging/tagging/publishing.
 | 1 | **Version is correct & intentional** | BLOCK | The version in the issue title matches what the PR bumps the version files to. It's a sane increment from the current latest release — no downgrade, no accidental skipped number. |
 | 2 | **Pre-release vs latest is right** | BLOCK | A version with a `-alpha`/`-beta`/`-rc` suffix must publish as a **prerelease** (never as "latest"); a stable version (no suffix) must **not** be flagged prerelease. Don't ship a beta as latest or a stable as a pre-release. |
 | 3 | **Correct release channel/line** | BLOCK | The version targets the right line (e.g. the v18 line vs an LTS v17 line) and the branch/base match that line. |
-| 4 | **PR scope is release-only** | BLOCK (unexpected code) / WARN (large but explained) | A release PR should be essentially version-file bumps + changelog (+ any security fixes it rolled in). Unexpected source/behaviour changes or files outside the expected set → BLOCK. A large-but-accounted-for diff → WARN. |
+| 4 | **PR scope is release-only** | BLOCK (unexpected code) / WARN (large but explained) | A release PR should be essentially version-file bumps + changelog (+ any security fixes it rolled in). Unexpected source/behaviour changes or files outside the expected set → BLOCK. A large-but-accounted-for diff → WARN. Judged on the changed-file list (status, path, lines added and removed per file); patch text isn't needed. The list is complete when its count and line totals match the PR's own `changed_files`, `additions` and `deletions`. |
 | 5 | **Mergeable — no conflicts** | BLOCK | The PR reports mergeable with no conflicts against `main`. If it's behind `main`, it must be updated and re-greened — never force-merged. |
 | 6 | **Correct base & source branch** | BLOCK | Targets `main`, from `release/<version>` cut off `dev` (gitflow). Not a stray branch, not the wrong base. |
-| 7 | **CI genuinely green** | BLOCK | Every required check passed — not pending, not a should-have-run check that was skipped. Re-confirm; never trust a bypassing auto-merge. |
+| 7 | **CI genuinely green** | BLOCK | Every check run on the head SHA has completed, none failed, none still pending. And the PR's `mergeable_state` is `clean`: GitHub sets that only when its required checks have passed and nothing blocks the merge, so the list of required checks itself isn't needed. `unstable`, `blocked`, `behind`, `dirty` or `unknown` → not green. Never trust a bypassing auto-merge. |
 | 8 | **Changelog updated & matches** | WARN | The changelog / release notes were updated and reference this version. |
 
 ## Adding checks
