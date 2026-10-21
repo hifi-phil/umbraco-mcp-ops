@@ -30,8 +30,9 @@ bucket later: add the backend, `tofu init -migrate-state`, same encryption.
 
 ## Setup, once (a person does this)
 
-1. **Sign-off from the Cloudflare account's owner.** The account is shared
-   production: an automated deploy into it needs their OK first.
+1. **The right Cloudflare account.** The orchestrator runs on its maintainer's
+   own account, not a shared production one. Deploying anywhere shared needs
+   that account owner's OK first.
 2. **The state repo.** Create the private repo, empty. Generate a key pair
    (`ssh-keygen -t ed25519 -N "" -f state-deploy`), add `state-deploy.pub`
    to it as a deploy key **with write access**, keep the private half for 4.
