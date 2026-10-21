@@ -212,7 +212,9 @@ describe("IssueCoordinator.fetch()", () => {
       outcome: "error",
       error: expect.stringMatching(/Routine fire failed for hifi-phil\/umbraco-mcp-ops.*401 bad token/),
     });
-    expect(inserted).toHaveLength(0);
+    // The refusal is logged with its reason, so it shows in the log and the dashboard.
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toEqual(expect.arrayContaining([expect.stringMatching(/^fire refused: .*401 bad token/)]));
 
     const redelivered = await coordinator.fetch(fetchRequest(labeledInput()));
     expect(redelivered.status).toBe(200);
