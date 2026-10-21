@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dispatchText, fireRoutine, routineTargetFor } from "../src/routines-client";
+import { dispatchText, fireRoutine, retryAfterMs, routineTargetFor } from "../src/routines-client";
+import { FireRateLimited } from "../src/coordinate/types";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -117,6 +118,25 @@ describe("fireRoutine", () => {
     await vi.runAllTimersAsync();
     await assertion;
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("a 429 is FireRateLimited, at the time the API gave (plus a minute), not retried", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); // only the clock: the body stream needs real timers
+    vi.setSystemTime(Date.parse("2026-10-21T18:52:57Z"));
+    const body = JSON.stringify({ error: { message: "This routine's fire rate limit has been reached. Try again in 31m5s.", type: "rate_limit_error" } });
+    const fetchMock = vi.fn(async () => new Response(body, { status: 429 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const err = await fireRoutine(env, "hifi-phil", "umbraco-mcp-ops", 1, "review-loop").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(FireRateLimited);
+    expect((err as FireRateLimited).retryAt).toBe(Date.parse("2026-10-21T18:52:57Z") + (31 * 60 + 5) * 1000 + 60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the wait in any of h/m/s, and none when there isn't one", () => {
+    expect(retryAfterMs("Try again in 30m21s.")).toBe((30 * 60 + 21) * 1000);
+    expect(retryAfterMs("try again in 45s")).toBe(45_000);
+    expect(retryAfterMs("Try again in 2h3m")).toBe((2 * 3600 + 3 * 60) * 1000);
+    expect(retryAfterMs("rate limited")).toBeNull();
   });
 
   it("does not retry a 4xx (a bad token won't fix itself)", async () => {

@@ -55,6 +55,21 @@ export type TransitionRow = {
   actor?: string | null;
 };
 
+// The routines API limits how often one routine can be fired (21-10-2026: a
+// 429 "This routine's fire rate limit has been reached. Try again in 30m21s.").
+// Every loop for a repo shares its one routine, so a busy spell stalls them all.
+// The fire isn't lost, only early: callers defer it to retryAt (apply.ts).
+// Thrown by routines-client.ts; here so coordinate/ needn't import the I/O.
+export class FireRateLimited extends Error {
+  constructor(
+    message: string,
+    readonly retryAt: number,
+  ) {
+    super(message);
+    this.name = "FireRateLimited";
+  }
+}
+
 export type PendingFire = {
   owner: string;
   repo: string;
@@ -71,6 +86,11 @@ export type PendingFire = {
   // Set when the watchdog has already fired this run once more (watchdog.ts):
   // a second silent expiry goes to LABELS.AI_STUCK. A new fire starts clean.
   retried?: boolean;
+  // A fire the routines API rate-limited (FireRateLimited): not sent yet. The
+  // alarm is set for deferUntil instead of the watchdog's timeout, and sends
+  // it then (watchdog.ts). unwatched: once sent, don't watch it (a discussion).
+  deferUntil?: number;
+  unwatched?: boolean;
 };
 
 // returnTo: where the fix's push goes back to, LABELS.AUTO_MERGING (the default) or

@@ -5,12 +5,13 @@ import { LABELS } from "@orchestrator/graph/constants/labels";
 import { reduce } from "@orchestrator/graph/graph";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
-import { applyEvent, deriveState, fireWatched } from "./apply";
+import { applyEvent, deriveState, fireUnwatched, fireWatched } from "./apply";
 
 export type WatchdogResult =
   | { outcome: "no_pending_fire" }
   | { outcome: "not_due"; dueAt: number }
   | { outcome: "retried"; run: string }
+  | { outcome: "deferred_fire_sent"; run: string }
   | CoordinateResult;
 
 // An alarm can be invoked a little before its time is reached; a pending
@@ -36,6 +37,16 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   const margin = Math.min(WATCHDOG_DUE_MARGIN_MS, (deps.watchdogMinutes(pending.run) * 60_000) / 2);
   if (pending.dueAt !== undefined && now < pending.dueAt - margin) {
     return { outcome: "not_due", dueAt: pending.dueAt };
+  }
+
+  // A fire the routines API rate-limited (apply.ts's deferFire): send it now.
+  // Rate-limited again, it defers itself again; any other refusal throws, and
+  // the alarm's retry tries once more.
+  if (pending.deferUntil !== undefined) {
+    const { deferUntil: _deferred, unwatched, dueAt: _due, ...ref } = pending;
+    if (unwatched) await fireUnwatched(deps, ref, ref.run);
+    else await fireWatched(deps, ref, ref.run, ref.retried ? { retried: true } : {});
+    return { outcome: "deferred_fire_sent", run: pending.run };
   }
 
   // Once, a run that never reported a single step is fired again instead of

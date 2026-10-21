@@ -9,6 +9,8 @@
 // secret holding {"owner/repo": {"fireUrl": "...", "token": "..."}}. Keys
 // match case-insensitively (GitHub names do).
 
+import { FireRateLimited } from "./coordinate/types";
+
 export type RoutineTarget = { fireUrl: string; token: string };
 
 export type RoutinesEnv = {
@@ -17,6 +19,21 @@ export type RoutinesEnv = {
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
+
+// When the API asks for no wait we can read, wait this long: the limit seen
+// so far lifted after about half an hour.
+const DEFAULT_RATE_LIMIT_WAIT_MS = 30 * 60_000;
+// A little past the time it gives, so the retry doesn't land a moment early.
+const RATE_LIMIT_SLACK_MS = 60_000;
+
+/** "Try again in 30m21s" (or "45s", "2h3m") -> milliseconds; null if absent. */
+export function retryAfterMs(text: string): number | null {
+  const m = /try again in\s+((?:\d+h)?(?:\d+m)?(?:\d+s)?)/i.exec(text);
+  if (!m || !m[1]) return null;
+  const part = (unit: string) => Number(new RegExp(`(\\d+)${unit}`).exec(m[1]!)?.[1] ?? 0);
+  const ms = (part("h") * 3600 + part("m") * 60 + part("s")) * 1000;
+  return ms > 0 ? ms : null;
+}
 
 export function routineTargetFor(env: RoutinesEnv, owner: string, repo: string): RoutineTarget {
   let map: Record<string, Partial<RoutineTarget>>;
@@ -88,9 +105,15 @@ export async function fireRoutine(
         body,
       });
       if (res.ok) return;
-      lastError = `${res.status} ${await res.text()}`;
+      const text = await res.text();
+      lastError = `${res.status} ${text}`;
+      if (res.status === 429) {
+        const wait = (retryAfterMs(text) ?? DEFAULT_RATE_LIMIT_WAIT_MS) + RATE_LIMIT_SLACK_MS;
+        throw new FireRateLimited(`Routine fire rate-limited for ${owner}/${repo} (route=${route}): ${lastError}`, Date.now() + wait);
+      }
       if (res.status < 500) break; // a 4xx won't fix itself
     } catch (e) {
+      if (e instanceof FireRateLimited) throw e; // not a network error: don't retry it here
       lastError = e instanceof Error ? e.message : String(e);
     }
     if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));

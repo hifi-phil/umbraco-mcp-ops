@@ -15,6 +15,7 @@ import {
   type CoordinateResult,
   type Deps,
   type IssueRef,
+  FireRateLimited,
   type PendingFire,
   type StatusUpdate,
 } from "./types";
@@ -32,8 +33,44 @@ export async function fireWatched(deps: Deps, ref: IssueRef, run: string, extra:
   try {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
   } catch (e) {
+    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, extra);
     await deps.clearPendingFire();
     throw e;
+  }
+}
+
+/** An unwatched fire (a discussion): no watchdog, but a rate-limited one is
+ * still deferred, and disarmed again once it's out. */
+export async function fireUnwatched(deps: Deps, ref: IssueRef, run: string): Promise<void> {
+  await deps.clearPendingFire();
+  try {
+    await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
+  } catch (e) {
+    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, { unwatched: true });
+    throw e;
+  }
+}
+
+/**
+ * The routines API rate-limited the fire: it wasn't sent, but it isn't lost.
+ * Keep it pending with its alarm at the time the API gave (watchdog.ts sends
+ * it then), and say so on the issue, since nothing runs until then. A later
+ * event for the issue replaces or clears the pending fire as usual, so a
+ * label a person changes in the meantime wins.
+ */
+async function deferFire(deps: Deps, ref: IssueRef, run: string, e: FireRateLimited, extra: Partial<PendingFire>): Promise<void> {
+  await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run, ...extra, deferUntil: e.retryAt });
+  const at = new Date(e.retryAt).toISOString().slice(11, 16);
+  try {
+    await deps.commentOnIssue(
+      ref.owner,
+      ref.repo,
+      ref.issueNumber,
+      `⏳ The routines API is rate-limiting this repo's routine, so \`${run}\` couldn't start now. ` +
+        `It will start automatically at about ${at} UTC. Nothing to do. (Automatic, from the orchestrator.)`,
+    );
+  } catch (report) {
+    console.error("deferred-fire comment failed:", report instanceof Error ? report.message : report);
   }
 }
 
@@ -112,8 +149,7 @@ export async function applyEvent(
       if (watched) {
         await fireWatched(deps, input, rule.run);
       } else {
-        await deps.clearPendingFire();
-        await deps.fireRoutine(input.owner, input.repo, input.issueNumber, rule.run);
+        await fireUnwatched(deps, input, rule.run);
       }
     } catch (e) {
       await reportRefusedFire(deps, input, { deliveryId, actor, mode, current, event, rule }, e);
