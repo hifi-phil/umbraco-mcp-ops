@@ -32,6 +32,9 @@ export async function coordinateRoutineSignal(
 
   const pending = await deps.getPendingFire();
   if (!pending) return { outcome: "no_pending_fire" };
+  // A fire waiting out a rate limit has no run yet: a signal can only be from
+  // an earlier run of the same routine, and must not clear or extend it.
+  if (pending.deferUntil !== undefined) return { outcome: "no_pending_fire" };
   if (pending.run !== update.routine) {
     return { outcome: "mismatched_routine", expected: pending.run, got: update.routine };
   }

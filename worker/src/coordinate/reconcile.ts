@@ -161,8 +161,8 @@ export async function coordinateReconcile(
   }
 
   if (enforced) {
-    await fireWatched(deps, ref, run);
-    await deps.recordStatus(ref, { kind: "transition", state, run, running: true });
+    const fired = await fireWatched(deps, ref, run);
+    await deps.recordStatus(ref, { kind: "transition", state, run, running: fired === "sent" });
   } else {
     // Shadow: one row per idle stretch. Until the issue sees new activity,
     // a later sweep finds the same thing and has nothing new to say.
