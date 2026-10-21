@@ -104,10 +104,20 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       const numbers = [...new Set(details.flatMap((d) => d.numbers))].filter((n) => runItems.has(n));
       progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
       const logs = new Map(await pool(numbers, 6, async (n) => [n, await transitions(n)] as const));
+      // Bar one: the sweep scenario's scripted refusal, which the Worker logs
+      // as "fire refused: …" (#319) and must, so a refused fire isn't silent.
+      const scriptedRow = (n: number, r: { dropped_reason: string | null }) =>
+        n === runLog.sweepIssue && (r.dropped_reason ?? "").startsWith("fire refused:") && (r.dropped_reason ?? "").includes("scripted fire failure");
       const badRows = [...logs].flatMap(([n, rows]) =>
-        rows.filter((r) => r.mode !== "enforce" || r.dropped_reason !== null).map((r) => `#${n} ${r.event}: ${r.mode} ${r.dropped_reason ?? ""}`),
+        rows
+          .filter((r) => (r.mode !== "enforce" || r.dropped_reason !== null) && !scriptedRow(n, r))
+          .map((r) => `#${n} ${r.event}: ${r.mode} ${r.dropped_reason ?? ""}`),
       );
       expect(badRows, "log rows not enforced-and-applied").toEqual([]);
+      if (runLog.sweepIssue !== undefined && logs.has(runLog.sweepIssue)) {
+        const refused = logs.get(runLog.sweepIssue)!.filter((r) => scriptedRow(runLog.sweepIssue!, r));
+        expect(refused.length, `#${runLog.sweepIssue}'s refused fire is in the log`).toBeGreaterThan(0);
+      }
       const unmatched = details
         .filter((d) => d.response.includes('"outcome":"applied"') && d.numbers.length === 1)
         .filter((d) => {
