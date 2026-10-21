@@ -77,9 +77,9 @@ For each candidate, all must hold — if any fails, **do not merge** (go to Step
 
 **Merge the PR** (github-ops → *Merge a PR*) using the repo's convention (see Config).
 **Never force a merge past a failing gate.** Post one short summary comment on the PR: what
-was merged, the merge commit, and which gates were checked. **No `agent-outcome` marker**:
-the merge is itself a GitHub event the Worker observes directly, so a
-self-reported marker adds nothing. If the merge
+was merged, the merge commit, and which gates were checked. **No `agent-outcome` marker**: the `agent-outcomes` skill's
+catalog has no merge outcome, because the Worker sees the merge as a native GitHub event.
+If the merge
 itself fails, report it — never retry with a force.
 
 **Then delete the head branch, best-effort.** Locally `gh` does it as part of the merge.
