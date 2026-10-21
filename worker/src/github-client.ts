@@ -75,6 +75,7 @@ async function gh(
   // isn't retried here, since GitHub may have applied it. One pause stays well
   // inside the Worker's answer deadline (index.ts).
   if (method === "GET" && GET_RETRY_STATUSES.has(res.status)) {
+    await res.body?.cancel();
     await new Promise((r) => setTimeout(r, GET_RETRY_DELAY_MS));
     res = await call();
   }

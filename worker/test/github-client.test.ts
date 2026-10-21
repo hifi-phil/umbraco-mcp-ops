@@ -58,16 +58,18 @@ describe("getLabels", () => {
   });
 });
 
-describe("openWithLabel", () => {
-  it("a GET that GitHub answers 502/503/504 is tried once more, after a pause", async () => {
+describe("gh() retries", () => {
+  it.each([502, 503, 504])("a GET that GitHub answers %i is tried once more, after a 1 s pause", async (status) => {
     vi.useFakeTimers();
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(new Response("Service Unavailable", { status: 503 }))
+      .mockResolvedValueOnce(new Response("unavailable", { status }))
       .mockResolvedValueOnce(Response.json([{ name: LABELS.AI_READY }]));
     vi.stubGlobal("fetch", fetchMock);
     const labels = getLabels(env, "hifi-phil", "umbraco-mcp-ops", 412);
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
     expect(await labels).toEqual([LABELS.AI_READY]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -83,13 +85,22 @@ describe("openWithLabel", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("a GET answered 500 isn't retried", async () => {
+    const fetchMock = vi.fn(async () => new Response("internal error", { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(getLabels(env, "hifi-phil", "umbraco-mcp-ops", 412)).rejects.toThrow(/500/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("a write isn't retried on a 503: GitHub may have applied it", async () => {
     const fetchMock = vi.fn(async () => new Response("Service Unavailable", { status: 503 }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(addLabel(env, "hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_READY)).rejects.toThrow(/503/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+});
 
+describe("openWithLabel", () => {
   it("follows every page, not just the first 100", async () => {
     const page = (n: number, count: number) => Array.from({ length: count }, (_, i) => ({ number: n * 1000 + i }));
     const fetchMock = vi.fn(async (url: string) => {
