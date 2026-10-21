@@ -38,8 +38,7 @@ Get the diff — a PR (`github-ops` → *Get PR diff*, preferred) or a local ran
 (`git diff <base>..HEAD`; base via `release-and-branching`). With a **cheap model**, skip a
 full review when the change is closed/draft, purely automated (dependency bump, generated-
 client regen with no hand edits), or trivially safe (typo, comment, one-line copy). Report
-"no review needed" and stop. Otherwise continue. (Not in report-only mode, e.g. `review-loop`:
-always continue.)
+"no review needed" and stop. Otherwise continue. In report-only mode (`review-loop`, or any caller that says so), skip this gate: never stop with "no review needed".
 
 ## 2. Select the agents by what changed
 
