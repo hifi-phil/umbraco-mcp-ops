@@ -1,6 +1,7 @@
 // Thin wrapper over the GitHub REST API for the operations coordinate/types.ts's
-// Deps interface needs. No retry/backoff logic here on purpose — that's
-// the DO's job (via the watchdog alarm noticing a stuck attempt), not
+// Deps interface needs. Retries are deliberately minimal: gh() repeats a GET
+// once on a 502/503/504 (and a 403 once on a fresh token); anything beyond
+// that is the DO's job (via the watchdog alarm noticing a stuck attempt), not
 // this client's; keeping this dumb makes it easy to reason about and easy
 // to fully replace with github-ops's actual dual-path mechanism later.
 
@@ -34,6 +35,9 @@ export function githubConfigured(env: GitHubEnv): boolean {
   return appConfigured(env) || !!env.GITHUB_APP_TOKEN;
 }
 
+const GET_RETRY_STATUSES = new Set([502, 503, 504]);
+const GET_RETRY_DELAY_MS = 1000;
+
 /**
  * A 403 on the App's token is retried once on a fresh one (see
  * forgetInstallationToken): a cached token can predate a permission the App
@@ -66,6 +70,16 @@ async function gh(
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   let res = await call();
+  // GitHub has brief outages (a 503 on a GET failed 2.3.6's e2e audit). A read
+  // is safe to repeat, so a GET gets one more try after a short pause; a write
+  // isn't retried on a 5xx, since GitHub may have applied it (a 403 refusal is
+  // retried below, for any method: nothing was applied). One pause stays well
+  // inside the Worker's answer deadline (index.ts).
+  if (method === "GET" && GET_RETRY_STATUSES.has(res.status)) {
+    await res.body?.cancel().catch(() => {}); // a body broken mid-outage mustn't stop the retry
+    await new Promise((r) => setTimeout(r, GET_RETRY_DELAY_MS));
+    res = await call();
+  }
   const repo = path.match(/^\/repos\/([^/]+)\/([^/]+)\//);
   if (res.status === 403 && appConfigured(env) && repo) {
     forgetInstallationToken(repo[1]!, repo[2]!);
