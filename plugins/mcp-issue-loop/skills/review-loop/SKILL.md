@@ -46,6 +46,13 @@ them, consolidate and confidence-filter), **not** its step 5. Spawn the reviewer
 **`opus`**, a stronger tier than the build used. Keep each surviving finding's file, line and
 a one-line fix.
 
+**Always spawn them**, however small the change is or however prose-only: the size of a
+diff is never a reason to read it yourself instead. Reading the diff yourself is the "as a
+whole" judgment below, on top of the reviewers, not a substitute for them. If they can't be
+spawned at all (no Agent tool in this session), say so in the review and the outcome
+comment, and report `review_blocked` with that reason rather than a verdict on a review
+that didn't run.
+
 Then judge the change as a whole against the issue it closes: does it do what the issue
 asked, and is the approach sound? Something that can't be fixed by changing lines, because
 the approach itself is wrong (the wrong place, the wrong mechanism, a requirement missed
