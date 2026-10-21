@@ -42,7 +42,8 @@ section), use that one. Otherwise use `mcp-review`, which fits
 both repo shapes: it picks its reviewer agents from what changed.
 
 Run it in **report-only mode**: its steps 1–4 (resolve the change, select the agents, spawn
-them, consolidate and confidence-filter), **not** its step 5. Spawn the reviewers on
+them, consolidate and confidence-filter), **not** its step 5, and **without step 1's
+eligibility gate**: no change is skipped as "no review needed". Spawn the reviewers on
 **`opus`**, a stronger tier than the build used. Keep each surviving finding's file, line and
 a one-line fix.
 
@@ -69,8 +70,8 @@ Your findings must be formed first, so the log can't talk you out of seeing some
   comment on each finding's line (what's wrong, and the fix), and a short body summarising
   them. Use the **comment** event: GitHub won't let a PR's author request changes on their
   own PR, and the routines often act as that account. `rework-loop` reads these threads.
-- **Block:** post one PR review whose body says why the approach is wrong and what a person
-  should decide. Inline comments only where a line shows it.
+- **Block:** post one PR review whose body says why the approach is wrong, or that the
+  reviewers couldn't be spawned (Step 2), and what a person should decide. Inline comments only where a line shows it.
 - **Pass:** nothing to post here; Step 4's comment says so.
 
 ## Step 4 — report
@@ -80,7 +81,8 @@ marker and shape), in a separate comment, not the review body: the Worker reads 
 Name the reviewers that ran and the head SHA reviewed.
 - Nothing survived → `review_passed`.
 - Findings → `review_findings` with `findings`: how many inline comments you posted.
-- The approach is wrong → `review_blocked` with a one-line `reason`.
+- The approach is wrong, or the reviewers couldn't be spawned (Step 2) → `review_blocked`
+  with a one-line `reason`.
 
 **On a pass, with a `log_token`:** always add a **Decisions to check** section to the PR's
 description, as [`references/work-log.md`](references/work-log.md) says.
