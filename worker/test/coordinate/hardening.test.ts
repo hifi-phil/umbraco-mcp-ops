@@ -105,9 +105,9 @@ describe("a fire's watchdog is armed before the fire", () => {
       fireRoutine: vi.fn(async () => Promise.reject(new FireRateLimited("rate-limited: 429", retryAt))),
     });
     expect(await coordinateWebhook(deps, readyLabel)).toMatchObject({ outcome: "applied" });
-    expect(await deps.getPendingFire()).toMatchObject({ run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: retryAt });
+    expect(await deps.getPendingFire()).toMatchObject({ run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: retryAt + 22_000 }); // 412 % 30 s of jitter
     const [, , , body] = vi.mocked(deps.commentOnIssue).mock.calls[0]!;
-    expect(body).toContain("start automatically at about 19:24 UTC");
+    expect(body).toContain("start automatically at about 19:25 UTC");
     expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.LABELLED_AI_READY, droppedReason: null }));
   });
 
@@ -127,7 +127,25 @@ describe("a fire's watchdog is armed before the fire", () => {
     });
     await limited.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: 1000 });
     await coordinateWatchdogExpired(limited, 2000);
-    expect(await limited.getPendingFire()).toMatchObject({ deferUntil: 9000 });
+    expect(await limited.getPendingFire()).toMatchObject({ deferUntil: 16_000 }); // 7 % 30 s of jitter
+    // Said once, when first deferred: the re-deferral stays quiet.
+    expect(limited.commentOnIssue).not.toHaveBeenCalled();
+  });
+
+  it("a deferred fire the labels no longer lead to is dropped, not sent: a person removed the label, or closed the issue", async () => {
+    const seed = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, deferUntil: 1000 };
+    const noLabel = fakeDeps({ getLabels: vi.fn(async () => []) });
+    await noLabel.setPendingFire({ ...seed, run: ROUTINES.ISSUE_DISCUSS_LOOP, unwatched: true });
+    expect(await coordinateWatchdogExpired(noLabel, 2000)).toEqual({ outcome: "deferred_fire_dropped", run: ROUTINES.ISSUE_DISCUSS_LOOP });
+    expect(noLabel.fireRoutine).not.toHaveBeenCalled();
+    expect(await noLabel.getPendingFire()).toBeNull();
+    expect(noLabel.logTransition).toHaveBeenCalledWith(expect.objectContaining({ run: ROUTINES.ISSUE_DISCUSS_LOOP, droppedReason: expect.stringContaining("no longer wanted") }));
+
+    const closed = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await closed.setPendingFire({ ...seed, run: ROUTINES.ISSUE_BUILD_LOOP });
+    await coordinateWebhook(closed, input({ payload: { action: "issues.closed", issue: { state: "closed" } } }));
+    expect(await closed.getPendingFire()).toBeNull();
+    expect(closed.fireRoutine).not.toHaveBeenCalled();
   });
 
   it("an unwatched fire (a discussion) defers too, and is disarmed once it's out", async () => {
@@ -137,7 +155,7 @@ describe("a fire's watchdog is armed before the fire", () => {
       fireRoutine: vi.fn(async () => Promise.reject(new FireRateLimited("429", 5000))),
     });
     await coordinateWebhook(limited, discuss);
-    expect(await limited.getPendingFire()).toMatchObject({ run: ROUTINES.ISSUE_DISCUSS_LOOP, deferUntil: 5000, unwatched: true });
+    expect(await limited.getPendingFire()).toMatchObject({ run: ROUTINES.ISSUE_DISCUSS_LOOP, deferUntil: 27_000, unwatched: true });
 
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
     await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, run: ROUTINES.ISSUE_DISCUSS_LOOP, deferUntil: 1000, unwatched: true });
@@ -158,6 +176,7 @@ describe("a fire's watchdog is armed before the fire", () => {
       const [, , , body] = vi.mocked(deps.commentOnIssue).mock.calls[0]!;
       expect(body).toContain("couldn't start when its time came");
       expect(body).toContain("Re-add the label");
+      expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ actor: "watchdog", droppedReason: expect.stringContaining("fire refused: routine fire failed: 503") }));
     }
   });
 

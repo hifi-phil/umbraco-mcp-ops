@@ -28,12 +28,18 @@ import {
  * attempt. A refused fire wasn't lost: nothing's running, so it disarms
  * (the sweep re-fires a trigger left with nothing watching it) and throws.
  */
-export async function fireWatched(deps: Deps, ref: IssueRef, run: string, extra: Partial<PendingFire> = {}): Promise<void> {
+export async function fireWatched(
+  deps: Deps,
+  ref: IssueRef,
+  run: string,
+  extra: Partial<PendingFire> = {},
+  redeferral = false,
+): Promise<void> {
   await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run, ...extra });
   try {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
   } catch (e) {
-    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, extra);
+    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, extra, redeferral);
     await deps.clearPendingFire();
     throw e;
   }
@@ -41,12 +47,12 @@ export async function fireWatched(deps: Deps, ref: IssueRef, run: string, extra:
 
 /** An unwatched fire (a discussion): no watchdog, but a rate-limited one is
  * still deferred, and disarmed again once it's out. */
-export async function fireUnwatched(deps: Deps, ref: IssueRef, run: string): Promise<void> {
+export async function fireUnwatched(deps: Deps, ref: IssueRef, run: string, redeferral = false): Promise<void> {
   await deps.clearPendingFire();
   try {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
   } catch (e) {
-    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, { unwatched: true });
+    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, { unwatched: true }, redeferral);
     throw e;
   }
 }
@@ -57,10 +63,23 @@ export async function fireUnwatched(deps: Deps, ref: IssueRef, run: string): Pro
  * it then), and say so on the issue, since nothing runs until then. A later
  * event for the issue replaces or clears the pending fire as usual, so a
  * label a person changes in the meantime wins.
+ *
+ * Said once: a re-deferral at the alarm stays quiet. Every issue shares the
+ * repo's one routine, so each is nudged a few seconds apart (by its number)
+ * instead of all re-tripping the limit at the same instant.
  */
-async function deferFire(deps: Deps, ref: IssueRef, run: string, e: FireRateLimited, extra: Partial<PendingFire>): Promise<void> {
-  await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run, ...extra, deferUntil: e.retryAt });
-  const at = new Date(e.retryAt).toISOString().slice(11, 16);
+async function deferFire(
+  deps: Deps,
+  ref: IssueRef,
+  run: string,
+  e: FireRateLimited,
+  extra: Partial<PendingFire>,
+  redeferral: boolean,
+): Promise<void> {
+  const deferUntil = e.retryAt + (ref.issueNumber % 30) * 1000;
+  await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run, ...extra, deferUntil });
+  if (redeferral) return;
+  const at = new Date(deferUntil).toISOString().slice(11, 16);
   try {
     await deps.commentOnIssue(
       ref.owner,
