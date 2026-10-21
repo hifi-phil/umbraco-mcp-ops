@@ -65,6 +65,37 @@ describe("a fire's watchdog is armed before the fire", () => {
     expect(await deps.getPendingFire()).toBeNull();
   });
 
+  it("webhook path: a refused fire is said where a person looks: a log row with the reason, a comment saying how to retry", async () => {
+    const refusal = 'Routine fire failed for hifi-phil/umbraco-mcp-ops (route=issue-build-loop): 403 {"error":{"type":"forbidden","message":"Request not allowed"}}';
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), fireRoutine: vi.fn(async () => Promise.reject(new Error(refusal))) });
+    await expect(coordinateWebhook(deps, readyLabel)).rejects.toThrow("403");
+    expect(deps.logTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ event: EVENTS.LABELLED_AI_READY, run: ROUTINES.ISSUE_BUILD_LOOP, droppedReason: expect.stringContaining("fire refused: Routine fire failed") }),
+    );
+    const [, , , body] = vi.mocked(deps.commentOnIssue).mock.calls[0]!;
+    expect(body).toContain(`Couldn't start the \`${ROUTINES.ISSUE_BUILD_LOOP}\` routine`);
+    expect(body).toContain(`Re-add the \`${LABELS.AI_READY}\` label`);
+  });
+
+  it("webhook path: a report that itself fails never masks the refusal", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      fireRoutine: vi.fn(async () => Promise.reject(new Error("fire refused"))),
+      commentOnIssue: vi.fn(async () => Promise.reject(new Error("GitHub down"))),
+    });
+    await expect(coordinateWebhook(deps, readyLabel)).rejects.toThrow("fire refused");
+  });
+
+  it("a refused fire's log row survives a failing comment, and a failing log row doesn't suppress the comment", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      fireRoutine: vi.fn(async () => Promise.reject(new Error("fire refused"))),
+      logTransition: vi.fn(async () => Promise.reject(new Error("D1 down"))),
+    });
+    await expect(coordinateWebhook(deps, readyLabel)).rejects.toThrow("fire refused");
+    expect(deps.commentOnIssue).toHaveBeenCalledTimes(1);
+  });
+
   it("the sweep's re-fire: armed, then fired; a refused one disarms", async () => {
     const ref = { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412 };
     const opts = { enforced: true, now: Date.parse("2026-10-04T12:00:00Z") };
@@ -77,5 +108,7 @@ describe("a fire's watchdog is armed before the fire", () => {
     const refused = fakeDeps({ ...left, fireRoutine: vi.fn(async () => Promise.reject(new Error("fire refused"))) });
     await expect(coordinateReconcile(refused, ref, opts)).rejects.toThrow("fire refused");
     expect(await refused.getPendingFire()).toBeNull();
+    // Not commented: a persistent refusal would repeat it every sweep.
+    expect(refused.commentOnIssue).not.toHaveBeenCalled();
   });
 });

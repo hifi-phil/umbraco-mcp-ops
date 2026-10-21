@@ -92,7 +92,7 @@ adds a trailer, it doesn't change what "done" means.
 | `auto-release-loop` | `release_approved` | `{"outcome":"release_approved","pr":<PR number>,"sha":"<reviewed head SHA>","version":"<version>","merge_method":"merge" \| "squash" \| "rebase"}` | Orchestrated mode, end of Step 2.5 on a pass: the orchestrator merges (that way, pinned to `sha`) and fires `release-publish` |
 | `review-loop` | `review_passed` | `{"outcome":"review_passed"}` | Its verdict comment on the PR (Step 4), when nothing survives the review |
 | `review-loop` | `review_findings` | `{"outcome":"review_findings","findings":<count>}` | Its verdict comment on the PR (Step 4), after the PR review with one inline comment per finding; `findings` is how many |
-| `review-loop` | `review_blocked` | `{"outcome":"review_blocked","reason":"<one line>"}` | Its verdict comment on the PR (Step 4), after a PR review saying why the approach is wrong |
+| `review-loop` | `review_blocked` | `{"outcome":"review_blocked","reason":"<one line>"}` | Its verdict comment on the PR (Step 4), after a PR review saying why the approach is wrong, or that the reviewers couldn't be spawned |
 
 That's the full catalog. Two events in the reducer's vocabulary are
 **deliberately not here**, on purpose rather than by omission:

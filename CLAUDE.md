@@ -37,6 +37,6 @@ bumped only when files under their folder changed since the last `v*` tag.
 
 Deploy: a published release deploys `worker/` (and the e2e stub) and runs
 the e2e suite, via `.github/workflows/deploy.yml` from `release-tag.yml`,
-after a required reviewer approves. State is encrypted in a private state
+with no approval step. State is encrypted in a private state
 repo; nobody runs `tofu apply` after a release. See
 `docs/agent-orchestration/19-deploy.md`.

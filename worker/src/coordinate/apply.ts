@@ -108,11 +108,16 @@ export async function applyEvent(
     const watched = isWatched(target);
     // Armed before the fire (Phase 9): a crash between deciding to fire and
     // firing leaves the watchdog to notice, never a silent lost attempt.
-    if (watched) {
-      await fireWatched(deps, input, rule.run);
-    } else {
-      await deps.clearPendingFire();
-      await deps.fireRoutine(input.owner, input.repo, input.issueNumber, rule.run);
+    try {
+      if (watched) {
+        await fireWatched(deps, input, rule.run);
+      } else {
+        await deps.clearPendingFire();
+        await deps.fireRoutine(input.owner, input.repo, input.issueNumber, rule.run);
+      }
+    } catch (e) {
+      await reportRefusedFire(deps, input, { deliveryId, actor, mode, current, event, rule }, e);
+      throw e;
     }
   } else {
     await deps.clearPendingFire();
@@ -136,6 +141,59 @@ export async function applyEvent(
   if (mode === "enforce") await allDeps.recordStatus(input, statusAfter(current, rule));
 
   return { outcome: "applied", from: current, event, rule };
+}
+
+/**
+ * A fire the routines API refused (e.g. a 403 "Request not allowed"; the
+ * client already retried a 5xx) leaves the trigger label on with nothing
+ * running, and the sweep may not re-fire it for hours. So it's said where a
+ * person looks: a log row with the reason, and a comment on the issue. The
+ * delivery still fails (the caller rethrows), so it can be redelivered.
+ * The comment is the webhook path's only: the sweep and other retries keep
+ * the log row but stay quiet, or a persistent refusal would repeat it.
+ * Reporting never masks the refusal: its own errors are only logged.
+ */
+async function reportRefusedFire(
+  deps: Deps,
+  input: IssueRef,
+  at: Pick<Parameters<Deps["logTransition"]>[0], "deliveryId" | "actor" | "mode"> & { current: State; event: Event; rule: Rule },
+  e: unknown,
+): Promise<void> {
+  const reason = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+  try {
+    await deps.logTransition({
+      deliveryId: at.deliveryId,
+      actor: at.actor,
+      owner: input.owner,
+      repo: input.repo,
+      issueNumber: input.issueNumber,
+      fromState: at.current,
+      event: at.event,
+      toEffect: JSON.stringify(at.rule.to),
+      run: at.rule.run ?? null,
+      droppedReason: `fire refused: ${reason}`,
+      mode: at.mode,
+    });
+  } catch (report) {
+    console.error("refused-fire log failed:", report instanceof Error ? report.message : report);
+  }
+  if (!at.deliveryId || at.actor === "sweep") return;
+  // Only the label this event's webhook added can be re-added to retry; a
+  // rule's target (e.g. AUTO_REWORKING after a failed gate) would start a
+  // different transition.
+  const trigger = LABEL_JUST_ADDED_BY[at.event];
+  const retry = trigger ? `Re-add the \`${trigger}\` label to try again.` : "Ask for it to be run again.";
+  try {
+    await deps.commentOnIssue(
+      input.owner,
+      input.repo,
+      input.issueNumber,
+      `⚠️ Couldn't start the \`${at.rule.run}\` routine: the routines API refused it (\`${reason}\`). ` +
+        `Nothing is running for this. ${retry} (Automatic, from the orchestrator.)`,
+    );
+  } catch (report) {
+    console.error("refused-fire comment failed:", report instanceof Error ? report.message : report);
+  }
 }
 
 /** The live-status change an applied rule makes. */
