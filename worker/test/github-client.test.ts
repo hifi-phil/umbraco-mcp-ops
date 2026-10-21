@@ -17,6 +17,7 @@ const env = { GITHUB_APP_TOKEN: "test-token" };
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("no GitHub access configured", () => {
@@ -54,6 +55,48 @@ describe("getLabels", () => {
   it("a real error status throws with the response body included", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("rate limited", { status: 403 })));
     await expect(getLabels(env, "hifi-phil", "umbraco-mcp-ops", 412)).rejects.toThrow(/403/);
+  });
+});
+
+describe("gh() retries", () => {
+  it.each([502, 503, 504])("a GET that GitHub answers %i is tried once more, after a 1 s pause", async (status) => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("unavailable", { status }))
+      .mockResolvedValueOnce(Response.json([{ name: LABELS.AI_READY }]));
+    vi.stubGlobal("fetch", fetchMock);
+    const labels = getLabels(env, "hifi-phil", "umbraco-mcp-ops", 412);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await labels).toEqual([LABELS.AI_READY]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("only once: a second 503 throws, with the status", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => new Response("Service Unavailable", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const labels = getLabels(env, "hifi-phil", "umbraco-mcp-ops", 412);
+    const assertion = expect(labels).rejects.toThrow(/503/);
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("a GET answered 500 isn't retried", async () => {
+    const fetchMock = vi.fn(async () => new Response("internal error", { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(getLabels(env, "hifi-phil", "umbraco-mcp-ops", 412)).rejects.toThrow(/500/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a write isn't retried on a 503: GitHub may have applied it", async () => {
+    const fetchMock = vi.fn(async () => new Response("Service Unavailable", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(addLabel(env, "hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_READY)).rejects.toThrow(/503/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
