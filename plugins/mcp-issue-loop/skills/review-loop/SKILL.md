@@ -50,9 +50,10 @@ a one-line fix.
 **Always spawn them**, however small the change is or however prose-only: the size of a
 diff is never a reason to read it yourself instead. Reading the diff yourself is the "as a
 whole" judgment below, on top of the reviewers, not a substitute for them. If they can't be
-spawned at all (no Agent tool in this session), say so in the review and the outcome
+spawned (no Agent tool, or a selected reviewer agent missing or failing to spawn), say so in the review and the outcome
 comment, and report `review_blocked` with that reason rather than a verdict on a review
-that didn't run.
+that didn't run. Never substitute a general-purpose agent, or your own reading, for a reviewer that
+didn't run.
 
 Then judge the change as a whole against the issue it closes: does it do what the issue
 asked, and is the approach sound? Something that can't be fixed by changing lines, because
