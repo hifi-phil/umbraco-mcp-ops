@@ -60,9 +60,10 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
      append a `release_blocked` artifact whose `reason` is that line.
    - **`release/<version>` exists** — merge `<dev>` into it with a **merge commit** (no rebase,
      no force-push, so the open PR stays valid; run `git merge --no-ff origin/<dev>` in a clone —
-     on the MCP path push the result with github-ops' push script, and with no clone stop and
-     comment — never `update_pull_request_branch`, which merges `<main>`), **before** item 2's bump so a re-run never
+     on the MCP path push the result with github-ops' push script — never `update_pull_request_branch`, which merges `<main>`), **before** item 2's bump so a re-run never
      pushes a bump onto a stale branch. Then skip item 1 and continue at item 2.
+     - No clone to merge in: stop, comment `no clone to merge <dev>: stopped, PR left open`. In
+       **orchestrated mode** also append a `release_blocked` artifact whose `reason` is that line.
      - Conflict: stop, comment `conflict merging <dev>: stopped, PR left open`; the loop
        never resolves it. In **orchestrated mode** also append a `release_blocked` artifact whose
        `reason` is that line.
@@ -70,8 +71,11 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
      - Merged: comment `re-run: release/<version> existed, merged <dev> (N new PRs: #a,
        #b, #c)` — N counts PRs, numbers taken from the `(#n)` suffix of the squash commits on
        `<dev>`, capped at 20, then `and M more` (M = PRs past the first 20).
-   - Item 2 then re-bumps only if, after the merge, a version file no longer reads `<version>`
-     or the changelog's `<version>` entry was changed or lost. Steps 2 and 2.5 run unchanged on the new head.
+   - Item 2 on a re-run does **not** call `bump.mjs` again (it refuses when the marketplace
+     already reads `<version>`, and would compound component bumps). Instead, after the merge,
+     bump by hand, per the repo's own rules, only each plugin or `worker/` that has changes
+     since the last `v*` tag and whose version still equals the one at that tag, and add the newly merged
+     PRs to the changelog's `<version>` entry. Nothing to add: no commit. Steps 2 and 2.5 run unchanged on the new head.
 1. From up-to-date `<dev>`, cut `release/<version>` (only when it doesn't already exist).
 2. Bump the repo's **version-file list** (from its `CLAUDE.md`) and the changelog — use
    the repo's own release skill if it has one (e.g. `umbraco-mcp-skills:release`).
