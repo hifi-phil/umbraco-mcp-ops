@@ -22,7 +22,7 @@ runs `tofu plan` and `apply`, runs the e2e suite, and posts the result on the
 | **Lock** | The workflow's `concurrency` group: one deploy at a time, queued, never cancelled mid-apply. Don't run `tofu apply` locally while one is running. |
 | **After a failed apply** | The state is committed anyway (it records what *was* changed). Fix forward with a new release, or re-run the workflow by hand for the tag (`workflow_dispatch`, with or without e2e). |
 | **Logs** | This repo's Actions logs are public, so the workflow prints only each resource's planned action and any error block, never the plan's values. |
-| **Approval** | The `orchestrator-prod` environment has a required reviewer: every deploy waits for one click in the run. |
+| **Approval** | None: a deploy runs as soon as the release is tagged. The guards are the release's pre-publish review, the refusal to run without state, e2e after every apply, and the result on the release issue. To gate deploys again, give the `orchestrator-prod` environment a required reviewer: each deploy then waits for one click. |
 | **Secrets** | On the environment, never the repo: a repo secret is readable by any workflow on any branch, including one on an agent's PR branch. An environment secret is released only to an approved job on `main` or a `v*` tag. |
 
 No R2 or other bucket: the state repo needs no payment method. To move to a
@@ -30,8 +30,9 @@ bucket later: add the backend, `tofu init -migrate-state`, same encryption.
 
 ## Setup, once (a person does this)
 
-1. **Sign-off from the Cloudflare account's owner.** The account is shared
-   production: an automated deploy into it needs their OK first.
+1. **The right Cloudflare account.** The orchestrator runs on its maintainer's
+   own account, not a shared production one. Deploying anywhere shared needs
+   that account owner's OK first.
 2. **The state repo.** Create the private repo, empty. Generate a key pair
    (`ssh-keygen -t ed25519 -N "" -f state-deploy`), add `state-deploy.pub`
    to it as a deploy key **with write access**, keep the private half for 4.
