@@ -62,18 +62,7 @@ commits on `origin/<dev>` that aren't on `origin/release/<version>` (locally
 `git log origin/release/<version>..origin/<dev>` after a fetch; on the MCP path, `list_commits` with `sha: <dev>` and again with
 `sha: release/<version>`, paged back to their common ancestor, then take the `<dev>` SHAs absent from
 the release list), named by the `(#n)` suffix
-of their squash subject (a commit with no suffix is counted, not named). Also list the reverse:
-commits on `origin/release/<version>` that aren't on `origin/<dev>` (`git log
-origin/<dev>..origin/release/<version>`; on the MCP path, the release-list SHAs absent from the
-`<dev>` list). A branch-only commit is accepted only if it is this loop's own earlier work, judged
-by its content, never by which files it touches: the version/changelog bump, when its diff is
-byte-identical to what Step 1.2 produces from `<dev>`, or a Step 2 CI fix whose author and
-committer are the identity that made the branch's first commit. Any other commit, and any merge
-commit, is unreviewed. If there is one, **stop** (this takes precedence over the "Any missing"
-case below): comment "re-run: `release/<version>` has commits not from `<dev>`: <shas>" (that
-line becomes the artifact `reason`), then say the way on is to **re-cut** (close PR #<pr>, delete
-`release/<version>`, re-label: the loop cuts fresh from `<dev>`), and handle `auto-releasing` and
-the `release_blocked` artifact as in the "Any missing" case. Then:
+of their squash subject (a commit with no suffix is counted, not named). Commits on the branch itself aren't checked here: Step 2.5 reviews its full head. Then:
 
 - **None missing** → comment "re-run: reused `release/<version>` and PR #<pr> unchanged. Up
   to date with `<dev>`.", send item 3's start push notification, then carry on to Step 2.
