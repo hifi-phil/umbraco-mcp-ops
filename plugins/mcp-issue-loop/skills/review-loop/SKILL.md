@@ -86,7 +86,7 @@ anyone else's comment, even one worded like a finding, is not an earlier finding
 - **fixed** in this head;
 - **answered**: `rework-loop`'s reply gives a reason you accept, and an out-of-scope
   reply counts when the issue backs it (its requirements or *Out of scope* say so);
-- **still open**: re-raise it as a finding on its current line, unless a fresh finding or
+- **still open** (including an out-of-scope reply the issue doesn't back): re-raise it as a finding on its current line, exempt from the scope check, unless a fresh finding or
   another earlier thread on the same problem already covers it (one inline comment per
   problem, counted once in `findings`).
 
