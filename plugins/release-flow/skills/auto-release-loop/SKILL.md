@@ -10,8 +10,8 @@ description: >-
   notification at start and on completion, and — for stable and release-candidate
   versions — posts a Slack notification to `release-notifications` once published. The
   deliberate act of labelling the issue is the human decision. For gitflow repos.
-  Requires the github-ops skill (agent-outcomes is optional: if installed, the BLOCK and
-  publish comments also carry an outcome artifact). Trigger from a routine on Issue: Labeled =
+  Requires the github-ops skill (agent-outcomes is optional: if installed, the block and publish
+  comments also carry an outcome artifact). Trigger from a routine on Issue: Labeled =
   auto-releasing, or run manually as "auto-release-loop <version>".
 ---
 
@@ -52,6 +52,41 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
 ```
 
 ## Step 1 — prepare (autonomous)
+
+**Re-run (the branch and its PR already exist).** If `release/<version>` and its open PR to
+`<main>` exist (a person re-labelled after a block), reuse both unchanged: in this step, don't
+cut, merge `<dev>`, bump, push or open anything. Count a PR as "its open PR" only if it is not
+cross-repository, its head SHA equals origin's `release/<version>` tip, and it is the only open
+PR from that branch; otherwise comment and stop (as in the one-of-two case below). Work out what `<dev>` has that the branch lacks:
+commits on `origin/<dev>` that aren't on `origin/release/<version>` (locally
+`git log origin/release/<version>..origin/<dev>` after a fetch; on the MCP path, `list_commits` with `sha: <dev>` and again with
+`sha: release/<version>`, paged back to their common ancestor, then take the `<dev>` SHAs absent from
+the release list), named by the `(#n)` suffix
+of their squash subject (a commit with no suffix is counted, not named). Commits on the branch itself aren't checked here: Step 2.5 reviews its full head. Then:
+
+- **None missing** → comment "re-run: reused `release/<version>` and PR #<pr> unchanged. Up
+  to date with `<dev>`.", send item 3's start push notification, then carry on to Step 2.
+- **Any missing** → **stop**; don't go on to Step 2. Comment "re-run: reused
+  `release/<version>` and PR #<pr> unchanged. Not included from `<dev>`: #312, #313, #314"
+  (at most 20, then "and N more", plus "M commits without a PR number" if any), and offer
+  two ways on: **include them** (close PR #<pr>, delete `release/<version>`, re-label: the
+  loop cuts fresh from `<dev>`), or **ship as is** (merge the release PR yourself
+  **with a merge commit**, the repo's release convention, never squash; make sure
+  `v<version>` is tagged and released and `<main>` is merged back into `<dev>`; post the Slack
+  note only if one is due; and close this issue). Before commenting, work out and state in the
+  comment whether a Slack note is due and to which channel, and whether the repo's own
+  automation tags and releases on merge; don't cite skill steps or `CLAUDE.md` in it. Remove `auto-releasing` from the triggering
+  issue so the loop doesn't re-fire until the person re-labels. If `agent-outcomes` is
+  available, also append the `release_blocked` artifact (`reason` = the comment's first line).
+  **Orchestrated mode**: don't remove the label (the orchestrator does); the artifact is
+  required. Also, no `release_published` fires after a manual ship, so the orchestrator never
+  closes the open `ready-for-release` issues: say in the comment that a manual ship needs those
+  closed by hand.
+
+The final comment (Step 4's, or the `release_approved` one in orchestrated mode) repeats the
+re-run line in one line. If only one of the branch and its open PR exists, comment on the
+issue and stop (handle `auto-releasing` and the `release_blocked` artifact as in the "Any
+missing" case), never guess. With neither, do items 1-3 below as written.
 
 1. From up-to-date `<dev>`, cut `release/<version>`.
 2. Bump the repo's **version-file list** (from its `CLAUDE.md`) and the changelog — use
