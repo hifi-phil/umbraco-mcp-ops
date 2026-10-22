@@ -214,6 +214,8 @@ export class IssueCoordinator {
         githubClient.closeIssue(this.env, owner, repo, issueNumber),
       commentOnIssue: (owner: string, repo: string, issueNumber: number, body: string) =>
         githubClient.commentOnIssue(this.env, owner, repo, issueNumber, body),
+      commentsSince: (owner: string, repo: string, issueNumber: number, sinceIso: string) =>
+        githubClient.commentsSince(this.env, owner, repo, issueNumber, sinceIso),
       fireRoutine: async (owner: string, repo: string, issueNumber: number, routine: string) => {
         // The run's log_token (work-log.ts), good for twice its watchdog.
         const secret = this.env.ROUTINE_SIGNAL_SECRET;
@@ -248,7 +250,7 @@ export class IssueCoordinator {
       setPendingFire: async (info: PendingFire) => {
         await this.ctx.storage.delete(COMPLETED_KEY); // a new fire (or heartbeat): not finished
         const dueAt = info.deferUntil ?? Date.now() + watchdogMinutes(info.run) * 60_000;
-        await this.ctx.storage.put(PENDING_FIRE_KEY, { ...info, dueAt });
+        await this.ctx.storage.put(PENDING_FIRE_KEY, { ...info, dueAt, firedAt: info.firedAt ?? Date.now() });
         await this.ctx.storage.setAlarm(dueAt);
       },
       clearPendingFire: async () => {
