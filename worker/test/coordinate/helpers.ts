@@ -30,6 +30,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   let reviewLoop: ReviewLoop | null = null;
   let mergeFiredFor: string | null = null;
   let discussionFiredAt: number | null = null;
+  let discussionReplySkipped = false;
   let shipped: Shipped | null = null;
   let releaseMerged: Shipped | null = null;
   let reconcileReported: string | null = null;
@@ -89,6 +90,10 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     getDiscussionFiredAt: vi.fn(async () => discussionFiredAt),
     setDiscussionFiredAt: vi.fn(async (at: number | null) => {
       discussionFiredAt = at;
+    }),
+    getDiscussionReplySkipped: vi.fn(async () => discussionReplySkipped),
+    setDiscussionReplySkipped: vi.fn(async (skipped: boolean) => {
+      discussionReplySkipped = skipped;
     }),
     getReviewLoop: vi.fn(async () => reviewLoop),
     setReviewLoop: vi.fn(async (state: ReviewLoop | null) => {

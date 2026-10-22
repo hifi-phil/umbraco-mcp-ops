@@ -420,6 +420,43 @@ describe("coordinateWebhook — one discussion fire at a time", () => {
     );
   });
 
+  const answer = (deliveryId = "d-loop") =>
+    input({ deliveryId, payload: { action: "issue_comment.created", comment: { body: `${COMMENT_SIGNATURE}\nQuestions...`, author_association: "OWNER", user_type: "User" } } });
+
+  it("a skipped reply is replayed when the loop answers: one more fire", async () => {
+    const deps = discussing();
+    await coordinateWebhook(deps, reply("d-1"));
+    await coordinateWebhook(deps, reply("d-2", "One more thing"));
+    expect((await coordinateWebhook(deps, answer())).outcome).toBe("applied");
+    expect(fires(deps)).toBe(2);
+    expect(await deps.getDiscussionReplySkipped()).toBe(false);
+  });
+
+  it("a skipped label (no reply) isn't replayed: the answer just clears the record", async () => {
+    const deps = discussing();
+    await coordinateWebhook(deps, reply("d-1"));
+    await coordinateWebhook(deps, labelled());
+    expect((await coordinateWebhook(deps, answer())).outcome).toBe("no_event");
+    expect(fires(deps)).toBe(1);
+  });
+
+  it("a skipped reply isn't replayed once the label is off", async () => {
+    const deps = discussing();
+    await coordinateWebhook(deps, reply("d-1"));
+    await coordinateWebhook(deps, reply("d-2", "One more thing"));
+    vi.mocked(deps.getLabels).mockResolvedValue([]);
+    await coordinateWebhook(deps, answer());
+    expect(fires(deps)).toBe(1);
+  });
+
+  it("a marker from a bot account doesn't clear the record", async () => {
+    const deps = discussing();
+    await coordinateWebhook(deps, reply("d-1"));
+    const forged = input({ deliveryId: "d-bot", payload: { action: "issue_comment.created", comment: { body: `${COMMENT_SIGNATURE}\nhi`, author_association: "OWNER", user_type: "Bot" } } });
+    await coordinateWebhook(deps, forged);
+    expect(await deps.getDiscussionFiredAt()).not.toBeNull();
+  });
+
   it("a fire the rate limit deferred isn't counted as sent", async () => {
     const deps = fakeDeps({
       getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]),

@@ -127,8 +127,8 @@ export type StatusUpdate =
 
 /** How long after an unanswered discussion fire a second one is skipped. A comment and the
  * {@link LABELS.AI_DISCUSSING} label seconds apart each ask for a fire, and the one session
- * reads the whole thread anyway. Kept short: a reply that lands after the session has read
- * the thread must fire again, or it's lost. */
+ * reads the whole thread anyway. A skipped reply is replayed once the loop answers; the window
+ * is short so a session that dies without answering holds replies back for a minute at most. */
 export const DISCUSSION_FIRE_WINDOW_MS = 60 * 1000;
 
 /** After this many CI-fix reworks on one PR, stop and ask a human. */
@@ -242,12 +242,16 @@ export type Deps = {
   // storage), so each green commit gets one re-fire, not one per check suite.
   getMergeFiredFor(): Promise<string | null>;
   setMergeFiredFor(sha: string): Promise<void>;
-  // When issue-discuss-loop was last fired for this issue (epoch ms, DO
-  // storage), cleared when the loop's own comment arrives or the label is
-  // removed: a later reply or label discussion
+  // When issue-discuss-loop was last actually sent for this issue (epoch ms,
+  // DO storage; the watchdog's time for a deferred fire), cleared when the
+  // loop answers or the label is removed: a later reply or label discussion
   // fire inside DISCUSSION_FIRE_WINDOW_MS of an unanswered one is skipped.
   getDiscussionFiredAt(): Promise<number | null>;
   setDiscussionFiredAt(at: number | null): Promise<void>;
+  // A person's reply was skipped that way: the loop's answer fires once more,
+  // since the session may have read the thread before the reply landed.
+  getDiscussionReplySkipped(): Promise<boolean>;
+  setDiscussionReplySkipped(skipped: boolean): Promise<void>;
   // review-loop's own rounds on this PR (DO storage).
   getReviewLoop(): Promise<ReviewLoop | null>;
   setReviewLoop(state: ReviewLoop | null): Promise<void>;
@@ -408,7 +412,7 @@ export type CoordinateResult =
   | { outcome: "ignored"; from: State; event: Event } // a CONTEXTUAL_EVENT outside its states; not logged
   | { outcome: "stale_label"; event: Event } // the label was already gone when its webhook ran; not logged
   | { outcome: "closed_issue"; event: Event } // a label added to a closed issue: nothing starts; not logged
-  | { outcome: "discussion_skipped"; event: Event } // a discussion fire already out and unanswered: nothing fired; logged
+  | { outcome: "discussion_skipped"; event: Event } // a discussion fire out, unanswered, inside DISCUSSION_FIRE_WINDOW_MS: nothing fired; logged
   | { outcome: "manual_override"; change: string; by: string | null } // a person edited a tracked label; logged
   | { outcome: "applied"; from: State; event: Event; rule: Rule };
 

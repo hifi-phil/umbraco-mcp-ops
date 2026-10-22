@@ -82,15 +82,20 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
 
   // The discussion loop answered (any of its markers, the round-cap one too,
   // from a trusted account), or the label was taken off: its next fire is wanted again.
-  if (
-    isDiscussionLoopAnswer(input.payload) ||
-    (input.payload.action === "issues.unlabeled" && input.payload.label?.name === LABELS.AI_DISCUSSING)
-  ) {
+  // A reply skipped while it ran may have landed after the session read the
+  // thread, so its answer counts as that reply now (the rule only fires while
+  // the issue is still in LABELS.AI_DISCUSSING; the loop no-ops if it's covered).
+  let replayReply = false;
+  const answered = isDiscussionLoopAnswer(input.payload);
+  if (answered || (input.payload.action === "issues.unlabeled" && input.payload.label?.name === LABELS.AI_DISCUSSING)) {
+    replayReply = answered && (await deps.getDiscussionReplySkipped());
     await deps.setDiscussionFiredAt(null);
+    await deps.setDiscussionReplySkipped(false);
   }
 
   const botLogin = await deps.botLogin();
   let event = translate(input.payload, botLogin ? { botLogin } : {});
+  if (!event && replayReply) event = EVENTS.DISCUSSION_REPLY;
   const human = humanLabelChange(input.payload, botLogin);
   if (!event) return human ? logManualOverride(deps, input, human) : { outcome: "no_event" };
   // A label added to a closed issue starts nothing: a closed release issue
@@ -244,7 +249,8 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
 
   // A comment and the label seconds apart each ask for a discussion round, but
   // one session reads the whole thread: skip the second while the first is
-  // unanswered.
+  // unanswered and inside DISCUSSION_FIRE_WINDOW_MS. A skipped reply is replayed
+  // when the loop answers (above).
   const discussing = deriveState(currentLabels) === LABELS.AI_DISCUSSING;
   // Shadow mode fires nothing, so it neither skips nor records a fire.
   const asksDiscussion =
@@ -267,6 +273,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
         mode: depsFor(deps, event).mode,
         actor: input.payload.sender?.login ?? null,
       });
+      if (event === EVENTS.DISCUSSION_REPLY) await deps.setDiscussionReplySkipped(true);
       return { outcome: "discussion_skipped", event };
     }
   }
