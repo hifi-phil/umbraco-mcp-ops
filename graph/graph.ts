@@ -103,8 +103,8 @@ export const rules: Rule[] = [
   {
     // Keyed on the POST-swap state, not LABELS.AUTO_RELEASING: auto-release-loop's
     // Step 1 (re-run stop) or Step 2.5 removes LABELS.AUTO_RELEASING before posting this outcome comment
-    // (creating a separate new issue for the block, which isn't a tracked
-    // label on the triggering issue) — so by the time this event reaches
+    // (Step 2.5 also creates a separate new issue for the block, which isn't a
+    // tracked label on the triggering issue) — so by the time this event reaches
     // the reducer, state has already moved to "none". Same reasoning as
     // BUILD_SUCCEEDED/BUILD_BLOCKED above.
     from: "none",
