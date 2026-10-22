@@ -74,6 +74,7 @@ export class FireRateLimited extends Error {
 export type IssueComment = {
   body: string;
   createdAt: string; // ISO timestamp
+  login: string;
   authorAssociation: string;
   userType: "Bot" | "User";
 };
@@ -402,7 +403,7 @@ export type Acting = { actor?: "watchdog" | "sweep" };
 
 /** Who caused a row: the webhook's sender, else what the Worker was doing. */
 export function actorOf(input: IssueRef & Acting): string | null {
-  return (input as Partial<CoordinateInput>).payload?.sender?.login ?? input.actor ?? null;
+  return input.actor ?? (input as Partial<CoordinateInput>).payload?.sender?.login ?? null;
 }
 
 export type CoordinateResult =

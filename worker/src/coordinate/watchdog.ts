@@ -189,6 +189,7 @@ async function recoverOutcome(deps: Deps, pending: PendingFire): Promise<Watchdo
       actor: "watchdog",
       payload: {
         action: "issue_comment.created",
+        sender: { login: comment.login, type: comment.userType },
         comment: { body: comment.body, author_association: comment.authorAssociation, user_type: comment.userType },
         issue: { state: "open", is_pr: false },
       },

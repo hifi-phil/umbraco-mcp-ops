@@ -293,13 +293,13 @@ describe("commentsSince", () => {
     const fetchMock = vi.fn(
       async () =>
         new Response(
-          JSON.stringify([{ body: "hi", created_at: "2026-10-22T11:02:52Z", author_association: "OWNER", user: { type: "Bot" } }]),
+          JSON.stringify([{ body: "hi", created_at: "2026-10-22T11:02:52Z", author_association: "OWNER", user: { login: "ops[bot]", type: "Bot" } }]),
           { status: 200 },
         ),
     );
     vi.stubGlobal("fetch", fetchMock);
     const comments = await commentsSince(env, "hifi-phil", "umbraco-mcp-ops", 345, "2026-10-22T11:00:00.000Z");
-    expect(comments).toEqual([{ body: "hi", createdAt: "2026-10-22T11:02:52Z", authorAssociation: "OWNER", userType: "Bot" }]);
+    expect(comments).toEqual([{ body: "hi", createdAt: "2026-10-22T11:02:52Z", login: "ops[bot]", authorAssociation: "OWNER", userType: "Bot" }]);
     expect(String((fetchMock.mock.calls as unknown as string[][])[0]![0])).toContain(
       "/issues/345/comments?since=2026-10-22T11%3A00%3A00.000Z&per_page=100",
     );

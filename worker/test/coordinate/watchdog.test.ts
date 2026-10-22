@@ -194,6 +194,7 @@ describe("coordinateWatchdogExpired — an outcome whose webhook was lost", () =
   const outcome = (routine: string, createdAt: string, body = { outcome: "build_succeeded", pr: 346 }) => ({
     body: `Built.\n\n<!-- agent-outcome:${routine} -->\n\`\`\`json\n${JSON.stringify(body)}\n\`\`\``,
     createdAt,
+    login: "hifi-phil",
     authorAssociation: "OWNER",
     userType: "User" as const,
   });

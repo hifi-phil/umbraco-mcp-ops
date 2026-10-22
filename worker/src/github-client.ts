@@ -174,11 +174,12 @@ export async function commentsSince(
     body?: string | null;
     created_at: string;
     author_association?: string;
-    user?: { type?: string } | null;
+    user?: { login?: string; type?: string } | null;
   }>;
   return comments.map((c) => ({
     body: c.body ?? "",
     createdAt: c.created_at,
+    login: c.user?.login ?? "",
     authorAssociation: c.author_association ?? "NONE",
     userType: c.user?.type === "Bot" ? "Bot" : "User",
   }));
