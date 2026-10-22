@@ -102,6 +102,7 @@ const REVIEW_REWORKS_KEY = "reviewReworks"; // review rework rounds on this PR (
 const SHIPPED_KEY = "shipped"; // the merged PR and commit that moved this issue to LABELS.READY_FOR_RELEASE
 const RELEASE_MERGED_KEY = "releaseMerged"; // the release PR and commit the Worker merged (the release split)
 const MERGE_FIRED_FOR_KEY = "mergeFiredFor"; // the head commit merge-flow was re-fired for on green CI
+const DISCUSSION_FIRED_AT_KEY = "discussionFiredAt"; // when issue-discuss-loop was last fired and hasn't replied since
 const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MAX_BOT_REVIEW_REWORKS)
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
@@ -288,6 +289,11 @@ export class IssueCoordinator {
       getMergeFiredFor: async () => (await this.ctx.storage.get<string>(MERGE_FIRED_FOR_KEY)) ?? null,
       setMergeFiredFor: async (sha: string) => {
         await this.ctx.storage.put(MERGE_FIRED_FOR_KEY, sha);
+      },
+      getDiscussionFiredAt: async () => (await this.ctx.storage.get<number>(DISCUSSION_FIRED_AT_KEY)) ?? null,
+      setDiscussionFiredAt: async (at: number | null) => {
+        if (at !== null) await this.ctx.storage.put(DISCUSSION_FIRED_AT_KEY, at);
+        else await this.ctx.storage.delete(DISCUSSION_FIRED_AT_KEY);
       },
       getReviewLoop: async () => (await this.ctx.storage.get<ReviewLoop>(REVIEW_LOOP_KEY)) ?? null,
       setReviewLoop: async (state: ReviewLoop | null) => {

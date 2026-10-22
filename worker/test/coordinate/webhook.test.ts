@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
+import { COMMENT_SIGNATURE } from "@orchestrator/graph/github/from-github";
 import {
+  DISCUSSION_FIRE_WINDOW_MS,
   coordinateWebhook,
   coordinateWatchdogExpired,
   deriveState,
@@ -313,6 +315,61 @@ describe("coordinateWebhook — a real transition, applied end to end", () => {
     expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.ISSUE_DISCUSS_LOOP);
     expect(deps.setPendingFire).not.toHaveBeenCalled();
     expect(deps.clearPendingFire).toHaveBeenCalledOnce();
+  });
+});
+
+describe("coordinateWebhook — one discussion fire at a time", () => {
+  const labelled = () => input({ deliveryId: "d-label", payload: { action: "issues.labeled", label: { name: LABELS.AI_DISCUSSING } } });
+  const reply = (deliveryId: string, body = "Go with option B") =>
+    input({
+      deliveryId,
+      payload: {
+        action: "issue_comment.created",
+        comment: { body, author_association: "OWNER", user_type: "User" },
+        issue: { state: "open", is_pr: false },
+      },
+    });
+  const discussing = () => fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
+  const fires = (deps: ReturnType<typeof fakeDeps>) => vi.mocked(deps.fireRoutine).mock.calls.length;
+
+  it("a comment, then the label seconds later: one fire, the skip logged", async () => {
+    const deps = discussing();
+    expect((await coordinateWebhook(deps, reply("d-comment"))).outcome).toBe("applied");
+    expect(await coordinateWebhook(deps, labelled())).toEqual({ outcome: "discussion_skipped", event: EVENTS.LABELLED_AI_DISCUSSING });
+    expect(fires(deps)).toBe(1);
+    expect(deps.logTransition).toHaveBeenLastCalledWith(
+      expect.objectContaining({ event: EVENTS.LABELLED_AI_DISCUSSING, run: null, droppedReason: expect.stringContaining("discussion fire skipped") }),
+    );
+  });
+
+  it("the label, then a comment seconds later: one fire", async () => {
+    const deps = discussing();
+    expect((await coordinateWebhook(deps, labelled())).outcome).toBe("applied");
+    expect(await coordinateWebhook(deps, reply("d-comment"))).toEqual({ outcome: "discussion_skipped", event: EVENTS.DISCUSSION_REPLY });
+    expect(fires(deps)).toBe(1);
+  });
+
+  it("a person's reply after the loop has answered fires again", async () => {
+    const deps = discussing();
+    await coordinateWebhook(deps, reply("d-1"));
+    const answer = input({ deliveryId: "d-loop", payload: { action: "issue_comment.created", comment: { body: `${COMMENT_SIGNATURE}\nQuestions...` } } });
+    await coordinateWebhook(deps, answer);
+    expect((await coordinateWebhook(deps, reply("d-2"))).outcome).toBe("applied");
+    expect(fires(deps)).toBe(2);
+  });
+
+  it("a second reply before the loop answers is skipped", async () => {
+    const deps = discussing();
+    await coordinateWebhook(deps, reply("d-1"));
+    expect((await coordinateWebhook(deps, reply("d-2", "One more thing"))).outcome).toBe("discussion_skipped");
+    expect(fires(deps)).toBe(1);
+  });
+
+  it("an unanswered fire older than the window no longer blocks", async () => {
+    const deps = discussing();
+    await deps.setDiscussionFiredAt(Date.now() - DISCUSSION_FIRE_WINDOW_MS - 1000);
+    expect((await coordinateWebhook(deps, reply("d-1"))).outcome).toBe("applied");
+    expect(fires(deps)).toBe(1);
   });
 });
 

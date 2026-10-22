@@ -3,11 +3,11 @@
 // (manual_override), and check_suite.completed.
 
 import { ALL_LABELS, LABELS } from "@orchestrator/graph/constants/labels";
-import { translate } from "@orchestrator/graph/github/from-github";
+import { COMMENT_SIGNATURE, translate } from "@orchestrator/graph/github/from-github";
 import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
-import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
+import { DISCUSSION_FIRE_WINDOW_MS, depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
 import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 import { reviewFindings, reviewGate } from "./review-gate";
@@ -78,6 +78,11 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
 async function processEvent(deps: Deps, input: CoordinateInput): Promise<CoordinateResult> {
   if (input.payload.action === "check_suite.completed") {
     return handleCheckSuiteCompleted(deps, input);
+  }
+
+  // The discussion loop answered: its next fire is wanted again.
+  if (input.payload.action === "issue_comment.created" && input.payload.comment?.body.includes(COMMENT_SIGNATURE)) {
+    await deps.setDiscussionFiredAt(null);
   }
 
   const botLogin = await deps.botLogin();
@@ -233,7 +238,37 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     if (deriveMergeGateOutcome(facts) === "soft") return handToRework(deps, input, currentLabels, facts);
   }
 
+  // A comment and the label seconds apart each ask for a discussion round, but
+  // one session reads the whole thread: skip the second while the first is
+  // unanswered.
+  const discussing = deriveState(currentLabels) === LABELS.AI_DISCUSSING;
+  const asksDiscussion =
+    (event === EVENTS.DISCUSSION_REPLY && discussing) ||
+    (event === EVENTS.LABELLED_AI_DISCUSSING && currentLabels.includes(LABELS.AI_DISCUSSING));
+  if (asksDiscussion) {
+    const firedAt = await deps.getDiscussionFiredAt();
+    if (firedAt !== null && Date.now() - firedAt < DISCUSSION_FIRE_WINDOW_MS) {
+      await deps.logTransition({
+        deliveryId: input.deliveryId || null,
+        owner: input.owner,
+        repo: input.repo,
+        issueNumber: input.issueNumber,
+        fromState: deriveState(currentLabels),
+        event,
+        toEffect: null,
+        run: null,
+        droppedReason: `discussion fire skipped: ${ROUTINES.ISSUE_DISCUSS_LOOP} was fired ${Math.round((Date.now() - firedAt) / 1000)}s ago and hasn't replied yet; it reads the whole thread`,
+        mode: depsFor(deps, event).mode,
+        actor: input.payload.sender?.login ?? null,
+      });
+      return { outcome: "discussion_skipped", event };
+    }
+  }
+
   const result = await applyEvent(deps, input, event, currentLabels);
+  if (asksDiscussion && result.outcome === "applied" && result.rule.run === ROUTINES.ISSUE_DISCUSS_LOOP) {
+    await deps.setDiscussionFiredAt(Date.now());
+  }
   if (restartReview && result.outcome === "applied") {
     try {
       await depsFor(deps, EVENTS.LABELLED_AUTO_REWORKING).io.commentOnIssue(
