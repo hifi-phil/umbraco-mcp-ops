@@ -65,6 +65,17 @@ check your findings against its journal: challenges, findings it answers, choice
 decision list leaves out. [`references/work-log.md`](references/work-log.md) says how.
 Your findings must be formed first, so the log can't talk you out of seeing something.
 
+**Settle earlier rounds' findings.** Also only after your own findings are formed (the same
+ordering as the work log, so an earlier round can't steer the fresh review), read the PR's
+earlier `review-loop` review threads (github-ops → *Read PR review threads*) and mark each one:
+
+- **fixed** in this head;
+- **answered**: `rework-loop`'s reply gives a reason you accept;
+- **still open**: re-raise it as a finding on its current line.
+
+A `review_passed` needs every earlier finding fixed or answered. This changes Step 2's
+ordering only, not the confidence filter. No earlier `review-loop` threads → nothing to settle.
+
 ## Step 3 — post the review
 
 - **Findings:** post **one PR review** (github-ops → *Post a PR review*) with an inline
@@ -73,17 +84,25 @@ Your findings must be formed first, so the log can't talk you out of seeing some
   own PR, and the routines often act as that account. `rework-loop` reads these threads.
 - **Block:** post one PR review whose body says why the approach is wrong, or that the
   reviewers couldn't be spawned (Step 2), and what a person should decide. Inline comments only where a line shows it.
-- **Pass:** nothing to post here; Step 4's comment says so.
+- **Pass:** nothing to post here; Step 4's comment says so. Below-bar items get no inline
+  comments either.
 
 ## Step 4 — report
 
 One comment on the PR with the **required** verdict artifact (load `agent-outcomes` for the
 marker and shape), in a separate comment, not the review body: the Worker reads comments.
 Name the reviewers that ran and the head SHA reviewed.
-- Nothing survived → `review_passed`.
+- Nothing survived, and every earlier finding is fixed or answered → `review_passed`. List
+  each earlier finding with its status (fixed / answered) in a line of the comment.
 - Findings → `review_findings` with `findings`: how many inline comments you posted.
 - The approach is wrong, or the reviewers couldn't be spawned (Step 2) → `review_blocked`
   with a one-line `reason`.
+
+**On a pass, below the bar:** when the confidence filter dropped items, add a short
+**Below the bar** section to the pass comment: one line each, `file:line` where there is one.
+They are not findings: they don't change the verdict, the `findings` count (stays 0) or the
+labels, and get no inline comments. They are there so a person at `ready-for-review` can see
+them. Nothing dropped → no section.
 
 **On a pass, with a `log_token`:** always add a **Decisions to check** section to the PR's
 description, as [`references/work-log.md`](references/work-log.md) says.
