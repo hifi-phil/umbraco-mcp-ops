@@ -10,8 +10,8 @@ description: >-
   notification at start and on completion, and — for stable and release-candidate
   versions — posts a Slack notification to `release-notifications` once published. The
   deliberate act of labelling the issue is the human decision. For gitflow repos.
-  Requires the github-ops skill (agent-outcomes is optional: if installed, the BLOCK and
-  publish comments also carry an outcome artifact). Trigger from a routine on Issue: Labeled =
+  Requires the github-ops skill (agent-outcomes is optional: if installed, the block (Step 1 re-run stop or Step 2.5 BLOCK)
+  and publish comments also carry an outcome artifact). Trigger from a routine on Issue: Labeled =
   auto-releasing, or run manually as "auto-release-loop <version>".
 ---
 
@@ -58,7 +58,9 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
 cut, merge `<dev>`, bump, push or open anything. Count a PR as "its open PR" only if it is not
 cross-repository, its head SHA equals origin's `release/<version>` tip, and it is the only open
 PR from that branch; otherwise comment and stop (as in the one-of-two case below). Work out what `<dev>` has that the branch lacks:
-commits reachable from `<dev>` but not from `release/<version>`, named by the `(#n)` suffix
+commits on `origin/<dev>` that aren't on `origin/release/<version>` (locally
+`git log origin/release/<version>..origin/<dev>` after a fetch; on the MCP path, compare the two
+refs through github-ops), named by the `(#n)` suffix
 of their squash subject (a commit with no suffix is counted, not named). Then:
 
 - **None missing** → comment "re-run: reused `release/<version>` and PR #<pr> unchanged. Up
@@ -67,10 +69,12 @@ of their squash subject (a commit with no suffix is counted, not named). Then:
   `release/<version>` and PR #<pr> unchanged. Not included from `<dev>`: #312, #313, #314"
   (at most 20, then "and N more", plus "M commits without a PR number" if any), and offer
   two ways on: **include them** (close PR #<pr>, delete `release/<version>`, re-label: the
-  loop cuts fresh from `<dev>`), or **ship as is** (merge the release PR yourself,
-  make sure `v<version>` is tagged and released (the repo's own automation does this where it
-  has it, see its `CLAUDE.md`) and `<main>` is merged back into `<dev>`, post the Slack note
-  only where Step 3.4 would, and close this issue). Remove `auto-releasing` from the triggering
+  loop cuts fresh from `<dev>`), or **ship as is** (merge the release PR yourself
+  **with a merge commit**, the repo's release convention, never squash; make sure
+  `v<version>` is tagged and released and `<main>` is merged back into `<dev>`; post the Slack
+  note only if one is due; and close this issue). Before commenting, work out and state in the
+  comment whether a Slack note is due and to which channel, and whether the repo's own
+  automation tags and releases on merge; don't cite skill steps or `CLAUDE.md` in it. Remove `auto-releasing` from the triggering
   issue so the loop doesn't re-fire until the person re-labels. If `agent-outcomes` is
   available, also append the `release_blocked` artifact (`reason` = the comment's first line).
   **Orchestrated mode**: don't remove the label (the orchestrator does); the artifact is
