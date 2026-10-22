@@ -111,10 +111,14 @@ One comment on the PR with the **required** verdict artifact (load `agent-outcom
 marker and shape), in a separate comment, not the review body: the Worker reads comments.
 Name the reviewers that ran and the head SHA reviewed. Whatever the verdict, list each
 earlier finding's status (fixed / answered / still open), one line per finding.
-- Nothing survived, and every earlier finding is fixed or answered → `review_passed`.
+- No in-scope finding survived (out-of-scope items don't count), and every earlier finding is fixed or answered → `review_passed`.
 - Findings → `review_findings` with `findings`: how many inline comments you posted.
 - The approach is wrong, or the reviewers couldn't be spawned (Step 2) → `review_blocked`
   with a one-line `reason`.
+
+**On a pass, out of scope:** when Step 2's scope check set items aside, add an **Out of scope**
+section to the pass comment, one line each (`file:line` where there is one). They don't change
+the verdict or the `findings` count (stays 0).
 
 **On a pass, below the bar:** when Step 2 kept items for it, add a short
 **Below the bar** section to the pass comment: one line each, `file:line` where there is one.
