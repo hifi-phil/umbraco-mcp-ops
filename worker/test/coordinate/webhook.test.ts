@@ -353,7 +353,7 @@ describe("coordinateWebhook — one discussion fire at a time", () => {
   it("a person's reply after the loop has answered fires again", async () => {
     const deps = discussing();
     await coordinateWebhook(deps, reply("d-1"));
-    const answer = input({ deliveryId: "d-loop", payload: { action: "issue_comment.created", comment: { body: `${COMMENT_SIGNATURE}\nQuestions...` } } });
+    const answer = input({ deliveryId: "d-loop", payload: { action: "issue_comment.created", comment: { body: `${COMMENT_SIGNATURE}\nQuestions...`, author_association: "OWNER", user_type: "User" } } });
     await coordinateWebhook(deps, answer);
     expect((await coordinateWebhook(deps, reply("d-2"))).outcome).toBe("applied");
     expect(fires(deps)).toBe(2);
@@ -367,6 +367,38 @@ describe("coordinateWebhook — one discussion fire at a time", () => {
     expect(fires(deps)).toBe(1);
     expect((await coordinateWebhook(deps, labelled())).outcome).toBe("applied");
     expect(fires(deps)).toBe(2);
+  });
+
+  it("a marker pasted by an untrusted commenter doesn't clear the record", async () => {
+    const deps = discussing();
+    await coordinateWebhook(deps, reply("d-1"));
+    const forged = input({ deliveryId: "d-forged", payload: { action: "issue_comment.created", comment: { body: "<!-- issue-discuss-loop -->", author_association: "NONE", user_type: "User" }, issue: { state: "open", is_pr: false } } });
+    await coordinateWebhook(deps, forged);
+    expect(await deps.getDiscussionFiredAt()).not.toBeNull();
+    expect((await coordinateWebhook(deps, labelled())).outcome).toBe("discussion_skipped");
+  });
+
+  it("the loop's answer clears the record right away", async () => {
+    const deps = discussing();
+    await coordinateWebhook(deps, reply("d-1"));
+    await coordinateWebhook(deps, reply("d-answer", "Here is my take.\n<!-- issue-discuss-loop -->"));
+    expect(await deps.getDiscussionFiredAt()).toBeNull();
+  });
+
+  it("shadow mode neither skips nor records a fire", async () => {
+    const deps = fakeDeps({ enforced: () => false, getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
+    await coordinateWebhook(deps, reply("d-1"));
+    expect(await deps.getDiscussionFiredAt()).toBeNull();
+    expect((await coordinateWebhook(deps, labelled())).outcome).not.toBe("discussion_skipped");
+  });
+
+  it("a failed record write after the fire went out doesn't fail the delivery", async () => {
+    const deps = discussing();
+    deps.setDiscussionFiredAt = vi.fn(async () => {
+      throw new Error("storage down");
+    });
+    expect((await coordinateWebhook(deps, reply("d-1"))).outcome).toBe("applied");
+    expect(fires(deps)).toBe(1);
   });
 
   it(`taking ${LABELS.AI_DISCUSSING} off clears the record, so re-adding it fires`, async () => {

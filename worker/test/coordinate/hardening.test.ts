@@ -165,7 +165,7 @@ describe("a fire's watchdog is armed before the fire", () => {
 
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]) });
     await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, run: ROUTINES.ISSUE_DISCUSS_LOOP, deferUntil: 1000, unwatched: true });
-    await coordinateWatchdogExpired(deps, 2000);
+    await coordinateWatchdogExpired(deps, Date.now());
     expect(deps.fireRoutine).toHaveBeenCalledTimes(1);
     expect(await deps.getPendingFire()).toBeNull();
     expect(await deps.getDiscussionFiredAt()).not.toBeNull();

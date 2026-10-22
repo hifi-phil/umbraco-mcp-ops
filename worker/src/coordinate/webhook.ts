@@ -3,7 +3,7 @@
 // (manual_override), and check_suite.completed.
 
 import { ALL_LABELS, LABELS } from "@orchestrator/graph/constants/labels";
-import { COMMENT_SIGNATURE_PREFIX, translate } from "@orchestrator/graph/github/from-github";
+import { isDiscussionLoopAnswer, translate } from "@orchestrator/graph/github/from-github";
 import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
@@ -80,10 +80,10 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     return handleCheckSuiteCompleted(deps, input);
   }
 
-  // The discussion loop answered (any of its markers, the round-cap one too),
-  // or the label was taken off: its next fire is wanted again.
+  // The discussion loop answered (any of its markers, the round-cap one too,
+  // from a trusted account), or the label was taken off: its next fire is wanted again.
   if (
-    (input.payload.action === "issue_comment.created" && input.payload.comment?.body.includes(COMMENT_SIGNATURE_PREFIX)) ||
+    isDiscussionLoopAnswer(input.payload) ||
     (input.payload.action === "issues.unlabeled" && input.payload.label?.name === LABELS.AI_DISCUSSING)
   ) {
     await deps.setDiscussionFiredAt(null);
@@ -246,9 +246,11 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // one session reads the whole thread: skip the second while the first is
   // unanswered.
   const discussing = deriveState(currentLabels) === LABELS.AI_DISCUSSING;
+  // Shadow mode fires nothing, so it neither skips nor records a fire.
   const asksDiscussion =
-    (event === EVENTS.DISCUSSION_REPLY && discussing) ||
-    (event === EVENTS.LABELLED_AI_DISCUSSING && currentLabels.includes(LABELS.AI_DISCUSSING));
+    depsFor(deps, event).mode === "enforce" &&
+    ((event === EVENTS.DISCUSSION_REPLY && discussing) ||
+    (event === EVENTS.LABELLED_AI_DISCUSSING && currentLabels.includes(LABELS.AI_DISCUSSING)));
   if (asksDiscussion) {
     const firedAt = await deps.getDiscussionFiredAt();
     if (firedAt !== null && Date.now() - firedAt < DISCUSSION_FIRE_WINDOW_MS) {
@@ -272,13 +274,14 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   const result = await applyEvent(deps, input, event, currentLabels);
   // Only a fire that went out counts: one the rate limit deferred is still
   // pending, and its window would lapse before the session started.
-  if (
-    asksDiscussion &&
-    result.outcome === "applied" &&
-    result.rule.run === ROUTINES.ISSUE_DISCUSS_LOOP &&
-    (await deps.getPendingFire())?.deferUntil === undefined
-  ) {
-    await deps.setDiscussionFiredAt(Date.now());
+  if (asksDiscussion && result.outcome === "applied" && result.rule.run === ROUTINES.ISSUE_DISCUSS_LOOP) {
+    // The fire already went out: a failed read or write here must not make
+    // coordinateWebhook unmark the delivery, or GitHub's redelivery fires it twice.
+    try {
+      if ((await deps.getPendingFire())?.deferUntil === undefined) await deps.setDiscussionFiredAt(Date.now());
+    } catch (e) {
+      console.error("discussion fire record failed", e);
+    }
   }
   if (restartReview && result.outcome === "applied") {
     try {

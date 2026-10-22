@@ -83,6 +83,19 @@ function hasOwnSignatureMarker(body: string | undefined): boolean {
 // LABELS.AI_DISCUSSING", is the reducer's: DISCUSSION_REPLY only has a rule from
 // that state. The self-marker gate (2) is checked by the caller first.
 const TRUSTED_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"];
+/** The loop's own signed comment, from a trusted person's account (it posts as the maintainer's):
+ * a marker anyone else pastes in is not an answer. */
+export function isDiscussionLoopAnswer(payload: WebhookPayload): boolean {
+  const c = payload.comment;
+  return (
+    payload.action === "issue_comment.created" &&
+    !!c &&
+    hasOwnSignatureMarker(c.body) &&
+    TRUSTED_ASSOCIATIONS.includes(c.author_association ?? "") &&
+    c.user_type === "User"
+  );
+}
+
 function isDiscussionReply(payload: WebhookPayload): boolean {
   const c = payload.comment;
   return (

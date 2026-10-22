@@ -108,7 +108,13 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
       await deps.recordStatus(pending, { kind: "transition", state, run: pending.run, running: true });
     }
     // The window the webhook couldn't start for a deferred fire starts now.
-    if (pending.run === ROUTINES.ISSUE_DISCUSS_LOOP) await deps.setDiscussionFiredAt(Date.now());
+    if (pending.run === ROUTINES.ISSUE_DISCUSS_LOOP) {
+      try {
+        await deps.setDiscussionFiredAt(now);
+      } catch (e) {
+        console.error("discussion fire record failed", e);
+      }
+    }
     return { outcome: "deferred_fire_sent", run: pending.run };
   }
 
