@@ -437,6 +437,13 @@ describe("coordinateWebhook — one discussion fire at a time", () => {
     expect((await coordinateWebhook(deps, reply("d-1"))).outcome).toBe("applied");
     expect(fires(deps)).toBe(1);
   });
+
+  it("the window is a minute: a reply two minutes after an unanswered fire fires again", async () => {
+    expect(DISCUSSION_FIRE_WINDOW_MS).toBe(60_000);
+    const deps = discussing();
+    await deps.setDiscussionFiredAt(Date.now() - 2 * 60_000);
+    expect((await coordinateWebhook(deps, reply("d-1"))).outcome).toBe("applied");
+  });
 });
 
 describe(`coordinateWebhook — leaving ${LABELS.AI_STUCK}`, () => {

@@ -112,7 +112,7 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
       try {
         await deps.setDiscussionFiredAt(now);
       } catch (e) {
-        console.error("discussion fire record failed", e);
+        console.error(`discussion fire record failed for ${pending.owner}/${pending.repo}#${pending.issueNumber}:`, e instanceof Error ? e.message : e);
       }
     }
     return { outcome: "deferred_fire_sent", run: pending.run };

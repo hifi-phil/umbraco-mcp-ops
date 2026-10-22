@@ -280,7 +280,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     try {
       if ((await deps.getPendingFire())?.deferUntil === undefined) await deps.setDiscussionFiredAt(Date.now());
     } catch (e) {
-      console.error("discussion fire record failed", e);
+      console.error(`discussion fire record failed for ${input.owner}/${input.repo}#${input.issueNumber}:`, e instanceof Error ? e.message : e);
     }
   }
   if (restartReview && result.outcome === "applied") {
