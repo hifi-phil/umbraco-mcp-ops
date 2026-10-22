@@ -92,9 +92,9 @@ your fresh findings. No earlier `review-loop` threads → nothing to settle.
 
 One comment on the PR with the **required** verdict artifact (load `agent-outcomes` for the
 marker and shape), in a separate comment, not the review body: the Worker reads comments.
-Name the reviewers that ran and the head SHA reviewed.
-- Nothing survived, and every earlier finding is fixed or answered → `review_passed`. List
-  each earlier finding with its status (fixed / answered) in a line of the comment.
+Name the reviewers that ran and the head SHA reviewed. Whatever the verdict, list each
+earlier finding with its status (fixed / answered / still open) in a line of the comment.
+- Nothing survived, and every earlier finding is fixed or answered → `review_passed`.
 - Findings → `review_findings` with `findings`: how many inline comments you posted.
 - The approach is wrong, or the reviewers couldn't be spawned (Step 2) → `review_blocked`
   with a one-line `reason`.
