@@ -34,6 +34,8 @@ bumped only when files under their folder changed since the last `v*` tag.
   push to `main`, tags `v<marketplace version>`. No per-component tags.
 - Sync back: `.github/workflows/sync-main-to-dev.yml` opens a PR merging
   `main` back into `dev` after a release, so `dev` picks up the bump.
+- Release note: `release-notifications`. Not published to npm, so the
+  note carries no npm link.
 
 Deploy: a published release deploys `worker/` (and the e2e stub) and runs
 the e2e suite, via `.github/workflows/deploy.yml` from `release-tag.yml`,
