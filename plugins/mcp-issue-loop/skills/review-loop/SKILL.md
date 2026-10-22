@@ -67,14 +67,16 @@ Your findings must be formed first, so the log can't talk you out of seeing some
 
 **Settle earlier rounds' findings.** Also only after your own findings are formed (the same
 ordering as the work log, so an earlier round can't steer the fresh review), read the PR's
-earlier `review-loop` review threads (github-ops → *Read PR review threads*) and mark each one:
+earlier `review-loop` review threads (github-ops → *Get PR reviews + review comments*) and mark each one:
 
 - **fixed** in this head;
 - **answered**: `rework-loop`'s reply gives a reason you accept;
-- **still open**: re-raise it as a finding on its current line.
+- **still open**: re-raise it as a finding on its current line (it counts toward
+  `findings` and gets an inline comment).
 
-A `review_passed` needs every earlier finding fixed or answered. This changes Step 2's
-ordering only, not the confidence filter. No earlier `review-loop` threads → nothing to settle.
+A `review_passed` needs every earlier finding fixed or answered. "Mark" means record
+it in Step 4's comment; never resolve a thread on GitHub. The confidence filter still applies to
+your fresh findings. No earlier `review-loop` threads → nothing to settle.
 
 ## Step 3 — post the review
 
@@ -84,8 +86,7 @@ ordering only, not the confidence filter. No earlier `review-loop` threads → n
   own PR, and the routines often act as that account. `rework-loop` reads these threads.
 - **Block:** post one PR review whose body says why the approach is wrong, or that the
   reviewers couldn't be spawned (Step 2), and what a person should decide. Inline comments only where a line shows it.
-- **Pass:** nothing to post here; Step 4's comment says so. Below-bar items get no inline
-  comments either.
+- **Pass:** nothing to post here; Step 4's comment says so.
 
 ## Step 4 — report
 
@@ -102,7 +103,7 @@ Name the reviewers that ran and the head SHA reviewed.
 **Below the bar** section to the pass comment: one line each, `file:line` where there is one.
 They are not findings: they don't change the verdict, the `findings` count (stays 0) or the
 labels, and get no inline comments. They are there so a person at `ready-for-review` can see
-them. Nothing dropped → no section.
+them. Nothing dropped, or a verdict other than a pass → no section.
 
 **On a pass, with a `log_token`:** always add a **Decisions to check** section to the PR's
 description, as [`references/work-log.md`](references/work-log.md) says.
