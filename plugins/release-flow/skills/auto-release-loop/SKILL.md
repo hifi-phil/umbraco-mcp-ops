@@ -62,7 +62,13 @@ commits on `origin/<dev>` that aren't on `origin/release/<version>` (locally
 `git log origin/release/<version>..origin/<dev>` after a fetch; on the MCP path, `list_commits` with `sha: <dev>` and again with
 `sha: release/<version>`, paged back to their common ancestor, then take the `<dev>` SHAs absent from
 the release list), named by the `(#n)` suffix
-of their squash subject (a commit with no suffix is counted, not named). Then:
+of their squash subject (a commit with no suffix is counted, not named). Also list the reverse:
+commits on `origin/release/<version>` that aren't on `origin/<dev>` (`git log
+origin/<dev>..origin/release/<version>`; on the MCP path, the release-list SHAs absent from the
+`<dev>` list). If any is not a bump or changelog-only commit (its changed files are only the
+version-file list from `CLAUDE.md` plus the changelog), treat the branch as unreviewed: **stop**
+as in the "Any missing" case below, naming those commits and offering only **include them**
+as the way on (the loop never publishes content that didn't come through a `<dev>` PR). Then:
 
 - **None missing** → comment "re-run: reused `release/<version>` and PR #<pr> unchanged. Up
   to date with `<dev>`.", send item 3's start push notification, then carry on to Step 2.
@@ -79,7 +85,9 @@ of their squash subject (a commit with no suffix is counted, not named). Then:
   issue so the loop doesn't re-fire until the person re-labels. If `agent-outcomes` is
   available, also append the `release_blocked` artifact (`reason` = the comment's first line).
   **Orchestrated mode**: don't remove the label (the orchestrator does); the artifact is
-  required.
+  required. Also, no `release_published` fires after a manual ship, so the orchestrator never
+  closes the open `ready-for-release` issues: say in the comment that a manual ship needs those
+  closed by hand (or `release-publish` run).
 
 The final comment (Step 4's, or the `release_approved` one in orchestrated mode) repeats the
 re-run line in one line. If only one of the branch and its open PR exists, comment on the
