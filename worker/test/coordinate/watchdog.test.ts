@@ -256,6 +256,25 @@ describe("coordinateWatchdogExpired — an outcome whose webhook was lost", () =
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 345, LABELS.AI_STUCK);
   });
 
+  it("a matching outcome the rules drop (the issue moved on) is not a recovery: expires as usual", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => []), commentsSince: vi.fn(async () => [outcome("issue-build-loop", "2026-10-22T11:02:52Z")]) });
+    await deps.setPendingFire(pending);
+    await coordinateWatchdogExpired(deps);
+    expect(vi.mocked(deps.logTransition).mock.calls.some(([row]) => row.event === "watchdog_recovered")).toBe(false);
+    expect(deps.commentOnIssue).toHaveBeenCalledTimes(1);
+  });
+
+  it("a pending fire replaced while the outcome is applied (the next run's) is left alone", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    vi.mocked(deps.logTransition).mockImplementation(async () => {
+      await deps.setPendingFire({ ...pending, run: ROUTINES.REVIEW_LOOP, firedAt: firedAt + 1 });
+    });
+    vi.mocked(deps.commentsSince).mockResolvedValue([outcome("issue-build-loop", "2026-10-22T11:02:52Z")]);
+    await deps.setPendingFire(pending);
+    await coordinateWatchdogExpired(deps);
+    expect((await deps.getPendingFire())?.run).toBe(ROUTINES.REVIEW_LOOP);
+  });
+
   it("a pending fire with no fire time (stored before this) -> no read, today's behaviour", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
     await deps.setPendingFire({ ...pending, firedAt: undefined });

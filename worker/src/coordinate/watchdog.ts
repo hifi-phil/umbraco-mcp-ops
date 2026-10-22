@@ -193,7 +193,10 @@ async function recoverOutcome(deps: Deps, pending: PendingFire): Promise<Watchdo
         issue: { state: "open", is_pr: false },
       },
     });
-    if (result.outcome !== "applied") continue;
+    if (result.outcome !== "applied") {
+      console.warn(`watchdog recovery: ${pending.run} outcome comment on #${pending.issueNumber} not applied (${result.outcome})`);
+      continue;
+    }
     await deps.logTransition({
       deliveryId: null,
       owner: pending.owner,
