@@ -185,21 +185,34 @@ async function recoverOutcome(deps: Deps, pending: PendingFire): Promise<Watchdo
   for (const comment of [...comments].reverse()) {
     if (Date.parse(comment.createdAt) < pending.firedAt) continue;
     if (comment.body.match(OUTCOME_ROUTINE_PATTERN)?.[1] !== pending.run) continue;
-    const result = await coordinateWebhook(deps, {
-      // Not empty: a refused fire of the next run is only said on the issue
-      // (apply.ts's reportRefusedFire) for an event that has a delivery id.
-      deliveryId: `watchdog-recover:${pending.run}:${pending.firedAt}`,
-      owner: pending.owner,
-      repo: pending.repo,
-      issueNumber: pending.issueNumber,
-      actor: "watchdog",
-      payload: {
-        action: "issue_comment.created",
-        sender: { login: comment.login, type: comment.userType },
-        comment: { body: comment.body, author_association: comment.authorAssociation, user_type: comment.userType },
-        issue: { state: "open", is_pr: false },
-      },
-    });
+    let result;
+    try {
+      result = await coordinateWebhook(deps, {
+        // Not empty: a refused fire of the next run is only said on the issue
+        // (apply.ts's reportRefusedFire) for an event that has a delivery id.
+        // Per comment: the webhook path remembers a delivery id it has seen, so
+        // one shared id would hand every older outcome back as a duplicate.
+        deliveryId: `watchdog-recover:${pending.run}:${pending.firedAt}:${comment.createdAt}`,
+        owner: pending.owner,
+        repo: pending.repo,
+        issueNumber: pending.issueNumber,
+        actor: "watchdog",
+        payload: {
+          action: "issue_comment.created",
+          sender: { login: comment.login, type: comment.userType },
+          comment: { body: comment.body, author_association: comment.authorAssociation, user_type: comment.userType },
+          issue: { state: "open", is_pr: false },
+        },
+      });
+    } catch (e) {
+      // A throwing replay must not skip the stuck alert below: the expiry
+      // carries on as it did before recovery existed.
+      console.error(
+        `watchdog recovery replay failed for ${pending.owner}/${pending.repo}#${pending.issueNumber} (${pending.run}):`,
+        e instanceof Error ? e.message : e,
+      );
+      return null;
+    }
     if (result.outcome !== "applied") {
       console.warn(`watchdog recovery: ${pending.run} outcome comment on #${pending.issueNumber} not applied (${result.outcome})`);
       continue;

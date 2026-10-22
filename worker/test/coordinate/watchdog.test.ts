@@ -300,13 +300,41 @@ describe("coordinateWatchdogExpired — an outcome whose webhook was lost", () =
       }),
     });
     await deps.setPendingFire({ ...pending, run: ROUTINES.REVIEW_LOOP });
-    await expect(coordinateWatchdogExpired(deps)).rejects.toThrow("routines API 500");
+    await coordinateWatchdogExpired(deps);
     expect(deps.commentOnIssue).toHaveBeenCalledWith(
       "hifi-phil",
       "umbraco-mcp-ops",
       345,
       expect.stringContaining("routines API refused it"),
     );
+  });
+
+  it("the newest matching outcome being dropped falls back to the next older one", async () => {
+    const { deps, result } = await expire([
+      outcome("issue-build-loop", "2026-10-22T11:02:00Z"),
+      outcome("issue-build-loop", "2026-10-22T11:05:00Z", { outcome: "not_a_real_outcome" } as never),
+    ]);
+    expect(result).toMatchObject({ outcome: "applied", event: EVENTS.BUILD_SUCCEEDED });
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 345, LABELS.PR_OPEN);
+  });
+
+  it(`a replay that throws still reaches the expiry alert (${LABELS.AI_STUCK})`, async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      commentsSince: vi.fn(async () => [outcome("issue-build-loop", "2026-10-22T11:02:52Z")]),
+    });
+    let first = true;
+    vi.mocked(deps.addLabel).mockImplementation(async (_o, _r, _n, label) => {
+      if (first && label === LABELS.PR_OPEN) {
+        first = false;
+        throw new Error("GitHub API POST failed: 502");
+      }
+    });
+    await deps.setPendingFire(pending);
+    const result = await coordinateWatchdogExpired(deps);
+    expect(result).toMatchObject({ event: EVENTS.WATCHDOG_EXPIRED });
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 345, LABELS.AI_STUCK);
+    expect(deps.commentOnIssue).toHaveBeenCalledTimes(1);
   });
 
   it("a pending fire with no fire time (stored before this) -> no read, today's behaviour", async () => {
