@@ -66,13 +66,15 @@ of their squash subject (a commit with no suffix is counted, not named). Then:
   (at most 20, then "and N more", plus "M commits without a PR number" if any), and offer
   two ways on: **include them** (close PR #<pr>, delete `release/<version>`, re-label: the
   loop cuts fresh from `<dev>`), or **ship as is** (merge the release PR yourself:
-  `release-tag.yml` and the deploy still run; post the Slack note by hand). If
+  the repo's own tag and release automation still runs, see its `CLAUDE.md`; post the Slack note by hand). If
   `agent-outcomes` is available, append the `release_blocked` artifact (`reason` = the
-  comment's first line). **Orchestrated mode**: the artifact is required, and you don't
-  remove `auto-releasing`; the orchestrator does.
+  comment's first line), and remove `auto-releasing` from the triggering issue so the loop
+  doesn't re-fire until the person re-labels. **Orchestrated mode**: don't remove the label
+  (the orchestrator does); the artifact is required.
 
-The completion comment (Step 4) repeats the re-run line, with any missing list, in one line.
-With no existing branch and PR, do items 1-3 below as written.
+The final comment (Step 4's, or the `release_approved` one in orchestrated mode) repeats the
+re-run line in one line. If only one of the branch and its open PR exists, comment on the
+issue and stop, never guess. With neither, do items 1-3 below as written.
 
 1. From up-to-date `<dev>`, cut `release/<version>`.
 2. Bump the repo's **version-file list** (from its `CLAUDE.md`) and the changelog — use
