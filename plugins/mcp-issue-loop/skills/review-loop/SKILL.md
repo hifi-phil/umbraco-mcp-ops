@@ -45,7 +45,8 @@ Run it in **report-only mode**: its steps 1–4 (resolve the change, select the 
 them, consolidate and confidence-filter), **not** its step 5, and **without step 1's
 eligibility gate**: no change is skipped as "no review needed". Spawn the reviewers on
 **`opus`**, a stronger tier than the build used. Keep each surviving finding's file, line and
-a one-line fix.
+a one-line fix, and keep what mcp-review's step 4 dropped as plausible but uncertain
+(`file:line`, one line each) for Step 4's *Below the bar*.
 
 **Always spawn them**, however small the change is or however prose-only: the size of a
 diff is never a reason to read it yourself instead. Reading the diff yourself is the "as a
@@ -71,8 +72,8 @@ earlier `review-loop` review threads (github-ops → *Get PR reviews + review co
 
 - **fixed** in this head;
 - **answered**: `rework-loop`'s reply gives a reason you accept;
-- **still open**: re-raise it as a finding on its current line (it counts toward
-  `findings` and gets an inline comment).
+- **still open**: re-raise it as a finding on its current line, unless a fresh finding
+  already covers it (one inline comment, counted once in `findings`).
 
 A `review_passed` needs every earlier finding fixed or answered. "Mark" means record
 it in Step 4's comment; never resolve a thread on GitHub. The confidence filter still applies to
