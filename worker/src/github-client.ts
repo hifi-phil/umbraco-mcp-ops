@@ -156,8 +156,9 @@ export async function commentOnIssue(
   await gh(env, "POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, { body });
 }
 
-/** The comments posted on an issue or PR since `sinceIso`, oldest first (one
- * page of 100: the watchdog's recovery only looks at the run's own window). */
+/** The comments updated on an issue or PR since `sinceIso` (GitHub's `since`
+ * filters on last update, so callers filter on `createdAt` themselves), oldest
+ * first, one page of 100. */
 export async function commentsSince(
   env: GitHubEnv,
   owner: string,

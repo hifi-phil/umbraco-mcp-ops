@@ -300,13 +300,16 @@ describe("coordinateWatchdogExpired — an outcome whose webhook was lost", () =
       }),
     });
     await deps.setPendingFire({ ...pending, run: ROUTINES.REVIEW_LOOP });
-    await coordinateWatchdogExpired(deps);
+    await expect(coordinateWatchdogExpired(deps)).rejects.toThrow("routines API 500");
+    expect(deps.commentOnIssue).toHaveBeenCalledTimes(1);
     expect(deps.commentOnIssue).toHaveBeenCalledWith(
       "hifi-phil",
       "umbraco-mcp-ops",
       345,
       expect.stringContaining("routines API refused it"),
     );
+    // The outcome was applied: no dead-run alert, no stuck label, no re-fire.
+    expect(deps.addLabel).not.toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 345, LABELS.AI_STUCK);
   });
 
   it("the newest matching outcome being dropped falls back to the next older one", async () => {

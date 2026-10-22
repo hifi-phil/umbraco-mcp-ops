@@ -191,8 +191,9 @@ export type Deps = {
   removeLabel(owner: string, repo: string, issueNumber: number, label: string): Promise<void>;
   closeIssue(owner: string, repo: string, issueNumber: number): Promise<void>;
   commentOnIssue(owner: string, repo: string, issueNumber: number, body: string): Promise<void>;
-  // The comments posted on an issue or PR since `sinceIso`, oldest first
-  // (the watchdog's look for an outcome whose webhook was lost).
+  // The comments updated on an issue or PR since `sinceIso` (GitHub's `since`
+  // filters on last update, so callers filter on `createdAt` themselves),
+  // oldest first: the watchdog's look for an outcome whose webhook was lost.
   commentsSince(owner: string, repo: string, issueNumber: number, sinceIso: string): Promise<IssueComment[]>;
   // Fires the repo's loop-dispatch routine with this route (routines-client.ts).
   fireRoutine(owner: string, repo: string, issueNumber: number, routine: string): Promise<void>;
@@ -392,7 +393,8 @@ export type CoordinateInput = {
   repo: string;
   issueNumber: number;
   payload: WebhookPayload;
-  // Set when no webhook caused this: the watchdog recovering a lost outcome.
+  // What the Worker was doing, when that is what caused this: the watchdog
+  // replaying a lost outcome sets it alongside a webhook-shaped payload.
   actor?: Acting["actor"];
 };
 
@@ -401,7 +403,8 @@ export type IssueRef = Pick<CoordinateInput, "owner" | "repo" | "issueNumber">;
 /** What the Worker was doing when no webhook caused a row. */
 export type Acting = { actor?: "watchdog" | "sweep" };
 
-/** Who caused a row: the webhook's sender, else what the Worker was doing. */
+/** Who caused a row: what the Worker was doing (`actor`, e.g. the watchdog
+ * replaying a lost outcome) if set, else the webhook's sender. */
 export function actorOf(input: IssueRef & Acting): string | null {
   return input.actor ?? (input as Partial<CoordinateInput>).payload?.sender?.login ?? null;
 }

@@ -205,13 +205,17 @@ async function recoverOutcome(deps: Deps, pending: PendingFire): Promise<Watchdo
         },
       });
     } catch (e) {
-      // A throwing replay must not skip the stuck alert below: the expiry
-      // carries on as it did before recovery existed.
       console.error(
         `watchdog recovery replay failed for ${pending.owner}/${pending.repo}#${pending.issueNumber} (${pending.run}):`,
         e instanceof Error ? e.message : e,
       );
-      return null;
+      // Still this fire: nothing took effect, so the expiry carries on as it did
+      // before recovery existed (a throw must not skip the stuck alert). Moved
+      // on (e.g. the next run's fire was refused and cleared it): the outcome
+      // was applied, and expiring or re-firing this finished run would be wrong.
+      const now = await deps.getPendingFire();
+      if (now?.run === pending.run && now.dueAt === pending.dueAt) return null;
+      throw e;
     }
     if (result.outcome !== "applied") {
       console.warn(`watchdog recovery: ${pending.run} outcome comment on #${pending.issueNumber} not applied (${result.outcome})`);
