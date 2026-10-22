@@ -266,7 +266,14 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   }
 
   const result = await applyEvent(deps, input, event, currentLabels);
-  if (asksDiscussion && result.outcome === "applied" && result.rule.run === ROUTINES.ISSUE_DISCUSS_LOOP) {
+  // Only a fire that went out counts: one the rate limit deferred is still
+  // pending, and its window would lapse before the session started.
+  if (
+    asksDiscussion &&
+    result.outcome === "applied" &&
+    result.rule.run === ROUTINES.ISSUE_DISCUSS_LOOP &&
+    (await deps.getPendingFire())?.deferUntil === undefined
+  ) {
     await deps.setDiscussionFiredAt(Date.now());
   }
   if (restartReview && result.outcome === "applied") {

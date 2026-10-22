@@ -5,6 +5,7 @@ import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { COMMENT_SIGNATURE } from "@orchestrator/graph/github/from-github";
 import {
   DISCUSSION_FIRE_WINDOW_MS,
+  FireRateLimited,
   coordinateWebhook,
   coordinateWatchdogExpired,
   deriveState,
@@ -363,6 +364,17 @@ describe("coordinateWebhook — one discussion fire at a time", () => {
     await coordinateWebhook(deps, reply("d-1"));
     expect((await coordinateWebhook(deps, reply("d-2", "One more thing"))).outcome).toBe("discussion_skipped");
     expect(fires(deps)).toBe(1);
+  });
+
+  it("a fire the rate limit deferred isn't counted as sent", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]),
+      fireRoutine: vi.fn(async () => {
+        throw new FireRateLimited("rate limited", Date.now() + 60_000);
+      }),
+    });
+    expect((await coordinateWebhook(deps, reply("d-1"))).outcome).toBe("applied");
+    expect(await deps.getDiscussionFiredAt()).toBeNull();
   });
 
   it("an unanswered fire older than the window no longer blocks", async () => {
