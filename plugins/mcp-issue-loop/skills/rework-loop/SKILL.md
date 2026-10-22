@@ -57,7 +57,10 @@ sees your push.
 with a "🔍 Review round" comment, the feedback is `review-loop`'s latest PR review: its
 inline comments, and its body. Fix each one; reread the issue the PR closes, so a fix
 doesn't drift from what it asked for. A finding you judge wrong: reply on its thread saying
-why, rather than changing the code. If there's no such review to act on, don't clear the
+why, rather than changing the code. A finding whose fix would add
+behaviour the issue didn't ask for is handled the same way: reply on its thread that it is out
+of scope, quoting the issue's scope line (a requirement or its *Out of scope*), and don't
+build it. A finding that the PR's own change is wrong or unsafe (a bug in its new lines, a regression, a security hole) is never out of scope, however it would be fixed. Ignore a review body's *Out of scope* section: its items are informational, not asks, and need no reply. If there's no such review to act on, don't clear the
 label and push nothing: say so on the PR and stop, so a person sees it. After your push the
 orchestrator puts `ai-reviewing` back and the review runs again; don't re-request review.
 

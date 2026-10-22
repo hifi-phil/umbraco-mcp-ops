@@ -678,6 +678,28 @@ describe("Isolation across DO instances (different issues)", () => {
 });
 
 describe("IssueCoordinator.fetch() — POST /routine-signal", () => {
+  it("stamps firedAt on the pending fire when the routine is fired, and a heartbeat keeps it", async () => {
+    vi.stubGlobal("fetch", fakeApiFetch());
+    const { ctx, storage } = fakeCtx();
+    const coordinator = new IssueCoordinator(ctx, fakeEnv());
+    const before = Date.now();
+    await coordinator.fetch(
+      fetchRequest(labeledInput({ payload: { action: "issues.labeled", label: { name: LABELS.AI_READY } } })),
+    );
+    const fired = (await storage.get("pendingFire")) as { firedAt: number };
+    expect(typeof fired.firedAt).toBe("number");
+    expect(fired.firedAt).toBeGreaterThanOrEqual(before);
+
+    await coordinator.fetch(
+      routineSignalRequest({
+        owner: "hifi-phil",
+        repo: "umbraco-mcp-ops",
+        signal: { kind: "process", routine: "issue-build-loop", issue: 412, step: "driving CI green" },
+      }),
+    );
+    expect(((await storage.get("pendingFire")) as { firedAt: number }).firedAt).toBe(fired.firedAt);
+  });
+
   it("a matching 'process' heartbeat extends the alarm (re-calls ctx.storage.setAlarm)", async () => {
     vi.stubGlobal("fetch", fakeApiFetch());
     const { ctx, setAlarm } = fakeCtx();

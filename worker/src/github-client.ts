@@ -5,6 +5,7 @@
 // this client's; keeping this dumb makes it easy to reason about and easy
 // to fully replace with github-ops's actual dual-path mechanism later.
 
+import type { IssueComment } from "./coordinate/types";
 import { appConfigured, forgetInstallationToken, installationToken, type GitHubAppEnv } from "./github-app";
 
 export type GitHubEnv = GitHubAppEnv & {
@@ -153,6 +154,36 @@ export async function commentOnIssue(
   body: string,
 ): Promise<void> {
   await gh(env, "POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, { body });
+}
+
+/** The comments updated on an issue or PR since `sinceIso` (GitHub's `since`
+ * filters on last update, so callers filter on `createdAt` themselves), oldest
+ * first, one page of 100. */
+export async function commentsSince(
+  env: GitHubEnv,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  sinceIso: string,
+): Promise<IssueComment[]> {
+  const res = await gh(
+    env,
+    "GET",
+    `/repos/${owner}/${repo}/issues/${issueNumber}/comments?since=${encodeURIComponent(sinceIso)}&per_page=100`,
+  );
+  const comments = (await res.json()) as Array<{
+    body?: string | null;
+    created_at: string;
+    author_association?: string;
+    user?: { login?: string; type?: string } | null;
+  }>;
+  return comments.map((c) => ({
+    body: c.body ?? "",
+    createdAt: c.created_at,
+    login: c.user?.login ?? "",
+    authorAssociation: c.author_association ?? "NONE",
+    userType: c.user?.type === "Bot" ? "Bot" : "User",
+  }));
 }
 
 // --- The three real facts merge-gate.ts's deriveMergeGateOutcome() needs

@@ -5,6 +5,7 @@ import { LABELS } from "@orchestrator/graph/constants/labels";
 import { reduce, rules } from "@orchestrator/graph/graph";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
+import { coordinateWebhook } from "./webhook";
 import { applyEvent, deriveState, fireUnwatched, fireWatched, type FireOutcome } from "./apply";
 
 export type WatchdogResult =
@@ -46,7 +47,7 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   // cleared the pending fire (so the alarm's retry finds nothing to send): it's
   // said on the issue, where a person looks, and rethrown.
   if (pending.deferUntil !== undefined) {
-    const { deferUntil: _deferred, unwatched, dueAt: _due, ...ref } = pending;
+    const { deferUntil: _deferred, unwatched, dueAt: _due, firedAt: _fired, ...ref } = pending;
     // A person may have taken the issue out of the flow while it waited
     // (removing a label like the discussion one raises no event). A closed issue clears the
     // pending fire in the webhook, so only the labels are checked here.
@@ -109,6 +110,15 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
     return { outcome: "deferred_fire_sent", run: pending.run };
   }
 
+  // The run may have finished and posted its outcome, with only the webhook
+  // for it lost (#335, #345): apply that before calling the run dead.
+  // Only where the watchdog is enforced: recovery writes labels and may fire
+  // the next run, which a shadow watchdog must not do.
+  if (deps.enforced(EVENTS.WATCHDOG_EXPIRED)) {
+    const recovered = await recoverOutcome(deps, pending);
+    if (recovered) return recovered;
+  }
+
   // Once, a run that never reported a single step is fired again instead of
   // going to LABELS.AI_STUCK: it died before doing anything (a session that
   // was refused or never started), so a second run can't duplicate its work,
@@ -150,6 +160,89 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   // "running" (a late completion finds no pending fire).
   await deps.recordStatus(pending, { kind: "done" });
   return result;
+}
+
+const OUTCOME_ROUTINE_PATTERN = /<!-- agent-outcome:([a-zA-Z0-9_-]+) -->/;
+
+/**
+ * The watched routine's outcome comment, posted since the fire, whose
+ * webhook never got processed: read the comments, newest first, and apply
+ * the first one the webhook path would have (same translate and rules), as
+ * the watchdog's own event. Null if there is none, or the read fails (the
+ * expiry then carries on as before). An outcome from before the fire, or
+ * from another routine, is not this run's.
+ */
+async function recoverOutcome(deps: Deps, pending: PendingFire): Promise<WatchdogResult | null> {
+  if (pending.firedAt === undefined) return null;
+  const since = new Date(pending.firedAt).toISOString();
+  let comments;
+  try {
+    comments = await deps.commentsSince(pending.owner, pending.repo, pending.issueNumber, since);
+  } catch (e) {
+    console.error("watchdog outcome recovery read failed:", e instanceof Error ? e.message : e);
+    return null;
+  }
+  for (const comment of [...comments].reverse()) {
+    if (Date.parse(comment.createdAt) < pending.firedAt) continue;
+    if (comment.body.match(OUTCOME_ROUTINE_PATTERN)?.[1] !== pending.run) continue;
+    let result;
+    try {
+      result = await coordinateWebhook(deps, {
+        // Not empty: a refused fire of the next run is only said on the issue
+        // (apply.ts's reportRefusedFire) for an event that has a delivery id.
+        // Per comment: the webhook path remembers a delivery id it has seen, so
+        // one shared id would hand every older outcome back as a duplicate.
+        deliveryId: `watchdog-recover:${pending.run}:${pending.firedAt}:${comment.createdAt}`,
+        owner: pending.owner,
+        repo: pending.repo,
+        issueNumber: pending.issueNumber,
+        actor: "watchdog",
+        payload: {
+          action: "issue_comment.created",
+          sender: { login: comment.login, type: comment.userType },
+          comment: { body: comment.body, author_association: comment.authorAssociation, user_type: comment.userType },
+          issue: { state: "open", is_pr: false },
+        },
+      });
+    } catch (e) {
+      console.error(
+        `watchdog recovery replay failed for ${pending.owner}/${pending.repo}#${pending.issueNumber} (${pending.run}):`,
+        e instanceof Error ? e.message : e,
+      );
+      // Still this fire: nothing took effect, so the expiry carries on as it did
+      // before recovery existed (a throw must not skip the stuck alert). Moved
+      // on (e.g. the next run's fire was refused and cleared it): the outcome
+      // was applied, and expiring or re-firing this finished run would be wrong.
+      const now = await deps.getPendingFire();
+      if (now?.run === pending.run && now.dueAt === pending.dueAt) return null;
+      throw e;
+    }
+    if (result.outcome !== "applied") {
+      console.warn(`watchdog recovery: ${pending.run} outcome comment on #${pending.issueNumber} not applied (${result.outcome})`);
+      continue;
+    }
+    await deps.logTransition({
+      deliveryId: null,
+      owner: pending.owner,
+      repo: pending.repo,
+      issueNumber: pending.issueNumber,
+      fromState: result.from,
+      event: "watchdog_recovered",
+      actor: "watchdog",
+      toEffect: JSON.stringify({ kind: "noop" }),
+      run: pending.run,
+      droppedReason: null,
+      mode: depsFor(deps, EVENTS.WATCHDOG_EXPIRED).mode,
+    });
+    // The recovered event may have started the next run: that fire is its own.
+    const now = await deps.getPendingFire();
+    if (now?.run === pending.run && now.dueAt === pending.dueAt) {
+      await deps.clearPendingFire();
+      await deps.recordStatus(pending, { kind: "done" });
+    }
+    return result;
+  }
+  return null;
 }
 
 /** Whether the issue's tracked label is still one that fires `run`: the
