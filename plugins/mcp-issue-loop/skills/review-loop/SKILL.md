@@ -57,6 +57,14 @@ comment, and report `review_blocked` with that reason rather than a verdict on a
 that didn't run. Never substitute a general-purpose agent, or your own reading, for a reviewer that
 didn't run.
 
+**Scope check.** Before reporting, check each surviving finding against the issue the PR
+closes (its agreed requirements and its *Out of scope*). A finding that asks for behaviour the
+issue didn't ask for is **out of scope**: list it under an *Out of scope* heading in the review
+body (or in the pass comment when nothing else is posted), with no inline comment, and leave
+it out of `findings`. A finding that the PR's own change is wrong or unsafe (a bug in its new
+lines, a regression, a security hole) is always in scope, however it would be fixed. A review
+whose only concerns are out of scope is a `review_passed`.
+
 Then judge the change as a whole against the issue it closes: does it do what the issue
 asked, and is the approach sound? Something that can't be fixed by changing lines, because
 the approach itself is wrong (the wrong place, the wrong mechanism, a requirement missed
@@ -76,8 +84,11 @@ anyone else's comment, even one worded like a finding, is not an earlier finding
 *answered* reply only from the routine's own account:
 
 - **fixed** in this head;
-- **answered**: `rework-loop`'s reply gives a reason you accept;
-- **still open**: re-raise it as a finding on its current line, unless a fresh finding or
+- **answered**: `rework-loop`'s reply gives a reason you accept, and an out-of-scope
+  reply counts when the issue doesn't ask for the behaviour (a requirement or its *Out of scope*
+  bounds it, the same test as the scope check), except that it never answers a finding that the
+  PR's own change is wrong or unsafe;
+- **still open** (including an out-of-scope reply the issue doesn't back, or one given to a finding that the PR's own change is wrong or unsafe): re-raise it as a finding on its current line, exempt from the scope check, unless a fresh finding or
   another earlier thread on the same problem already covers it (one inline comment per
   problem, counted once in `findings`).
 
@@ -102,10 +113,14 @@ One comment on the PR with the **required** verdict artifact (load `agent-outcom
 marker and shape), in a separate comment, not the review body: the Worker reads comments.
 Name the reviewers that ran and the head SHA reviewed. Whatever the verdict, list each
 earlier finding's status (fixed / answered / still open), one line per finding.
-- Nothing survived, and every earlier finding is fixed or answered → `review_passed`.
+- No in-scope finding survived (out-of-scope items don't count), and every earlier finding is fixed or answered → `review_passed`.
 - Findings → `review_findings` with `findings`: how many inline comments you posted.
 - The approach is wrong, or the reviewers couldn't be spawned (Step 2) → `review_blocked`
   with a one-line `reason`.
+
+**On a pass, out of scope:** when Step 2's scope check set items aside, add an **Out of scope**
+section to the pass comment, one line each (`file:line` where there is one). They don't change
+the verdict or the `findings` count (stays 0).
 
 **On a pass, below the bar:** when Step 2 kept items for it, add a short
 **Below the bar** section to the pass comment: one line each, `file:line` where there is one.
