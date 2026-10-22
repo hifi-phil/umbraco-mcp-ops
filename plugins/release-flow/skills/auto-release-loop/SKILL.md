@@ -54,27 +54,32 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
 ## Step 1 — prepare (autonomous)
 
 **Re-run (the branch and its PR already exist).** If `release/<version>` and its open PR to
-`<main>` exist (a person re-labelled after a block), reuse both unchanged: don't cut, merge
-`<dev>`, bump, push or open anything. Work out what `<dev>` has that the branch lacks:
+`<main>` exist (a person re-labelled after a block), reuse both unchanged: in this step, don't
+cut, merge `<dev>`, bump, push or open anything. Count a PR as "its open PR" only if it is not
+cross-repository, its head SHA equals origin's `release/<version>` tip, and it is the only open
+PR from that branch; otherwise comment and stop (as in the one-of-two case below). Work out what `<dev>` has that the branch lacks:
 commits reachable from `<dev>` but not from `release/<version>`, named by the `(#n)` suffix
 of their squash subject (a commit with no suffix is counted, not named). Then:
 
 - **None missing** → comment "re-run: reused `release/<version>` and PR #<pr> unchanged. Up
-  to date with `<dev>`." and carry on to Step 2.
+  to date with `<dev>`.", send item 3's start push notification, then carry on to Step 2.
 - **Any missing** → **stop**; don't go on to Step 2. Comment "re-run: reused
   `release/<version>` and PR #<pr> unchanged. Not included from `<dev>`: #312, #313, #314"
   (at most 20, then "and N more", plus "M commits without a PR number" if any), and offer
   two ways on: **include them** (close PR #<pr>, delete `release/<version>`, re-label: the
-  loop cuts fresh from `<dev>`), or **ship as is** (merge the release PR yourself:
-  the repo's own tag and release automation still runs, see its `CLAUDE.md`; post the Slack note by hand). If
-  `agent-outcomes` is available, append the `release_blocked` artifact (`reason` = the
-  comment's first line), and remove `auto-releasing` from the triggering issue so the loop
-  doesn't re-fire until the person re-labels. **Orchestrated mode**: don't remove the label
-  (the orchestrator does); the artifact is required.
+  loop cuts fresh from `<dev>`), or **ship as is** (merge the release PR yourself,
+  make sure `v<version>` is tagged and released (the repo's own automation does this where it
+  has it, see its `CLAUDE.md`) and `<main>` is merged back into `<dev>`, post the Slack note
+  only where Step 3.4 would, and close this issue). Remove `auto-releasing` from the triggering
+  issue so the loop doesn't re-fire until the person re-labels. If `agent-outcomes` is
+  available, also append the `release_blocked` artifact (`reason` = the comment's first line).
+  **Orchestrated mode**: don't remove the label (the orchestrator does); the artifact is
+  required.
 
 The final comment (Step 4's, or the `release_approved` one in orchestrated mode) repeats the
 re-run line in one line. If only one of the branch and its open PR exists, comment on the
-issue and stop, never guess. With neither, do items 1-3 below as written.
+issue and stop (handle `auto-releasing` and the `release_blocked` artifact as in the "Any
+missing" case), never guess. With neither, do items 1-3 below as written.
 
 1. From up-to-date `<dev>`, cut `release/<version>`.
 2. Bump the repo's **version-file list** (from its `CLAUDE.md`) and the changelog — use
