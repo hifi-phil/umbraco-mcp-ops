@@ -102,7 +102,7 @@ export const rules: Rule[] = [
   },
   {
     // Keyed on the POST-swap state, not LABELS.AUTO_RELEASING: auto-release-loop's
-    // Step 2.5 removes LABELS.AUTO_RELEASING before posting this outcome comment
+    // Step 1 (re-run stop) or Step 2.5 removes LABELS.AUTO_RELEASING before posting this outcome comment
     // (creating a separate new issue for the block, which isn't a tracked
     // label on the triggering issue) — so by the time this event reaches
     // the reducer, state has already moved to "none". Same reasoning as
@@ -110,7 +110,7 @@ export const rules: Rule[] = [
     from: "none",
     on: EVENTS.RELEASE_BLOCKED,
     to: noop,
-    verifiedBy: "external-judgment", // release-reviewer's BLOCK verdict — an independent agent's judgment
+    verifiedBy: "external-judgment", // Step 2.5's release-reviewer BLOCK verdict (an independent agent's judgment) or Step 1's re-run stop
   },
   {
     // Unlike the three rules above, auto-release-loop's Step 4 does NOT

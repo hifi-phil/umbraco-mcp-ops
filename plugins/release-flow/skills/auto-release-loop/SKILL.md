@@ -59,8 +59,9 @@ cut, merge `<dev>`, bump, push or open anything. Count a PR as "its open PR" onl
 cross-repository, its head SHA equals origin's `release/<version>` tip, and it is the only open
 PR from that branch; otherwise comment and stop (as in the one-of-two case below). Work out what `<dev>` has that the branch lacks:
 commits on `origin/<dev>` that aren't on `origin/release/<version>` (locally
-`git log origin/release/<version>..origin/<dev>` after a fetch; on the MCP path, compare the two
-refs through github-ops), named by the `(#n)` suffix
+`git log origin/release/<version>..origin/<dev>` after a fetch; on the MCP path, `list_commits` with `sha: <dev>` and again with
+`sha: release/<version>`, paged back to their common ancestor, then take the `<dev>` SHAs absent from
+the release list), named by the `(#n)` suffix
 of their squash subject (a commit with no suffix is counted, not named). Then:
 
 - **None missing** → comment "re-run: reused `release/<version>` and PR #<pr> unchanged. Up

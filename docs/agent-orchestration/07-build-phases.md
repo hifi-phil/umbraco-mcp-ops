@@ -136,7 +136,7 @@ to be true before it's deleted:
 |---|---|---|
 | `issue-build-loop` Step 3 (success) | remove `ai-ready`, add `pr-open` | the DO applies `to-github.ts`'s `labelOps()` output for `build_succeeded` itself, shadow-mode-verified against real traffic |
 | `issue-build-loop` Step 3 (blocked) | remove `ai-ready`, add `ai-blocked` | same, for `build_blocked` |
-| `auto-release-loop` Step 2.5 | remove `auto-releasing` on BLOCK | same, for `release_blocked` |
+| `auto-release-loop` Step 1 (re-run stop) / Step 2.5 | remove `auto-releasing` on BLOCK | same, for `release_blocked` |
 | `auto-release-loop` Step 4 | close the issue on publish | same, for `release_published` |
 | `rework-loop` Step 5 | remove `auto-reworking` | same, for `rework_pushed` — already sourced from a native signal, so this one only needs the DO live, not a new artifact |
 | `merge-flow` Step 4 (hard block) | remove `auto-merging` | same, for `merge_gate_failed_hard` — the live gate re-check this event needs now exists for real (`worker/src/coordinate/webhook.ts`'s `handleCheckSuiteCompleted` + `graph/github/merge-gate.ts`, see 11-outcome-artifact.md and `worker/README.md`), so this row now only needs the DO live and shadow-verified, same bar as every other row — no longer blocked on infrastructure that doesn't exist |
