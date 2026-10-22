@@ -122,6 +122,8 @@ describe("a fire's watchdog is armed before the fire", () => {
       running: true,
     });
     expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 7, ROUTINES.ISSUE_BUILD_LOOP);
+    // only a discussion fire starts the discussion window
+    expect(await deps.getDiscussionFiredAt()).toBeNull();
     const after = await deps.getPendingFire();
     expect(after).toMatchObject({ run: ROUTINES.ISSUE_BUILD_LOOP });
     expect(after?.deferUntil).toBeUndefined();

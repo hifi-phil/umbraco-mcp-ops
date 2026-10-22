@@ -78,11 +78,6 @@ function hasOwnSignatureMarker(body: string | undefined): boolean {
   return !!body && body.includes(COMMENT_SIGNATURE_PREFIX);
 }
 
-// loop-dispatch's discussion-round gates 2–7 (route-event.sh's
-// issue_comment case), all fail-closed. Gate 1, "the issue carries
-// LABELS.AI_DISCUSSING", is the reducer's: DISCUSSION_REPLY only has a rule from
-// that state. The self-marker gate (2) is checked by the caller first.
-const TRUSTED_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"];
 /** The loop's own signed comment, from a trusted person's account (it posts as the maintainer's):
  * a marker anyone else pastes in is not an answer. */
 export function isDiscussionLoopAnswer(payload: WebhookPayload): boolean {
@@ -96,6 +91,11 @@ export function isDiscussionLoopAnswer(payload: WebhookPayload): boolean {
   );
 }
 
+// loop-dispatch's discussion-round gates 2–7 (route-event.sh's
+// issue_comment case), all fail-closed. Gate 1, "the issue carries
+// LABELS.AI_DISCUSSING", is the reducer's: DISCUSSION_REPLY only has a rule from
+// that state. The self-marker gate (2) is checked by the caller first.
+const TRUSTED_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"];
 function isDiscussionReply(payload: WebhookPayload): boolean {
   const c = payload.comment;
   return (

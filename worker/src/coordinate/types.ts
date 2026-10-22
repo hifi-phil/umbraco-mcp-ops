@@ -125,8 +125,8 @@ export type StatusUpdate =
   | { kind: "gone"; closed?: boolean }
   | { kind: "reopened" };
 
-/** How long a discussion fire the loop hasn't answered yet (or the label taken
- * off) counts as still running, covering a discussion session's run time. A comment and the
+/** How long a discussion fire the loop hasn't answered yet, and whose label hasn't
+ * been taken off, counts as still running, covering a discussion session's run time. A comment and the
  * {@link LABELS.AI_DISCUSSING} label seconds apart each ask for a fire, and the one session
  * reads the whole thread anyway. */
 export const DISCUSSION_FIRE_WINDOW_MS = 10 * 60 * 1000;
