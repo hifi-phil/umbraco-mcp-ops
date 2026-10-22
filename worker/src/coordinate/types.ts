@@ -70,6 +70,14 @@ export class FireRateLimited extends Error {
   }
 }
 
+/** A comment on an issue or PR, as the watchdog's recovery reads it. */
+export type IssueComment = {
+  body: string;
+  createdAt: string; // ISO timestamp
+  authorAssociation: string;
+  userType: "Bot" | "User";
+};
+
 export type PendingFire = {
   owner: string;
   repo: string;
@@ -83,6 +91,10 @@ export type PendingFire = {
   // watchdog alarm that started before a newer fire (or heartbeat) replaced
   // this one finds it not yet due, and leaves it to that fire's own alarm.
   dueAt?: number;
+  // When the run was fired (epoch ms), set by the DO's setPendingFire and kept
+  // by heartbeats: an expiry looks for the outcome comment posted since then
+  // (watchdog.ts's recoverOutcome).
+  firedAt?: number;
   // Set when the watchdog has already fired this run once more (watchdog.ts):
   // a second silent expiry goes to LABELS.AI_STUCK. A new fire starts clean.
   retried?: boolean;
@@ -178,6 +190,9 @@ export type Deps = {
   removeLabel(owner: string, repo: string, issueNumber: number, label: string): Promise<void>;
   closeIssue(owner: string, repo: string, issueNumber: number): Promise<void>;
   commentOnIssue(owner: string, repo: string, issueNumber: number, body: string): Promise<void>;
+  // The comments posted on an issue or PR since `sinceIso`, oldest first
+  // (the watchdog's look for an outcome whose webhook was lost).
+  commentsSince(owner: string, repo: string, issueNumber: number, sinceIso: string): Promise<IssueComment[]>;
   // Fires the repo's loop-dispatch routine with this route (routines-client.ts).
   fireRoutine(owner: string, repo: string, issueNumber: number, routine: string): Promise<void>;
   logTransition(row: TransitionRow): Promise<void>;
@@ -376,6 +391,8 @@ export type CoordinateInput = {
   repo: string;
   issueNumber: number;
   payload: WebhookPayload;
+  // Set when no webhook caused this: the watchdog recovering a lost outcome.
+  actor?: Acting["actor"];
 };
 
 export type IssueRef = Pick<CoordinateInput, "owner" | "repo" | "issueNumber">;

@@ -181,3 +181,85 @@ describe("coordinateWatchdogExpired — the one retry of a run that never starte
     expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.AI_STUCK);
   });
 });
+
+describe("coordinateWatchdogExpired — an outcome whose webhook was lost", () => {
+  const firedAt = Date.parse("2026-10-22T11:00:00Z");
+  const pending: PendingFire = {
+    owner: "hifi-phil",
+    repo: "umbraco-mcp-ops",
+    issueNumber: 345,
+    run: ROUTINES.ISSUE_BUILD_LOOP,
+    firedAt,
+  };
+  const outcome = (routine: string, createdAt: string, body = { outcome: "build_succeeded", pr: 346 }) => ({
+    body: `Built.\n\n<!-- agent-outcome:${routine} -->\n\`\`\`json\n${JSON.stringify(body)}\n\`\`\``,
+    createdAt,
+    authorAssociation: "OWNER",
+    userType: "User" as const,
+  });
+  const expire = async (comments: ReturnType<typeof outcome>[] | Error) => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      commentsSince: vi.fn(async () => {
+        if (comments instanceof Error) throw comments;
+        return comments;
+      }),
+    });
+    await deps.setPendingFire(pending);
+    const result = await coordinateWatchdogExpired(deps);
+    return { deps, result };
+  };
+
+  it(`a matching outcome since the fire is applied (${LABELS.AI_READY} -> ${LABELS.PR_OPEN}): no ${LABELS.AI_STUCK}, no dead-run comment, a recovery row`, async () => {
+    const { deps, result } = await expire([outcome("issue-build-loop", "2026-10-22T11:02:52Z")]);
+    expect(result).toMatchObject({ outcome: "applied", from: LABELS.AI_READY, event: EVENTS.BUILD_SUCCEEDED });
+    expect(deps.commentsSince).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 345, "2026-10-22T11:00:00.000Z");
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 345, LABELS.PR_OPEN);
+    expect(deps.addLabel).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), 345, LABELS.AI_STUCK);
+    expect(deps.commentOnIssue).not.toHaveBeenCalled();
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.BUILD_SUCCEEDED, actor: "watchdog" }));
+    const recovered = vi.mocked(deps.logTransition).mock.calls.filter(([row]) => row.event === "watchdog_recovered");
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]![0]).toMatchObject({ actor: "watchdog", run: ROUTINES.ISSUE_BUILD_LOOP });
+    expect(await deps.getPendingFire()).toBeNull();
+  });
+
+  it("an outcome posted before the fire (an older run's) is ignored: expires as usual", async () => {
+    const { deps, result } = await expire([outcome("issue-build-loop", "2026-10-22T10:59:00Z")]);
+    expect(result).toMatchObject({ outcome: "applied", event: EVENTS.WATCHDOG_EXPIRED });
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 345, LABELS.AI_STUCK);
+  });
+
+  it("an outcome from another routine is ignored", async () => {
+    const { deps, result } = await expire([outcome("rework-loop", "2026-10-22T11:02:00Z")]);
+    expect(result).toMatchObject({ event: EVENTS.WATCHDOG_EXPIRED });
+    expect(deps.commentOnIssue).toHaveBeenCalledTimes(1);
+  });
+
+  it("the newest matching outcome wins", async () => {
+    const { deps } = await expire([
+      outcome("issue-build-loop", "2026-10-22T11:02:00Z", { outcome: "build_blocked", reason: "unclear" } as never),
+      outcome("issue-build-loop", "2026-10-22T11:05:00Z"),
+    ]);
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 345, LABELS.PR_OPEN);
+  });
+
+  it("no outcome comment -> today's behaviour", async () => {
+    const { deps, result } = await expire([]);
+    expect(result).toMatchObject({ event: EVENTS.WATCHDOG_EXPIRED });
+    expect(deps.commentOnIssue).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failed comment read -> today's behaviour", async () => {
+    const { deps, result } = await expire(new Error("GitHub API GET failed: 503"));
+    expect(result).toMatchObject({ event: EVENTS.WATCHDOG_EXPIRED });
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 345, LABELS.AI_STUCK);
+  });
+
+  it("a pending fire with no fire time (stored before this) -> no read, today's behaviour", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
+    await deps.setPendingFire({ ...pending, firedAt: undefined });
+    await coordinateWatchdogExpired(deps);
+    expect(deps.commentsSince).not.toHaveBeenCalled();
+  });
+});

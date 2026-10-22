@@ -39,6 +39,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     removeLabel: vi.fn(async () => {}),
     closeIssue: vi.fn(async () => {}),
     commentOnIssue: vi.fn(async () => {}),
+    commentsSince: vi.fn(async () => []),
     fireRoutine: vi.fn(async () => {}),
     logTransition: vi.fn(async () => {}),
     hasSeenDelivery: vi.fn(async (id: string) => seen.has(id)),
