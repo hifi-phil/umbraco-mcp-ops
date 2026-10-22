@@ -4,6 +4,7 @@
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { reduce, rules } from "@orchestrator/graph/graph";
 import { EVENTS } from "@orchestrator/graph/constants/events";
+import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
 import { applyEvent, deriveState, fireUnwatched, fireWatched, type FireOutcome } from "./apply";
 
@@ -106,6 +107,8 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
     if (!unwatched && state !== "ambiguous") {
       await deps.recordStatus(pending, { kind: "transition", state, run: pending.run, running: true });
     }
+    // The window the webhook couldn't start for a deferred fire starts now.
+    if (pending.run === ROUTINES.ISSUE_DISCUSS_LOOP) await deps.setDiscussionFiredAt(Date.now());
     return { outcome: "deferred_fire_sent", run: pending.run };
   }
 

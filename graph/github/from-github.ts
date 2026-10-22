@@ -29,7 +29,8 @@ import { LABELS } from "../constants/labels";
 import { parseOutcomeShape } from "../outcomes";
 
 export const BOT_LOGIN = "umbraco-mcp-ops[bot]"; // the default; the Worker passes its GitHub App's real login to translate()
-export const COMMENT_SIGNATURE = "<!-- issue-discuss-loop -->"; // real marker, from issue-discuss-loop's SKILL.md
+export const COMMENT_SIGNATURE_PREFIX = "<!-- issue-discuss-loop"; // starts every marker the loop signs with, the round-cap one (`:capped`) too
+export const COMMENT_SIGNATURE = `${COMMENT_SIGNATURE_PREFIX} -->`; // real marker, from issue-discuss-loop's SKILL.md
 
 // Matches any loop's outcome marker (plugins/agent-outcomes's format),
 // regardless of which routine wrote it — the outcome name inside the JSON

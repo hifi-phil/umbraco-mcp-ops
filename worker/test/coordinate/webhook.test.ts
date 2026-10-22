@@ -359,11 +359,32 @@ describe("coordinateWebhook — one discussion fire at a time", () => {
     expect(fires(deps)).toBe(2);
   });
 
-  it("a second reply before the loop answers is skipped", async () => {
+  it("the round-cap comment clears the record too, so re-adding the label fires", async () => {
+    const deps = discussing();
+    await coordinateWebhook(deps, reply("d-1"));
+    const capped = input({ deliveryId: "d-cap", payload: { action: "issue_comment.created", comment: { body: "<!-- issue-discuss-loop:capped -->\nRound limit." } } });
+    await coordinateWebhook(deps, capped);
+    expect((await coordinateWebhook(deps, labelled())).outcome).toBe("applied");
+    expect(fires(deps)).toBe(2);
+  });
+
+  it(`taking ${LABELS.AI_DISCUSSING} off clears the record, so re-adding it fires`, async () => {
+    const deps = discussing();
+    await coordinateWebhook(deps, reply("d-1"));
+    await coordinateWebhook(deps, input({ deliveryId: "d-off", payload: { action: "issues.unlabeled", label: { name: LABELS.AI_DISCUSSING } } }));
+    expect(await deps.getDiscussionFiredAt()).toBeNull();
+    expect((await coordinateWebhook(deps, labelled())).outcome).toBe("applied");
+    expect(fires(deps)).toBe(2);
+  });
+
+  it("a second reply before the loop answers is skipped, the skip logged", async () => {
     const deps = discussing();
     await coordinateWebhook(deps, reply("d-1"));
     expect((await coordinateWebhook(deps, reply("d-2", "One more thing"))).outcome).toBe("discussion_skipped");
     expect(fires(deps)).toBe(1);
+    expect(deps.logTransition).toHaveBeenLastCalledWith(
+      expect.objectContaining({ event: EVENTS.DISCUSSION_REPLY, run: null, droppedReason: expect.stringContaining("discussion fire skipped") }),
+    );
   });
 
   it("a fire the rate limit deferred isn't counted as sent", async () => {

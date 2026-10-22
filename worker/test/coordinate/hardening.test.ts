@@ -168,6 +168,14 @@ describe("a fire's watchdog is armed before the fire", () => {
     await coordinateWatchdogExpired(deps, 2000);
     expect(deps.fireRoutine).toHaveBeenCalledTimes(1);
     expect(await deps.getPendingFire()).toBeNull();
+    expect(await deps.getDiscussionFiredAt()).not.toBeNull();
+    // a reply while that session runs doesn't fire a second one
+    const reply = input({
+      deliveryId: "d-reply",
+      payload: { action: "issue_comment.created", comment: { body: "More", author_association: "OWNER", user_type: "User" }, issue: { state: "open", is_pr: false } },
+    });
+    expect((await coordinateWebhook(deps, reply)).outcome).toBe("discussion_skipped");
+    expect(deps.fireRoutine).toHaveBeenCalledTimes(1);
   });
 
   it("a deferred fire refused at its alarm for another reason is said on the issue and rethrown, not dropped silently", async () => {

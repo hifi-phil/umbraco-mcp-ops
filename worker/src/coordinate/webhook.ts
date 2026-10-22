@@ -3,7 +3,7 @@
 // (manual_override), and check_suite.completed.
 
 import { ALL_LABELS, LABELS } from "@orchestrator/graph/constants/labels";
-import { COMMENT_SIGNATURE, translate } from "@orchestrator/graph/github/from-github";
+import { COMMENT_SIGNATURE_PREFIX, translate } from "@orchestrator/graph/github/from-github";
 import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
@@ -80,8 +80,12 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     return handleCheckSuiteCompleted(deps, input);
   }
 
-  // The discussion loop answered: its next fire is wanted again.
-  if (input.payload.action === "issue_comment.created" && input.payload.comment?.body.includes(COMMENT_SIGNATURE)) {
+  // The discussion loop answered (any of its markers, the round-cap one too),
+  // or the label was taken off: its next fire is wanted again.
+  if (
+    (input.payload.action === "issue_comment.created" && input.payload.comment?.body.includes(COMMENT_SIGNATURE_PREFIX)) ||
+    (input.payload.action === "issues.unlabeled" && input.payload.label?.name === LABELS.AI_DISCUSSING)
+  ) {
     await deps.setDiscussionFiredAt(null);
   }
 
