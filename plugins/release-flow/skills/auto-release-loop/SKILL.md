@@ -53,6 +53,27 @@ That's it — no approval pause — by design, for fast beta/pre-release cycles.
 
 ## Step 1 — prepare (autonomous)
 
+**Re-run (the branch and its PR already exist).** If `release/<version>` and its open PR to
+`<main>` exist (a person re-labelled after a block), reuse both unchanged: don't cut, merge
+`<dev>`, bump, push or open anything. Work out what `<dev>` has that the branch lacks:
+commits reachable from `<dev>` but not from `release/<version>`, named by the `(#n)` suffix
+of their squash subject (a commit with no suffix is counted, not named). Then:
+
+- **None missing** → comment "re-run: reused `release/<version>` and PR #<pr> unchanged. Up
+  to date with `<dev>`." and carry on to Step 2.
+- **Any missing** → **stop**; don't go on to Step 2. Comment "re-run: reused
+  `release/<version>` and PR #<pr> unchanged. Not included from `<dev>`: #312, #313, #314"
+  (at most 20, then "and N more", plus "M commits without a PR number" if any), and offer
+  two ways on: **include them** (close PR #<pr>, delete `release/<version>`, re-label: the
+  loop cuts fresh from `<dev>`), or **ship as is** (merge the release PR yourself:
+  `release-tag.yml` and the deploy still run; post the Slack note by hand). If
+  `agent-outcomes` is available, append the `release_blocked` artifact (`reason` = the
+  comment's first line). **Orchestrated mode**: the artifact is required, and you don't
+  remove `auto-releasing`; the orchestrator does.
+
+The completion comment (Step 4) repeats the re-run line, with any missing list, in one line.
+With no existing branch and PR, do items 1-3 below as written.
+
 1. From up-to-date `<dev>`, cut `release/<version>`.
 2. Bump the repo's **version-file list** (from its `CLAUDE.md`) and the changelog — use
    the repo's own release skill if it has one (e.g. `umbraco-mcp-skills:release`).
