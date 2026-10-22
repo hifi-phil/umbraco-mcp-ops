@@ -10,8 +10,8 @@ description: >-
   notification at start and on completion, and — for stable and release-candidate
   versions — posts a Slack notification to `release-notifications` once published. The
   deliberate act of labelling the issue is the human decision. For gitflow repos.
-  Requires the github-ops skill (agent-outcomes is optional: if installed, the block (Step 1 re-run stop or Step 2.5 BLOCK)
-  and publish comments also carry an outcome artifact). Trigger from a routine on Issue: Labeled =
+  Requires the github-ops skill (agent-outcomes is optional: if installed, the block and publish
+  comments also carry an outcome artifact). Trigger from a routine on Issue: Labeled =
   auto-releasing, or run manually as "auto-release-loop <version>".
 ---
 
@@ -87,7 +87,7 @@ as the way on (the loop never publishes content that didn't come through a `<dev
   **Orchestrated mode**: don't remove the label (the orchestrator does); the artifact is
   required. Also, no `release_published` fires after a manual ship, so the orchestrator never
   closes the open `ready-for-release` issues: say in the comment that a manual ship needs those
-  closed by hand (or `release-publish` run).
+  closed by hand.
 
 The final comment (Step 4's, or the `release_approved` one in orchestrated mode) repeats the
 re-run line in one line. If only one of the branch and its open PR exists, comment on the
