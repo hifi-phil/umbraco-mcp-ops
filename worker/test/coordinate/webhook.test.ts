@@ -362,8 +362,9 @@ describe("coordinateWebhook — one discussion fire at a time", () => {
   it("the round-cap comment clears the record too, so re-adding the label fires", async () => {
     const deps = discussing();
     await coordinateWebhook(deps, reply("d-1"));
-    const capped = input({ deliveryId: "d-cap", payload: { action: "issue_comment.created", comment: { body: "<!-- issue-discuss-loop:capped -->\nRound limit." } } });
-    await coordinateWebhook(deps, capped);
+    const capped = input({ deliveryId: "d-cap", payload: { action: "issue_comment.created", comment: { body: "<!-- issue-discuss-loop:capped -->\nRound limit.", author_association: "OWNER", user_type: "User" }, issue: { state: "open", is_pr: false } } });
+    expect((await coordinateWebhook(deps, capped)).outcome).not.toBe("applied"); // the cap comment itself starts no round
+    expect(fires(deps)).toBe(1);
     expect((await coordinateWebhook(deps, labelled())).outcome).toBe("applied");
     expect(fires(deps)).toBe(2);
   });

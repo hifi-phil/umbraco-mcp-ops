@@ -75,7 +75,7 @@ function isOwnBot(sender: WebhookPayload["sender"], botLogin: string): boolean {
 }
 
 function hasOwnSignatureMarker(body: string | undefined): boolean {
-  return !!body && body.includes(COMMENT_SIGNATURE);
+  return !!body && body.includes(COMMENT_SIGNATURE_PREFIX);
 }
 
 // loop-dispatch's discussion-round gates 2–7 (route-event.sh's
