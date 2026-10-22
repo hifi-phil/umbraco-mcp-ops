@@ -276,6 +276,39 @@ describe("coordinateWatchdogExpired — an outcome whose webhook was lost", () =
     expect((await deps.getPendingFire())?.run).toBe(ROUTINES.REVIEW_LOOP);
   });
 
+  it("a shadow watchdog does not recover: no label write, the shadow expiry is what lands", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      enforced: () => false,
+      commentsSince: vi.fn(async () => [outcome("issue-build-loop", "2026-10-22T11:02:52Z")]),
+    });
+    await deps.setPendingFire(pending);
+    await coordinateWatchdogExpired(deps);
+    expect(deps.commentsSince).not.toHaveBeenCalled();
+    expect(deps.addLabel).not.toHaveBeenCalled();
+    const rows = vi.mocked(deps.logTransition).mock.calls.map(([row]) => row);
+    expect(rows.some((row) => row.event === "watchdog_recovered")).toBe(false);
+    expect(rows.some((row) => row.event === EVENTS.WATCHDOG_EXPIRED && row.mode === "shadow")).toBe(true);
+  });
+
+  it("the next run's fire refused while recovering is said on the issue, not lost", async () => {
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_REVIEWING]),
+      commentsSince: vi.fn(async () => [outcome("review-loop", "2026-10-22T11:02:52Z", { outcome: "review_findings", findings: 2 } as never)]),
+      fireRoutine: vi.fn(async () => {
+        throw new Error("routines API 500");
+      }),
+    });
+    await deps.setPendingFire({ ...pending, run: ROUTINES.REVIEW_LOOP });
+    await expect(coordinateWatchdogExpired(deps)).rejects.toThrow("routines API 500");
+    expect(deps.commentOnIssue).toHaveBeenCalledWith(
+      "hifi-phil",
+      "umbraco-mcp-ops",
+      345,
+      expect.stringContaining("routines API refused it"),
+    );
+  });
+
   it("a pending fire with no fire time (stored before this) -> no read, today's behaviour", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
     await deps.setPendingFire({ ...pending, firedAt: undefined });

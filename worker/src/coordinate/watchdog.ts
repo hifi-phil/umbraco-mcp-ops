@@ -112,8 +112,12 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
 
   // The run may have finished and posted its outcome, with only the webhook
   // for it lost (#335, #345): apply that before calling the run dead.
-  const recovered = await recoverOutcome(deps, pending);
-  if (recovered) return recovered;
+  // Only where the watchdog is enforced: recovery writes labels and may fire
+  // the next run, which a shadow watchdog must not do.
+  if (deps.enforced(EVENTS.WATCHDOG_EXPIRED)) {
+    const recovered = await recoverOutcome(deps, pending);
+    if (recovered) return recovered;
+  }
 
   // Once, a run that never reported a single step is fired again instead of
   // going to LABELS.AI_STUCK: it died before doing anything (a session that
@@ -182,7 +186,9 @@ async function recoverOutcome(deps: Deps, pending: PendingFire): Promise<Watchdo
     if (Date.parse(comment.createdAt) < pending.firedAt) continue;
     if (comment.body.match(OUTCOME_ROUTINE_PATTERN)?.[1] !== pending.run) continue;
     const result = await coordinateWebhook(deps, {
-      deliveryId: "",
+      // Not empty: a refused fire of the next run is only said on the issue
+      // (apply.ts's reportRefusedFire) for an event that has a delivery id.
+      deliveryId: `watchdog-recover:${pending.run}:${pending.firedAt}`,
       owner: pending.owner,
       repo: pending.repo,
       issueNumber: pending.issueNumber,
@@ -209,7 +215,7 @@ async function recoverOutcome(deps: Deps, pending: PendingFire): Promise<Watchdo
       toEffect: JSON.stringify({ kind: "noop" }),
       run: pending.run,
       droppedReason: null,
-      mode: "enforce",
+      mode: depsFor(deps, EVENTS.WATCHDOG_EXPIRED).mode,
     });
     // The recovered event may have started the next run: that fire is its own.
     const now = await deps.getPendingFire();
