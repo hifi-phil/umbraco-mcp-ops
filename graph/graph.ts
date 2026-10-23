@@ -472,6 +472,10 @@ export const rules: Rule[] = [
   // coordinate/apply.ts's deriveState() reads that specific pair as LABELS.AI_STUCK, and
   // labelOps() then just removes LABELS.AI_STUCK. (2) A human retry: re-adding the
   // trigger label on a stuck issue re-fires its loop, exactly as from "none".
+  // REWORK_PUSHED below is only that late outcome: coordinate/webhook.ts
+  // applies it from here only when a rework was pending (a review rework's
+  // fixPending, or a CI fix's pending). A person's push to a stuck PR with
+  // no rework running leaves LABELS.AI_STUCK on, and is logged.
   {
     from: LABELS.AI_STUCK,
     on: EVENTS.BUILD_SUCCEEDED,
