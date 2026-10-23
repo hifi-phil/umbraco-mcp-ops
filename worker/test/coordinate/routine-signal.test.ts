@@ -114,6 +114,11 @@ describe("coordinateRoutineSignal — the direct routine-to-DO channel", () => {
     const heartbeat = await coordinateRoutineSignal(deps, signalInput({ kind: "process", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, step: "merging" }));
     expect(completion).toEqual({ outcome: "no_pending_fire" });
     expect(heartbeat).toEqual({ outcome: "no_pending_fire" });
+    // The dropped completion leaves a row; the heartbeat doesn't.
+    expect(deps.logTransition).toHaveBeenCalledOnce();
+    expect(deps.logTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "build_succeeded", actor: "routine-signal", issueNumber: 412, droppedReason: "completion not applied: no_pending_fire" }),
+    );
     expect(deps.clearPendingFire).not.toHaveBeenCalled();
     expect(deps.setPendingFire).not.toHaveBeenCalled();
     expect(await deps.getPendingFire()).toEqual(pending);
@@ -310,6 +315,36 @@ describe("coordinateRoutineSignal — a completion is applied, like its comment"
     await deps.setPendingFire(buildFire);
     expect(await coordinateWebhook(deps, outcomeWebhook())).toMatchObject({ outcome: "applied", event: EVENTS.BUILD_SUCCEEDED });
     expect(deps.unmarkSeenDelivery).not.toHaveBeenCalled();
+  });
+});
+
+describe("a completion no fire can take is a row, not a silent drop", () => {
+  it("another routine's live fire -> mismatched_routine, logged with the live run", async () => {
+    const deps = liveDeps([LABELS.AI_READY]);
+    await deps.setPendingFire({ ...buildFire, run: ROUTINES.MERGE_FLOW });
+    const result = await coordinateRoutineSignal(deps, {
+      ...ref,
+      signal: { kind: "completion", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, outcome: { outcome: "build_succeeded", pr: 123 } },
+    });
+    expect(result).toMatchObject({ outcome: "mismatched_routine" });
+    expect(deps.logTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "build_succeeded", droppedReason: `completion not applied: mismatched_routine: ${ROUTINES.MERGE_FLOW}` }),
+    );
+  });
+});
+
+describe("an outcome comment while another routine's fire is deferred", () => {
+  it("is remembered against the ended fire, so the completion that follows is deduped", async () => {
+    const deps = liveDeps([LABELS.AI_READY]);
+    await deps.setEndedFire(buildFire);
+    await deps.setPendingFire({ ...buildFire, run: ROUTINES.MERGE_FLOW, deferUntil: 5_000 });
+    expect(await coordinateWebhook(deps, outcomeWebhook())).toMatchObject({ outcome: "applied", event: EVENTS.BUILD_SUCCEEDED });
+    expect(await deps.getAppliedOutcome()).toEqual({ run: ROUTINES.ISSUE_BUILD_LOOP, firedAt: buildFire.firedAt ?? null, outcome: "build_succeeded" });
+    const result = await coordinateRoutineSignal(deps, {
+      ...ref,
+      signal: { kind: "completion", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, outcome: { outcome: "build_succeeded", pr: 123 } },
+    });
+    expect(result).toEqual({ outcome: "deduped" });
   });
 });
 

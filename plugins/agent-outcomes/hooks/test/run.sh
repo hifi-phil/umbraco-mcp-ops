@@ -63,7 +63,7 @@ MALFORMED_COMMENT='PR opened.
 run_case() {
   local name="$1" event="$2" expect="$3"
   local log="$WORK/$name.log"
-  printf '%s' "$event" | env AGENT_OUTCOMES_LOG="$log" bash "$SCRIPT"
+  printf '%s' "$event" | env -u AGENT_OUTCOMES_ENDPOINT -u AGENT_OUTCOMES_TOKEN AGENT_OUTCOMES_LOG="$log" bash "$SCRIPT"
   local rc=$?
   if [ "$rc" -ne 0 ]; then echo "FAIL [$name]: exit=$rc (expected 0)"; fail=$((fail+1)); return; fi
   if grep -qF "$expect" "$log" 2>/dev/null; then
@@ -78,7 +78,7 @@ run_case() {
 run_case_no_log() {
   local name="$1" event="$2"
   local log="$WORK/$name.log"
-  printf '%s' "$event" | env AGENT_OUTCOMES_LOG="$log" bash "$SCRIPT"
+  printf '%s' "$event" | env -u AGENT_OUTCOMES_ENDPOINT -u AGENT_OUTCOMES_TOKEN AGENT_OUTCOMES_LOG="$log" bash "$SCRIPT"
   local rc=$?
   if [ "$rc" -eq 0 ] && [ ! -e "$log" ]; then
     echo "PASS [$name]"; pass=$((pass+1))
@@ -130,7 +130,7 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
 
   # A routine's transcript: its first prompt is the Worker's fire text.
   TRANSCRIPT="$WORK/transcript.jsonl"
-  jq -cn '{type:"user", message:{content:"loop-dispatch (cloud worker). A GitHub loop event was routed at the edge: route=issue-build-loop repo=hifi-phil/umbraco-mcp-ops number=412. Run the loop-dispatch skill…"}}' >"$TRANSCRIPT"
+  jq -cn '{type:"user", message:{content:"loop-dispatch (cloud worker). A GitHub loop event was routed at the edge: route=issue-build-loop repo=hifi-phil/umbraco-mcp-ops number=412. Run the loop-dispatch skill… log_token=abc.def"}}' >"$TRANSCRIPT"
   NO_ROUTE="$WORK/plain.jsonl"
   jq -cn '{type:"user", message:{content:"help me refactor this"}}' >"$NO_ROUTE"
 
@@ -139,7 +139,7 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
 
   # signal <name> <event-json> <state-dir>: run the hook against the stub.
   signal() {
-    printf '%s' "$2" | env AGENT_OUTCOMES_LOG="$WORK/$1.log" AGENT_OUTCOMES_STATE="$3" \
+    printf '%s' "$2" | env -u AGENT_OUTCOMES_ENDPOINT -u AGENT_OUTCOMES_TOKEN AGENT_OUTCOMES_LOG="$WORK/$1.log" AGENT_OUTCOMES_STATE="$3" \
       AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" AGENT_OUTCOMES_TOKEN="tok" AGENT_OUTCOMES_HEARTBEAT_SECS="${HB:-60}" bash "$SCRIPT"
     sleep 0.3
   }
@@ -159,7 +159,7 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
 
   # 6. An outcome artifact -> a completion signal in the Worker's shape, with the bearer token
   signal completion "$(with_transcript "$(bash_event "$SUCCEEDED_COMMENT")" "$TRANSCRIPT")" "$WORK/s6"
-  expect_last completion_shape '.auth == "Bearer tok"
+  expect_last completion_shape '.auth == "Bearer abc.def"
     and .body.owner == "hifi-phil" and .body.repo == "umbraco-mcp-ops"
     and .body.signal == {kind:"completion", routine:"issue-build-loop", issue:412, outcome:{outcome:"build_succeeded", pr:123}}'
 
@@ -168,6 +168,13 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   signal heartbeat "$(with_transcript "$BASH_CALL" "$TRANSCRIPT")" "$WORK/s7"
   expect_last heartbeat_shape '.auth == "Bearer tok" and .body.owner == "hifi-phil"
     and .body.signal == {kind:"process", routine:"issue-build-loop", issue:412, step:"Bash: Run the tests"}'
+
+  # 7b. A heartbeat with no shared secret set falls back to the run's own log_token
+  : >"$SERVER_LOG"
+  printf '%s' "$(with_transcript "$BASH_CALL" "$TRANSCRIPT")" | env -u AGENT_OUTCOMES_TOKEN AGENT_OUTCOMES_LOG="$WORK/hb_nosecret.log" AGENT_OUTCOMES_STATE="$WORK/s7b" \
+    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" AGENT_OUTCOMES_HEARTBEAT_SECS=60 bash "$SCRIPT"
+  sleep 0.3
+  expect_last heartbeat_falls_back_to_log_token '.auth == "Bearer abc.def" and .body.signal.kind == "process"'
 
   # 8. A second call inside the heartbeat gap -> no second request
   : >"$SERVER_LOG"

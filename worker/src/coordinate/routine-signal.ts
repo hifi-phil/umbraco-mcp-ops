@@ -62,8 +62,19 @@ export async function coordinateRoutineSignal(
       const ended = live ? null : await deps.getEndedFire();
       if (ended && ended.run === update.routine) return applyCompletion(deps, ended, update, false);
     }
-    if (!live) return { outcome: "no_pending_fire" };
-    return { outcome: "mismatched_routine", expected: live.run, got: update.routine };
+    const result = live
+      ? ({ outcome: "mismatched_routine", expected: live.run, got: update.routine } as const)
+      : ({ outcome: "no_pending_fire" } as const);
+    // Dropped for good if the comment's webhook is lost too: leave a row.
+    if (update.kind === "completion") {
+      await logNotApplied(
+        deps,
+        { owner: input.owner, repo: input.repo, issueNumber: update.issue, run: update.routine },
+        update.outcome.outcome,
+        live ? `mismatched_routine: ${live.run}` : "no_pending_fire",
+      );
+    }
+    return result;
   }
 
   switch (update.kind) {
@@ -185,7 +196,12 @@ async function noteBlocked(deps: Deps, pending: PendingFire, detail: string): Pr
 
 /** A completion the webhook path didn't apply: durable, so it shows on the
  * dashboard and in the audit rather than only in a console. */
-async function logNotApplied(deps: Deps, pending: PendingFire, outcome: string, result: string): Promise<void> {
+async function logNotApplied(
+  deps: Deps,
+  pending: Pick<PendingFire, "owner" | "repo" | "issueNumber" | "run">,
+  outcome: string,
+  result: string,
+): Promise<void> {
   await deps.logTransition({
     deliveryId: null,
     actor: "routine-signal",
