@@ -104,9 +104,7 @@ use its non-eval script instead (e.g. `npm test`, or add
 there rather than assuming `test:all` is the right gate. Eval coverage is CI's own gated
 `evals` job on the branches it runs for, which does have the secret provisioned.
 
-If the gate needs a running Umbraco, start it in this checkout if it isn't already
-(`npm run start:umbraco` on a server repo; first run does the unattended install and can
-take minutes — wait for `.demo-site-port` and the base URL to respond).
+If the gate needs a running Umbraco, boot it as `cloud-mode.md` step 2 says (via `worker-env`, not `npm run start:umbraco`).
 
 `npm run compile` alone is not enough for a code change. Fix failures locally until
 green. If state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename the DB in

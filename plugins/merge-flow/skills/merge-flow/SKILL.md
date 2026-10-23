@@ -4,7 +4,7 @@ description: >-
   Guardrail loop for merging pull requests safely. Finds open PRs labelled
   `auto-merging` and merges each only once every safety gate holds; on any unmet gate it
   comments the blocker and moves on rather than merging. Replaces error-prone manual
-  merges. Repo-agnostic; runs locally or as a scheduled cloud routine; requires the
+  merges. Repo-agnostic; fired by the Worker through `loop-dispatch`; requires the
   `github-ops` and `agent-outcomes` skills. Trigger on "merge the ready PRs", "run merge-flow", "auto-merge
   the queue".
 ---
@@ -68,7 +68,7 @@ For each candidate, all must hold — if any fails, **do not merge** (go to Step
    then re-check CI (that restarts checks).
 4. **Right base.** The PR targets the expected integration branch for its repo's merge
    strategy (see Config). A PR into `main` on a gitflow repo is a **release** merge —
-   that's `auto-release-loop`'s job, not this one; skip it here.
+   the Worker makes it after `release_approved`, not this loop; skip it here.
 
 ## Step 3 — merge
 
@@ -98,9 +98,6 @@ The orchestrator checks for conflicts and requested changes itself, and sends fa
 
 ## Running as a routine
 
-**Primary: event-triggered.** Set up a routine with trigger **PR: Labeled**, filtered to
-**Labels is one of `auto-merging`**, so labelling a PR fires this **immediately** — it
-gate-checks the current `auto-merging` PR(s) and merges the eligible ones. This is the
-cheapest shape (it only fires when you label — no idle runs) and the most responsive.
-The skill queries for all `auto-merging` PRs, so a single-PR event just runs one pass of
-the same loop; nothing changes for one-at-a-time.
+The Worker fires this through `loop-dispatch` (route `merge-flow`) when a PR is labelled
+`auto-merging` and its gate passes, on an environment that has this skill (+ `github-ops`,
+`agent-outcomes`).
