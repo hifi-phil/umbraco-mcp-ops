@@ -32,7 +32,7 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="35"                                  # log marker only: busting the env cache is the stub's `rebuild:`
+VERSION="36"                                  # log marker only: busting the env cache is the stub's `rebuild:`
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
@@ -75,7 +75,8 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     done
     # Permissions: a routine runs unattended, so a command that would need approval is
     # refused. Allow what every loop has to do, and no more: the work-log skill's script
-    # (16-work-log.md), local git (add, commit, fetch, ls-remote, switch, checkout), and
+    # (16-work-log.md), local git (anything that only changes the session's own checkout:
+    # add, commit, fetch, reset, merge, rebase, stash, branch, restore, …), and
     # pushing its own branch through github-ops' push-branch.sh, which pushes only the
     # current branch, never forces and refuses main/dev. NOT `git push` itself: a prefix
     # rule can't rule out `--force` later in the line, a `+ref`, `--delete` or `--mirror`
@@ -92,7 +93,12 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
             .permissions = (.permissions // {})
             | .permissions.allow = (((.permissions.allow // []) - ["Bash(git push:*)"] + [$a, $b, $c, $d,
                 "Bash(git add:*)", "Bash(git commit:*)", "Bash(git fetch:*)",
-                "Bash(git ls-remote:*)", "Bash(git switch:*)", "Bash(git checkout:*)"]) | unique)
+                "Bash(git ls-remote:*)", "Bash(git switch:*)", "Bash(git checkout:*)",
+                "Bash(git reset:*)", "Bash(git merge:*)", "Bash(git rebase:*)",
+                "Bash(git stash:*)", "Bash(git branch:*)", "Bash(git restore:*)",
+                "Bash(git pull:*)", "Bash(git rm:*)", "Bash(git mv:*)", "Bash(git status:*)",
+                "Bash(git log:*)", "Bash(git diff:*)", "Bash(git show:*)",
+                "Bash(git rev-parse:*)"]) | unique)
           ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
         mv "$tmp" "$SETTINGS"; echo "allowed: log-entry.sh, push-branch.sh, local git (no git push)"
       else
