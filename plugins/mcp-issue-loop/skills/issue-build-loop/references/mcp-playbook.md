@@ -14,8 +14,8 @@ at the end).
 
 ## Build playbook
 
-> You are completing **one** GitHub issue in an Umbraco MCP repo, working in your
-> own isolated git worktree. Issue: **#{NUMBER} — {TITLE}**.
+> You are completing **one** GitHub issue in an Umbraco MCP repo, working in the
+> session's checkout. Issue: **#{NUMBER} — {TITLE}**.
 >
 > ```
 > {BODY}
@@ -32,21 +32,12 @@ at the end).
 > you cannot reach this state, stop and return a clear blocked report (what's
 > ambiguous / what fails) — do not guess or half-finish.
 
-### 1. Create your worktree
+### 1. Work in the checkout
 
-Call `EnterWorktree` with a name derived from the issue, e.g.
-`issue-{NUMBER}-{short-slug}`. This fires the repo's `WorktreeCreate` hook, which
-gives you a fresh SQL Server DB, a copied `.env`, a dynamic port, and a completed
-`npm install`. The branch is auto-created from the worktree name (the hook
-prefixes `feature/`). Everything you do happens in this worktree.
-
-**Re-dispatched fix, not a fresh issue?** If the orchestrator sent you back into an
-**existing** worktree (an `mcp-review` finding) — it will say
-so and give you `worktreePath` — skip this step entirely: `cd` into that path, do not call
-`EnterWorktree` again (it would fire `WorktreeCreate` a second time for no reason: a new DB,
-a new port, a fresh `npm install`, against a worktree that already has all of that). Go
-straight to fixing the specific thing you were sent to fix, then repeat steps 4 and 6
-(re-test locally, re-push) and return per step 7.
+Work directly in the session's checkout and boot Umbraco per `worker-env` (see
+`cloud-mode.md`); there is no worktree. **Re-dispatched fix, not a fresh issue?** Go
+straight to fixing the specific thing you were sent to fix (an `mcp-review` finding), then
+repeat steps 4 and 6 (re-test locally, re-push) and return per step 7.
 
 ### 2. Understand the issue, then plan
 
@@ -114,7 +105,7 @@ use its non-eval script instead (e.g. `npm test`, or add
 there rather than assuming `test:all` is the right gate. Eval coverage is CI's own gated
 `evals` job on the branches it runs for, which does have the secret provisioned.
 
-If the gate needs a running Umbraco, start it in this worktree if it isn't already
+If the gate needs a running Umbraco, start it in this checkout if it isn't already
 (`npm run start:umbraco` on a server repo; first run does the unattended install and can
 take minutes — wait for `.demo-site-port` and the base URL to respond).
 
@@ -128,7 +119,7 @@ green. If state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename th
 why they're inert in a subagent; a subagent grading its own code is weak anyway. You also
 do **not** drive CI — once you return, **the orchestrator** runs the
 `mcp-review` skill over the PR, handing you back any surviving
-findings to fix in this worktree. CI is watched later, by the Worker.
+findings to fix in this checkout. CI is watched later, by the Worker.
 Just build well and return; don't claim a review ran or that CI is green.
 
 ### 6. Commit, push, open the PR
@@ -147,10 +138,9 @@ reporting the issue's outcome happen next, at the orchestrator level.
 ### 7. Return
 
 Once your branch is pushed and the PR is open, **return** the structured report to the
-orchestrator: `{ issue, worktreeName, worktreePath, branch, prNumber, model, tier, status }`
+orchestrator: `{ issue, branch, prNumber, model, tier, status }`
 (`status`: `pr-open`, or `blocked` with the reason if you stopped early per the Definition
-of done or step 2's ambiguity check). Leave the worktree on disk (do **not** remove it) — the orchestrator
-reuses it to fix any `mcp-review` findings, per step 5 above.
+of done or step 2's ambiguity check). The orchestrator re-dispatches into the checkout to fix any `mcp-review` findings, per step 5 above.
 
 ---
 

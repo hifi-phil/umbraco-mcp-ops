@@ -9,7 +9,7 @@ description: >-
   surgical change that solves the problem — problem first, then testable requirements, then a
   plan that follows the code already there. Writes issues only: never code, never a PR, never
   `ai-ready`. Repo-agnostic; github-ops and agent-outcomes required. Trigger: an issue labelled `ai-discussing`,
-  a new comment on one, or "discuss issue #N".
+  or a new comment on one.
 ---
 
 # issue-discuss-loop
@@ -30,7 +30,7 @@ It **writes issues, not code.** No branches, no PRs, no `ai-ready`.
 ## Trigger & scope
 
 - **The user removes `ai-discussing`, not you.** Unlike every other loop, the label here means
-  *discussion is open*, not *work pending*, so it stays on until they're satisfied.
+  *discussion is open*, not *work pending*, so it stays on until they're satisfied (except at the round cap, where the Worker removes it after `discussion_capped`).
 - Act on the **labelled issue only** — never wander to other issues or PRs.
 - Works on **any repo**: code repos, shared-skill repos, docs, this ops repo. What changes is
   which code you read before you can say anything useful.
@@ -107,7 +107,7 @@ until the user asks, and the original is preserved as a comment when they do.
 **One comment per fire** — signed — then stop. Never sit and wait for a reply; their next comment fires
 the next round.
 
-Leave `ai-discussing` on the issue. The user removes it when satisfied, then adds `ai-ready` if
+Leave `ai-discussing` on the issue. The user removes it when satisfied (at the round cap the Worker does, after `discussion_capped`), then adds `ai-ready` if
 they want it built.
 
 ## Guardrails

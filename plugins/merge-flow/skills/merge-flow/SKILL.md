@@ -94,7 +94,7 @@ approval", "conflicts with base — rebase needed"), and log it as deferred. For
 human-needed block the orchestrator's gate missed (say a conflict appeared with no CI run
 since), post the `merge_blocked` outcome (`agent-outcomes`) in that comment with the reason.
 The orchestrator checks for conflicts and requested changes itself, and sends failing CI to
-`rework-loop`, so on red CI comment the failing checks and stop.
+`rework-loop`, so on red CI comment the failing checks and move on to the next candidate.
 
 ## Running as a routine
 

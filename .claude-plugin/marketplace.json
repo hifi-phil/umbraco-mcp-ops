@@ -13,7 +13,7 @@
     {
       "name": "mcp-issue-loop",
       "source": "./plugins/mcp-issue-loop",
-      "description": "Label-driven loops that take an issue from rough idea to merged PR: `ai-discussing` talks it into shape before anyone builds it, `ai-ready` builds it to a CI-green PR, `auto-reworking` acts on your review feedback. Bundles issue-discuss-loop, issue-build-loop, rework-loop, and mcp-review. Runs locally (worktrees + parallel subagents + local tests) or as a cloud routine. Repo-agnostic.",
+      "description": "Label-driven loops that take an issue from rough idea to merged PR: `ai-discussing` talks it into shape before anyone builds it, `ai-ready` builds it to a PR, `auto-reworking` acts on your review feedback. Bundles issue-discuss-loop, issue-build-loop, rework-loop, and mcp-review. Fired by the agent-orchestration Worker as a cloud routine. Repo-agnostic.",
       "version": "2.1.7",
       "category": "workflow",
       "author": {
@@ -60,7 +60,7 @@
     {
       "name": "release-flow",
       "source": "./plugins/release-flow",
-      "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions. Bundles release-and-branching, sync-dev, and auto-release-loop (issue+label-triggered release with two automated gates — green CI + an Opus pre-publish review against a growing checklist — no approval pause, Claude push notifications).",
+      "description": "Branching, merge, release, and dev-sync workflow skills for any repo — detects gitflow (dev + main) vs main-only and follows the matching conventions. Bundles release-and-branching, sync-dev, and auto-release-loop (issue+label-triggered release with two automated gates — green CI + an Opus pre-publish review against a growing checklist — no approval pause).",
       "version": "2.2.3",
       "category": "workflow",
       "author": {
