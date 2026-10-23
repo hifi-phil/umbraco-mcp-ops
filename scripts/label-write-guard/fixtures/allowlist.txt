@@ -1,0 +1,1 @@
+scripts/label-write-guard/fixtures/allowed/plugins/x/SKILL.md | the Worker adds `ai-reviewing`

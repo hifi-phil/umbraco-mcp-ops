@@ -8,8 +8,8 @@ description: >-
   next round, so it's a real back-and-forth. The aim is consensus on the simplest, most
   surgical change that solves the problem — problem first, then testable requirements, then a
   plan that follows the code already there. Writes issues only: never code, never a PR, never
-  `ai-ready`. Repo-agnostic; github-ops required. Trigger: an issue labelled `ai-discussing`,
-  a new comment on one, or "discuss issue #N".
+  `ai-ready`. Repo-agnostic; github-ops and agent-outcomes required. Trigger: an issue labelled `ai-discussing`,
+  or a new comment on one.
 ---
 
 # issue-discuss-loop
@@ -30,8 +30,7 @@ It **writes issues, not code.** No branches, no PRs, no `ai-ready`.
 ## Trigger & scope
 
 - **The user removes `ai-discussing`, not you.** Unlike every other loop, the label here means
-  *discussion is open*, not *work pending*, so it stays on until they're satisfied. The round cap
-  is the only exception.
+  *discussion is open*, not *work pending*, so it stays on until they're satisfied (except at the round cap, where the Worker removes it after `discussion_capped`).
 - Act on the **labelled issue only** — never wander to other issues or PRs.
 - Works on **any repo**: code repos, shared-skill repos, docs, this ops repo. What changes is
   which code you read before you can say anything useful.
@@ -103,25 +102,18 @@ Body or comment is [`thread-protocol.md`](references/thread-protocol.md)'s "one 
 a **stub** gets its body replaced (nothing to lose); an **already-written** issue keeps its body
 until the user asks, and the original is preserved as a comment when they do.
 
-## Step 5 — notify, then stop
+## Step 5 — stop
 
-**One comment per fire** — signed — then a push notification (the `PushNotification` tool) so the
-user knows it's their turn, then stop. Never sit and wait for a reply; their next comment fires
+**One comment per fire** — signed — then stop. Never sit and wait for a reply; their next comment fires
 the next round.
 
-```
-#{N} discuss — 4 questions before I can plan this
-#{N} discuss — critique posted, 3 gaps found (worst: no clear "done")
-#{N} discuss — issue rewritten, check the two assumptions I flagged
-```
-
-Leave `ai-discussing` on the issue. The user removes it when satisfied, then adds `ai-ready` if
+Leave `ai-discussing` on the issue. The user removes it when satisfied (at the round cap the Worker does, after `discussion_capped`), then adds `ai-ready` if
 they want it built.
 
 ## Guardrails
 
 The only writes are issue comments and the issue body (freely for a stub; on the user's
-say-so when it was already written), plus the round cap's one-time label removal (see
+say-so when it was already written), plus the `discussion_capped` outcome at the round cap (see
 `thread-protocol.md`). See the two rules above, `thread-protocol.md`, and `good-issues.md`
 for everything else — the two guardrails below only add what those three sources don't
 already cover:
@@ -133,15 +125,11 @@ already cover:
 
 ## Running as a routine
 
-Both trigger paths route through the loop-dispatch Action. One issue per fire. It reads
+Both trigger paths route through `loop-dispatch`. One issue per fire. It reads
 and writes prose, so use a
-capable model (Sonnet or better); the thinking is the product here. State cloud vs local in the
-routine prompt. No local toolchain is needed — it never builds anything.
+capable model (Sonnet or better); the thinking is the product here. No local toolchain is needed — it never builds anything.
 
-**Local and cloud runs are interchangeable**, because the anti-self-reply guard is the comment
-marker, not the author. A hand-run session signs its comments the same way, so the edge skips them
-the same way.
+The anti-self-reply guard is the comment marker, not the author, so the edge skips every
+signed comment the same way.
 
-**The trigger only exists once the caller workflow is on the repo's default branch.** A repo
-without it (plus the routine and its two secrets) can still use this skill by hand — "discuss
-issue #N" — it just won't fire on its own.
+**The trigger needs the repo onboarded to loop dispatch (`new-loop-routine`).**
