@@ -306,6 +306,7 @@ describe(`reduce — the watchdog and ${LABELS.AI_STUCK}`, () => {
     expect(reduce(LABELS.AI_STUCK, EVENTS.BUILD_BLOCKED)?.to).toEqual(label(LABELS.AI_BLOCKED));
     expect(reduce(LABELS.AI_STUCK, EVENTS.RELEASE_BLOCKED)?.to).toEqual(unlabel);
     expect(reduce(LABELS.AI_STUCK, EVENTS.RELEASE_PUBLISHED)?.to).toEqual(close);
+    // (coordinate/webhook.ts applies this one only when a rework was pending.)
     expect(reduce(LABELS.AI_STUCK, EVENTS.REWORK_PUSHED)?.to).toEqual(unlabel);
     expect(reduce(LABELS.AI_STUCK, EVENTS.MERGED)?.to).toEqual(close);
   });

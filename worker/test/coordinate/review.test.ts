@@ -205,6 +205,56 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
     expect(d.addLabel).not.toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_REVIEWING);
   });
 
+  it(`a person's push to a ${LABELS.AI_STUCK} PR with no rework pending keeps ${LABELS.AI_STUCK} and is logged`, async () => {
+    const d = deps([LABELS.AI_STUCK]);
+    await d.setReviewLoop({ botRounds: 1, fixPending: false });
+    expect(await coordinateWebhook(d, pushed())).toMatchObject({ outcome: "dropped_no_rule", from: LABELS.AI_STUCK, event: EVENTS.REWORK_PUSHED });
+    expect(d.removeLabel).not.toHaveBeenCalled();
+    expect(d.addLabel).not.toHaveBeenCalled();
+    expect(d.logTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ fromState: LABELS.AI_STUCK, event: EVENTS.REWORK_PUSHED, toEffect: null, actor: "a-person" }),
+    );
+  });
+
+  it(`a late push from a CI fix the watchdog moved to ${LABELS.AI_STUCK} still clears it`, async () => {
+    const d = deps([LABELS.AI_STUCK]);
+    await d.setCiFix({ attempts: 1, pending: true });
+    expect(await coordinateWebhook(d, pushed())).toMatchObject({ outcome: "applied", event: EVENTS.REWORK_PUSHED });
+    expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
+    expect(await d.getCiFix()).toMatchObject({ pending: false });
+  });
+
+  it(`a late push from a review rework moved to ${LABELS.AI_STUCK} still clears it`, async () => {
+    const d = deps([LABELS.AI_STUCK]);
+    await d.setReviewLoop({ botRounds: 1, fixPending: true });
+    expect(await coordinateWebhook(d, pushed())).toMatchObject({ outcome: "applied", event: EVENTS.REWORK_PUSHED });
+    expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
+  });
+
+  it(`a late push to ${LABELS.AI_STUCK} whose label write fails still clears it when redelivered`, async () => {
+    const d = deps([LABELS.AI_STUCK]);
+    await d.setReviewLoop({ botRounds: 1, fixPending: true });
+    d.removeLabel = vi.fn().mockRejectedValueOnce(new Error("boom")).mockResolvedValue(undefined);
+    await expect(coordinateWebhook(d, pushed())).rejects.toThrow("boom");
+    expect(await d.getReviewLoop()).toEqual({ botRounds: 1, fixPending: true });
+    expect(await coordinateWebhook(d, pushed())).toMatchObject({ outcome: "applied", event: EVENTS.REWORK_PUSHED });
+    expect(d.removeLabel).toHaveBeenLastCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
+    expect(await d.getReviewLoop()).toEqual({ botRounds: 1, fixPending: false });
+  });
+
+  it(`re-adding ${LABELS.AI_REVIEWING} to a kept ${LABELS.AI_STUCK} PR starts with fresh review counts`, async () => {
+    const d = deps([LABELS.AI_STUCK]);
+    await d.setReviewLoop({ botRounds: 2, fixPending: false });
+    await d.setCiFix({ attempts: MAX_CI_FIX_ATTEMPTS, pending: false, returnTo: LABELS.AI_REVIEWING });
+    expect(await coordinateWebhook(d, pushed("d-person-push"))).toMatchObject({ outcome: "dropped_no_rule" });
+    expect(d.removeLabel).not.toHaveBeenCalled();
+    d.getLabels = vi.fn(async () => [LABELS.AI_STUCK, LABELS.AI_REVIEWING]);
+    await coordinateWebhook(d, labelled(LABELS.AI_REVIEWING));
+    expect(await d.getReviewLoop()).toBeNull();
+    expect(await d.getCiFix()).toBeNull();
+    expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
+  });
+
   it("a restart resets the CI-fix count", async () => {
     const d = deps([LABELS.AI_STUCK, LABELS.AUTO_REWORKING]);
     await d.setReviewLoop({ botRounds: 1, fixPending: false });
