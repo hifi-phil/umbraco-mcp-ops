@@ -102,6 +102,7 @@ const REVIEW_REWORKS_KEY = "reviewReworks"; // review rework rounds on this PR (
 const SHIPPED_KEY = "shipped"; // the merged PR and commit that moved this issue to LABELS.READY_FOR_RELEASE
 const RELEASE_MERGED_KEY = "releaseMerged"; // the release PR and commit the Worker merged (the release split)
 const MERGE_FIRED_FOR_KEY = "mergeFiredFor"; // the head commit merge-flow was re-fired for on green CI
+const REWORK_EXPIRED_KEY = "reworkExpired"; // the watchdog gave up on a rework-loop run on this PR
 const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MAX_BOT_REVIEW_REWORKS)
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
@@ -300,6 +301,11 @@ export class IssueCoordinator {
       setCiFix: async (state: CiFix | null) => {
         if (state) await this.ctx.storage.put(CI_FIX_KEY, state);
         else await this.ctx.storage.delete(CI_FIX_KEY);
+      },
+      getReworkExpired: async () => (await this.ctx.storage.get<boolean>(REWORK_EXPIRED_KEY)) ?? false,
+      setReworkExpired: async (expired: boolean) => {
+        if (expired) await this.ctx.storage.put(REWORK_EXPIRED_KEY, true);
+        else await this.ctx.storage.delete(REWORK_EXPIRED_KEY);
       },
       getMergeGateFacts: async (owner: string, repo: string, prNumber: number): Promise<MergeGateFacts> => {
         // checkRuns depends on the PR's head SHA, so getPull has to

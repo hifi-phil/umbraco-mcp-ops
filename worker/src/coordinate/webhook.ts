@@ -125,7 +125,8 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   if (reworkEnded) {
     const ciFix = await deps.getCiFix();
     const reviewLoop = ciFix?.pending ? null : await deps.getReviewLoop();
-    reworkWasPending = Boolean(ciFix?.pending || reviewLoop?.fixPending);
+    const reworkExpired = lateFromStuck && (await deps.getReworkExpired());
+    reworkWasPending = Boolean(ciFix?.pending || reviewLoop?.fixPending || reworkExpired);
     if (ciFix?.pending) {
       // LABELS.AUTO_REWORKING removed without a push (nothing to fix) ends the CI-fix
       // too, so a later review rework isn't mistaken for one.
@@ -144,6 +145,13 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
       const clear = () => deps.setReviewLoop({ ...reviewLoop, fixPending: false });
       if (lateFromStuck) clearAfterApply = clear;
       else await clear();
+    }
+    if (reworkExpired) {
+      const clearPending = clearAfterApply;
+      clearAfterApply = async () => {
+        await clearPending?.();
+        await deps.setReworkExpired(false);
+      };
     }
   }
 
@@ -194,7 +202,10 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
       if (rounds > deps.caps.reviewReworks) return capReviewRework(deps, input, currentLabels, rounds - 1);
       await deps.setReviewReworks(rounds);
       // From LABELS.AI_STUCK, the review's own count starts fresh too.
-      if (before === LABELS.AI_STUCK) await deps.setReviewLoop(null);
+      if (before === LABELS.AI_STUCK) {
+        await deps.setReviewLoop(null);
+        await deps.setReworkExpired(false);
+      }
     }
     restartReview = inReview && !(await deps.getCiFix())?.pending;
     // Written before the rule runs, so a refused fire that is redelivered (the
@@ -268,6 +279,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     if (deriveState(currentLabels.filter((l) => l !== LABELS.AI_REVIEWING)) === LABELS.AI_STUCK) {
       await deps.setReviewLoop(null);
       await deps.setCiFix(null);
+      await deps.setReworkExpired(false);
     }
     const labelled = await applyEvent(deps, input, event, currentLabels);
     if (labelled.outcome !== "applied") return labelled;
@@ -333,6 +345,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     if (passed.outcome === "applied") {
       await deps.setReviewLoop(null);
       await deps.setCiFix(null);
+      await deps.setReworkExpired(false);
     }
     return passed;
   }
@@ -356,6 +369,12 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
 
   const result = await applyEvent(deps, input, event, currentLabels);
   if (clearAfterApply && result.outcome === "applied") await clearAfterApply();
+  // Any other way out of AI_STUCK (a late rework outcome, a verdict) ends the
+  // expiry's claim on the next push too. A no-op rule (a trigger label removed
+  // while the PR stays stuck) leaves it, so it keeps the claim.
+  if (reworkState === LABELS.AI_STUCK && result.outcome === "applied" && result.rule.to.kind !== "noop") {
+    await deps.setReworkExpired(false);
+  }
   if (restartReview && result.outcome === "applied") {
     try {
       await depsFor(deps, EVENTS.LABELLED_AUTO_REWORKING).io.commentOnIssue(
@@ -378,6 +397,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
 async function capReviewRework(deps: Deps, input: CoordinateInput, currentLabels: string[], rounds: number): Promise<CoordinateResult> {
   const result = await applyEvent(deps, input, EVENTS.REWORK_CAP_REACHED, currentLabels);
   if (result.outcome === "applied") {
+    await deps.setReworkExpired(false);
     await depsFor(deps, EVENTS.REWORK_CAP_REACHED).io.commentOnIssue(
       input.owner,
       input.repo,

@@ -28,6 +28,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   let ciFix: CiFix | null = null;
   let reviewReworks = 0;
   let reviewLoop: ReviewLoop | null = null;
+  let reworkExpired = false;
   let mergeFiredFor: string | null = null;
   let shipped: Shipped | null = null;
   let releaseMerged: Shipped | null = null;
@@ -89,6 +90,10 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     getReviewLoop: vi.fn(async () => reviewLoop),
     setReviewLoop: vi.fn(async (state: ReviewLoop | null) => {
       reviewLoop = state;
+    }),
+    getReworkExpired: vi.fn(async () => reworkExpired),
+    setReworkExpired: vi.fn(async (expired: boolean) => {
+      reworkExpired = expired;
     }),
     // These tests are about the write path; shadow and per-event
     // enforcement have their own describe blocks.
