@@ -63,6 +63,12 @@ export const EVENTS = {
   REVIEW_PASSED: "review_passed",
   REVIEW_FINDINGS: "review_findings",
   REVIEW_BLOCKED: "review_blocked",
+  // Outcomes that replace a session's own last label write (the Worker is the
+  // only thing that writes a lane label): rework-loop with nothing to push,
+  // merge-flow's hard block the gate missed, issue-discuss-loop at its cap.
+  REWORK_NO_CHANGE: "rework_no_change",
+  MERGE_BLOCKED: "merge_blocked",
+  DISCUSSION_CAPPED: "discussion_capped",
   // the watchdog — the one event NOT sourced from GitHub. The DO raises it
   // itself when a routine it fired hasn't produced an outcome within the
   // watchdog window (worker/src/coordinate/watchdog.ts's coordinateWatchdogExpired).

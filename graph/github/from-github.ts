@@ -66,6 +66,9 @@ export type WebhookPayload = {
   // release's version to each issue waiting for one.
   shipped?: { pr: number; sha: string };
   release?: { version: string; tag: string };
+  // A build's PR, handed its review (build_succeeded's `pr`): the Worker adds
+  // LABELS.AI_REVIEWING there and runs the CI gate, as a person's label would.
+  reviewRequest?: { requestedBy: number };
   check_suite?: { conclusion: "success" | "failure" | null; status: "completed" | "in_progress" };
 };
 
@@ -173,6 +176,12 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
             return EVENTS.REVIEW_FINDINGS;
           case "review_blocked":
             return EVENTS.REVIEW_BLOCKED;
+          case "rework_no_change":
+            return EVENTS.REWORK_NO_CHANGE;
+          case "merge_blocked":
+            return EVENTS.MERGE_BLOCKED;
+          case "discussion_capped":
+            return EVENTS.DISCUSSION_CAPPED;
         }
       }
 
@@ -236,6 +245,8 @@ export function translate(payload: WebhookPayload, { botLogin = BOT_LOGIN }: { b
     // The Worker's own hand-offs (see WebhookPayload's shipped / release).
     case "orchestrator.pr_merged":
       return payload.shipped ? EVENTS.PR_MERGED : null;
+    case "orchestrator.review_requested":
+      return payload.reviewRequest ? EVENTS.LABELLED_AI_REVIEWING : null;
     case "orchestrator.released":
       return payload.release ? EVENTS.RELEASED : null;
 

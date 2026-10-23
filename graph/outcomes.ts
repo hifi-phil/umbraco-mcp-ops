@@ -26,7 +26,16 @@ export type Outcome =
   | { outcome: "release_approved"; pr: number; sha: string; version: string; merge_method: MergeMethod }
   | { outcome: "review_passed" }
   | { outcome: "review_findings"; findings: number }
-  | { outcome: "review_blocked"; reason: string };
+  | { outcome: "review_blocked"; reason: string }
+  // The Worker owns every label write (phase 1 of 3): the sessions that used
+  // to take a label off themselves report it instead.
+  // rework-loop with nothing to push: the Worker takes LABELS.AUTO_REWORKING off.
+  | { outcome: "rework_no_change"; reason: string }
+  // merge-flow hit a hard block the gate missed: the Worker swaps
+  // LABELS.AUTO_MERGING for LABELS.MERGE_BLOCKED and comments the reason.
+  | { outcome: "merge_blocked"; reason: string }
+  // issue-discuss-loop reached its round cap: the Worker takes LABELS.AI_DISCUSSING off.
+  | { outcome: "discussion_capped" };
 
 export type MergeMethod = "merge" | "squash" | "rebase";
 const MERGE_METHODS: readonly string[] = ["merge", "squash", "rebase"];
@@ -66,5 +75,12 @@ export function parseOutcomeShape(value: unknown): Outcome | null {
   if (v.outcome === "review_blocked" && typeof v.reason === "string") {
     return { outcome: "review_blocked", reason: v.reason };
   }
+  if (v.outcome === "rework_no_change" && typeof v.reason === "string") {
+    return { outcome: "rework_no_change", reason: v.reason };
+  }
+  if (v.outcome === "merge_blocked" && typeof v.reason === "string") {
+    return { outcome: "merge_blocked", reason: v.reason };
+  }
+  if (v.outcome === "discussion_capped") return { outcome: "discussion_capped" };
   return null;
 }

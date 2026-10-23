@@ -28,6 +28,18 @@ export async function handOffMerged(deps: Deps, input: CoordinateInput): Promise
   }
 }
 
+/** A build reported its PR (build_succeeded's `pr`): hand it its review. The
+ * PR's own item adds LABELS.AI_REVIEWING and runs the CI gate, as a person's
+ * label would; one that already carries it is left as it is. */
+export async function handOffReview(deps: Deps, input: CoordinateInput, pr: number): Promise<void> {
+  if (pr === input.issueNumber) return;
+  await deps.forward(
+    { owner: input.owner, repo: input.repo, issueNumber: pr },
+    { action: "orchestrator.review_requested", reviewRequest: { requestedBy: input.issueNumber } },
+    handOffId(input.deliveryId, pr),
+  );
+}
+
 /** A PR merged: its work log, and that of the issues it closes, as one
  * comment on the PR (16-work-log.md), the permanent copy. A PR an
  * orchestrated build made that arrives with no log at all says so instead:

@@ -243,7 +243,7 @@ export async function mergeIfGreen(gh: Gh, f: Fire, mergeRetryMs = MERGE_RETRY_M
  * review-loop's verdict, scripted by the PR's hint: review_findings_once
  * asks for changes on its first round and passes the next;
  * review_findings_always never passes (the cap); review_block blocks;
- * review_pass and review_ci_fail pass.
+ * review_pass, review_ci_fail and merge (a build's PR) pass.
  */
 async function review(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
   const verdict = async (outcome: Outcome) => {
@@ -258,6 +258,7 @@ async function review(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
   switch (hint) {
     case "review_pass":
     case "review_ci_fail":
+    case "merge": // a build's PR, which the orchestrator hands its review
       return verdict({ outcome: "review_passed" });
     case "review_block":
       return verdict({ outcome: "review_blocked", reason: "e2e stub: scripted block" });
