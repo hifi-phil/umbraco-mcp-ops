@@ -23,6 +23,8 @@ const person = { login: "a-person", type: "User" as const };
 
 const labelled = (name: string, deliveryId = "d-label") =>
   input({ deliveryId, payload: { action: "pull_request.labeled", label: { name }, sender: person } });
+const unlabelled = (name: string, deliveryId = "d-unlabel") =>
+  input({ deliveryId, payload: { action: "pull_request.unlabeled", label: { name }, sender: person } });
 const checkSuite = (deliveryId = "d-suite") =>
   input({ deliveryId, payload: { action: "check_suite.completed", check_suite: { status: "completed", conclusion: "success" } } });
 const pushed = (deliveryId = "d-push") => input({ deliveryId, payload: { action: "pull_request.synchronize", sender: person } });
@@ -315,6 +317,16 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
       d.getLabels = vi.fn(async () => [LABELS.AI_STUCK, label]);
       await coordinateWebhook(d, labelled(label));
       expect(await d.getReworkExpired()).toBe(false);
+    });
+
+    it(`a trigger label removed while the PR stays ${LABELS.AI_STUCK} keeps the expiry, so a late push still clears it`, async () => {
+      const d = deps([]);
+      await expireRework(d);
+      d.getLabels = vi.fn(async () => [LABELS.AI_STUCK]);
+      await coordinateWebhook(d, unlabelled(LABELS.AUTO_MERGING));
+      expect(await d.getReworkExpired()).toBe(true);
+      expect(await coordinateWebhook(d, pushed("d-late"))).toMatchObject({ outcome: "applied", event: EVENTS.REWORK_PUSHED });
+      expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
     });
 
     it(`leaving ${LABELS.AI_STUCK} on a review_passed verdict drops the expiry`, async () => {

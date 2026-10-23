@@ -370,8 +370,11 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   const result = await applyEvent(deps, input, event, currentLabels);
   if (clearAfterApply && result.outcome === "applied") await clearAfterApply();
   // Any other way out of AI_STUCK (a late rework outcome, a verdict) ends the
-  // expiry's claim on the next push too.
-  if (reworkState === LABELS.AI_STUCK && result.outcome === "applied") await deps.setReworkExpired(false);
+  // expiry's claim on the next push too. A no-op rule (a trigger label removed
+  // while the PR stays stuck) leaves it, so it keeps the claim.
+  if (reworkState === LABELS.AI_STUCK && result.outcome === "applied" && result.rule.to.kind !== "noop") {
+    await deps.setReworkExpired(false);
+  }
   if (restartReview && result.outcome === "applied") {
     try {
       await depsFor(deps, EVENTS.LABELLED_AUTO_REWORKING).io.commentOnIssue(
