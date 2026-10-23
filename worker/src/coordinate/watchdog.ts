@@ -167,7 +167,9 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   const recordExpiry = deps.enforced(EVENTS.WATCHDOG_EXPIRED);
   if (recordExpiry) await deps.setReworkExpired(pending.run === ROUTINES.REWORK_LOOP);
   const result = await applyEvent(deps, { ...pending, actor: "watchdog" }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
-  if (recordExpiry && result.outcome !== "applied") await deps.setReworkExpired(false);
+  // A retried alarm may find the label write already landed: the PR reads
+  // AI_STUCK and the expiry's claim must stay.
+  if (recordExpiry && result.outcome !== "applied" && state !== LABELS.AI_STUCK) await deps.setReworkExpired(false);
   await deps.clearPendingFire();
   // The watch is over either way: a shadow watchdog or labels with no expiry
   // rule leave the row alone above, and nothing else would stop it reading

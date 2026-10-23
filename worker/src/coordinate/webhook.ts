@@ -361,7 +361,6 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     if (!currentLabels.includes(LABELS.AUTO_MERGING)) return { outcome: "stale_label", event };
     // A human re-adding LABELS.AUTO_MERGING after LABELS.MERGE_BLOCKED starts a fresh count.
     if (currentLabels.includes(LABELS.MERGE_BLOCKED)) await deps.setCiFix(null);
-    if (currentLabels.includes(LABELS.AI_STUCK)) await deps.setReworkExpired(false);
     const facts = await settledGateFacts(deps, input);
     const reason = hardBlockReason(facts);
     if (reason) return blockMerge(deps, input, currentLabels, reason);

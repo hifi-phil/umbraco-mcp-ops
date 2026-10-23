@@ -353,6 +353,22 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
       expect(await d.getReworkExpired()).toBe(false);
     });
 
+    it(`a retried alarm that finds ${LABELS.AI_STUCK} already applied keeps the expiry`, async () => {
+      const d = deps([LABELS.AI_STUCK]);
+      await d.setPendingFire({ owner: OWNER, repo: REPO, issueNumber: PR, run: ROUTINES.REWORK_LOOP, retried: true });
+      expect(await coordinateWatchdogExpired(d)).toMatchObject({ outcome: "dropped_no_rule" });
+      expect(await d.getReworkExpired()).toBe(true);
+    });
+
+    it(`re-adding ${LABELS.AUTO_MERGING} with a red gate keeps the expiry while the PR stays ${LABELS.AI_STUCK}`, async () => {
+      const d = deps([], green);
+      await expireRework(d);
+      d.getLabels = vi.fn(async () => [LABELS.AI_STUCK, LABELS.AUTO_MERGING]);
+      d.getMergeGateFacts = vi.fn(async () => red);
+      await coordinateWebhook(d, labelled(LABELS.AUTO_MERGING));
+      expect(await d.getReworkExpired()).toBe(true);
+    });
+
     it("the expiry is recorded before the label write, so a failed write keeps it for the retry", async () => {
       const d = deps([LABELS.AUTO_REWORKING]);
       d.addLabel = vi.fn().mockRejectedValueOnce(new Error("boom")).mockResolvedValue(undefined);
