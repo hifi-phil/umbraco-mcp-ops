@@ -8,7 +8,7 @@ fail=0
 rel="scripts/label-write-guard"
 
 out="$("$rel/check.sh" "$rel/fixtures/bad" "$rel/fixtures/allowlist.txt" 2>&1)" && { echo "FAIL: bad fixture passed"; fail=1; }
-for n in 1 2; do
+for n in 1 2 3 4; do
   grep -q "SKILL.md:$n:" <<<"$out" || { echo "FAIL: bad fixture line $n not reported"; fail=1; }
 done
 
@@ -17,6 +17,8 @@ done
 
 "$rel/check.sh" "$rel/fixtures/allowed" /dev/null >/dev/null 2>&1 \
   && { echo "FAIL: allowed fixture passed without its allowlist entry"; fail=1; }
+
+"$rel/check.sh" does-not-exist >/dev/null 2>&1 && { echo "FAIL: missing root passed"; fail=1; }
 
 "$rel/check.sh" plugins || { echo "FAIL: plugins/ has label writes"; fail=1; }
 

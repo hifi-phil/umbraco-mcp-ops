@@ -11,13 +11,19 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="${1:-plugins}"
 allow="${2:-$here/allowlist.txt}"
 
-lanes='ai-ready|ai-reviewing|ai-blocked|ai-discussing|pr-open|auto-reworking|auto-merging|auto-releasing|ready-for-review|ready-for-release'
+# Mirrors the lane labels in graph/constants/labels.ts.
+lanes='ai-stuck|merge-blocked|ai-ready|ai-reviewing|ai-blocked|ai-discussing|pr-open|auto-reworking|auto-merging|auto-releasing|ready-for-review|ready-for-release'
 verbs='\b(add|adds|added|adding|remove|removes|removed|removing|swap|swaps|swapped|swapping)\b'
+
+[ -d "$root" ] || { echo "no such dir: $root" >&2; exit 2; }
+root="${root#./}"
 
 hits="$(
   grep -rnIEi \
     -e '--add-label|--remove-label|add_label|remove_label' \
     -e 'issue_write.*labels|labels.*issue_write' \
+    -e "gh (issue|pr) (create|edit).*--label[ =]+[\"'\`]?(${lanes})" \
+    -e "labels[\"']?[:=] *\\[ *[\"'\`]?(${lanes})" \
     -e "${verbs}.*(${lanes})" \
     -e "(${lanes}).*${verbs}" \
     "$root" || true
