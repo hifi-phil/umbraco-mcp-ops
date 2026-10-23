@@ -92,7 +92,9 @@ describe("audit: every answer the orchestrator gave during the run", () => {
         progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
         const logs = new Map(await pool(numbers, 6, async (n) => [n, await transitions(n)] as const));
         const guids = new Set(details.map((d) => d.guid));
-        const missing = [...logs.values()].flat().filter((r) => r.delivery_id !== null && !guids.has(original(r.delivery_id)));
+        const missing = [...logs.values()]
+        .flat()
+        .filter((r) => r.delivery_id !== null && !r.delivery_id.startsWith("routine-signal:") && !guids.has(original(r.delivery_id)));
         return { details, logs, missing: missing.length };
       };
       const waitUntil = Date.now() + 120_000;
@@ -128,9 +130,12 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       // as "fire refused: …" (#319) and must, so a refused fire isn't silent.
       const scriptedRow = (n: number, r: { dropped_reason: string | null }) =>
         n === runLog.sweepIssue && (r.dropped_reason ?? "").startsWith("fire refused:") && (r.dropped_reason ?? "").includes("scripted fire failure");
+      // And an outcome's second carrier (its comment after the completion
+      // signal applied it, or the other way round) is a logged no-op: fine.
+      const deduped = (r: { dropped_reason: string | null }) => (r.dropped_reason ?? "").startsWith("deduped:");
       const badRows = [...logs].flatMap(([n, rows]) =>
         rows
-          .filter((r) => (r.mode !== "enforce" || r.dropped_reason !== null) && !scriptedRow(n, r))
+          .filter((r) => (r.mode !== "enforce" || (r.dropped_reason !== null && !deduped(r))) && !scriptedRow(n, r))
           .map((r) => `#${n} ${r.event}: ${r.mode} ${r.dropped_reason ?? ""}`),
       );
       expect(badRows, "log rows not enforced-and-applied").toEqual([]);
@@ -165,13 +170,15 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       const guids = new Set(details.map((d) => d.guid));
       // A hand-off between items (a merged PR to the issue it closes, a
       // release to the issues it ships) logs under the original delivery's
-      // id plus ":#<item>" (see `original`).
+      // id plus ":#<item>" (see `original`). A routine's own signal is no
+      // GitHub delivery: its completion logs under "routine-signal:…", and
+      // its blocked and ended rows under none.
       const orphans = [...logs].flatMap(([n, rows]) =>
         rows
           .filter((r) =>
             r.delivery_id === null
-              ? !["watchdog_expired", "watchdog_retried", "reconcile_refire"].includes(r.event)
-              : !guids.has(original(r.delivery_id)),
+              ? !["watchdog_expired", "watchdog_retried", "reconcile_refire", "routine_blocked"].includes(r.event)
+              : !r.delivery_id.startsWith("routine-signal:") && !guids.has(original(r.delivery_id)),
           )
           .map((r) => `#${n} ${r.event} delivery=${r.delivery_id}`),
       );

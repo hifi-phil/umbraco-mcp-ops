@@ -411,21 +411,31 @@ its own trigger label. Since 28-09-2026 everything (`graph/`, skills,
 The rename is deferred to one coordinated cutover; see
 [10-label-rename.md](../docs/agent-orchestration/10-label-rename.md).
 
-## The direct routine→DO heartbeat channel
+## The direct routine→DO channel
 
-`graph/routines/from-routine.ts`'s `parseRoutineSignal()` — a "process"
-heartbeat or "completion" fast-path echo a routine can send straight to
-its DO, bypassing GitHub entirely — now has a real receiving endpoint:
-**`POST /routine-signal`** on this Worker. Deliberately narrow, matching
-what that file's own design already specified: neither kind ever calls
-`reduce()` or writes a label/close. `"process"` records the step on the
-pending fire (`lastStep`/`lastStepAt`, quoted by the watchdog's comment if
-the run then dies) and re-schedules the watchdog alarm (`coordinate/`'s
-`coordinateRoutineSignal` → `setPendingFire`); `"completion"` cancels it early
-(`clearPendingFire`) — the real state transition still only ever comes
-from `github/from-github.ts` reading the actual GitHub comment, later.
-Losing a call here costs a slightly-late watchdog comment or a
-duplicate-but-harmless cancel a moment later, never a wrong state.
+`graph/routines/from-routine.ts`'s `parseRoutineSignal()` — what a routine
+can send straight to its DO, bypassing GitHub — is received at
+**`POST /routine-signal`** on this Worker (`coordinate/routine-signal.ts`'s
+`coordinateRoutineSignal`). Four kinds:
+
+- `"process"`, a heartbeat: records the step on the pending fire
+  (`lastStep`/`lastStepAt`, quoted by the watchdog's comment if the run then
+  dies) and re-schedules the watchdog alarm (`setPendingFire`). Never a
+  label write.
+- `"completion"`, the run's outcome: applied through the same path as the
+  outcome's comment (`coordinateWebhook`, as a comment the routine
+  reported, actor `routine-signal`), so the comment's webhook is no longer
+  the only way an outcome lands. Whichever of the two arrives second is a
+  no-op logged as `deduped` (`coordinate/outcome-dedupe.ts`, keyed on the
+  fire's routine and fire time plus the outcome's name). A completion whose
+  outcome fails validation is logged (`completion_invalid`) and changes
+  nothing; the comment can still apply.
+- `"blocked"`, a permission prompt nobody can answer unattended: one comment
+  on the item per fire, the step on its status row, a `routine_blocked` row.
+  No label moves; the watchdog still decides.
+- `"ended"`, the session stopped without a completion: one comment naming
+  its `detail`, then what a watchdog expiry does (`watchdog_expired`, the
+  pending fire cleared), at once.
 
 Auth: `ROUTINE_SIGNAL_SECRET`, checked as `Authorization: Bearer <secret>`
 — unset skips the check entirely, same permissive-for-local-dev shape as
@@ -437,7 +447,7 @@ rather than silently accepted — a light guard against a stale/misrouted
 signal touching the wrong run's watchdog.
 
 Unit tested end to end — `coordinate/*.test.ts` (the parse/mismatch/extend/
-cancel logic against fake deps), `issue-coordinator.test.ts` (the DO's
+apply/dedupe logic against fake deps), `issue-coordinator.test.ts` (the DO's
 `/routine-signal` branch, real `ctx.storage.setAlarm`/`deleteAlarm` calls),
 `index.test.ts` (auth, routing, validation).
 

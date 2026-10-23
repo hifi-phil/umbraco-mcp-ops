@@ -182,6 +182,17 @@ POST has never been sent to or verified against it — that's a manual
 config step (plus a real deployment) that hasn't happened, and this
 whole channel remains unconfirmed against a real cloud routine.
 
+**Since #392 the completion is authoritative alongside the comment.** Its
+webhook can be lost too (#335, #345), so waiting on it alone made the
+comment the one point that could leave a finished run stuck.
+`coordinateRoutineSignal` now applies a valid completion through the same
+`translate()` → `reduce()` path as the comment (actor `routine-signal`).
+Whichever of the two arrives second is a logged no-op (`deduped`), keyed on
+the fire (routine and fire time) and the outcome's name. Two more kinds
+exist: `blocked` (a permission prompt: one comment, no label move) and
+`ended` (the session stopped without a completion: an expiry, at once). See
+`worker/README.md`. Sending them is #391's part 2.
+
 **What this doesn't fix:** the comment's JSON is still hand-typed by the
 model into a fence, which is exactly the kind of thing that can go quietly
 wrong — a mangled fence, a typo'd field, and both `translate()` and the

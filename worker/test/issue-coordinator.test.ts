@@ -721,9 +721,9 @@ describe("IssueCoordinator.fetch() — POST /routine-signal", () => {
     expect(setAlarm).toHaveBeenCalledTimes(1);
   });
 
-  it("a matching 'completion' signal clears pendingFire early, without writing to D1", async () => {
-    vi.stubGlobal("fetch", fakeApiFetch());
-    const { ctx, deleteAlarm } = fakeCtx();
+  it("a matching 'completion' signal applies its outcome (one D1 row, actor routine-signal) and ends the watch", async () => {
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: [LABELS.AI_READY] }));
+    const { ctx, storage, deleteAlarm } = fakeCtx();
     const { db, inserted } = fakeDb();
     const coordinator = new IssueCoordinator(ctx, fakeEnv({ DB: db }));
     await coordinator.fetch(
@@ -739,14 +739,18 @@ describe("IssueCoordinator.fetch() — POST /routine-signal", () => {
           kind: "completion",
           routine: "issue-build-loop",
           issue: 412,
-          outcome: { outcome: "build_succeeded", pr: 99 },
+          outcome: { outcome: "build_blocked", reason: "needs a decision" },
         },
       }),
     );
 
-    expect(await res.json()).toEqual({ outcome: "completion_acknowledged" });
+    expect(await res.json()).toMatchObject({ outcome: "completion_acknowledged", result: { outcome: "applied", event: "build_blocked" } });
     expect(deleteAlarm).toHaveBeenCalledTimes(1);
-    expect(inserted).toHaveLength(0); // non-authoritative — no D1 row for this path
+    expect(await storage.get("pendingFire")).toBeUndefined();
+    expect(await storage.get("appliedOutcome")).toMatchObject({ run: "issue-build-loop", outcome: "build_blocked" });
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]![5]).toBe("build_blocked");
+    expect(inserted[0]![10]).toBe("routine-signal");
   });
 
   it("a signal for a routine that doesn't currently own this issue -> mismatched_routine, no watchdog change", async () => {

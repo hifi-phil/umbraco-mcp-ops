@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ROUTINES } from "../constants/routines";
-import { parseRoutineSignal } from "./from-routine";
+import { parseRoutineSignal, type RoutineSignal } from "./from-routine";
 
 describe("parseRoutineSignal — process (heartbeat)", () => {
   it("a valid step -> a process update", () => {
@@ -26,7 +26,7 @@ describe("parseRoutineSignal — process (heartbeat)", () => {
   });
 });
 
-describe("parseRoutineSignal — completion (fast-path, non-authoritative)", () => {
+describe("parseRoutineSignal — completion (the outcome, applied like its comment)", () => {
   it("a valid build_succeeded outcome -> a completion update", () => {
     expect(
       parseRoutineSignal({
@@ -78,6 +78,33 @@ describe("parseRoutineSignal — completion (fast-path, non-authoritative)", () 
         issue: 412,
         outcome: undefined,
       }),
+    ).toBeNull();
+  });
+});
+
+describe("parseRoutineSignal — blocked and ended", () => {
+  it("blocked with a detail -> a blocked update", () => {
+    expect(
+      parseRoutineSignal({ kind: "blocked", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, detail: "Bash: npm publish" }),
+    ).toEqual({ kind: "blocked", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, detail: "Bash: npm publish" });
+  });
+
+  it("ended with a detail -> an ended update", () => {
+    expect(
+      parseRoutineSignal({ kind: "ended", routine: ROUTINES.REVIEW_LOOP, issue: 7, detail: "session stopped: max turns" }),
+    ).toEqual({ kind: "ended", routine: ROUTINES.REVIEW_LOOP, issue: 7, detail: "session stopped: max turns" });
+  });
+
+  it("an empty or missing detail -> null", () => {
+    expect(parseRoutineSignal({ kind: "blocked", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, detail: "  " })).toBeNull();
+    expect(
+      parseRoutineSignal({ kind: "ended", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412 } as unknown as RoutineSignal),
+    ).toBeNull();
+  });
+
+  it("an unknown kind -> null, not a throw", () => {
+    expect(
+      parseRoutineSignal({ kind: "paused", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412 } as unknown as RoutineSignal),
     ).toBeNull();
   });
 });

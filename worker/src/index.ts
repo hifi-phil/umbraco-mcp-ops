@@ -230,7 +230,7 @@ async function routeByCommit(env: Env, body: Record<string, unknown>): Promise<R
 }
 
 /**
- * The direct routine-to-DO heartbeat channel (see coordinate/routine-signal.ts's
+ * The direct routine-to-DO channel (see coordinate/routine-signal.ts's
  * coordinateRoutineSignal). Not a GitHub webhook — no X-GitHub-Event, no
  * HMAC signature; a bearer secret instead, since this is a routine
  * calling in directly, not GitHub delivering a signed payload.

@@ -49,6 +49,7 @@ Latest full run (01-10-2026): all 21 scenarios and the audit pass in about
 | Route | Hint | Stub does |
 |---|---|---|
 | `issue-build-loop` | `success` | branch off `dev`, one commit, a PR into `dev` (hint `merge`), then the `build_succeeded` marker |
+| `issue-build-loop` | `success_signal` | the same build, then a `completion` signal carrying `build_succeeded`, and no outcome comment |
 | `issue-build-loop` | `blocked` | the `build_blocked` marker |
 | `rework-loop` | `rework` | one push to the PR (a review rework) |
 | `rework-loop` | `ci_fail` | pushes `ci-state` = `pass` (the fix) |
@@ -75,6 +76,8 @@ re-checks a gate that still reads "CI running".
 - The lane:
   1. Full lane: build, PR, `auto-merging`, merged, then `auto-releasing`, published.
   2. Build blocked.
+  3. A build that reports only over the direct channel (a completion
+     signal, no outcome comment) still moves the issue to `pr-open`.
   3. Release blocked.
   4. Review rework.
   5. Discussion rounds (and `//` comments ignored).
@@ -90,7 +93,7 @@ re-checks a gate that still reads "CI running".
 - The watchdog and `ai-stuck`, one scenario each:
   1. Silent build, then a late `build_succeeded`.
   2. A heartbeat quoted by the expiry, then a late `build_blocked`.
-  3. A completion signal cancels the watchdog.
+  3. A completion signal is applied (`build_blocked`), with no watchdog expiry.
   4. A stuck build retried.
   5. A stuck release, then a late publish.
   6. A stuck release, then a late block.
@@ -108,7 +111,7 @@ re-checks a gate that still reads "CI running".
 - The real `agent-outcomes` hook (`driver/hook.ts` runs it, as a routine
   session would, against the deployed Worker):
   1. Its heartbeat is quoted by the expiry.
-  2. Its completion signal cancels the watchdog.
+  2. Its completion signal is applied (`build_blocked`), with no watchdog expiry.
 
 **The audit**, after every run, over every delivery the orchestrator answered:
 - none errored
@@ -119,7 +122,10 @@ re-checks a gate that still reads "CI running".
   - every row for the run's issues and PRs is enforced and applied
   - every delivery the Worker applied has exactly one row, carrying its
     delivery id and event
-  - the only rows no delivery caused are the watchdog's expiries
+  - the only rows no delivery caused are the watchdog's expiries, and the
+    rows a routine's own signal caused (actor `routine-signal`)
+  - a row that only says an outcome was already applied by its other
+    carrier (`deduped`: the completion signal and the comment) is fine
 
 **The D1 log.** The driver reads it through the Worker's `GET /transitions`
 route, which tofu turns on for the sandbox alone, with its own secret. The
@@ -129,7 +135,7 @@ driver gets that secret from `tofu output -raw e2e_log_read_secret` unless
   effect
 - three soft fails and three CI-fix pushes before the hard block
 - a `watchdog_expired` row for every expiry, and none when a completion
-  signal cancels it
+  signal is applied
 
 **The live-status view.** The full lane and the heartbeat scenarios read
 the Worker's `GET /status` (key: `tofu output -raw status_secret`, or

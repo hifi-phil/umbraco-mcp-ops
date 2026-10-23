@@ -39,6 +39,7 @@ export async function fireWatched(
   extra: Partial<PendingFire> = {},
   redeferral = false,
 ): Promise<FireOutcome> {
+  await forgetAppliedOutcome(deps, run);
   await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run, ...extra });
   try {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
@@ -50,12 +51,19 @@ export async function fireWatched(
   return "sent";
 }
 
+/** A new run of `run` starts: the outcome its last run reported (outcome-dedupe.ts)
+ * no longer dedupes, so this run's own outcome applies when it comes. */
+async function forgetAppliedOutcome(deps: Deps, run: string): Promise<void> {
+  if ((await deps.getAppliedOutcome())?.run === run) await deps.setAppliedOutcome(null);
+}
+
 /** Whether a fire went out, or was rate-limited and is waiting for its alarm. */
 export type FireOutcome = "sent" | "deferred";
 
 /** An unwatched fire (a discussion): no watchdog, but a rate-limited one is
  * still deferred, and disarmed again once it's out. */
 export async function fireUnwatched(deps: Deps, ref: IssueRef, run: string, redeferral = false): Promise<FireOutcome> {
+  await forgetAppliedOutcome(deps, run);
   await deps.clearPendingFire();
   try {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);

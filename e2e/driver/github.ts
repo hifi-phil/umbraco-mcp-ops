@@ -349,6 +349,7 @@ export type LogRow = {
   dropped_reason: string | null;
   mode: string;
   created_at: string;
+  actor?: string | null;
 };
 
 const secrets = new Map<string, string>();

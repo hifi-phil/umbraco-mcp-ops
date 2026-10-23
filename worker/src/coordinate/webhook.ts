@@ -15,6 +15,7 @@ import { reviewFindings, reviewGate } from "./review-gate";
 import { exportWorkLog, handOffMerged, handOffRelease, handOffReview, prMerged, released } from "./stages";
 import { releaseApproved, retryReleasePublish, trustedAuthor } from "./release";
 import { parseOutcomeArtifact } from "@orchestrator/graph/github/from-github";
+import { alreadyApplied, logDeduped, rememberApplied, reportedOutcome } from "./outcome-dedupe";
 
 /**
  * The literal implementation of translate() -> reduce() -> labelOps() +
@@ -52,7 +53,14 @@ export async function coordinateWebhook(
 }
 
 async function processWebhook(deps: Deps, input: CoordinateInput): Promise<CoordinateResult> {
+  // An outcome comes twice: its comment, and the routine's own completion
+  // signal (routine-signal.ts, which comes through here too). The first to
+  // apply is remembered against the fire it ended; the second is a no-op.
+  const reported = reportedOutcome(input.payload);
+  const pending = reported ? await deps.getPendingFire() : null;
+  if (reported && (await alreadyApplied(deps, reported, pending))) return logDeduped(deps, input, reported);
   const result = await processEvent(deps, input);
+  if (reported && result.outcome === "applied") await rememberApplied(deps, reported, pending);
   // Merged (by anyone, labelled or not): the issues its description closes
   // move to their next stage. Failing here fails the delivery, so it can be
   // redelivered; each issue dedupes its hand-off.

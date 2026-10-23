@@ -50,8 +50,9 @@ export type TransitionRow = {
   run: string | null;
   droppedReason: string | null; // null only when a rule actually fired
   mode: Mode; // whether this event's writes were real (see Deps.enforced)
-  // Who caused it: the webhook's sender, or "watchdog" / "sweep" for the
-  // Worker's own; null when unknown.
+  // Who caused it: the webhook's sender, "watchdog" / "sweep" for the
+  // Worker's own, or "routine-signal" for a routine's direct report; null
+  // when unknown.
   actor?: string | null;
 };
 
@@ -185,6 +186,13 @@ export function capsFor(raw: string | undefined, owner: string, repo: string): C
   };
 }
 
+/**
+ * The last outcome applied for a fire (outcome-dedupe.ts): the run, when it
+ * was fired, and the outcome's name. Whichever of a routine's completion
+ * signal and its outcome comment arrives second finds it and is a no-op.
+ */
+export type AppliedOutcome = { run: string; firedAt: number | null; outcome: string };
+
 export type Deps = {
   getLabels(owner: string, repo: string, issueNumber: number): Promise<string[]>;
   addLabel(owner: string, repo: string, issueNumber: number, label: string): Promise<void>;
@@ -282,6 +290,10 @@ export type Deps = {
   // left behind, as long as nothing happened since (coordinateReconcile).
   markCompleted(at: string): Promise<void>;
   completedAt(): Promise<string | null>;
+  // The last outcome applied for a fire (DO storage): the completion signal
+  // and the outcome comment carry the same fact, and only the first applies.
+  getAppliedOutcome(): Promise<AppliedOutcome | null>;
+  setAppliedOutcome(applied: AppliedOutcome | null): Promise<void>;
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;
@@ -404,8 +416,9 @@ export type CoordinateInput = {
 
 export type IssueRef = Pick<CoordinateInput, "owner" | "repo" | "issueNumber">;
 
-/** What the Worker was doing when no webhook caused a row. */
-export type Acting = { actor?: "watchdog" | "sweep" };
+/** What the Worker was doing when no webhook caused a row. "routine-signal":
+ * a routine's own direct report (routine-signal.ts). */
+export type Acting = { actor?: "watchdog" | "sweep" | "routine-signal" };
 
 /** Who caused a row: what the Worker was doing (`actor`, e.g. the watchdog
  * replaying a lost outcome) if set, else the webhook's sender. */

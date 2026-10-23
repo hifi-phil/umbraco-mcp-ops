@@ -102,6 +102,18 @@ describe("act — issue-build-loop", () => {
     });
   });
 
+  it("success_signal -> the same build, its build_succeeded sent only as a completion signal: no outcome comment", async () => {
+    const gh = fakeGh({
+      [`GET ${R}/git/ref/heads/dev`]: { object: { sha: "devsha" } },
+      [`POST ${R}/pulls`]: { number: 42 },
+    });
+    const signal = vi.fn(async () => '{"outcome":"completion_acknowledged"}');
+    expect(await act(gh, fireFor("issue-build-loop"), "success_signal", signal)).toBe("completion");
+    expect(gh).toHaveBeenCalledWith("POST", `${R}/pulls`, expect.objectContaining({ base: "dev" }));
+    expect(signal).toHaveBeenCalledWith({ kind: "completion", routine: "issue-build-loop", issue: 7, outcome: { outcome: "build_succeeded", pr: 42 } });
+    expect(gh).not.toHaveBeenCalledWith("POST", `${R}/issues/7/comments`, expect.anything());
+  });
+
   it("success with a log_token -> a journal entry, a decision pointing at it, a build entry; a failed write doesn't stop it", async () => {
     const routes = { [`GET ${R}/git/ref/heads/dev`]: { object: { sha: "devsha" } }, [`POST ${R}/pulls`]: { number: 42 } };
     const log = vi.fn(async (_entry: LogEntry) => 11);

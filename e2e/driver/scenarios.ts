@@ -261,6 +261,26 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
+    name: `build reported only by its completion signal (no outcome comment): ${LABELS.AI_READY} -> ${LABELS.PR_OPEN}, PR handed to review`,
+    timeoutMs: 4 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const issue = t.n(await openIssue("Add a build note (signal only)", "Add a file under builds/ for this issue.", "success_signal"));
+        await addLabel(issue, LABELS.AI_READY);
+        const built = await waitFor(issue, labelsAre(LABELS.PR_OPEN), 2 * MIN);
+        expectLabels(built, issue, LABELS.PR_OPEN);
+        expect(hasMarker(built, "issue-build-loop", "build_succeeded"), `#${issue} posted no outcome comment`).toBe(false);
+        const rows = await expectLogged(issue, { event: "labelled_ai_ready", run: "issue-build-loop" }, { event: "build_succeeded", effect: LABELS.PR_OPEN });
+        expect(rows.find((r) => r.event === "build_succeeded")?.actor, `#${issue} build_succeeded applied from the signal`).toBe("routine-signal");
+        // The build's PR, handed its review by the Worker as for a comment.
+        const prs = await gh<{ number: number; title: string }[]>("GET", `/repos/${REPO}/pulls?state=open&per_page=100`);
+        const pr = prs.find((p) => p.title === `e2e: build #${issue}`)?.number;
+        expect(pr, `#${issue}'s PR`).toBeTruthy();
+        t.n(pr!);
+        await expectLogged(pr!, "labelled_ai_reviewing");
+      }),
+  },
+  {
     name: `live status: a release closed by hand with ${LABELS.AUTO_RELEASING} still on -> its row goes`,
     timeoutMs: 2 * MIN,
     run: () =>
@@ -531,7 +551,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: `watchdog: a completion signal cancels the watchdog (no ${LABELS.AI_STUCK})`,
+    name: `watchdog: a completion signal is applied (${LABELS.AI_READY} -> ${LABELS.AI_BLOCKED}), no ${LABELS.AI_STUCK}`,
     timeoutMs: STUCK_WAIT + MIN,
     run: () =>
       scoped(async (t) => {
@@ -539,9 +559,9 @@ export const scenarios: Scenario[] = [
         await addLabel(issue, LABELS.AI_READY);
         await sleep((WATCHDOG_MINUTES + 1) * MIN);
         const s = await snapshot(issue);
-        expectLabels(s, issue, LABELS.AI_READY);
+        expectLabels(s, issue, LABELS.AI_BLOCKED);
         expect(hasComment(s, "hasn't reported back"), "no watchdog comment").toBe(false);
-        const rows = await expectLogged(issue, { event: "labelled_ai_ready", run: "issue-build-loop" });
+        const rows = await expectLogged(issue, { event: "labelled_ai_ready", run: "issue-build-loop" }, { event: "build_blocked", effect: LABELS.AI_BLOCKED });
         expect(rows.map((r) => r.event), "no watchdog_expired logged").not.toContain("watchdog_expired");
       }),
   },
@@ -564,7 +584,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "real hook: an outcome comment's completion signal cancels the watchdog",
+    name: `real hook: an outcome comment's completion signal is applied (${LABELS.AI_BLOCKED}), no watchdog expiry`,
     timeoutMs: STUCK_WAIT + MIN,
     run: () =>
       scoped(async (t) => {
@@ -578,7 +598,8 @@ export const scenarios: Scenario[] = [
         expect(log, "the hook sent its completion").toContain("sent completion");
         await sleep((WATCHDOG_MINUTES + 1) * MIN);
         const s = await snapshot(issue);
-        expectLabels(s, issue, LABELS.AI_READY);
+        // Only the hook ran: no comment was posted, so the signal applied it.
+        expectLabels(s, issue, LABELS.AI_BLOCKED);
         expect(hasComment(s, "hasn't reported back"), "no watchdog comment").toBe(false);
       }),
   },

@@ -8,6 +8,7 @@ import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
 import { coordinateWebhook } from "./webhook";
 import { applyEvent, deriveState, fireUnwatched, fireWatched, type FireOutcome } from "./apply";
+import { OUTCOME_ROUTINE_PATTERN } from "./outcome-dedupe";
 
 export type WatchdogResult =
   | { outcome: "no_pending_fire" }
@@ -143,6 +144,28 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   const lastStep = pending.lastStep
     ? ` Last reported step: \`${pending.lastStep}\` (${pending.lastStepAt ?? "time unknown"}).`
     : " No progress step was ever reported.";
+  return expirePendingFire(
+    deps,
+    pending,
+    (next) =>
+      `⚠️ The \`${pending.run}\` routine hasn't reported back within ${deps.watchdogMinutes(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
+      `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
+    "watchdog",
+  );
+}
+
+/**
+ * What an expiry does, once it's decided the run is over: say so on the
+ * issue (`alert`, given the sentence on what happens next), apply
+ * watchdog_expired, clear the pending fire. The watchdog's own expiry, and a
+ * routine's `ended` signal (routine-signal.ts), which does it at once.
+ */
+export async function expirePendingFire(
+  deps: Deps,
+  pending: PendingFire,
+  alert: (next: string) => string,
+  actor: "watchdog" | "routine-signal",
+): Promise<CoordinateResult> {
   const currentLabels = await deps.getLabels(pending.owner, pending.repo, pending.issueNumber);
   const state = deriveState(currentLabels);
   const willStick = state !== "ambiguous" && reduce(state, EVENTS.WATCHDOG_EXPIRED) !== null;
@@ -150,13 +173,7 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
     ? ` Moving this to \`${LABELS.AI_STUCK}\`; re-add the trigger label to retry.`
     : ` Its current labels don't allow an automatic move to \`${LABELS.AI_STUCK}\` — needs a human look.`;
   // The alert is a write too: only real when watchdog_expired is enforced.
-  await depsFor(deps, EVENTS.WATCHDOG_EXPIRED).io.commentOnIssue(
-    pending.owner,
-    pending.repo,
-    pending.issueNumber,
-    `⚠️ The \`${pending.run}\` routine hasn't reported back within ${deps.watchdogMinutes(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
-      `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
-  );
+  await depsFor(deps, EVENTS.WATCHDOG_EXPIRED).io.commentOnIssue(pending.owner, pending.repo, pending.issueNumber, alert(next));
 
   // A rework started straight from a label has no CI-fix or review state to
   // say its push is still wanted, so the expiry itself is recorded. Before the
@@ -166,7 +183,7 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   // LABELS.AI_STUCK was a rework expiry.
   const recordExpiry = deps.enforced(EVENTS.WATCHDOG_EXPIRED);
   if (recordExpiry) await deps.setReworkExpired(pending.run === ROUTINES.REWORK_LOOP);
-  const result = await applyEvent(deps, { ...pending, actor: "watchdog" }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
+  const result = await applyEvent(deps, { ...pending, actor }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
   // A retried alarm may find the label write already landed: the PR reads
   // AI_STUCK and the expiry's claim must stay.
   if (recordExpiry && result.outcome !== "applied" && state !== LABELS.AI_STUCK) await deps.setReworkExpired(false);
@@ -177,8 +194,6 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   await deps.recordStatus(pending, { kind: "done" });
   return result;
 }
-
-const OUTCOME_ROUTINE_PATTERN = /<!-- agent-outcome:([a-zA-Z0-9_-]+) -->/;
 
 /**
  * The watched routine's outcome comment, posted since the fire, whose
