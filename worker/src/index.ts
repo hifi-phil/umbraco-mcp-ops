@@ -38,7 +38,9 @@ export type Env = {
   REPO_ROUTINES_JSON: string;
   // Auth for POST /routine-signal (see coordinate/routine-signal.ts's coordinateRoutineSignal
   // doc comment). Same permissive-when-unset shape as GITHUB_WEBHOOK_SECRET —
-  // easy local dev, a real secret required once actually deployed.
+  // easy local dev, a real secret required once actually deployed — except
+  // for the kinds that change state (outcome, blocked, ended), which are
+  // refused without it.
   ROUTINE_SIGNAL_SECRET?: string;
   // GET /transitions: a read of the D1 log for one issue, so the e2e suite
   // can check what the Worker logged. Off unless LOG_READ_SECRET is set, and
@@ -229,8 +231,12 @@ async function routeByCommit(env: Env, body: Record<string, unknown>): Promise<R
   return issueNumbers.length > 0 ? { owner, repo, issueNumbers } : null;
 }
 
+/** The signal kinds that act on the item (a label, a comment), so are never
+ * taken unauthenticated, even where the secret is unset (local dev). */
+const STATEFUL_SIGNALS: readonly string[] = ["outcome", "blocked", "ended"];
+
 /**
- * The direct routine-to-DO heartbeat channel (see coordinate/routine-signal.ts's
+ * The direct routine-to-DO channel (see coordinate/routine-signal.ts's
  * coordinateRoutineSignal). Not a GitHub webhook — no X-GitHub-Event, no
  * HMAC signature; a bearer secret instead, since this is a routine
  * calling in directly, not GitHub delivering a signed payload.
@@ -251,6 +257,9 @@ async function handleRoutineSignal(request: Request, env: Env): Promise<Response
   }
   if (!input.owner || !input.repo || !input.signal) {
     return new Response("owner, repo, and signal are required", { status: 400 });
+  }
+  if (!env.ROUTINE_SIGNAL_SECRET && STATEFUL_SIGNALS.includes(input.signal.kind)) {
+    return new Response("unauthorized", { status: 401 });
   }
 
   const id = env.ISSUE_COORDINATOR.idFromName(doKey(input.owner, input.repo, input.signal.issue));

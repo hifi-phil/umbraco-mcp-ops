@@ -78,6 +78,9 @@ export async function releaseApproved(deps: Deps, input: CoordinateInput, curren
  * author association, or the Worker's own App bot. */
 const TRUSTED_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"];
 export async function trustedAuthor(deps: Deps, input: CoordinateInput): Promise<boolean> {
+  // A routine's explicit outcome (routine-signal.ts) came over the
+  // bearer-authenticated channel: as trusted as the Worker's own bot.
+  if (input.actor === "routine-signal") return true;
   const sender = input.payload.sender?.login;
   const bot = await deps.botLogin();
   if (bot && sender === bot) return true;

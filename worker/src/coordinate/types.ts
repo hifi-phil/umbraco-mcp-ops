@@ -50,8 +50,9 @@ export type TransitionRow = {
   run: string | null;
   droppedReason: string | null; // null only when a rule actually fired
   mode: Mode; // whether this event's writes were real (see Deps.enforced)
-  // Who caused it: the webhook's sender, or "watchdog" / "sweep" for the
-  // Worker's own; null when unknown.
+  // Who caused it: the webhook's sender, "watchdog" / "sweep" for the
+  // Worker's own, or "routine-signal" for a routine's explicit report; null
+  // when unknown.
   actor?: string | null;
 };
 
@@ -99,6 +100,9 @@ export type PendingFire = {
   // Set when the watchdog has already fired this run once more (watchdog.ts):
   // a second silent expiry goes to LABELS.AI_STUCK. A new fire starts clean.
   retried?: boolean;
+  // Set once the run has said it's waiting on a permission it can't get
+  // unattended (routine-signal.ts's "blocked"), so that's commented once per fire.
+  blocked?: boolean;
   // A fire the routines API rate-limited (FireRateLimited): not sent yet. The
   // alarm is set for deferUntil instead of the watchdog's timeout, and sends
   // it then (watchdog.ts). unwatched: once sent, don't watch it (a discussion).
@@ -184,6 +188,14 @@ export function capsFor(raw: string | undefined, owner: string, repo: string): C
     botReviewReworks: pick(override.botReviewReworks, DEFAULT_CAPS.botReviewReworks),
   };
 }
+
+/**
+ * The last outcome applied for a fire (outcome-dedupe.ts): which run, when
+ * it was fired, and the outcome's name. A routine's explicit outcome signal
+ * and its outcome comment carry the same fact: whichever comes second finds
+ * this and is a logged no-op. Kept until the next fire of that run.
+ */
+export type AppliedOutcome = { run: string; firedAt: number | null; outcome: string };
 
 export type Deps = {
   getLabels(owner: string, repo: string, issueNumber: number): Promise<string[]>;
@@ -282,6 +294,10 @@ export type Deps = {
   // left behind, as long as nothing happened since (coordinateReconcile).
   markCompleted(at: string): Promise<void>;
   completedAt(): Promise<string | null>;
+  // The last outcome applied for a routine's fire (DO storage; AppliedOutcome),
+  // one record per routine so another routine's outcome doesn't replace it.
+  getAppliedOutcome(run: string): Promise<AppliedOutcome | null>;
+  setAppliedOutcome(run: string, applied: AppliedOutcome | null): Promise<void>;
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;
@@ -404,8 +420,9 @@ export type CoordinateInput = {
 
 export type IssueRef = Pick<CoordinateInput, "owner" | "repo" | "issueNumber">;
 
-/** What the Worker was doing when no webhook caused a row. */
-export type Acting = { actor?: "watchdog" | "sweep" };
+/** What the Worker was doing when no webhook caused a row. "routine-signal":
+ * a routine's explicit outcome or end (routine-signal.ts). */
+export type Acting = { actor?: "watchdog" | "sweep" | "routine-signal" };
 
 /** Who caused a row: what the Worker was doing (`actor`, e.g. the watchdog
  * replaying a lost outcome) if set, else the webhook's sender. */
