@@ -30,7 +30,10 @@ describe("coordinateReconcile — the sweep's question: was this issue left behi
   });
 
   it("a completion signal is what marks it", async () => {
-    const deps = fakeDeps({ getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP })) });
+    const deps = fakeDeps({
+      getPendingFire: vi.fn(async () => ({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP })),
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+    });
     await coordinateRoutineSignal(deps, {
       owner: "hifi-phil",
       repo: "umbraco-mcp-ops",

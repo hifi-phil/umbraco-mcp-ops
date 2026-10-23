@@ -397,7 +397,7 @@ const heartbeat = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("index.ts fetch() — POST /routine-signal", () => {
-  it("no ROUTINE_SIGNAL_SECRET configured -> skips auth, routes to the DO's /routine-signal path", async () => {
+  it("no ROUTINE_SIGNAL_SECRET configured -> a heartbeat skips auth, routes to the DO's /routine-signal path", async () => {
     const { env, get, stubFetch } = fakeEnv();
     stubFetch.mockResolvedValueOnce(new Response(JSON.stringify({ outcome: "heartbeat_extended" }), { status: 200 }));
 
@@ -409,6 +409,27 @@ describe("index.ts fetch() — POST /routine-signal", () => {
     const [url, init] = stubFetch.mock.calls[0]!;
     expect(url).toBe("https://issue-coordinator/routine-signal");
     expect(JSON.parse((init as RequestInit).body as string)).toEqual(heartbeat());
+  });
+
+  it("no ROUTINE_SIGNAL_SECRET configured -> fails closed for every kind but a heartbeat: 401, never reaches the DO", async () => {
+    const { env, get } = fakeEnv();
+    for (const signal of [
+      { kind: "completion", routine: "issue-build-loop", issue: 412, outcome: { outcome: "build_succeeded", pr: 9 } },
+      { kind: "blocked", routine: "issue-build-loop", issue: 412, detail: "Bash: npm publish" },
+      { kind: "ended", routine: "issue-build-loop", issue: 412, detail: "max turns" },
+    ]) {
+      const res = await worker.fetch(routineSignalRequest(heartbeat({ signal })), env);
+      expect(res.status, signal.kind).toBe(401);
+    }
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("ROUTINE_SIGNAL_SECRET set, a completion with the right bearer token -> reaches the DO", async () => {
+    const { env, stubFetch } = fakeEnv({ ROUTINE_SIGNAL_SECRET: "shh" });
+    const signal = { kind: "completion", routine: "issue-build-loop", issue: 412, outcome: { outcome: "build_succeeded", pr: 9 } };
+    const res = await worker.fetch(routineSignalRequest(heartbeat({ signal }), { Authorization: "Bearer shh" }), env);
+    expect(res.status).toBe(200);
+    expect(stubFetch).toHaveBeenCalledTimes(1);
   });
 
   it("ROUTINE_SIGNAL_SECRET set, no/wrong Authorization header -> 401, never reaches the DO", async () => {

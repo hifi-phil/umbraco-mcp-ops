@@ -60,7 +60,18 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
   const pending = reported ? await deps.getPendingFire() : null;
   if (reported && (await alreadyApplied(deps, reported, pending))) return logDeduped(deps, input, reported);
   const result = await processEvent(deps, input);
-  if (reported && result.outcome === "applied") await rememberApplied(deps, reported, pending);
+  if (reported && result.outcome === "applied") {
+    // The outcome is applied: failing here would fail the delivery and apply
+    // it again on redelivery. At worst its other carrier isn't deduped.
+    try {
+      await rememberApplied(deps, reported, pending);
+    } catch (e) {
+      console.error(
+        `remembering ${reported.routine}'s ${reported.outcome} on ${input.owner}/${input.repo}#${input.issueNumber} failed:`,
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
   // Merged (by anyone, labelled or not): the issues its description closes
   // move to their next stage. Failing here fails the delivery, so it can be
   // redelivered; each issue dedupes its hand-off.

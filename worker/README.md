@@ -429,17 +429,20 @@ can send straight to its DO, bypassing GitHub — is received at
   no-op logged as `deduped` (`coordinate/outcome-dedupe.ts`, keyed on the
   fire's routine and fire time plus the outcome's name). A completion whose
   outcome fails validation is logged (`completion_invalid`) and changes
-  nothing; the comment can still apply.
+  nothing; the comment can still apply. A completion that doesn't apply
+  (deduped, no rule) leaves the watchdog armed.
 - `"blocked"`, a permission prompt nobody can answer unattended: one comment
   on the item per fire, the step on its status row, a `routine_blocked` row.
   No label moves; the watchdog still decides.
-- `"ended"`, the session stopped without a completion: one comment naming
-  its `detail`, then what a watchdog expiry does (`watchdog_expired`, the
-  pending fire cleared), at once.
+- `"ended"`, the session stopped without a completion: at once, what a
+  watchdog expiry does. First an outcome comment posted since the fire is
+  recovered, or a run that never started is fired once more (where the repo
+  retries); otherwise one comment naming its `detail`, then
+  `watchdog_expired`, the pending fire cleared.
 
-Auth: `ROUTINE_SIGNAL_SECRET`, checked as `Authorization: Bearer <secret>`
-— unset skips the check entirely, same permissive-for-local-dev shape as
-`GITHUB_WEBHOOK_SECRET`. Routing: `{owner, repo, signal}` in the body,
+Auth: `ROUTINE_SIGNAL_SECRET`, checked as `Authorization: Bearer <secret>`.
+Unset, only a `"process"` heartbeat gets in; every other kind writes, so it
+fails closed (401). Routing: `{owner, repo, signal}` in the body,
 keyed to the same DO as the webhook path (`owner/repo#signal.issue`). A
 signal for a routine that isn't the one currently pending on that issue
 (`pending.run !== signal.routine`) is rejected as `mismatched_routine`

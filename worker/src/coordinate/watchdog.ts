@@ -112,6 +112,29 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
     return { outcome: "deferred_fire_sent", run: pending.run };
   }
 
+  const handled = await recoverOrRetry(deps, pending);
+  if (handled) return handled;
+
+  const lastStep = pending.lastStep
+    ? ` Last reported step: \`${pending.lastStep}\` (${pending.lastStepAt ?? "time unknown"}).`
+    : " No progress step was ever reported.";
+  return expirePendingFire(
+    deps,
+    pending,
+    (next) =>
+      `⚠️ The \`${pending.run}\` routine hasn't reported back within ${deps.watchdogMinutes(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
+      `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
+    "watchdog",
+  );
+}
+
+/**
+ * What an expiry tries before calling the run dead: apply its outcome
+ * comment if one was posted, or fire a run that never started once more.
+ * Null if neither applies. The watchdog's expiry, and a routine's `ended`
+ * signal (routine-signal.ts).
+ */
+export async function recoverOrRetry(deps: Deps, pending: PendingFire): Promise<WatchdogResult | null> {
   // The run may have finished and posted its outcome, with only the webhook
   // for it lost (#335, #345): apply that before calling the run dead.
   // Only where the watchdog is enforced: recovery writes labels and may fire
@@ -140,18 +163,7 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
       if (retried) return retried;
     }
   }
-
-  const lastStep = pending.lastStep
-    ? ` Last reported step: \`${pending.lastStep}\` (${pending.lastStepAt ?? "time unknown"}).`
-    : " No progress step was ever reported.";
-  return expirePendingFire(
-    deps,
-    pending,
-    (next) =>
-      `⚠️ The \`${pending.run}\` routine hasn't reported back within ${deps.watchdogMinutes(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
-      `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
-    "watchdog",
-  );
+  return null;
 }
 
 /**

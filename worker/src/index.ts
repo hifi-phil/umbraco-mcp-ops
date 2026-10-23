@@ -233,7 +233,8 @@ async function routeByCommit(env: Env, body: Record<string, unknown>): Promise<R
  * The direct routine-to-DO channel (see coordinate/routine-signal.ts's
  * coordinateRoutineSignal). Not a GitHub webhook — no X-GitHub-Event, no
  * HMAC signature; a bearer secret instead, since this is a routine
- * calling in directly, not GitHub delivering a signed payload.
+ * calling in directly, not GitHub delivering a signed payload. Unset, only a
+ * heartbeat is accepted.
  */
 async function handleRoutineSignal(request: Request, env: Env): Promise<Response> {
   if (env.ROUTINE_SIGNAL_SECRET) {
@@ -251,6 +252,12 @@ async function handleRoutineSignal(request: Request, env: Env): Promise<Response
   }
   if (!input.owner || !input.repo || !input.signal) {
     return new Response("owner, repo, and signal are required", { status: 400 });
+  }
+  // Fail closed: without a secret only a heartbeat gets in. Every other kind
+  // writes (a completion is applied like its comment; blocked comments; ended
+  // expires the run), so it never runs unauthenticated.
+  if (!env.ROUTINE_SIGNAL_SECRET && input.signal.kind !== "process") {
+    return new Response("unauthorized: ROUTINE_SIGNAL_SECRET is not set, so only heartbeats are accepted", { status: 401 });
   }
 
   const id = env.ISSUE_COORDINATOR.idFromName(doKey(input.owner, input.repo, input.signal.issue));

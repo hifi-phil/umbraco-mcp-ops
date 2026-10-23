@@ -117,8 +117,8 @@ describe("the live-status row (recordStatus): what each step tells the dashboard
     expect(deps.recordStatus).toHaveBeenCalledWith(expect.anything(), { kind: "transition", state: LABELS.AI_STUCK, run: null, running: false });
   });
 
-  it("a heartbeat -> its step; a completion -> done", async () => {
-    const deps = fakeDeps();
+  it("a heartbeat -> its step; a completion -> its applied rule's row", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
     await deps.setPendingFire({ ...ref, run: ROUTINES.ISSUE_BUILD_LOOP, retried: true });
     await coordinateRoutineSignal(deps, { owner: "hifi-phil", repo: "umbraco-mcp-ops", signal: { kind: "process", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, step: "running tests" } });
     expect(deps.recordStatus).toHaveBeenCalledWith(expect.objectContaining(ref), expect.objectContaining({ kind: "step", step: "running tests" }));
@@ -127,7 +127,7 @@ describe("the live-status row (recordStatus): what each step tells the dashboard
       repo: "umbraco-mcp-ops",
       signal: { kind: "completion", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, outcome: { outcome: "build_blocked", reason: "x" } },
     });
-    expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), { kind: "done" });
+    expect(deps.recordStatus).toHaveBeenLastCalledWith(expect.objectContaining(ref), expect.objectContaining({ kind: "transition", state: LABELS.AI_BLOCKED }));
   });
 
   it("a sweep re-fire -> a transition with the routine, running", async () => {

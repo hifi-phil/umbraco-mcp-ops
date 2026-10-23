@@ -7,7 +7,7 @@ import { type Event } from "@orchestrator/graph/constants/events";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
 import { coordinateWebhook } from "./webhook";
 import { alreadyApplied, logDeduped } from "./outcome-dedupe";
-import { expirePendingFire } from "./watchdog";
+import { expirePendingFire, recoverOrRetry, type WatchdogResult } from "./watchdog";
 
 export type RoutineSignalInput = { owner: string; repo: string; signal: RoutineSignal };
 
@@ -22,7 +22,10 @@ export type RoutineSignalResult =
   | { outcome: "deduped" } // its comment already applied this outcome, and the fire is over
   | { outcome: "blocked_noted" }
   | { outcome: "blocked_already_noted" } // said once per fire
-  | { outcome: "ended_expired"; result: CoordinateResult };
+  | { outcome: "ended_expired"; result: CoordinateResult }
+  // ended, but the watchdog's own first steps took it: an outcome comment
+  // recovered, or the run fired once more.
+  | { outcome: "ended_handled"; result: WatchdogResult };
 
 /**
  * The direct routine-to-DO channel — see graph/routines/from-routine.ts's
@@ -72,7 +75,11 @@ export async function coordinateRoutineSignal(
       return applyCompletion(deps, live, update);
     case "blocked":
       return noteBlocked(deps, live, update.detail);
-    case "ended":
+    case "ended": {
+      // As at the watchdog's expiry: an outcome comment posted whose webhook
+      // was lost is applied, and a run that never started is fired once more.
+      const handled = await recoverOrRetry(deps, live);
+      if (handled) return { outcome: "ended_handled", result: handled };
       return {
         outcome: "ended_expired",
         result: await expirePendingFire(
@@ -84,6 +91,7 @@ export async function coordinateRoutineSignal(
           "routine-signal",
         ),
       };
+    }
   }
 }
 
@@ -92,8 +100,8 @@ export async function coordinateRoutineSignal(
  * routine reported, through coordinateWebhook (so every outcome's own
  * handling applies: the review hand-off, the release merge, the caps). Its
  * delivery id is the fire and the outcome, so a resent signal is a
- * duplicate delivery. Then, if the fire is still this one (no rule moved it
- * on), the watch ends here, as the old fast path did.
+ * duplicate delivery. Applied, and the fire still this one (its rule fired
+ * nothing new), the watch ends here; not applied, the watchdog stays armed.
  */
 async function applyCompletion(
   deps: Deps,
@@ -114,6 +122,12 @@ async function applyCompletion(
       issue: { state: "open", is_pr: false },
     },
   });
+  // Not applied (deduped, dropped, …): nothing moved on, so the watchdog stays
+  // armed and still decides, and the outcome's comment can still apply.
+  if (result.outcome !== "applied") {
+    console.warn(`routine-signal: ${pending.run}'s ${update.outcome.outcome} on #${pending.issueNumber} not applied (${result.outcome})`);
+    return { outcome: "completion_acknowledged", result };
+  }
   const now = await deps.getPendingFire();
   if (now && now.run === pending.run && now.dueAt === pending.dueAt && now.firedAt === pending.firedAt) {
     await deps.clearPendingFire();

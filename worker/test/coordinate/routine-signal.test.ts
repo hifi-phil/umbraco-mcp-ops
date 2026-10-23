@@ -5,6 +5,7 @@ import type { RoutineSignal } from "@orchestrator/graph/routines/from-routine";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { coordinateWebhook } from "../../src/coordinate";
+import { fireWatched } from "../../src/coordinate/apply";
 import { fakeDeps, input } from "./helpers";
 
 describe("coordinateRoutineSignal — the direct routine-to-DO channel", () => {
@@ -218,13 +219,74 @@ describe("coordinateRoutineSignal — a completion is applied, like its comment"
     expect(await coordinateWebhook(deps, outcomeWebhook())).toMatchObject({ outcome: "applied", event: EVENTS.BUILD_SUCCEEDED });
   });
 
-  it("a completion the rules drop still ends the watch (the old fast path), marked completed", async () => {
+  it("a completion the rules drop leaves the watchdog armed: no clear, not marked completed", async () => {
     const deps = liveDeps([LABELS.AI_DISCUSSING]);
     await deps.setPendingFire(buildFire);
     const result = await coordinateRoutineSignal(deps, { ...ref, signal: completion() });
     expect(result).toMatchObject({ outcome: "completion_acknowledged", result: { outcome: "dropped_no_rule" } });
-    expect(await deps.getPendingFire()).toBeNull();
+    expect(await deps.getPendingFire()).toEqual(buildFire);
+    expect(deps.clearPendingFire).not.toHaveBeenCalled();
+    expect(deps.markCompleted).not.toHaveBeenCalled();
+    expect(deps.recordStatus).not.toHaveBeenCalledWith(expect.anything(), { kind: "done" });
+  });
+
+  it("an applied completion whose rule fires nothing new ends the watch, marked completed", async () => {
+    // The fire stays put in this fake (a rule's own clear is a no-op), as if nothing else touched it.
+    const deps = liveDeps([LABELS.AI_READY], { getPendingFire: vi.fn(async () => buildFire), clearPendingFire: vi.fn(async () => {}) });
+    expect(await coordinateRoutineSignal(deps, { ...ref, signal: completion() })).toMatchObject({ result: { outcome: "applied" } });
     expect(deps.markCompleted).toHaveBeenCalledOnce();
+    expect(deps.recordStatus).toHaveBeenCalledWith(expect.objectContaining({ issueNumber: 412 }), { kind: "done" });
+  });
+
+  it("the same completion resent while its fire is still pending is not applied again", async () => {
+    const deps = liveDeps([LABELS.AI_READY], { getPendingFire: vi.fn(async () => buildFire), clearPendingFire: vi.fn(async () => {}) });
+    await coordinateRoutineSignal(deps, { ...ref, signal: completion() });
+    expect(deps.addLabel).toHaveBeenCalledOnce();
+    vi.mocked(deps.forward).mockClear();
+
+    const again = await coordinateRoutineSignal(deps, { ...ref, signal: completion() });
+    expect(again).toMatchObject({ outcome: "completion_acknowledged", result: { outcome: "deduped" } });
+    expect(deps.addLabel).toHaveBeenCalledOnce();
+    expect(deps.forward).not.toHaveBeenCalled();
+  });
+
+  it("release_approved by completion: the Worker merges the PR, the row's actor is routine-signal", async () => {
+    const releaseFire = { ...ref, issueNumber: 219, run: ROUTINES.AUTO_RELEASE_LOOP, firedAt: 1_000 };
+    const deps = liveDeps([LABELS.AUTO_RELEASING]);
+    await deps.setPendingFire(releaseFire);
+    const result = await coordinateRoutineSignal(deps, {
+      ...ref,
+      signal: {
+        kind: "completion",
+        routine: ROUTINES.AUTO_RELEASE_LOOP,
+        issue: 219,
+        outcome: { outcome: "release_approved", pr: 220, sha: "abc1234def", version: "2.1.0", merge_method: "merge" },
+      },
+    });
+    expect(result).toMatchObject({ outcome: "completion_acknowledged", result: { outcome: "applied", event: EVENTS.RELEASE_MERGED } });
+    expect(deps.mergePull).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 220, "abc1234def", "merge");
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.RELEASE_APPROVED, actor: "routine-signal" }));
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 219, ROUTINES.RELEASE_PUBLISH);
+  });
+
+  it("failing to remember an applied outcome doesn't fail the delivery: the result stands", async () => {
+    const deps = liveDeps([LABELS.AI_READY], { setAppliedOutcome: vi.fn(async () => Promise.reject(new Error("storage down"))) });
+    await deps.setPendingFire(buildFire);
+    expect(await coordinateWebhook(deps, outcomeWebhook())).toMatchObject({ outcome: "applied", event: EVENTS.BUILD_SUCCEEDED });
+    expect(deps.unmarkSeenDelivery).not.toHaveBeenCalled();
+  });
+});
+
+describe("fireWatched forgets the last outcome of the routine it fires", () => {
+  it("a new fire of the same routine clears it, so that run's own outcome applies; another routine's fire leaves it", async () => {
+    const deps = liveDeps([LABELS.AI_READY]);
+    await deps.setAppliedOutcome({ run: ROUTINES.ISSUE_BUILD_LOOP, firedAt: 1_000, outcome: "build_succeeded" });
+    await fireWatched(deps, { ...ref, issueNumber: 412 }, ROUTINES.MERGE_FLOW);
+    expect(await deps.getAppliedOutcome()).not.toBeNull();
+    await fireWatched(deps, { ...ref, issueNumber: 412 }, ROUTINES.ISSUE_BUILD_LOOP);
+    expect(await deps.getAppliedOutcome()).toBeNull();
+    // That run reports the same outcome: applied, not deduped.
+    expect(await coordinateWebhook(deps, outcomeWebhook("next-run"))).toMatchObject({ outcome: "applied", event: EVENTS.BUILD_SUCCEEDED });
   });
 });
 
@@ -289,7 +351,32 @@ describe("coordinateRoutineSignal — ended", () => {
     expect(await deps.getPendingFire()).toBeNull();
 
     // Said once: the fire is over, so a second finds nothing pending.
+    // (see below for an outcome already posted)
     expect(await coordinateRoutineSignal(deps, { ...ref, signal: ended })).toEqual({ outcome: "no_pending_fire" });
     expect(deps.commentOnIssue).toHaveBeenCalledOnce();
+  });
+
+  it("an outcome comment already posted (its webhook lost) is recovered, as at the watchdog's expiry: no stuck, no ended comment", async () => {
+    const deps = liveDeps([LABELS.AI_READY], {
+      commentsSince: vi.fn(async () => [
+        { body: outcomeBody, createdAt: new Date(5_000).toISOString(), login: "maintainer", authorAssociation: "OWNER", userType: "User" as const },
+      ]),
+    });
+    await deps.setPendingFire(buildFire);
+
+    const result = await coordinateRoutineSignal(deps, { ...ref, signal: ended });
+
+    expect(result).toMatchObject({ outcome: "ended_handled", result: { outcome: "applied", event: EVENTS.BUILD_SUCCEEDED } });
+    expect(await deps.getLabels("hifi-phil", "umbraco-mcp-ops", 412)).toEqual([LABELS.PR_OPEN]);
+    expect(deps.commentOnIssue).not.toHaveBeenCalled();
+    expect(deps.logTransition).not.toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.WATCHDOG_EXPIRED }));
+  });
+
+  it("a run that never reported a step is fired once more where the repo retries, as at the expiry", async () => {
+    const deps = liveDeps([LABELS.AI_READY], { watchdogRetry: true });
+    await deps.setPendingFire(buildFire);
+    expect(await coordinateRoutineSignal(deps, { ...ref, signal: ended })).toMatchObject({ outcome: "ended_handled", result: { outcome: "retried" } });
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.ISSUE_BUILD_LOOP);
+    expect(await deps.getLabels("hifi-phil", "umbraco-mcp-ops", 412)).toEqual([LABELS.AI_READY]);
   });
 });
