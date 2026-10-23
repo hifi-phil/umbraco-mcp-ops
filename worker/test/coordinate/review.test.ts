@@ -277,6 +277,30 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
       expect(d.removeLabel).not.toHaveBeenCalled();
     });
 
+    it("an expired run that isn't a rework leaves no expiry behind", async () => {
+      const d = deps([LABELS.AI_REVIEWING]);
+      await d.setPendingFire({ owner: OWNER, repo: REPO, issueNumber: PR, run: ROUTINES.REVIEW_LOOP, retried: true });
+      await coordinateWatchdogExpired(d);
+      expect(await d.getReworkExpired()).toBe(false);
+    });
+
+    it("a late rework_no_change after the expiry takes the expiry with it", async () => {
+      const d = deps([]);
+      await expireRework(d);
+      const noChange = input({
+        deliveryId: "d-nochange",
+        payload: {
+          action: "issue_comment.created",
+          comment: {
+            author_association: "OWNER",
+            body: `Done.\n\n<!-- agent-outcome:${ROUTINES.REWORK_LOOP} -->\n\`\`\`json\n${JSON.stringify({ outcome: "rework_no_change", reason: "nothing to push" })}\n\`\`\``,
+          },
+        },
+      });
+      expect(await coordinateWebhook(d, noChange)).toMatchObject({ outcome: "applied", event: EVENTS.REWORK_NO_CHANGE });
+      expect(await d.getReworkExpired()).toBe(false);
+    });
+
     it(`leaving ${LABELS.AI_STUCK} by re-adding ${LABELS.AI_REVIEWING} drops the expiry`, async () => {
       const d = deps([]);
       await expireRework(d);

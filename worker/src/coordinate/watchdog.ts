@@ -154,10 +154,14 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
       `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
   );
 
-  const result = await applyEvent(deps, { ...pending, actor: "watchdog" }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
   // A rework started straight from a label has no CI-fix or review state to
-  // say its push is still wanted, so the expiry itself is recorded.
-  if (pending.run === ROUTINES.REWORK_LOOP && result.outcome === "applied") await deps.setReworkExpired(true);
+  // say its push is still wanted, so the expiry itself is recorded. Before the
+  // label write, so a retry after a failure in between still finds it; a
+  // shadow or refused expiry moves no label and so takes it back.
+  const recordExpiry = pending.run === ROUTINES.REWORK_LOOP && deps.enforced(EVENTS.WATCHDOG_EXPIRED);
+  if (recordExpiry) await deps.setReworkExpired(true);
+  const result = await applyEvent(deps, { ...pending, actor: "watchdog" }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
+  if (recordExpiry && result.outcome !== "applied") await deps.setReworkExpired(false);
   await deps.clearPendingFire();
   // The watch is over either way: a shadow watchdog or labels with no expiry
   // rule leave the row alone above, and nothing else would stop it reading
