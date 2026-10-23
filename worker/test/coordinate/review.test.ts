@@ -246,7 +246,8 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
     const d = deps([LABELS.AI_STUCK]);
     await d.setReviewLoop({ botRounds: 2, fixPending: false });
     await d.setCiFix({ attempts: MAX_CI_FIX_ATTEMPTS, pending: false, returnTo: LABELS.AI_REVIEWING });
-    await coordinateWebhook(d, pushed("d-person-push"));
+    expect(await coordinateWebhook(d, pushed("d-person-push"))).toMatchObject({ outcome: "dropped_no_rule" });
+    expect(d.removeLabel).not.toHaveBeenCalled();
     d.getLabels = vi.fn(async () => [LABELS.AI_STUCK, LABELS.AI_REVIEWING]);
     await coordinateWebhook(d, labelled(LABELS.AI_REVIEWING));
     expect(await d.getReviewLoop()).toBeNull();
