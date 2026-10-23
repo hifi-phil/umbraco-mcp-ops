@@ -117,13 +117,17 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     event === EVENTS.REWORK_NO_CHANGE
       ? reworkState === LABELS.AUTO_REWORKING || reworkState === LABELS.AI_STUCK
       : event === EVENTS.REWORK_PUSHED || event === EVENTS.UNLABELLED_AUTO_REWORKING;
+  let reworkWasPending = false;
   if (reworkEnded) {
     const ciFix = await deps.getCiFix();
     const reviewLoop = ciFix?.pending ? null : await deps.getReviewLoop();
+    reworkWasPending = Boolean(ciFix?.pending || reviewLoop?.fixPending);
     if (ciFix?.pending) {
       // LABELS.AUTO_REWORKING removed without a push (nothing to fix) ends the CI-fix
       // too, so a later review rework isn't mistaken for one.
-      if (event === EVENTS.REWORK_PUSHED) {
+      // As below, only while the PR is still in rework: from LABELS.AI_STUCK
+      // there is no CI_FIX_PUSHED rule, and the late push clears the label.
+      if (event === EVENTS.REWORK_PUSHED && deriveState(currentLabels) === LABELS.AUTO_REWORKING) {
         event = ciFix.returnTo === LABELS.AI_REVIEWING ? EVENTS.REVIEW_FIX_PUSHED : EVENTS.CI_FIX_PUSHED;
       }
       await deps.setCiFix({ ...ciFix, pending: false });
@@ -133,6 +137,29 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
       if (event === EVENTS.REWORK_PUSHED && deriveState(currentLabels) === LABELS.AUTO_REWORKING) event = EVENTS.REVIEW_FIX_PUSHED;
       await deps.setReviewLoop({ ...reviewLoop, fixPending: false });
     }
+  }
+
+  // A push to a PR in LABELS.AI_STUCK clears the label only as a late outcome:
+  // a rework the watchdog gave up on that pushed after all. With no rework
+  // pending it is a person's push, and the PR stays stuck (they leave through
+  // LABELS.AI_REVIEWING, LABELS.AUTO_REWORKING or LABELS.AUTO_MERGING); it is
+  // logged as dropped so it shows in the log.
+  if (event === EVENTS.REWORK_PUSHED && !reworkWasPending && deriveState(currentLabels) === LABELS.AI_STUCK) {
+    const io = depsFor(deps, event);
+    await io.io.logTransition({
+      deliveryId: input.deliveryId || null,
+      actor: actorOf(input),
+      owner: input.owner,
+      repo: input.repo,
+      issueNumber: input.issueNumber,
+      fromState: LABELS.AI_STUCK,
+      event,
+      toEffect: null,
+      run: null,
+      droppedReason: `push with no rework pending: ${LABELS.AI_STUCK} stays on`,
+      mode: io.mode,
+    });
+    return { outcome: "dropped_no_rule", from: LABELS.AI_STUCK, event };
   }
 
   // A review rework round (LABELS.AUTO_REWORKING added by a reviewer: the Worker's own
