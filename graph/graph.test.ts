@@ -95,6 +95,25 @@ describe("CONTEXTUAL_EVENTS", () => {
   });
 });
 
+describe("reduce — outcomes that replace a session's label write", () => {
+  it(`rework_no_change takes ${LABELS.AUTO_REWORKING} off, also from ${LABELS.AI_STUCK}; nowhere else`, () => {
+    expect(reduce(LABELS.AUTO_REWORKING, EVENTS.REWORK_NO_CHANGE)?.to).toEqual(unlabel);
+    expect(reduce(LABELS.AI_STUCK, EVENTS.REWORK_NO_CHANGE)?.to).toEqual(unlabel);
+    expect(reduce(LABELS.AUTO_MERGING, EVENTS.REWORK_NO_CHANGE)).toBeNull();
+    expect(reduce("none", EVENTS.REWORK_NO_CHANGE)).toBeNull();
+  });
+
+  it(`merge_blocked swaps ${LABELS.AUTO_MERGING} for ${LABELS.MERGE_BLOCKED}; nowhere else`, () => {
+    expect(reduce(LABELS.AUTO_MERGING, EVENTS.MERGE_BLOCKED)?.to).toEqual(label(LABELS.MERGE_BLOCKED));
+    expect(reduce(LABELS.AI_REVIEWING, EVENTS.MERGE_BLOCKED)).toBeNull();
+  });
+
+  it(`discussion_capped takes ${LABELS.AI_DISCUSSING} off; nowhere else`, () => {
+    expect(reduce(LABELS.AI_DISCUSSING, EVENTS.DISCUSSION_CAPPED)?.to).toEqual(unlabel);
+    expect(reduce(LABELS.AI_READY, EVENTS.DISCUSSION_CAPPED)).toBeNull();
+  });
+});
+
 describe("reduce — PR lifecycle", () => {
   it(`none + labelled_auto_reworking -> ${LABELS.AUTO_REWORKING}, fires rework-loop`, () => {
     const rule = reduce("none", EVENTS.LABELLED_AUTO_REWORKING);

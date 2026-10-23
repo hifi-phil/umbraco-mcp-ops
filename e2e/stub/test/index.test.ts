@@ -174,6 +174,7 @@ describe("act — review-loop", () => {
   it.each([
     ["review_pass", { outcome: "review_passed" }],
     ["review_ci_fail", { outcome: "review_passed" }],
+    ["merge", { outcome: "review_passed" }],
     ["review_block", { outcome: "review_blocked", reason: "e2e stub: scripted block" }],
     ["review_findings_always", { outcome: "review_findings", findings: 1 }],
   ])("%s -> its verdict as a review-loop outcome comment, labels untouched", async (hint, outcome) => {

@@ -27,7 +27,7 @@ const approved = (extra: Record<string, unknown> = {}, association?: string, sen
   outcomeComment({ outcome: "release_approved", pr: 220, sha: "abc1234def", version: "2.1.0", merge_method: "merge", ...extra }, association, sender);
 const releasing = (overrides: Partial<Deps> = {}) => fakeDeps({ getLabels: vi.fn(async () => [LABELS.AUTO_RELEASING]), ...overrides });
 const pull = (over: Record<string, unknown> = {}) =>
-  vi.fn(async () => ({ headRef: "release/2.1.0", headSha: "abc1234def", baseRef: "main", defaultBranch: "main", merged: false, ...over }));
+  vi.fn(async () => ({ headRef: "release/2.1.0", headSha: "abc1234def", baseRef: "main", defaultBranch: "main", merged: false, open: true, ...over }));
 
 describe("release_approved: the Worker merges, then the after part runs", () => {
   it("merges the way the approval says, pinned to the reviewed commit, then fires release-publish (watched)", async () => {
@@ -63,7 +63,7 @@ describe("release_approved: the Worker merges, then the after part runs", () => 
   });
 
   it("the merge call fails but the PR did merge at the reviewed commit (a lost answer): done, the after part runs", async () => {
-    const getPullDetails = vi.fn().mockResolvedValueOnce({ headRef: "release/2.1.0", headSha: "abc1234def", baseRef: "main", defaultBranch: "main", merged: false })
+    const getPullDetails = vi.fn().mockResolvedValueOnce({ headRef: "release/2.1.0", headSha: "abc1234def", baseRef: "main", defaultBranch: "main", merged: false, open: true })
       .mockResolvedValueOnce({ headRef: "release/2.1.0", headSha: "abc1234def", baseRef: "main", defaultBranch: "main", merged: true });
     const d = releasing({ getPullDetails, mergePull: vi.fn(async () => Promise.reject(new Error("502 Bad Gateway"))) });
     expect(await coordinateWebhook(d, approved())).toMatchObject({ outcome: "applied", event: EVENTS.RELEASE_MERGED });

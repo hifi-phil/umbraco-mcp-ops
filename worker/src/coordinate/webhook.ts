@@ -3,15 +3,16 @@
 // (manual_override), and check_suite.completed.
 
 import { ALL_LABELS, LABELS } from "@orchestrator/graph/constants/labels";
+import { reduce, type State } from "@orchestrator/graph/graph";
 import { translate } from "@orchestrator/graph/github/from-github";
 import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
-import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
+import { actorOf, depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
 import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 import { reviewFindings, reviewGate } from "./review-gate";
-import { exportWorkLog, handOffMerged, handOffRelease, prMerged, released } from "./stages";
+import { exportWorkLog, handOffMerged, handOffRelease, handOffReview, prMerged, released } from "./stages";
 import { releaseApproved, retryReleasePublish, trustedAuthor } from "./release";
 import { parseOutcomeArtifact } from "@orchestrator/graph/github/from-github";
 
@@ -89,17 +90,34 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // (e2e #826, 06-10-2026). Reopen it first to retry.
   if (input.payload.action === "issues.labeled" && input.payload.issue?.state === "closed") return { outcome: "closed_issue", event };
 
+  // These outcomes take a label off or swap it, so only a trusted author's
+  // report counts (as for release_published).
+  if (
+    (event === EVENTS.REWORK_NO_CHANGE || event === EVENTS.MERGE_BLOCKED || event === EVENTS.DISCUSSION_CAPPED) &&
+    !(await trustedAuthor(deps, input))
+  ) {
+    return { outcome: "no_event" };
+  }
+
   // Fresh, per §3.4/to-github.ts's "never cache" principle -- and the one
   // set labelOps() below must see in full (including a label this event
   // itself just added), even though deriveState() below needs it filtered.
-  const currentLabels = await deps.getLabels(input.owner, input.repo, input.issueNumber);
+  let currentLabels = await deps.getLabels(input.owner, input.repo, input.issueNumber);
 
   // A push by a rework this Worker started: for failing CI, back to
   // LABELS.AUTO_MERGING (or LABELS.AI_REVIEWING, if CI failed before the review); for the
   // review's findings, back to LABELS.AI_REVIEWING. Instead of just clearing
   // LABELS.AUTO_REWORKING, as a person's rework outside the review flow does
   // (one inside it sets fixPending in the LABELLED_AUTO_REWORKING block below).
-  if (event === EVENTS.REWORK_PUSHED || event === EVENTS.UNLABELLED_AUTO_REWORKING) {
+  // rework_no_change is the same end, reported while the label is still on:
+  // only meaningful (and only touching the CI-fix and review state) in a
+  // rework state.
+  const reworkState = deriveState(currentLabels);
+  const reworkEnded =
+    event === EVENTS.REWORK_NO_CHANGE
+      ? reworkState === LABELS.AUTO_REWORKING || reworkState === LABELS.AI_STUCK
+      : event === EVENTS.REWORK_PUSHED || event === EVENTS.UNLABELLED_AUTO_REWORKING;
+  if (reworkEnded) {
     const ciFix = await deps.getCiFix();
     const reviewLoop = ciFix?.pending ? null : await deps.getReviewLoop();
     if (ciFix?.pending) {
@@ -157,6 +175,55 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // which fires review-loop now if CI is already green. From LABELS.AI_STUCK, both
   // the review's counts start fresh.
   if (event === EVENTS.LABELLED_AI_REVIEWING) {
+    // A build's PR handed over (stages.ts's handOffReview): the label isn't
+    // on yet, so the Worker adds it and carries on as for a person's label.
+    // One already there was handled when it was added; a state with no rule
+    // for it is logged as dropped, with nothing added.
+    if (input.payload.action === "orchestrator.review_requested") {
+      if (currentLabels.includes(LABELS.AI_REVIEWING)) {
+        // On with nothing else tracked: either handled already (a review is
+        // pending, below) or added by a delivery that failed before its rule
+        // ran, which this redelivery completes. Anything else is left as it is.
+        if (deriveState(currentLabels.filter((l) => l !== LABELS.AI_REVIEWING)) !== "none") return { outcome: "stale_label", event };
+      } else {
+        // Only an open PR is handed a review: the number comes from a
+        // session's report, and a late or redelivered one can name a PR
+        // that has since merged, or not a PR at all.
+        // Only a 404 (no such PR) is a drop; any other read error throws, so the
+        // delivery fails and is redelivered rather than losing the hand-off.
+        const target = await deps.getPullDetails(input.owner, input.repo, input.issueNumber).catch((e) => {
+          if (e instanceof Error && / failed: 404 /.test(e.message)) return null;
+          throw e;
+        });
+        const io = depsFor(deps, event);
+        const dropped = async (reason: string, from: State | null): Promise<CoordinateResult> => {
+          await io.io.logTransition({
+            deliveryId: input.deliveryId || null,
+            actor: actorOf(input),
+            owner: input.owner,
+            repo: input.repo,
+            issueNumber: input.issueNumber,
+            fromState: from ?? "none",
+            event,
+            toEffect: null,
+            run: null,
+            droppedReason: reason,
+            mode: io.mode,
+          });
+          return from ? { outcome: "dropped_no_rule", from, event } : { outcome: "stale_label", event };
+        };
+        if (!target) return dropped("review hand-off names no such pull request", null);
+        if (!target.open) return dropped("review hand-off names a pull request that is not open", null);
+        // Only a PR with nothing else tracked is handed a review: the other states
+        // that have a rule for the label serve a person re-running a review.
+        const state = deriveState(currentLabels);
+        if (state === "ambiguous") return applyEvent(deps, input, event, currentLabels);
+        if (state !== "none") return dropped(`review hand-off to a PR in state ${state}`, state);
+        if (!reduce(state, event)) return applyEvent(deps, input, event, currentLabels);
+        await depsFor(deps, event).io.addLabel(input.owner, input.repo, input.issueNumber, LABELS.AI_REVIEWING);
+        currentLabels = [...currentLabels, LABELS.AI_REVIEWING];
+      }
+    }
     if (!currentLabels.includes(LABELS.AI_REVIEWING)) return { outcome: "stale_label", event };
     // The label's check suite can be handled first (CI finishing as it went
     // on) and have fired the review already. Applying the label's rule now
@@ -205,6 +272,25 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
       await handOffRelease(deps, input, outcome.version, outcome.tag ?? `v${outcome.version}`);
     }
     return published;
+  }
+
+  // merge-flow's own hard block: the swap and the reason, as the gate's.
+  if (event === EVENTS.MERGE_BLOCKED) {
+    const outcome = parseOutcomeArtifact(input.payload.comment?.body);
+    if (outcome?.outcome !== "merge_blocked") return { outcome: "no_event" };
+    return blockMerge(deps, input, currentLabels, outcome.reason.slice(0, 500), event);
+  }
+
+  // build_succeeded names the PR: it's handed its review once the issue's
+  // own move applied (a retry after a failed hand-off applies again, and
+  // each PR dedupes the hand-off).
+  if (event === EVENTS.BUILD_SUCCEEDED && input.payload.action === "issue_comment.created") {
+    const built = await applyEvent(deps, input, event, currentLabels);
+    const outcome = parseOutcomeArtifact(input.payload.comment?.body);
+    if (built.outcome === "applied" && outcome?.outcome === "build_succeeded" && (await trustedAuthor(deps, input))) {
+      await handOffReview(deps, input, outcome.pr);
+    }
+    return built;
   }
 
   if (event === EVENTS.REVIEW_PASSED) {

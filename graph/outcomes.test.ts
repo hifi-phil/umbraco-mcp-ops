@@ -90,6 +90,19 @@ describe("parseOutcomeShape — review outcomes", () => {
   });
 });
 
+describe("parseOutcomeShape — outcomes that replace a session's label write", () => {
+  it("accepts rework_no_change and merge_blocked with a reason, and discussion_capped bare", () => {
+    expect(parseOutcomeShape({ outcome: "rework_no_change", reason: "nothing to push" })).toEqual({ outcome: "rework_no_change", reason: "nothing to push" });
+    expect(parseOutcomeShape({ outcome: "merge_blocked", reason: "needs a code owner" })).toEqual({ outcome: "merge_blocked", reason: "needs a code owner" });
+    expect(parseOutcomeShape({ outcome: "discussion_capped" })).toEqual({ outcome: "discussion_capped" });
+  });
+
+  it("rejects rework_no_change and merge_blocked without a reason", () => {
+    expect(parseOutcomeShape({ outcome: "rework_no_change" })).toBeNull();
+    expect(parseOutcomeShape({ outcome: "merge_blocked", reason: 3 })).toBeNull();
+  });
+});
+
 describe("parseOutcomeShape — general rejects", () => {
   it("rejects an unrecognised outcome name", () => {
     expect(parseOutcomeShape({ outcome: "something_else" })).toBeNull();

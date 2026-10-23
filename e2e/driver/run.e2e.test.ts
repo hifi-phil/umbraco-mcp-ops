@@ -69,17 +69,40 @@ describe("audit: every answer the orchestrator gave during the run", () => {
     async () => {
       await sleep(15_000); // the last scenarios' echoes
       const hook = await workerHook();
-      const deliveries = await deliveriesSince(hook, runStart);
-      progress(`audit: checking the orchestrator's answers to ${deliveries.length} deliveries`);
       // The App's hook delivers for every repo it's installed on: keep the
       // sandbox's. And only what's about this run: a delivery only about
       // items it didn't create (another run's leftovers being closed just
       // before this one, say) isn't its to judge. One about no item at all
       // (a check_suite with no PR) still is.
       const ours = (d: DeliveryDetail) => d.numbers.length === 0 || d.numbers.some((n) => runItems.has(n));
-      const details: (DeliveryDetail & { id: string })[] = (
-        await pool(deliveries, 6, async (d) => ({ id: d.id, ...(await deliveryDetail(hook, d.id)) }))
-      ).filter((d) => d.repo.toLowerCase() === REPO.toLowerCase() && ours(d));
+      // GitHub's delivery list lags the Worker's own log by a few minutes, so
+      // a row's delivery id can be missing from it for a while. Read both
+      // until every logged id has appeared (or the wait is up), then assert:
+      // an id still missing after that is a real gap and fails as before.
+      const original = (id: string) => id.replace(/:#\d+$/, "");
+      // A delivery's detail never changes once it exists: fetch each once.
+      const known = new Map<string, DeliveryDetail & { id: string }>();
+      const read = async () => {
+        const deliveries = await deliveriesSince(hook, runStart);
+        progress(`audit: checking the orchestrator's answers to ${deliveries.length} deliveries`);
+        const fresh = deliveries.filter((d) => !known.has(d.id));
+        for (const d of await pool(fresh, 6, async (d) => ({ id: d.id, ...(await deliveryDetail(hook, d.id)) }))) known.set(d.id, d);
+        const details = deliveries.map((d) => known.get(d.id)!).filter((d) => d.repo.toLowerCase() === REPO.toLowerCase() && ours(d));
+        const numbers = [...new Set(details.flatMap((d) => d.numbers))].filter((n) => runItems.has(n));
+        progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
+        const logs = new Map(await pool(numbers, 6, async (n) => [n, await transitions(n)] as const));
+        const guids = new Set(details.map((d) => d.guid));
+        const missing = [...logs.values()].flat().filter((r) => r.delivery_id !== null && !guids.has(original(r.delivery_id)));
+        return { details, logs, missing: missing.length };
+      };
+      const waitUntil = Date.now() + 120_000;
+      let seen = await read();
+      while (seen.missing > 0 && Date.now() < waitUntil) {
+        progress(`audit: ${seen.missing} logged delivery id(s) not in GitHub's list yet, waiting`);
+        await sleep(10_000);
+        seen = await read();
+      }
+      const { details, logs } = seen;
       const line = (d: DeliveryDetail) => `${d.event}.${d.action} #${d.numbers.join(",")} -> ${d.statusCode} ${d.response}`;
 
       // The sweep scenario's refused fire is scripted; any other failure isn't.
@@ -101,9 +124,6 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       // label rule, then the CI gate's; and release_approved, then the
       // Worker's own merge, release_merged); and the only rows no delivery caused are
       // the watchdog's own expiries.
-      const numbers = [...new Set(details.flatMap((d) => d.numbers))].filter((n) => runItems.has(n));
-      progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
-      const logs = new Map(await pool(numbers, 6, async (n) => [n, await transitions(n)] as const));
       // Bar one: the sweep scenario's scripted refusal, which the Worker logs
       // as "fire refused: …" (#319) and must, so a refused fire isn't silent.
       const scriptedRow = (n: number, r: { dropped_reason: string | null }) =>
@@ -145,8 +165,7 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       const guids = new Set(details.map((d) => d.guid));
       // A hand-off between items (a merged PR to the issue it closes, a
       // release to the issues it ships) logs under the original delivery's
-      // id plus ":#<item>".
-      const original = (id: string) => id.replace(/:#\d+$/, "");
+      // id plus ":#<item>" (see `original`).
       const orphans = [...logs].flatMap(([n, rows]) =>
         rows
           .filter((r) =>
@@ -182,6 +201,6 @@ describe("audit: every answer the orchestrator gave during the run", () => {
         expect(answer, "the redelivery's answer").toBe('{"outcome":"deduped"}');
       }
     },
-    5 * 60_000,
+    8 * 60_000,
   );
 });
