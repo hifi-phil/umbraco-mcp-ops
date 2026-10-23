@@ -108,7 +108,7 @@ const REWORK_EXPIRED_KEY = "reworkExpired"; // the watchdog gave up on a rework-
 const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MAX_BOT_REVIEW_REWORKS)
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
-const APPLIED_OUTCOME_KEY = "appliedOutcome"; // the last outcome applied for a fire (outcome-dedupe.ts)
+const APPLIED_OUTCOME_KEY = "appliedOutcome"; // per routine ("appliedOutcome:<run>"): the last outcome applied for its fire (outcome-dedupe.ts)
 const CLOSED_KEY = "closedOnGitHub"; // its status row stays gone until reopened
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
 
@@ -203,10 +203,10 @@ export class IssueCoordinator {
         const at = await this.ctx.storage.get<unknown>(COMPLETED_KEY);
         return typeof at === "string" ? at : null;
       },
-      getAppliedOutcome: async () => (await this.ctx.storage.get<AppliedOutcome>(APPLIED_OUTCOME_KEY)) ?? null,
-      setAppliedOutcome: async (applied: AppliedOutcome | null) => {
-        if (applied) await this.ctx.storage.put(APPLIED_OUTCOME_KEY, applied);
-        else await this.ctx.storage.delete(APPLIED_OUTCOME_KEY);
+      getAppliedOutcome: async (run: string) => (await this.ctx.storage.get<AppliedOutcome>(`${APPLIED_OUTCOME_KEY}:${run}`)) ?? null,
+      setAppliedOutcome: async (run: string, applied: AppliedOutcome | null) => {
+        if (applied) await this.ctx.storage.put(`${APPLIED_OUTCOME_KEY}:${run}`, applied);
+        else await this.ctx.storage.delete(`${APPLIED_OUTCOME_KEY}:${run}`);
       },
       getReconcileReported: async () => (await this.ctx.storage.get<string>(RECONCILE_REPORTED_KEY)) ?? null,
       setReconcileReported: async (lastActivity: string) => {

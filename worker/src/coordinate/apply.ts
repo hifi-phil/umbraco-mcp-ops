@@ -54,7 +54,7 @@ export async function fireWatched(
 /** A new run of `run` starts: the outcome its last run reported
  * (outcome-dedupe.ts) no longer dedupes, so this run's own outcome applies. */
 async function forgetAppliedOutcome(deps: Deps, run: string): Promise<void> {
-  if ((await deps.getAppliedOutcome())?.run === run) await deps.setAppliedOutcome(null);
+  await deps.setAppliedOutcome(run, null);
 }
 
 /** Whether a fire went out, or was rate-limited and is waiting for its alarm. */

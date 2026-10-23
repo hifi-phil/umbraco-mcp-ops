@@ -22,19 +22,25 @@ export function reportedOutcome(payload: WebhookPayload): ReportedOutcome | null
   return outcome && routine ? { routine, outcome: outcome.outcome } : null;
 }
 
-/** Whether this routine's outcome was already applied for its fire. A new
- * fire of the routine forgets it (apply.ts's forgetAppliedOutcome). */
+/** Whether this routine's outcome was already applied for its fire. The fire
+ * ended with its outcome, so it has no pending fire any more; if the routine
+ * has one, it is a newer fire, and its outcome is its own. */
 export async function alreadyApplied(deps: Deps, reported: ReportedOutcome): Promise<boolean> {
-  const applied = await deps.getAppliedOutcome();
-  return applied?.run === reported.routine && applied.outcome === reported.outcome;
+  const applied = await deps.getAppliedOutcome(reported.routine);
+  if (!applied || applied.outcome !== reported.outcome) return false;
+  const pending = await deps.getPendingFire();
+  return !(pending?.run === reported.routine && (pending.firedAt ?? null) !== applied.firedAt);
 }
 
 /** Remembers an applied outcome against `pending`, the fire it ended (read
  * before it applied). An outcome with no fire of its routine running (a
- * late one, after the watchdog) has no fire to key on, so isn't remembered. */
+ * late one, after the watchdog) has no fire to key on, so isn't remembered.
+ * Nor is it when applying it started a newer fire of the same routine. */
 export async function rememberApplied(deps: Deps, reported: ReportedOutcome, pending: PendingFire | null): Promise<void> {
   if (!pending || pending.run !== reported.routine || pending.deferUntil !== undefined) return;
-  await deps.setAppliedOutcome({ run: pending.run, firedAt: pending.firedAt ?? null, outcome: reported.outcome });
+  const now = await deps.getPendingFire();
+  if (now?.run === reported.routine && (now.firedAt ?? null) !== (pending.firedAt ?? null)) return;
+  await deps.setAppliedOutcome(pending.run, { run: pending.run, firedAt: pending.firedAt ?? null, outcome: reported.outcome });
 }
 
 /** The second carrier of an applied outcome: a row saying so, nothing else. */

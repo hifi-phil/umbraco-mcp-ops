@@ -274,13 +274,36 @@ describe("coordinateRoutineSignal — outcome, blocked and ended", () => {
     const deps = liveDeps([LABELS.AI_READY]);
     await deps.setPendingFire(pending);
     await coordinateRoutineSignal(deps, signalInput(outcomeSignal()));
-    expect(await deps.getAppliedOutcome()).toEqual({ run: ROUTINES.ISSUE_BUILD_LOOP, firedAt: 1000, outcome: "build_succeeded" });
+    expect(await deps.getAppliedOutcome(ROUTINES.ISSUE_BUILD_LOOP)).toEqual({ run: ROUTINES.ISSUE_BUILD_LOOP, firedAt: 1000, outcome: "build_succeeded" });
 
     // A person sends it back to build: LABELS.AI_READY again, a new fire.
     vi.mocked(deps.getLabels).mockResolvedValue([LABELS.AI_READY]);
     await coordinateWebhook(deps, input({ deliveryId: "relabel", payload: { action: "issues.labeled", label: { name: LABELS.AI_READY }, sender: { login: "phil", type: "User" } } }));
     expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, ROUTINES.ISSUE_BUILD_LOOP);
-    expect(await deps.getAppliedOutcome()).toBeNull();
+    expect(await deps.getAppliedOutcome(ROUTINES.ISSUE_BUILD_LOOP)).toBeNull();
+
+    // The new run reports the same outcome: applied, not swallowed as a duplicate.
+    const second = await coordinateRoutineSignal(deps, signalInput(outcomeSignal()));
+    expect(second).toMatchObject({ outcome: "outcome_reported", result: { outcome: "applied", event: EVENTS.BUILD_SUCCEEDED } });
+    expect(deps.addLabel).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, LABELS.PR_OPEN);
+  });
+
+  it("another routine's applied outcome doesn't replace this one's record: a late comment is still deduped", async () => {
+    const deps = liveDeps([LABELS.AI_READY]);
+    await deps.setPendingFire(pending);
+    await coordinateRoutineSignal(deps, signalInput(outcomeSignal()));
+    // A later fire of a different routine applies its own outcome.
+    await deps.setAppliedOutcome(ROUTINES.REWORK_LOOP, { run: ROUTINES.REWORK_LOOP, firedAt: 2000, outcome: "rework_no_change" });
+
+    expect(await coordinateWebhook(deps, commentWebhook())).toEqual({ outcome: "deduped" });
+  });
+
+  it("an applied outcome that started a newer fire of its routine doesn't dedupe that run's outcome", async () => {
+    const deps = liveDeps([LABELS.AI_READY]);
+    await deps.setPendingFire({ ...pending, firedAt: 2000 });
+    await deps.setAppliedOutcome(ROUTINES.ISSUE_BUILD_LOOP, { run: ROUTINES.ISSUE_BUILD_LOOP, firedAt: 1000, outcome: "build_succeeded" });
+
+    expect(await coordinateWebhook(deps, commentWebhook())).toMatchObject({ outcome: "applied", event: EVENTS.BUILD_SUCCEEDED });
   });
 
   it("an invalid outcome -> invalid_signal, logged, nothing applied", async () => {
@@ -333,7 +356,7 @@ describe("coordinateRoutineSignal — outcome, blocked and ended", () => {
 
     expect(result).toMatchObject({ outcome: "outcome_reported", result: { outcome: "dropped_no_rule" } });
     expect(await deps.getPendingFire()).toEqual(pending);
-    expect(await deps.getAppliedOutcome()).toBeNull();
+    expect(await deps.getAppliedOutcome(ROUTINES.ISSUE_BUILD_LOOP)).toBeNull();
   });
 
   it("blocked twice -> one comment, the step recorded, no label change", async () => {
@@ -393,7 +416,7 @@ describe("coordinateRoutineSignal — outcome, blocked and ended", () => {
     expect(deps.removeLabel).not.toHaveBeenCalled();
     expect(deps.logTransition).not.toHaveBeenCalled();
     expect(deps.forward).not.toHaveBeenCalled();
-    expect(await deps.getAppliedOutcome()).toBeNull();
+    expect(await deps.getAppliedOutcome(ROUTINES.ISSUE_BUILD_LOOP)).toBeNull();
     // The comment that follows is the real transition, not a duplicate.
     expect(await coordinateWebhook(deps, commentWebhook())).toMatchObject({ outcome: "applied", event: EVENTS.BUILD_SUCCEEDED });
   });

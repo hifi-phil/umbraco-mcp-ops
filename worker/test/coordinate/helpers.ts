@@ -35,7 +35,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   let releaseMerged: Shipped | null = null;
   let reconcileReported: string | null = null;
   let completed: string | null = null;
-  let appliedOutcome: AppliedOutcome | null = null;
+  const appliedOutcomes = new Map<string, AppliedOutcome>();
   return {
     getLabels: vi.fn(async () => []),
     addLabel: vi.fn(async () => {}),
@@ -109,9 +109,10 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
       completed = at;
     }),
     completedAt: vi.fn(async () => completed),
-    getAppliedOutcome: vi.fn(async () => appliedOutcome),
-    setAppliedOutcome: vi.fn(async (a: AppliedOutcome | null) => {
-      appliedOutcome = a;
+    getAppliedOutcome: vi.fn(async (run: string) => appliedOutcomes.get(run) ?? null),
+    setAppliedOutcome: vi.fn(async (run: string, a: AppliedOutcome | null) => {
+      if (a) appliedOutcomes.set(run, a);
+      else appliedOutcomes.delete(run);
     }),
     getReconcileReported: vi.fn(async () => reconcileReported),
     setReconcileReported: vi.fn(async (s: string) => {

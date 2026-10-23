@@ -294,9 +294,10 @@ export type Deps = {
   // left behind, as long as nothing happened since (coordinateReconcile).
   markCompleted(at: string): Promise<void>;
   completedAt(): Promise<string | null>;
-  // The last outcome applied for a fire (DO storage; AppliedOutcome).
-  getAppliedOutcome(): Promise<AppliedOutcome | null>;
-  setAppliedOutcome(applied: AppliedOutcome | null): Promise<void>;
+  // The last outcome applied for a routine's fire (DO storage; AppliedOutcome),
+  // one record per routine so another routine's outcome doesn't replace it.
+  getAppliedOutcome(run: string): Promise<AppliedOutcome | null>;
+  setAppliedOutcome(run: string, applied: AppliedOutcome | null): Promise<void>;
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;
