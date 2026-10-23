@@ -150,6 +150,45 @@ describe("github-client with the App configured", () => {
     await expect(getLabels(appEnv(), "hifi-phil", "umbraco-mcp-ops", 7)).rejects.toThrow(/403/);
   });
 
+  describe("a GET that is answered 5xx and then 403 (the 5xx retry runs before the 403 one)", () => {
+    // Real timers: the retry's 1 s pause follows real Web Crypto calls, which fake timers can't wait on.
+    /** The App's endpoints, plus label calls answered from `statuses` in turn (200 once they run out). */
+    function repoCallsAnswering(statuses: number[]) {
+      let issued = 0;
+      let labelCalls = 0;
+      const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/installation")) return json({ id: 42 });
+        if (url.endsWith("/access_tokens")) return json({ token: `inst-${++issued}`, expires_at: new Date(Date.now() + 3_600_000).toISOString() });
+        const status = statuses[labelCalls++] ?? 200;
+        const auth = (init?.headers as Record<string, string>).Authorization;
+        return status === 200 ? json([{ name: auth }]) : new Response("refused", { status });
+      });
+      vi.stubGlobal("fetch", fetch);
+      const labelFetches = () => fetch.mock.calls.filter(([url]) => !/\/installation$|\/access_tokens$/.test(url)).length;
+      return { labelFetches, tokensIssued: () => issued };
+    }
+
+    it("503, 403, 200 -> returns the 200 in three calls, the token forgotten once", async () => {
+      const { labelFetches, tokensIssued } = repoCallsAnswering([503, 403, 200]);
+      expect(await getLabels(appEnv(), "hifi-phil", "umbraco-mcp-ops", 7)).toEqual(["Bearer inst-2"]);
+      expect(labelFetches()).toBe(3);
+      expect(tokensIssued()).toBe(2); // one first token, one after the single forget
+    });
+
+    it("503, 403, 403 -> throws with the 403, in three calls", async () => {
+      const { labelFetches } = repoCallsAnswering([503, 403, 403]);
+      await expect(getLabels(appEnv(), "hifi-phil", "umbraco-mcp-ops", 7)).rejects.toThrow(/403/);
+      expect(labelFetches()).toBe(3);
+    });
+
+    it("503, 503 -> throws on the second 503, with no token refresh (it isn't a 403)", async () => {
+      const { labelFetches, tokensIssued } = repoCallsAnswering([503, 503]);
+      await expect(getLabels(appEnv(), "hifi-phil", "umbraco-mcp-ops", 7)).rejects.toThrow(/503/);
+      expect(labelFetches()).toBe(2);
+      expect(tokensIssued()).toBe(1);
+    });
+  });
+
   it("without the App (no id or key) -> the personal token, as before", async () => {
     vi.stubGlobal("fetch", fakeGitHub());
     expect(appConfigured({ GITHUB_APP_ID: "123" })).toBe(false);
