@@ -2,7 +2,7 @@
 name: issue-build-loop
 description: >-
   Build one `ai-ready` GitHub issue into an mcp-reviewed PR and report `build_succeeded`
-  with its `pr` — then stop (CI and the independent review are review-loop's; fixes are
+  with its `pr` — then stop (CI is the Worker's; the independent review is review-loop's; fixes are
   rework-loop's; merging is merge-flow's). This loop never responds to reviews and never
   merges. Repo-agnostic — works whether or not the repo has an Umbraco build/test toolchain
   (Umbraco MCP repos, or content-only repos like this ops repo, docs repos, plugin

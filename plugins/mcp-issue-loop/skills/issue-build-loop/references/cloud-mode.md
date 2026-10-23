@@ -32,8 +32,7 @@ For the one issue the fire names:
    `EnterWorktree` (cloud sessions are already isolated, and the worktree hooks need the
    local DB/toolchain). Implement the issue following the **shared build playbook**
    ([`mcp-playbook.md`](mcp-playbook.md)) and the MCP skills,
-   with two substitutions for playbook steps 1 and 4:
-   - **Instead of the worktree (playbook step 1):** work directly in the session checkout.
+   with one substitution for playbook step 4:
    - **Instead of `npm run start:umbraco` + `npm run test:all` (playbook step 4):** bring up
      a local Umbraco via the **`worker-env`**
      skill and run a local test gate **on SQL Server**. As your **first action** (so Umbraco

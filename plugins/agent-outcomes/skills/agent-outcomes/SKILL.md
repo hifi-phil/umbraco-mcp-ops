@@ -44,9 +44,7 @@ comment write above is still the only thing that counts as the actual fact.
 
 **Append to a comment you're already posting.** The marker and JSON below get appended to
 a comment your loop already posts, as a trailer. Never post a comment solely for this, and
-never skip your loop's real action because you wrote the marker. If that rule and your
-loop's own instructions ever conflict, your loop's own instructions win — this skill adds a
-trailer, it doesn't change what "done" means.
+never skip your loop's real action because you wrote the marker. 
 
 ## The format
 
@@ -99,7 +97,7 @@ behind each.
    `graph/constants/events.ts`'s `EVENTS` — don't invent a new event name
    here), the exact JSON shape, and which step reports it.
 2. Add the loop's instruction to append the marker + shape to a comment it
-   already posts — additive, per the rule above. Point at this skill by
+   already posts — per the rule above. Point at this skill by
    name; don't inline the format into the loop's own `SKILL.md`.
 3. Add the matching `translate()` case in `graph/github/from-github.ts`
    (umbraco-mcp-ops) that parses it, plus fixture tests.

@@ -26,8 +26,8 @@ at the end).
 > boot Umbraco via `worker-env`); the change is implemented
 > following established MCP patterns; the local test gate passes — **the repo's own
 > tests, scaled to your diff**, `npm run test:changed`;
-> the branch is pushed; and a PR is open against the base branch. Driving that
-> PR's CI green and reporting the issue's outcome are the **orchestrator's** job, not
+> the branch is pushed; and a PR is open against the base branch. Reporting the
+> issue's outcome is the **orchestrator's** job and CI is the Worker's, not
 > yours (see the main `SKILL.md`) — you return as soon as the PR is open. If
 > you cannot reach this state, stop and return a clear blocked report (what's
 > ambiguous / what fails) — do not guess or half-finish.
@@ -113,7 +113,7 @@ take minutes — wait for `.demo-site-port` and the base URL to respond).
 green. If state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename the DB in
 `demo-site/appsettings.local.json`, restart, re-run `create-api-user.mjs`).
 
-### 5. CI-driving and review are the orchestrator's job — you do neither
+### 5. Review is the orchestrator's job, CI the Worker's — you do neither
 
 **Do not run `/security-review` or `/code-review` yourself** — see `SKILL.md`'s Rules for
 why they're inert in a subagent; a subagent grading its own code is weak anyway. You also
