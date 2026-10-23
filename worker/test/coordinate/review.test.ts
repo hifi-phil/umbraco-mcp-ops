@@ -10,6 +10,7 @@ import {
   MAX_CI_FIX_ATTEMPTS,
   MAX_REVIEW_REWORKS,
   coordinateReconcile,
+  coordinateWatchdogExpired,
   coordinateWebhook,
   type Deps,
 } from "../../src/coordinate";
@@ -240,6 +241,49 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
     expect(await coordinateWebhook(d, pushed())).toMatchObject({ outcome: "applied", event: EVENTS.REWORK_PUSHED });
     expect(d.removeLabel).toHaveBeenLastCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
     expect(await d.getReviewLoop()).toEqual({ botRounds: 1, fixPending: false });
+  });
+
+  describe("a rework labelled directly, which the watchdog gave up on", () => {
+    const expireRework = async (d: Deps) => {
+      d.getLabels = vi.fn(async () => [LABELS.AUTO_REWORKING]);
+      await d.setPendingFire({ owner: OWNER, repo: REPO, issueNumber: PR, run: ROUTINES.REWORK_LOOP, retried: true });
+      expect(await coordinateWatchdogExpired(d)).toMatchObject({ outcome: "applied" });
+      d.getLabels = vi.fn(async () => [LABELS.AI_STUCK]);
+    };
+
+    it(`a late push after the watchdog expiry clears ${LABELS.AI_STUCK}`, async () => {
+      const d = deps([]);
+      await expireRework(d);
+      expect(await coordinateWebhook(d, pushed())).toMatchObject({ outcome: "applied", event: EVENTS.REWORK_PUSHED });
+      expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
+      expect(await d.getReworkExpired()).toBe(false);
+    });
+
+    it("a redelivered late push still clears when the label write failed", async () => {
+      const d = deps([]);
+      await expireRework(d);
+      d.removeLabel = vi.fn().mockRejectedValueOnce(new Error("boom")).mockResolvedValue(undefined);
+      await expect(coordinateWebhook(d, pushed())).rejects.toThrow("boom");
+      expect(await d.getReworkExpired()).toBe(true);
+      expect(await coordinateWebhook(d, pushed())).toMatchObject({ outcome: "applied", event: EVENTS.REWORK_PUSHED });
+      expect(d.removeLabel).toHaveBeenLastCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
+      expect(await d.getReworkExpired()).toBe(false);
+    });
+
+    it(`${LABELS.AI_STUCK} reached another way (the review cap) keeps it on a person's push`, async () => {
+      const d = deps([LABELS.AI_STUCK]);
+      await d.setReviewLoop({ botRounds: MAX_BOT_REVIEW_REWORKS, fixPending: false });
+      expect(await coordinateWebhook(d, pushed())).toMatchObject({ outcome: "dropped_no_rule", from: LABELS.AI_STUCK });
+      expect(d.removeLabel).not.toHaveBeenCalled();
+    });
+
+    it(`leaving ${LABELS.AI_STUCK} by re-adding ${LABELS.AI_REVIEWING} drops the expiry`, async () => {
+      const d = deps([]);
+      await expireRework(d);
+      d.getLabels = vi.fn(async () => [LABELS.AI_STUCK, LABELS.AI_REVIEWING]);
+      await coordinateWebhook(d, labelled(LABELS.AI_REVIEWING));
+      expect(await d.getReworkExpired()).toBe(false);
+    });
   });
 
   it(`re-adding ${LABELS.AI_REVIEWING} to a kept ${LABELS.AI_STUCK} PR starts with fresh review counts`, async () => {

@@ -216,6 +216,10 @@ export type Deps = {
   // has been handed to rework-loop, and whether one is running now.
   getCiFix(): Promise<CiFix | null>;
   setCiFix(state: CiFix | null): Promise<void>;
+  // Whether the watchdog gave up on a rework-loop run for this PR (DO
+  // storage): a push after that is a late outcome, not a person's push.
+  getReworkExpired(): Promise<boolean>;
+  setReworkExpired(expired: boolean): Promise<void>;
   // How many review rework rounds this PR has had (DO storage).
   getReviewReworks(): Promise<number>;
   setReviewReworks(rounds: number): Promise<void>;

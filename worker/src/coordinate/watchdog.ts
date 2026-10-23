@@ -4,6 +4,7 @@
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { reduce, rules } from "@orchestrator/graph/graph";
 import { EVENTS } from "@orchestrator/graph/constants/events";
+import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
 import { coordinateWebhook } from "./webhook";
 import { applyEvent, deriveState, fireUnwatched, fireWatched, type FireOutcome } from "./apply";
@@ -154,6 +155,9 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   );
 
   const result = await applyEvent(deps, { ...pending, actor: "watchdog" }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
+  // A rework started straight from a label has no CI-fix or review state to
+  // say its push is still wanted, so the expiry itself is recorded.
+  if (pending.run === ROUTINES.REWORK_LOOP && result.outcome === "applied") await deps.setReworkExpired(true);
   await deps.clearPendingFire();
   // The watch is over either way: a shadow watchdog or labels with no expiry
   // rule leave the row alone above, and nothing else would stop it reading

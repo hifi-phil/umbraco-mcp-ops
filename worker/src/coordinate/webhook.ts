@@ -125,7 +125,8 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   if (reworkEnded) {
     const ciFix = await deps.getCiFix();
     const reviewLoop = ciFix?.pending ? null : await deps.getReviewLoop();
-    reworkWasPending = Boolean(ciFix?.pending || reviewLoop?.fixPending);
+    const reworkExpired = lateFromStuck && (await deps.getReworkExpired());
+    reworkWasPending = Boolean(ciFix?.pending || reviewLoop?.fixPending || reworkExpired);
     if (ciFix?.pending) {
       // LABELS.AUTO_REWORKING removed without a push (nothing to fix) ends the CI-fix
       // too, so a later review rework isn't mistaken for one.
@@ -144,6 +145,13 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
       const clear = () => deps.setReviewLoop({ ...reviewLoop, fixPending: false });
       if (lateFromStuck) clearAfterApply = clear;
       else await clear();
+    }
+    if (reworkExpired) {
+      const clearPending = clearAfterApply;
+      clearAfterApply = async () => {
+        await clearPending?.();
+        await deps.setReworkExpired(false);
+      };
     }
   }
 
@@ -194,7 +202,10 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
       if (rounds > deps.caps.reviewReworks) return capReviewRework(deps, input, currentLabels, rounds - 1);
       await deps.setReviewReworks(rounds);
       // From LABELS.AI_STUCK, the review's own count starts fresh too.
-      if (before === LABELS.AI_STUCK) await deps.setReviewLoop(null);
+      if (before === LABELS.AI_STUCK) {
+        await deps.setReviewLoop(null);
+        await deps.setReworkExpired(false);
+      }
     }
     restartReview = inReview && !(await deps.getCiFix())?.pending;
     // Written before the rule runs, so a refused fire that is redelivered (the
@@ -268,6 +279,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     if (deriveState(currentLabels.filter((l) => l !== LABELS.AI_REVIEWING)) === LABELS.AI_STUCK) {
       await deps.setReviewLoop(null);
       await deps.setCiFix(null);
+      await deps.setReworkExpired(false);
     }
     const labelled = await applyEvent(deps, input, event, currentLabels);
     if (labelled.outcome !== "applied") return labelled;
@@ -348,6 +360,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     if (!currentLabels.includes(LABELS.AUTO_MERGING)) return { outcome: "stale_label", event };
     // A human re-adding LABELS.AUTO_MERGING after LABELS.MERGE_BLOCKED starts a fresh count.
     if (currentLabels.includes(LABELS.MERGE_BLOCKED)) await deps.setCiFix(null);
+    if (currentLabels.includes(LABELS.AI_STUCK)) await deps.setReworkExpired(false);
     const facts = await settledGateFacts(deps, input);
     const reason = hardBlockReason(facts);
     if (reason) return blockMerge(deps, input, currentLabels, reason);
