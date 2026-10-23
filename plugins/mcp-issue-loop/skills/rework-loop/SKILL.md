@@ -101,7 +101,9 @@ on the PR** (what was fixed, the commit, what was checked), **with no `agent-out
 marker**: per the `agent-outcomes` skill's catalog, the push is a native GitHub event the
 Worker already sees, so `rework_pushed` is deliberately not reported.
 If you pushed nothing because there was no actionable feedback, Step 1 already posted
-`rework_no_change`; the no-review case posts no outcome, so the label stays and a person sees the PR.
+`rework_no_change`. A round that pushed nothing because every item was answered on its thread
+(or a failing check needed no change) also posts `rework_no_change` with a one-line reason; the
+no-review case is the only one that posts no outcome, so the label stays and a person sees the PR.
 **Do not merge.**
 
 ## Running as a routine
