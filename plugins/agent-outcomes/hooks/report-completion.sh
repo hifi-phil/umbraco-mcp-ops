@@ -3,9 +3,10 @@
 # PostToolUse hook: fires after every tool call in a loop's session, and
 # tells the agent-orchestration Worker the session is alive. Two signals,
 # both to the Worker's POST /routine-signal (worker/src/index.ts in
-# umbraco-mcp-ops), both a non-authoritative fast path — the GitHub write a
-# loop makes stays the only authoritative signal, so losing one of these
-# costs detail, never correctness (docs/agent-orchestration/11-outcome-artifact.md):
+# umbraco-mcp-ops). A completion is applied by the Worker like the outcome's
+# comment (authoritative, deduped against it), so it is sent only for a call that
+# posts a comment on the run's own item; the comment stays a second carrier, so
+# losing one of the two costs nothing (docs/agent-orchestration/11-outcome-artifact.md):
 #
 # - completion: the call just posted an agent-outcomes artifact (a comment
 #   carrying an <!-- agent-outcome:<routine> --> marker + fenced JSON — see
@@ -134,11 +135,39 @@ send() {
 }
 
 # --- An outcome artifact: completion ----------------------------------------
-# Every string value anywhere inside tool_input, marker-bearing one first —
-# finds the artifact regardless of which field/tool carried it.
-BLOB="$(printf '%s' "$EVENT" | jq -r '
-  [(.tool_input // {}) | .. | strings | select(test("<!-- agent-outcome:"))] | first // empty
-' 2>/dev/null)"
+# Only a call that posts a comment on this run's own item counts: the marker
+# turning up in any other tool call (a file, a work-log entry, an echo) is text
+# the run copied, possibly from an untrusted comment, and the Worker applies a
+# completion as authoritative. The tool and its target are checked, then the
+# marker-bearing string is taken from the call.
+CTX="$(run_context)"
+BLOB=""
+if [ -n "$CTX" ] && [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ]; then
+  C_OWNER="$(printf '%s' "$CTX" | awk '{print $2}')"
+  C_REPO="$(printf '%s' "$CTX" | awk '{print $3}')"
+  C_NUM="$(printf '%s' "$CTX" | awk '{print $4}')"
+  BLOB="$(printf '%s' "$EVENT" | jq -r --arg owner "$C_OWNER" --arg repo "$C_REPO" --arg num "$C_NUM" '
+    (.tool_name // "") as $t
+    | (.tool_input // {}) as $i
+    | (($i.issue_number // $i.pullNumber // $i.pull_number // "") | tostring) as $n
+    | (($i.owner // $owner) | ascii_downcase) as $o
+    | (($i.repo // $repo) | ascii_downcase) as $r
+    | (
+        ($t | test("^mcp__github__(add_issue_comment|update_issue_comment|pull_request_review_write|add_reply_to_pull_request_comment|add_comment_to_pending_review)$"))
+        and ($o == ($owner | ascii_downcase)) and ($r == ($repo | ascii_downcase))
+        and (($t | test("update_issue_comment|add_reply_to|add_comment_to_pending")) or $n == $num)
+      ) as $mcp
+    | (($t == "Bash") and (($i.command // "") | test("gh +(issue|pr) +(comment|review) +" + $num + "( |$)"))) as $cli
+    | if ($mcp or $cli) then
+        [$i | .. | strings | select(test("<!-- agent-outcome:"))] | first // empty
+      else empty end
+  ' 2>/dev/null)"
+else
+  # Nothing to send (no run, or no endpoint): detect it anywhere in the call, to log it only.
+  BLOB="$(printf '%s' "$EVENT" | jq -r '
+    [(.tool_input // {}) | .. | strings | select(test("<!-- agent-outcome:"))] | first // empty
+  ' 2>/dev/null)"
+fi
 
 if [ -n "$BLOB" ]; then
   MARKER_LINE="$(printf '%s\n' "$BLOB" | grep -o -m1 '<!-- agent-outcome:[a-zA-Z0-9_-]* -->')"
@@ -156,7 +185,6 @@ if [ -n "$BLOB" ]; then
     log "AGENT_OUTCOMES_ENDPOINT not set — logged only, no live target yet"
     exit 0
   fi
-  CTX="$(run_context)"
   if [ -z "$CTX" ]; then
     log "no route=… repo=… number=… in this session — completion not sent"
     exit 0

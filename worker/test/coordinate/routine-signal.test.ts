@@ -392,6 +392,16 @@ describe("coordinateRoutineSignal — blocked", () => {
     expect(deps.commentOnIssue).toHaveBeenCalledOnce();
   });
 
+  it("a comment that fails to post leaves the status and the row, and the block still counts", async () => {
+    const deps = liveDeps([LABELS.AI_READY], { commentOnIssue: vi.fn(async () => Promise.reject(new Error("502"))) });
+    await deps.setPendingFire(buildFire);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await coordinateRoutineSignal(deps, { ...ref, signal: blocked })).toEqual({ outcome: "blocked_noted" });
+    expect(deps.recordStatus).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: "step" }));
+    expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: "routine_blocked" }));
+    expect(await coordinateRoutineSignal(deps, { ...ref, signal: blocked })).toEqual({ outcome: "blocked_already_noted" });
+  });
+
   it("a new fire may say it again", async () => {
     const deps = liveDeps([LABELS.AI_READY]);
     await deps.setPendingFire(buildFire);

@@ -117,7 +117,9 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
 
   const lastStep = pending.lastStep
     ? ` Last reported step: \`${pending.lastStep}\` (${pending.lastStepAt ?? "time unknown"}).`
-    : " No progress step was ever reported.";
+    : (await deps.hasSeenDelivery(blockedKey(pending)))
+      ? " It reported that it was waiting for a permission."
+      : " No progress step was ever reported.";
   return expirePendingFire(
     deps,
     pending,
@@ -134,6 +136,9 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
  * Null if neither applies. The watchdog's expiry, and a routine's `ended`
  * signal (routine-signal.ts).
  */
+/** The seen-delivery key of a fire's "blocked" notice (routine-signal.ts's noteBlocked). */
+export const blockedKey = (pending: PendingFire): string => `routine-blocked:${pending.run}:${pending.firedAt ?? "unknown"}`;
+
 export async function recoverOrRetry(deps: Deps, pending: PendingFire): Promise<WatchdogResult | null> {
   // The run may have finished and posted its outcome, with only the webhook
   // for it lost (#335, #345): apply that before calling the run dead.
@@ -155,7 +160,15 @@ export async function recoverOrRetry(deps: Deps, pending: PendingFire): Promise<
   // progress may have pushed half its work: that goes to a person, as before.
   // Only for a repo that turned it on (deps.watchdogRetry): "never reported a
   // step" only means "never started" where the routines send heartbeats.
-  if (deps.watchdogRetry && !pending.retried && !pending.lastStep && deps.enforced(EVENTS.WATCHDOG_EXPIRED)) {
+  // Not one that said it was blocked on a permission: it started, and a second
+  // session beside it would double the work once someone approves the first.
+  if (
+    deps.watchdogRetry &&
+    !pending.retried &&
+    !pending.lastStep &&
+    deps.enforced(EVENTS.WATCHDOG_EXPIRED) &&
+    !(await deps.hasSeenDelivery(blockedKey(pending)))
+  ) {
     const labels = await deps.getLabels(pending.owner, pending.repo, pending.issueNumber);
     const state = deriveState(labels);
     if (state !== "ambiguous" && reduce(state, EVENTS.WATCHDOG_EXPIRED) !== null) {

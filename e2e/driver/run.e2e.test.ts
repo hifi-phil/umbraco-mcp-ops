@@ -177,7 +177,9 @@ describe("audit: every answer the orchestrator gave during the run", () => {
         rows
           .filter((r) =>
             r.delivery_id === null
-              ? !["watchdog_expired", "watchdog_retried", "reconcile_refire", "routine_blocked"].includes(r.event)
+              ? !["watchdog_expired", "watchdog_retried", "reconcile_refire", "routine_blocked"].includes(r.event) &&
+                // a completion second to its comment (deduped), or one the Worker refused or didn't apply
+                !["deduped:", "completion not applied:", "completion's outcome failed validation:"].some((p) => (r.dropped_reason ?? "").startsWith(p))
               : !r.delivery_id.startsWith("routine-signal:") && !guids.has(original(r.delivery_id)),
           )
           .map((r) => `#${n} ${r.event} delivery=${r.delivery_id}`),

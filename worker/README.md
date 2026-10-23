@@ -440,9 +440,15 @@ can send straight to its DO, bypassing GitHub — is received at
   retries); otherwise one comment naming its `detail`, then
   `watchdog_expired`, the pending fire cleared.
 
-Auth: `ROUTINE_SIGNAL_SECRET`, checked as `Authorization: Bearer <secret>`.
-Unset, only a `"process"` heartbeat gets in; every other kind writes, so it
-fails closed (401). Routing: `{owner, repo, signal}` in the body,
+Auth: two bearers. A heartbeat takes `ROUTINE_SIGNAL_SECRET` or the fire's own
+token (`log_token`, work-log.ts); a token a heartbeat carries may be past its
+expiry, since a heartbeat only extends a watchdog. A completion, `"blocked"` or
+`"ended"` needs the fire's own token, unexpired and scoped to the signal's repo,
+item and routine, and it must be the token of the latest fire: a late signal
+from an earlier run of the same routine comes back `stale_fire`. Unset
+`ROUTINE_SIGNAL_SECRET`, only a heartbeat gets in; every other kind writes, so
+it fails closed (401). The tokens are signed with the secret, so a routine
+environment should hold only its token. Routing: `{owner, repo, signal}` in the body,
 keyed to the same DO as the webhook path (`owner/repo#signal.issue`). A
 signal for a routine that isn't the one currently pending on that issue
 (`pending.run !== signal.routine`) is rejected as `mismatched_routine`
@@ -457,10 +463,12 @@ apply/dedupe logic against fake deps), `issue-coordinator.test.ts` (the DO's
 **The sending side** is the `agent-outcomes` plugin's `PostToolUse` hook
 (`plugins/agent-outcomes/hooks/report-completion.sh`). From any session this
 Worker fired, it sends a heartbeat naming the step, at most once a minute, and
-a completion when the loop posts its outcome. It's verified live by the e2e
+a completion when the loop posts its outcome (a comment on the run's own item). It's verified live by the e2e
 suite's `real hook` scenarios, which run the real hook against this deployed
 Worker. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
-`AGENT_OUTCOMES_TOKEN` on the routine environment: see `new-loop-routine`'s
+`AGENT_OUTCOMES_TOKEN` (the secret) only where the fire text carries no
+`log_token`; with one, leave the secret out and the hook uses the run's token for
+everything: see `new-loop-routine`'s
 "Routine heartbeats" section.
 
 ## The reconciliation sweep (Phase 7)

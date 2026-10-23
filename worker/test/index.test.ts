@@ -448,6 +448,26 @@ describe("index.ts fetch() — POST /routine-signal", () => {
     expect(stubFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("a heartbeat with this fire's token past its expiry -> reaches the DO; a completion with it -> 401", async () => {
+    const { env, stubFetch } = fakeEnv({ ROUTINE_SIGNAL_SECRET: "shh" });
+    const mine = { owner: "hifi-phil", repo: "umbraco-mcp-ops", item: 412, routine: "issue-build-loop" };
+    const expired = await mintLogToken("shh", mine, -60);
+    expect((await worker.fetch(routineSignalRequest(heartbeat(), { Authorization: `Bearer ${expired}` }), env)).status).toBe(200);
+    expect(stubFetch).toHaveBeenCalledTimes(1);
+    expect((await worker.fetch(routineSignalRequest(heartbeat({ signal: completionSignal }), { Authorization: `Bearer ${expired}` }), env)).status).toBe(401);
+    expect(stubFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("the token's id goes to the DO as tokenId, and a caller-named one is dropped", async () => {
+    const { env, stubFetch } = fakeEnv({ ROUTINE_SIGNAL_SECRET: "shh" });
+    const mine = { owner: "hifi-phil", repo: "umbraco-mcp-ops", item: 412, routine: "issue-build-loop" };
+    const token = await mintLogToken("shh", mine, 60);
+    await worker.fetch(routineSignalRequest({ ...heartbeat({ signal: completionSignal }), tokenId: "forged" }, { Authorization: `Bearer ${token}` }), env);
+    const sent = JSON.parse((stubFetch.mock.calls[0]![1] as RequestInit).body as string);
+    expect(sent.tokenId).toBe(JSON.parse(atob(token.split(".")[0]!.replace(/-/g, "+").replace(/_/g, "/"))).jti);
+    expect(sent.tokenId).not.toBe("forged");
+  });
+
   it("a heartbeat with this fire's own token -> reaches the DO; with another item's token -> 401", async () => {
     const { env, stubFetch } = fakeEnv({ ROUTINE_SIGNAL_SECRET: "shh" });
     const mine = { owner: "hifi-phil", repo: "umbraco-mcp-ops", item: 412, routine: "issue-build-loop" };

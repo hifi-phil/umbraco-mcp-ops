@@ -34,7 +34,7 @@ mcp_event() {
     hook_event_name: "PostToolUse",
     session_id: "test",
     tool_name: "mcp__github__add_issue_comment",
-    tool_input: {body: $body}
+    tool_input: {owner: "hifi-phil", repo: "umbraco-mcp-ops", issue_number: 412, body: $body}
   }'
 }
 
@@ -162,6 +162,16 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   expect_last completion_shape '.auth == "Bearer abc.def"
     and .body.owner == "hifi-phil" and .body.repo == "umbraco-mcp-ops"
     and .body.signal == {kind:"completion", routine:"issue-build-loop", issue:412, outcome:{outcome:"build_succeeded", pr:123}}'
+
+  # 6b. The marker copied into some other call (a file write, a comment on another item) -> no completion
+  : >"$SERVER_LOG"
+  COPIED="$(jq -n --arg body "$SUCCEEDED_COMMENT" '{hook_event_name:"PostToolUse", tool_name:"Write", tool_input:{file_path:"/tmp/x", content:$body}}')"
+  OTHER_ITEM="$(jq -n --arg body "$SUCCEEDED_COMMENT" '{hook_event_name:"PostToolUse", tool_name:"mcp__github__add_issue_comment", tool_input:{owner:"hifi-phil", repo:"umbraco-mcp-ops", issue_number: 999, body:$body}}')"
+  OTHER_REPO="$(jq -n --arg body "$SUCCEEDED_COMMENT" '{hook_event_name:"PostToolUse", tool_name:"mcp__github__add_issue_comment", tool_input:{owner:"someone", repo:"else", issue_number: 412, body:$body}}')"
+  signal copied_marker "$(with_transcript "$COPIED" "$TRANSCRIPT")" "$WORK/s6b"
+  signal other_item "$(with_transcript "$OTHER_ITEM" "$TRANSCRIPT")" "$WORK/s6b"
+  signal other_repo "$(with_transcript "$OTHER_REPO" "$TRANSCRIPT")" "$WORK/s6b"
+  if ! grep -q '"kind":"completion"' "$SERVER_LOG" 2>/dev/null; then echo "PASS [marker_off_item_not_a_completion]"; pass=$((pass+1)); else echo "FAIL [marker_off_item_not_a_completion]"; fail=$((fail+1)); fi
 
   # 7. Any other call -> a heartbeat naming the step (tool + its own description)
   BASH_CALL="$(jq -n '{hook_event_name:"PostToolUse", tool_name:"Bash", tool_input:{command:"npm test", description:"Run the tests"}}')"

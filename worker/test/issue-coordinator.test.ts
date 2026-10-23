@@ -753,6 +753,29 @@ describe("IssueCoordinator.fetch() — POST /routine-signal", () => {
     expect(inserted[0]![10]).toBe("routine-signal");
   });
 
+  it("a completion carrying an earlier fire's token id -> stale_fire; the latest fire's id applies", async () => {
+    vi.stubGlobal("fetch", fakeApiFetch({ labels: [LABELS.AI_READY] }));
+    const { ctx, storage } = fakeCtx();
+    const coordinator = new IssueCoordinator(ctx, fakeEnv({ ROUTINE_SIGNAL_SECRET: "shh" }));
+    await coordinator.fetch(
+      fetchRequest(labeledInput({ payload: { action: "issues.labeled", label: { name: LABELS.AI_READY } } })),
+    );
+    const jti = (await storage.get("fireJti")) as string;
+    expect(typeof jti).toBe("string");
+    const completion = {
+      owner: "hifi-phil",
+      repo: "umbraco-mcp-ops",
+      signal: { kind: "completion", routine: "issue-build-loop", issue: 412, outcome: { outcome: "build_blocked", reason: "needs a decision" } },
+    } as const;
+
+    const stale = await coordinator.fetch(routineSignalRequest({ ...completion, tokenId: "an-earlier-fire" }));
+    expect(await stale.json()).toEqual({ outcome: "stale_fire" });
+    expect(await storage.get("pendingFire")).toBeDefined();
+
+    const ok = await coordinator.fetch(routineSignalRequest({ ...completion, tokenId: jti }));
+    expect(await ok.json()).toMatchObject({ outcome: "completion_acknowledged" });
+  });
+
   it("a signal for a routine that doesn't currently own this issue -> mismatched_routine, no watchdog change", async () => {
     vi.stubGlobal("fetch", fakeApiFetch());
     const { ctx, setAlarm, deleteAlarm } = fakeCtx();

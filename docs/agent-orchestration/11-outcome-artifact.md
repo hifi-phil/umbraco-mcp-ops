@@ -142,24 +142,23 @@ session dies mid-call, while a GitHub write either exists or doesn't and
 survives independently of the session. A direct "completion" ping doesn't
 get to skip that just because it's more convenient — so the resolution is:
 
-- **The GitHub comment stays the authoritative write**, unchanged in
-  role. `github/from-github.ts` reading it is still the only path that
-  drives a state transition.
-- **A direct ping is allowed, but only as a non-authoritative fast path**
-  — the same category as the heartbeat (§3.4/§3.6): losing it costs
-  detail (the watchdog waits out its full alarm instead of cancelling
-  early; the dashboard shows "in progress" a little longer), never
-  correctness.
+- **The GitHub comment stays an authoritative write.** `github/from-github.ts`
+  reading it drives a state transition, and it survives independently of the
+  session.
+- **A direct ping is the second carrier** (#392): the Worker applies a valid
+  completion like the comment and whichever arrives second is a logged no-op
+  (below). Either alone is enough, so losing one costs nothing. A heartbeat stays
+  non-authoritative: it only extends the watchdog.
 
 The mechanism is a **`PostToolUse` hook**, not the model calling out
 mid-turn: `plugins/agent-outcomes/hooks/report-completion.sh` fires
 automatically, deterministically, after every tool call in the loop's
 session — the harness runs it, not the model, so there's nothing for the
 loop to remember to do beyond writing the comment as already documented.
-It cheaply greps the tool call's input for the `<!-- agent-outcome:...`
-marker, extracts the JSON, and forwards it to `AGENT_OUTCOMES_ENDPOINT` if
-that env var is set — logs only otherwise, since no such endpoint exists
-yet. Tested against fixture `PostToolUse` events for both the local
+It looks for the `<!-- agent-outcome:...` marker in a call that posts a
+comment on the run's own repo and item (the marker in any other call is text the
+run copied, and a completion is authoritative), extracts the JSON, and forwards
+it to `AGENT_OUTCOMES_ENDPOINT` if that env var is set — logs only otherwise. Tested against fixture `PostToolUse` events for both the local
 (Bash + `gh`) and cloud (GitHub MCP tool) paths, plus a real POST against
 a local stub server — see `plugins/agent-outcomes/hooks/test/run.sh`.
 
@@ -169,12 +168,11 @@ shape validation (`graph/outcomes.ts`) that `github/from-github.ts` uses
 for the comment-based path, so the two transports can't validate against
 two different ideas of what counts as a valid outcome. **This now has a
 real receiving endpoint**: `worker/src/index.ts`'s `POST /routine-signal`
-(bearer-secret guarded via `ROUTINE_SIGNAL_SECRET`, permissive when unset
-— matching `GITHUB_WEBHOOK_SECRET`'s local-dev shape) routes to the
-matching DO, which runs `coordinate/routine-signal.ts`'s `coordinateRoutineSignal` —
-"process" re-schedules the watchdog alarm, "completion" cancels it early;
-neither ever calls `reduce()` or writes a label/close, exactly as this
-section specifies. Covered by unit tests across all three layers
+(a heartbeat takes `ROUTINE_SIGNAL_SECRET` or the fire's own token; a
+completion, blocked or ended takes only the fire's token, and with the secret
+unset only a heartbeat is accepted) routes to the matching DO, which runs
+`coordinate/routine-signal.ts`'s `coordinateRoutineSignal` — "process"
+re-schedules the watchdog alarm; a "completion" is applied as below. Covered by unit tests across all three layers
 (`coordinate/*.test.ts`, `issue-coordinator.test.ts`, `index.test.ts`) —
 see `worker/README.md`. **Still not real:** `AGENT_OUTCOMES_ENDPOINT`
 has never actually been pointed at this Worker's URL, and the hook's

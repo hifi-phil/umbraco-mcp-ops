@@ -52,7 +52,7 @@ import { appBotLogin, appConfigured } from "./github-app";
 import { fireRoutine } from "./routines-client";
 import type { GitHubEnv } from "./github-client";
 import type { RoutinesEnv } from "./routines-client";
-import { mintLogToken } from "./work-log";
+import { mintLogToken, verifyLogToken } from "./work-log";
 import * as logEntries from "./db/log-entries";
 import type { MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 import type { LABELS } from "@orchestrator/graph/constants/labels"; // for the {@link LABELS.…} references in its doc comments
@@ -110,6 +110,7 @@ const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MA
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
 const ENDED_FIRE_KEY = "endedFire"; // the fire a rule last cleared (coordinate/routine-signal.ts)
+const FIRE_JTI_KEY = "fireJti"; // the id of the token the last fire carried (a completion, blocked or ended signal must be from it)
 const APPLIED_OUTCOME_KEY = "appliedOutcome"; // the last outcome applied for a fire (coordinate/outcome-dedupe.ts)
 const CLOSED_KEY = "closedOnGitHub"; // its status row stays gone until reopened
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
@@ -159,7 +160,17 @@ export class IssueCoordinator {
       } catch {
         return new Response("invalid JSON body", { status: 400 });
       }
-      return this.serial(() => respond(() => coordinateRoutineSignal(this.deps(input), input)));
+      return this.serial(() =>
+        respond(async () => {
+          // Only the latest fire's token may write: a late signal from an earlier
+          // run of the same routine must not act on the run that replaced it.
+          if (input.signal?.kind !== "process" && input.tokenId !== undefined) {
+            const current = await this.ctx.storage.get<string>(FIRE_JTI_KEY);
+            if (current !== input.tokenId) return { outcome: "stale_fire" as const };
+          }
+          return coordinateRoutineSignal(this.deps(input), input);
+        }),
+      );
     }
 
     let input: CoordinateInput;
@@ -238,6 +249,10 @@ export class IssueCoordinator {
         const token = secret
           ? await mintLogToken(secret, { owner, repo, item: issueNumber, routine }, 2 * watchdogMinutes(routine))
           : undefined;
+        if (token) {
+          const claims = await verifyLogToken(secret!, token);
+          if (claims) await this.ctx.storage.put(FIRE_JTI_KEY, claims.jti);
+        }
         await fireRoutine(this.env, owner, repo, issueNumber, routine, token);
       },
       workLogFor: (owner: string, repo: string, items: number[]) => logEntries.forItems(this.env.DB, owner, repo, items),

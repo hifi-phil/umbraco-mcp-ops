@@ -3,6 +3,7 @@ import { LABELS } from "@orchestrator/graph/constants/labels";
 import { EVENTS } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { coordinateWatchdogExpired, type PendingFire } from "../../src/coordinate";
+import { blockedKey } from "../../src/coordinate/watchdog";
 import { fakeDeps } from "./helpers";
 
 describe("coordinateWatchdogExpired — the watchdog as a real event", () => {
@@ -136,6 +137,15 @@ describe("coordinateWatchdogExpired — the one retry of a run that never starte
     expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: "watchdog_retried", actor: "watchdog", run: ROUTINES.ISSUE_BUILD_LOOP }));
     expect(deps.addLabel).not.toHaveBeenCalled();
     expect(deps.removeLabel).not.toHaveBeenCalled();
+  });
+
+  it("a run that said it was blocked on a permission is not fired again: it started", async () => {
+    const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]), watchdogRetry: true });
+    await deps.setPendingFire(silent);
+    await deps.markSeenDelivery(blockedKey((await deps.getPendingFire())!));
+    expect(await coordinateWatchdogExpired(deps)).toMatchObject({ outcome: "applied", event: EVENTS.WATCHDOG_EXPIRED });
+    expect(deps.fireRoutine).not.toHaveBeenCalled();
+    expect(deps.commentOnIssue).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, expect.stringContaining("waiting for a permission"));
   });
 
   it(`then a second silent expiry -> ${LABELS.AI_STUCK}, as before`, async () => {

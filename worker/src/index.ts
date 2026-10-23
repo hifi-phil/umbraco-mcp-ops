@@ -235,7 +235,7 @@ async function routeByCommit(env: Env, body: Record<string, unknown>): Promise<R
  * HMAC signature; a bearer instead, since this is a routine calling in
  * directly, not GitHub delivering a signed payload. Two kinds of bearer: the
  * shared ROUTINE_SIGNAL_SECRET, good for a heartbeat only (all it can do is
- * extend or cancel a watchdog), and the fire's own token (work-log.ts's
+ * extend a watchdog), and the fire's own token (work-log.ts's
  * mintLogToken), good for any kind and required for a completion, blocked or
  * ended. The tokens are signed with that same secret, so a routine
  * environment must hold only its token: a session that can read the secret
@@ -258,13 +258,18 @@ async function handleRoutineSignal(request: Request, env: Env): Promise<Response
   } catch {
     return new Response("invalid JSON body", { status: 400 });
   }
+  delete input.tokenId; // the caller can't name its own
   if (!input.owner || !input.repo || !input.signal) {
     return new Response("owner, repo, and signal are required", { status: 400 });
   }
   // Fail closed: a heartbeat takes the shared secret or the fire's own token;
   // every other kind needs the fire's own token.
   if (!(secretOk && input.signal.kind === "process") && env.ROUTINE_SIGNAL_SECRET) {
-    const claims = auth.startsWith("Bearer ") ? await verifyLogToken(env.ROUTINE_SIGNAL_SECRET, auth.slice(7)) : null;
+    // A heartbeat only extends a watchdog, so a long run's token may outlive
+    // its expiry (now = 0 skips the check); any other kind needs it unexpired.
+    const claims = auth.startsWith("Bearer ")
+      ? await verifyLogToken(env.ROUTINE_SIGNAL_SECRET, auth.slice(7), input.signal.kind === "process" ? 0 : undefined)
+      : null;
     const signal = input.signal;
     const scoped =
       claims &&
@@ -273,6 +278,7 @@ async function handleRoutineSignal(request: Request, env: Env): Promise<Response
       claims.item === signal.issue &&
       claims.routine === signal.routine;
     if (!scoped) return new Response("unauthorized", { status: 401 });
+    input = { ...input, tokenId: claims.jti };
   } else if (!env.ROUTINE_SIGNAL_SECRET && input.signal.kind !== "process") {
     return new Response("unauthorized: ROUTINE_SIGNAL_SECRET is not set, so only heartbeats are accepted", { status: 401 });
   }

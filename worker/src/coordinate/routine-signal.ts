@@ -7,11 +7,14 @@ import { type Event } from "@orchestrator/graph/constants/events";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
 import { coordinateWebhook } from "./webhook";
 import { alreadyApplied, logDeduped } from "./outcome-dedupe";
-import { expirePendingFire, recoverOrRetry, type WatchdogResult } from "./watchdog";
+import { blockedKey, expirePendingFire, recoverOrRetry, type WatchdogResult } from "./watchdog";
 
-export type RoutineSignalInput = { owner: string; repo: string; signal: RoutineSignal };
+// tokenId: the id of the fire token the signal came with (index.ts), checked
+// by the DO against the latest fire's; absent for a heartbeat on the shared secret.
+export type RoutineSignalInput = { owner: string; repo: string; signal: RoutineSignal; tokenId?: string };
 
 export type RoutineSignalResult =
+  | { outcome: "stale_fire" } // from an earlier run's token: not this fire's, so not acted on
   | { outcome: "invalid_signal" }
   | { outcome: "no_pending_fire" } // nothing running for this issue right now — a stray/late signal, harmless
   | { outcome: "mismatched_routine"; expected: string; got: string } // a different routine currently owns this issue
@@ -166,18 +169,13 @@ async function applyCompletion(
  * label moves and the watchdog is left as it is: it still decides.
  */
 async function noteBlocked(deps: Deps, pending: PendingFire, detail: string): Promise<RoutineSignalResult> {
-  const key = `routine-blocked:${pending.run}:${pending.firedAt ?? "unknown"}`;
+  const key = blockedKey(pending);
   if (await deps.hasSeenDelivery(key)) return { outcome: "blocked_already_noted" };
-  const { io, mode } = depsFor(deps, "routine_blocked" as Event);
-  await io.commentOnIssue(
-    pending.owner,
-    pending.repo,
-    pending.issueNumber,
-    `⏸️ \`${pending.run}\` is waiting for a permission it can't get unattended: \`${quote(detail)}\`. ` +
-      `Approve it in the session, or add an allow rule. (Automatic, from the orchestrator.)`,
-  );
+  // The record first (it is also what stops a retry of a run that started):
+  // a comment that fails to post must not leave no trace of the block.
   await deps.markSeenDelivery(key);
   await deps.recordStatus(pending, { kind: "step", step: `blocked: ${quote(detail)}`, at: new Date().toISOString() });
+  const { io, mode } = depsFor(deps, "routine_blocked" as Event);
   await deps.logTransition({
     deliveryId: null,
     actor: "routine-signal",
@@ -191,6 +189,17 @@ async function noteBlocked(deps: Deps, pending: PendingFire, detail: string): Pr
     droppedReason: null,
     mode,
   });
+  try {
+    await io.commentOnIssue(
+      pending.owner,
+      pending.repo,
+      pending.issueNumber,
+      `⏸️ \`${pending.run}\` is waiting for a permission it can't get unattended: \`${quote(detail)}\`. ` +
+        `Approve it in the session, or add an allow rule. (Automatic, from the orchestrator.)`,
+    );
+  } catch (e) {
+    console.error("blocked comment failed:", e instanceof Error ? e.message : e);
+  }
   return { outcome: "blocked_noted" };
 }
 
