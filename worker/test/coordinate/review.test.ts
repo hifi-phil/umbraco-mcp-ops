@@ -231,6 +231,17 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
     expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
   });
 
+  it(`a late push to ${LABELS.AI_STUCK} whose label write fails still clears it when redelivered`, async () => {
+    const d = deps([LABELS.AI_STUCK]);
+    await d.setReviewLoop({ botRounds: 1, fixPending: true });
+    d.removeLabel = vi.fn().mockRejectedValueOnce(new Error("boom")).mockResolvedValue(undefined);
+    await expect(coordinateWebhook(d, pushed())).rejects.toThrow("boom");
+    expect(await d.getReviewLoop()).toEqual({ botRounds: 1, fixPending: true });
+    expect(await coordinateWebhook(d, pushed())).toMatchObject({ outcome: "applied", event: EVENTS.REWORK_PUSHED });
+    expect(d.removeLabel).toHaveBeenLastCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
+    expect(await d.getReviewLoop()).toEqual({ botRounds: 1, fixPending: false });
+  });
+
   it(`re-adding ${LABELS.AI_REVIEWING} to a kept ${LABELS.AI_STUCK} PR starts with fresh review counts`, async () => {
     const d = deps([LABELS.AI_STUCK]);
     await d.setReviewLoop({ botRounds: 2, fixPending: false });

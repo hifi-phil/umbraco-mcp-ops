@@ -118,6 +118,10 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
       ? reworkState === LABELS.AUTO_REWORKING || reworkState === LABELS.AI_STUCK
       : event === EVENTS.REWORK_PUSHED || event === EVENTS.UNLABELLED_AUTO_REWORKING;
   let reworkWasPending = false;
+  // From LABELS.AI_STUCK a late push's pending flag is cleared only once the
+  // label is off: if the write throws, the redelivery must still find it set.
+  let clearAfterApply: (() => Promise<void>) | null = null;
+  const lateFromStuck = event === EVENTS.REWORK_PUSHED && reworkState === LABELS.AI_STUCK;
   if (reworkEnded) {
     const ciFix = await deps.getCiFix();
     const reviewLoop = ciFix?.pending ? null : await deps.getReviewLoop();
@@ -130,12 +134,16 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
       if (event === EVENTS.REWORK_PUSHED && deriveState(currentLabels) === LABELS.AUTO_REWORKING) {
         event = ciFix.returnTo === LABELS.AI_REVIEWING ? EVENTS.REVIEW_FIX_PUSHED : EVENTS.CI_FIX_PUSHED;
       }
-      await deps.setCiFix({ ...ciFix, pending: false });
+      const clear = () => deps.setCiFix({ ...ciFix, pending: false });
+      if (lateFromStuck) clearAfterApply = clear;
+      else await clear();
     } else if (reviewLoop?.fixPending) {
       // Only while the PR is still in rework: after the watchdog moved it to
       // LABELS.AI_STUCK a late push has no REVIEW_FIX_PUSHED rule to land on.
       if (event === EVENTS.REWORK_PUSHED && deriveState(currentLabels) === LABELS.AUTO_REWORKING) event = EVENTS.REVIEW_FIX_PUSHED;
-      await deps.setReviewLoop({ ...reviewLoop, fixPending: false });
+      const clear = () => deps.setReviewLoop({ ...reviewLoop, fixPending: false });
+      if (lateFromStuck) clearAfterApply = clear;
+      else await clear();
     }
   }
 
@@ -347,6 +355,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   }
 
   const result = await applyEvent(deps, input, event, currentLabels);
+  if (clearAfterApply && result.outcome === "applied") await clearAfterApply();
   if (restartReview && result.outcome === "applied") {
     try {
       await depsFor(deps, EVENTS.LABELLED_AUTO_REWORKING).io.commentOnIssue(
