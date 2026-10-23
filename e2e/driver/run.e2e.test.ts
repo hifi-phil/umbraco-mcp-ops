@@ -190,11 +190,14 @@ describe("audit: every answer the orchestrator gave during the run", () => {
           (d) => d.event === "issues" && d.action === "labeled" && d.numbers.includes(runLog.redeliverIssue!) && d.response.includes('"applied"'),
         );
         expect(original, `#${runLog.redeliverIssue}'s applied label delivery`).toBeTruthy();
+        // GitHub's delivery list lags by minutes (#358): look from just before
+        // the redelivery was sent, for up to 2 minutes.
+        const sentAt = new Date(Date.now() - 5_000).toISOString().replace(/\.\d+Z$/, "Z");
         await redeliver(hook, original!.id);
         let answer: string | undefined;
-        for (let i = 0; i < 10 && !answer; i++) {
-          await sleep(3000);
-          const recent = await deliveriesSince(hook, new Date(Date.now() - 60_000).toISOString().replace(/\.\d+Z$/, "Z"));
+        for (let i = 0; i < 24 && !answer; i++) {
+          await sleep(5000);
+          const recent = await deliveriesSince(hook, sentAt);
           const again = recent.find((d) => d.redelivery && d.event === "issues" && d.guid === original!.guid);
           if (again) answer = (await deliveryDetail(hook, again.id)).response;
         }
