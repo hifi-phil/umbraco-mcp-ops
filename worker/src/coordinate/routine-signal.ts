@@ -106,7 +106,9 @@ async function applyOutcome(
   pending: PendingFire,
   update: Extract<RoutineUpdate, { kind: "outcome" }>,
 ): Promise<RoutineSignalResult> {
-  const body = `<!-- agent-outcome:${pending.run} -->\n\`\`\`json\n${JSON.stringify(update.outcome)}\n\`\`\``;
+  // translate() reads the comment up to the first closing fence, so a backtick in a free-text field must not reach it raw; JSON.parse restores it.
+  const json = JSON.stringify(update.outcome).replace(/`/g, "\\u0060");
+  const body = `<!-- agent-outcome:${pending.run} -->\n\`\`\`json\n${json}\n\`\`\``;
   const result = await coordinateWebhook(deps, {
     deliveryId: `routine-signal:${pending.run}:${pending.firedAt ?? "unknown"}:${update.outcome.outcome}`,
     owner: pending.owner,

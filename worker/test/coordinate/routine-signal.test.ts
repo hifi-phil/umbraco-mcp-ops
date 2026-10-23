@@ -244,6 +244,15 @@ describe("coordinateRoutineSignal — outcome, blocked and ended", () => {
     expect(deps.addLabel).not.toHaveBeenCalled();
   });
 
+  it("an outcome whose reason holds three backticks is still applied", async () => {
+    const deps = liveDeps([LABELS.AI_READY]);
+    await deps.setPendingFire(pending);
+
+    const result = await coordinateRoutineSignal(deps, signalInput(outcomeSignal({ outcome: "build_blocked", reason: "tests failed:\n```\nboom\n```" })));
+
+    expect(result).toMatchObject({ outcome: "outcome_reported", result: { outcome: "applied", event: EVENTS.BUILD_BLOCKED } });
+  });
+
   it("the comment first, then the outcome -> deduped, logged, nothing applied twice", async () => {
     const deps = liveDeps([LABELS.AI_READY]);
     await deps.setPendingFire(pending);
