@@ -4,7 +4,7 @@ description: >-
   Label-triggered loop that acts on PR review feedback. When a reviewer has left comments
   and labels the loop-authored PR `auto-reworking`, it reads the feedback, makes the changes,
   runs a local test gate and an independent code review, pushes, replies to the threads,
-  and reports `rework_no_change` when there is nothing to push — then stops. It does NOT
+  and reports `rework_no_change` when there is nothing to push (except when there is no `review-loop` review to act on) — then stops. It does NOT
   poll/wait for the full CI suite (merge-flow won't merge until CI passes, so CI is
   enforced there) and it never merges.
   Requires the github-ops and agent-outcomes skills. Trigger: a PR labelled `auto-reworking`
@@ -103,7 +103,7 @@ Worker already sees, so `rework_pushed` is deliberately not reported.
 If you pushed nothing because there was no actionable feedback, Step 1 already posted
 `rework_no_change`. A round that pushed nothing because every item was answered on its thread
 (or a failing check needed no change) also posts `rework_no_change` with a one-line reason; the
-no-review case is the only non-pushing round that posts no outcome, so the label stays and a person sees the PR.
+Review round with no `review-loop` review to act on (Step 1) is the only non-pushing round that posts no outcome, so the label stays and a person sees the PR.
 **Do not merge.**
 
 ## Running as a routine

@@ -22,8 +22,7 @@ at the end).
 > ```
 >
 > **Definition of done (all must hold before you return):**
-> you work in the session's checkout (`cloud-mode.md` replaces steps 1 & 4: no worktree;
-> boot Umbraco via `worker-env`); the change is implemented
+> you work in the session's checkout (`cloud-mode.md` replaces step 4; no worktree); the change is implemented
 > following established MCP patterns; the local test gate passes — **the repo's own
 > tests, scaled to your diff**, `npm run test:changed`;
 > the branch is pushed; and a PR is open against the base branch. Reporting the
@@ -34,7 +33,7 @@ at the end).
 
 ### 1. Work in the checkout
 
-Work directly in the session's checkout and boot Umbraco per `worker-env` (see
+Work directly in the session's checkout (see
 `cloud-mode.md`); there is no worktree. **Re-dispatched fix, not a fresh issue?** Go
 straight to fixing the specific thing you were sent to fix (an `mcp-review` finding), then
 repeat steps 4 and 6 (re-test locally, re-push) and return per step 7.

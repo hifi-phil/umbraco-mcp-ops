@@ -6,8 +6,8 @@ description: >-
   When an issue titled `release <version>` is labelled `auto-releasing`, this cuts the
   release branch, bumps version files + changelog, opens the PR to main, drives CI green,
   runs the review (a BLOCK finding stops it), then reports `release_approved` (or
-  `release_blocked`) and stops. Merging, tagging and the release note are the
-  orchestrator's and `release-publish`'s. For gitflow repos. Requires the github-ops and
+  `release_blocked`) and stops. Merging is the orchestrator's, tagging is the
+  repo's own workflow's, and the release note is `release-publish`'s. For gitflow repos. Requires the github-ops and
   agent-outcomes skills. Trigger: an issue labelled `auto-releasing`.
 ---
 
@@ -19,7 +19,7 @@ and applied the **`auto-releasing`** label, and (2) **CI on the release PR is gr
 That's it — no approval pause — by design, for fast beta/pre-release cycles.
 
 > **Publishing is irreversible.** Once CI is green and the review passes, the orchestrator
-> merges and publishes with no further human look, and a published package version can't be cleanly un-published (you'd ship a
+> merges and the repo's workflow publishes with no further human look, and a published package version can't be cleanly un-published (you'd ship a
 > follow-up). Use this only where **CI-green is a sufficient gate** — the deliberate
 > `auto-releasing` label is the one human decision.
 
