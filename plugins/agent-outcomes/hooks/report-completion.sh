@@ -157,7 +157,10 @@ if [ -n "$CTX" ] && [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ]; then
         and ($o == ($owner | ascii_downcase)) and ($r == ($repo | ascii_downcase))
         and (($t | test("update_issue_comment|add_reply_to|add_comment_to_pending")) or $n == $num)
       ) as $mcp
-    | (($t == "Bash") and (($i.command // "") | test("gh +(issue|pr) +(comment|review) +" + $num + "( |$)"))) as $cli
+    | (($i.command // "") as $c
+       | ($c | [scan("(?:--repo|-R)[ =]+([^ ]+)")] | map(.[0] | ascii_downcase)) as $repos
+       | ($t == "Bash") and ($c | test("gh +(issue|pr) +(comment|review) +" + $num + "( |$)"))
+         and ($repos | all(. == (($owner + "/" + $repo) | ascii_downcase)))) as $cli
     | if ($mcp or $cli) then
         [$i | .. | strings | select(test("<!-- agent-outcome:"))] | first // empty
       else empty end

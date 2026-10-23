@@ -584,23 +584,23 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: `real hook: an outcome comment's completion signal is applied (${LABELS.AI_BLOCKED}), no watchdog expiry`,
+    name: "real hook: a completion carrying another fire's token is refused, so the watchdog still decides",
     timeoutMs: STUCK_WAIT + MIN,
     run: () =>
       scoped(async (t) => {
-        const issue = t.n(await openIssue("Hook completion", "The real hook signals completion; nothing else reports.", "silent"));
+        // The driver can't read the Worker's fire token, so the hook runs with
+        // one of its own: well formed and scoped, but not the latest fire's.
+        const issue = t.n(await openIssue("Hook completion", "The real hook signals completion with a token that isn't this fire's.", "silent"));
         await addLabel(issue, LABELS.AI_READY);
         await sleep(10_000);
+        const [owner, repo] = REPO.split("/");
         const log = await runHook("issue-build-loop", issue, {
           tool_name: "mcp__github__add_issue_comment",
-          tool_input: { body: outcomeComment("issue-build-loop", { outcome: "build_blocked", reason: "e2e: hook completion" }) },
+          tool_input: { owner, repo, issue_number: issue, body: outcomeComment("issue-build-loop", { outcome: "build_blocked", reason: "e2e: hook completion" }) },
         });
         expect(log, "the hook sent its completion").toContain("sent completion");
-        await sleep((WATCHDOG_MINUTES + 1) * MIN);
-        const s = await snapshot(issue);
-        // Only the hook ran: no comment was posted, so the signal applied it.
-        expectLabels(s, issue, LABELS.AI_BLOCKED);
-        expect(hasComment(s, "hasn't reported back"), "no watchdog comment").toBe(false);
+        const s = await waitFor(issue, labelsAre(LABELS.AI_STUCK), STUCK_WAIT);
+        expectLabels(s, issue, LABELS.AI_STUCK);
       }),
   },
   {

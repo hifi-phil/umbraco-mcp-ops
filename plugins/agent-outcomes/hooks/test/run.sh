@@ -171,6 +171,8 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   signal copied_marker "$(with_transcript "$COPIED" "$TRANSCRIPT")" "$WORK/s6b"
   signal other_item "$(with_transcript "$OTHER_ITEM" "$TRANSCRIPT")" "$WORK/s6b"
   signal other_repo "$(with_transcript "$OTHER_REPO" "$TRANSCRIPT")" "$WORK/s6b"
+  OTHER_GH="$(jq -n --arg body "$SUCCEEDED_COMMENT" '{hook_event_name:"PostToolUse", tool_name:"Bash", tool_input:{command: ("gh issue comment 412 --repo other/repo --body " + ($body | @sh))}}')"
+  signal other_gh_repo "$(with_transcript "$OTHER_GH" "$TRANSCRIPT")" "$WORK/s6b"
   if ! grep -q '"kind":"completion"' "$SERVER_LOG" 2>/dev/null; then echo "PASS [marker_off_item_not_a_completion]"; pass=$((pass+1)); else echo "FAIL [marker_off_item_not_a_completion]"; fail=$((fail+1)); fi
 
   # 7. Any other call -> a heartbeat naming the step (tool + its own description)
