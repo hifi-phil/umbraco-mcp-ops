@@ -20,7 +20,7 @@ verbs='\b(add|adds|added|adding|remove|removes|removed|removing|swap|swaps|swapp
 root="${root#./}"
 
 hits="$(
-  grep -rnIEi \
+  grep -RnaEi \
     -e '--add-label|--remove-label|add_label|remove_label' \
     -e 'issue_write.*labels|labels.*issue_write' \
     -e "gh (issue|pr) (create|edit).*(--label|-l)[ =]+[\"'\`]?(${lanes})" \
