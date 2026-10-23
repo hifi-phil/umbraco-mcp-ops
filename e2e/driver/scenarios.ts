@@ -142,7 +142,7 @@ export const scenarios: Scenario[] = [
   // --- The lane --------------------------------------------------------------
   {
     name: `full lane: build -> PR -> ${LABELS.AUTO_MERGING} -> merged (issue ${LABELS.READY_FOR_RELEASE}), then release -> published (issue closed)`,
-    timeoutMs: 8 * MIN,
+    timeoutMs: 8 * MIN + CI_WAIT,
     run: () =>
       scoped(async (t) => {
         const issue = t.n(await openIssue("Add a build note", "Add a file under builds/ for this issue.", "success"));
@@ -158,6 +158,17 @@ export const scenarios: Scenario[] = [
           attempt: 1,
           running: 0,
         });
+
+        // The orchestrator hands the build's PR its review: the stub only reports
+        // build_succeeded, so the label (and the review it starts once CI is
+        // green) comes from the Worker. A person's approval follows the pass.
+        const reviewed = await waitFor(pr, (s) => labelsAre(LABELS.READY_FOR_REVIEW)(s) && hasMarker(s, "review-loop", "review_passed"), CI_WAIT);
+        expectLabels(reviewed, pr, LABELS.READY_FOR_REVIEW);
+        await expectLogged(
+          pr,
+          { event: "review_ci_passed", run: "review-loop" },
+          { event: "review_passed", effect: LABELS.READY_FOR_REVIEW },
+        );
 
         // The PR merges, and its "Closes #N" moves the issue on.
         await addLabel(pr, LABELS.AUTO_MERGING);
@@ -495,7 +506,7 @@ export const scenarios: Scenario[] = [
         // A run that never reported a step got one more fire before it was stuck.
         expect(hasComment(stuck, "Firing it once more"), `#${issue} retry comment`).toBe(true);
         await expectLogged(issue, { event: "watchdog_retried" }, { event: "watchdog_expired", effect: LABELS.AI_STUCK });
-        await lateOutcome(issue, "issue-build-loop", { outcome: "build_succeeded", pr: 1 });
+        await lateOutcome(issue, "issue-build-loop", { outcome: "build_succeeded", pr: issue });
         expectLabels(await waitFor(issue, labelsAre(LABELS.PR_OPEN), MIN), issue, LABELS.PR_OPEN);
       }),
   },

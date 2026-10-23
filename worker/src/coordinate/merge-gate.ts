@@ -4,7 +4,7 @@
 
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { failedCheckNames, type MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
-import { EVENTS } from "@orchestrator/graph/constants/events";
+import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
 import { depsFor, type Acting, type CoordinateResult, type Deps, type IssueRef } from "./types";
 import { applyEvent } from "./apply";
 
@@ -59,17 +59,19 @@ export async function settledGateFacts(deps: Deps, input: IssueRef): Promise<Mer
 export const MERGEABLE_RETRIES = 2;
 export const MERGEABLE_RETRY_MS = 1000;
 
-/** {@link LABELS.AUTO_MERGING} -> {@link LABELS.MERGE_BLOCKED} (the table's MERGE_GATE_FAILED_HARD rule),
- * plus a comment saying why, since the label alone doesn't. */
+/** {@link LABELS.AUTO_MERGING} -> {@link LABELS.MERGE_BLOCKED} (the table's MERGE_GATE_FAILED_HARD rule,
+ * or MERGE_BLOCKED's when merge-flow reported the block itself), plus a
+ * comment saying why, since the label alone doesn't. */
 export async function blockMerge(
   deps: Deps,
   input: IssueRef & Acting,
   currentLabels: string[],
   reason: string,
+  event: Event = EVENTS.MERGE_GATE_FAILED_HARD,
 ): Promise<CoordinateResult> {
-  const result = await applyEvent(deps, input, EVENTS.MERGE_GATE_FAILED_HARD, currentLabels);
+  const result = await applyEvent(deps, input, event, currentLabels);
   if (result.outcome === "applied") {
-    await depsFor(deps, EVENTS.MERGE_GATE_FAILED_HARD).io.commentOnIssue(
+    await depsFor(deps, event).io.commentOnIssue(
       input.owner,
       input.repo,
       input.issueNumber,

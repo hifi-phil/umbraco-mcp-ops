@@ -368,6 +368,35 @@ export const rules: Rule[] = [
     verifiedBy: "deterministic", // the Worker's own count
   },
 
+  // --- outcomes that replace a session's last label write ---
+  // The Worker applies what a session used to write itself. Each is a
+  // pre-removal rule: the label is still on when the outcome arrives. From
+  // any other state it's dropped and logged (no rule), never guessed at.
+  {
+    from: LABELS.AUTO_REWORKING,
+    on: EVENTS.REWORK_NO_CHANGE,
+    to: unlabel, // as UNLABELLED_AUTO_REWORKING's, but the label still has to come off
+    verifiedBy: "external-judgment", // rework-loop's own reading that nothing needed pushing
+  },
+  {
+    from: LABELS.AI_STUCK,
+    on: EVENTS.REWORK_NO_CHANGE,
+    to: unlabel, // a late report: labelOps removes LABELS.AI_STUCK, as for REWORK_PUSHED
+    verifiedBy: "external-judgment",
+  },
+  {
+    from: LABELS.AUTO_MERGING,
+    on: EVENTS.MERGE_BLOCKED,
+    to: label(LABELS.MERGE_BLOCKED),
+    verifiedBy: "external-judgment", // merge-flow found a block the gate missed
+  },
+  {
+    from: LABELS.AI_DISCUSSING,
+    on: EVENTS.DISCUSSION_CAPPED,
+    to: unlabel,
+    verifiedBy: "external-judgment", // issue-discuss-loop's own round cap
+  },
+
   // --- the issue's stages after its PR ---
   // A PR whose description closes this issue merged into dev (coordinate/
   // hands the event over, with the merge commit): the issue waits for a

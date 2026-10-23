@@ -235,6 +235,25 @@ describe("translate — the review", () => {
   });
 });
 
+describe("translate — outcomes that replace a session's label write", () => {
+  it("rework_no_change, merge_blocked and discussion_capped", () => {
+    const cases = [
+      [ROUTINES.REWORK_LOOP, { outcome: "rework_no_change", reason: "nothing to push" }, EVENTS.REWORK_NO_CHANGE],
+      [ROUTINES.MERGE_FLOW, { outcome: "merge_blocked", reason: "needs a code owner" }, EVENTS.MERGE_BLOCKED],
+      [ROUTINES.ISSUE_DISCUSS_LOOP, { outcome: "discussion_capped" }, EVENTS.DISCUSSION_CAPPED],
+    ] as const;
+    for (const [routine, json, event] of cases) {
+      const body = outcomeComment(routine, json);
+      expect(translate(payload({ action: "issue_comment.created", comment: { body } })), json.outcome).toBe(event);
+    }
+  });
+
+  it(`a build's PR handed its review reads as ${LABELS.AI_REVIEWING} added, only with the request`, () => {
+    expect(translate(payload({ action: "orchestrator.review_requested", reviewRequest: { requestedBy: 364 } }))).toBe(EVENTS.LABELLED_AI_REVIEWING);
+    expect(translate(payload({ action: "orchestrator.review_requested" }))).toBeNull();
+  });
+});
+
 describe("translate — the release split", () => {
   it("a release_approved outcome -> release_approved", () => {
     const body = outcomeComment(ROUTINES.AUTO_RELEASE_LOOP, { outcome: "release_approved", pr: 220, sha: "abc", version: "2.1.0", merge_method: "merge" });

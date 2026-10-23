@@ -84,7 +84,7 @@ adds a trailer, it doesn't change what "done" means.
 
 | Routine | Outcome | Shape | Reported from |
 |---|---|---|---|
-| `issue-build-loop` | `build_succeeded` | `{"outcome":"build_succeeded","pr":<PR number>}` | Step 3, once `mcp-review` is clean and `ai-reviewing` is on the PR |
+| `issue-build-loop` | `build_succeeded` | `{"outcome":"build_succeeded","pr":<PR number>}` | Step 3, once `mcp-review` is clean; in orchestrated mode the orchestrator adds `ai-reviewing` to `pr` |
 | `issue-build-loop` | `build_blocked` | `{"outcome":"build_blocked","reason":"<one line>"}` | Step 3, when the issue is recorded as blocked |
 | `auto-release-loop` | `release_blocked` | `{"outcome":"release_blocked","reason":"<one line>"}` | Step 2.5 on a BLOCK verdict from `release-reviewer`, or Step 1 when a re-run stops (`<dev>` commits missing, unreviewed commits on the branch, only one of branch/PR exists, or the PR doesn't qualify) |
 | `auto-release-loop` | `release_published` | `{"outcome":"release_published","version":"<version>"}` | Step 4, after publish + dev sync, on the close-out comment |
@@ -93,6 +93,9 @@ adds a trailer, it doesn't change what "done" means.
 | `review-loop` | `review_passed` | `{"outcome":"review_passed"}` | Its verdict comment on the PR (Step 4), when nothing survives the review |
 | `review-loop` | `review_findings` | `{"outcome":"review_findings","findings":<count>}` | Its verdict comment on the PR (Step 4), after the PR review with one inline comment per finding; `findings` is how many |
 | `review-loop` | `review_blocked` | `{"outcome":"review_blocked","reason":"<one line>"}` | Its verdict comment on the PR (Step 4), after a PR review saying why the approach is wrong, or that the reviewers couldn't be spawned |
+| `rework-loop` | `rework_no_change` | `{"outcome":"rework_no_change","reason":"<one line>"}` | Its closing comment on the PR when there is nothing to push; the orchestrator takes `auto-reworking` off |
+| `merge-flow` | `merge_blocked` | `{"outcome":"merge_blocked","reason":"<one line>"}` | Its comment on the PR on a hard block the orchestrator's gate missed; the orchestrator swaps `auto-merging` for `merge-blocked` and comments the reason |
+| `issue-discuss-loop` | `discussion_capped` | `{"outcome":"discussion_capped"}` | Its comment on the issue at the round cap; the orchestrator takes `ai-discussing` off |
 
 That's the full catalog. Two events in the reducer's vocabulary are
 **deliberately not here**, on purpose rather than by omission:
