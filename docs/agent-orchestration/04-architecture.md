@@ -67,25 +67,50 @@ moves the issue to `ai-stuck` and comments the last step it reported.
 flowchart TD
     A[ai-ready] --> B[pr-open]
     A --> C[ai-blocked]
+    B -- "PR merged" --> RFR[ready-for-release]
+    RFR --> REL2((released))
+    V[ai-reviewing] -- "review passed" --> RFV[ready-for-review]
+    V -- "findings / CI red" --> RW
+    V -- "approach wrong" --> C
+    RFV -- "person approves" --> M
+    RFV -- "person asks changes" --> RW
     M[auto-merging] --> MD((merged))
     M --> MB[merge-blocked]
     M -- "CI red" --> RW[auto-reworking]
     RW -- "fix pushed" --> M
+    RW -- "fix pushed, reviewing" --> V
     REL[auto-releasing] --> P((published))
+    D[ai-discussing]
     S[ai-stuck]
 ```
 
-- **Issues:** `ai-ready` builds. The outcome is `pr-open` (a PR)
-  or `ai-blocked`.
+- **Issues:** `ai-ready` builds. The outcome is `pr-open` (a PR) or
+  `ai-blocked`. Once the PR merges, the issue moves to `ready-for-release`
+  and waits; the release whose tag contains that merge closes it.
+- **Discussion:** `ai-discussing` runs issue-discuss-loop while a human and
+  the agent go back and forth; it comes off only when a human swaps it for
+  something else (`ai-ready` to build, or it's dropped after a capped
+  number of rounds).
+- **The review (on the PR):** `ai-reviewing` is added by the build (or a
+  person) once the PR opens. It waits for green CI, then runs the
+  adversarial review. Findings or red CI send it to `auto-reworking`; a
+  passed review moves to `ready-for-review`, parked for a person to approve
+  the merge (`auto-merging`), ask for changes (`auto-reworking`), or re-run
+  the review. "The approach is wrong" goes straight to `ai-blocked`.
 - **PRs:**
   - `auto-merging` merges once CI is green.
   - A conflict or requested changes → `merge-blocked`, for a human.
-  - Red CI → `auto-reworking` to fix it, then back to `auto-merging`. After three
-    tries it goes to `merge-blocked`.
-- **Releases:** `auto-releasing` prepares and reviews; the Worker merges; `release-publish`
-  posts the note and syncs `dev`; the Worker closes the issue.
-- **`ai-stuck`:** any of the above when a run dies. Re-adding the trigger
-  label retries it.
+  - Red CI → `auto-reworking` to fix it, then back to `auto-merging` (or
+    `ai-reviewing`, if the fix was for the review). After three tries at
+    either CI-fix cycle, or three review-rework rounds, it goes to
+    `ai-stuck` instead of looping forever.
+- **Releases:** `auto-releasing` prepares and reviews; once the Worker
+  merges it, `release-publish` (a routine, not a label — the issue stays
+  labelled `auto-releasing`) posts the note and syncs `dev`; the Worker
+  then closes the issue.
+- **`ai-stuck`:** reached when a fired run goes quiet past its timeout
+  (the watchdog), or a CI-fix / review-rework cycle hits its cap. Re-adding
+  the relevant trigger label retries it with a fresh count.
 
 ## The code
 
