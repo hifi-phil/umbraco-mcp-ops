@@ -345,6 +345,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     if (passed.outcome === "applied") {
       await deps.setReviewLoop(null);
       await deps.setCiFix(null);
+      await deps.setReworkExpired(false);
     }
     return passed;
   }
@@ -394,6 +395,7 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
 async function capReviewRework(deps: Deps, input: CoordinateInput, currentLabels: string[], rounds: number): Promise<CoordinateResult> {
   const result = await applyEvent(deps, input, EVENTS.REWORK_CAP_REACHED, currentLabels);
   if (result.outcome === "applied") {
+    await deps.setReworkExpired(false);
     await depsFor(deps, EVENTS.REWORK_CAP_REACHED).io.commentOnIssue(
       input.owner,
       input.repo,

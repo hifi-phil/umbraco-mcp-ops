@@ -81,6 +81,7 @@ export async function reviewFindings(deps: Deps, input: IssueRef & Acting, curre
 async function capReview(deps: Deps, input: IssueRef & Acting, currentLabels: string[], why: string): Promise<CoordinateResult> {
   const result = await applyEvent(deps, input, EVENTS.REWORK_CAP_REACHED, currentLabels);
   if (result.outcome === "applied") {
+    await deps.setReworkExpired(false);
     await depsFor(deps, EVENTS.REWORK_CAP_REACHED).io.commentOnIssue(
       input.owner,
       input.repo,

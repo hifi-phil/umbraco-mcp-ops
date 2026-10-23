@@ -308,6 +308,58 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
       await coordinateWebhook(d, labelled(LABELS.AI_REVIEWING));
       expect(await d.getReworkExpired()).toBe(false);
     });
+
+    it.each([LABELS.AUTO_REWORKING, LABELS.AUTO_MERGING])(`leaving ${LABELS.AI_STUCK} by re-adding %s drops the expiry`, async (label) => {
+      const d = deps([]);
+      await expireRework(d);
+      d.getLabels = vi.fn(async () => [LABELS.AI_STUCK, label]);
+      await coordinateWebhook(d, labelled(label));
+      expect(await d.getReworkExpired()).toBe(false);
+    });
+
+    it(`leaving ${LABELS.AI_STUCK} on a review_passed verdict drops the expiry`, async () => {
+      const d = deps([]);
+      await expireRework(d);
+      await coordinateWebhook(d, verdict({ outcome: "review_passed" }));
+      expect(await d.getReworkExpired()).toBe(false);
+    });
+
+    it(`a later entry into ${LABELS.AI_STUCK} by the review cap resets the expiry, so a person's push keeps it`, async () => {
+      const d = deps([]);
+      await expireRework(d);
+      d.getLabels = vi.fn(async () => [LABELS.AI_REVIEWING]);
+      await d.setReviewLoop({ botRounds: MAX_BOT_REVIEW_REWORKS, fixPending: false });
+      await coordinateWebhook(d, verdict({ outcome: "review_findings", findings: 1 }));
+      expect(await d.getReworkExpired()).toBe(false);
+      d.getLabels = vi.fn(async () => [LABELS.AI_STUCK]);
+      expect(await coordinateWebhook(d, pushed("d-person-push"))).toMatchObject({ outcome: "dropped_no_rule", from: LABELS.AI_STUCK });
+      expect(d.removeLabel).not.toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
+    });
+
+    it("a later expiry of another run resets the expiry", async () => {
+      const d = deps([]);
+      await expireRework(d);
+      d.getLabels = vi.fn(async () => [LABELS.AI_REVIEWING]);
+      await d.setPendingFire({ owner: OWNER, repo: REPO, issueNumber: PR, run: ROUTINES.REVIEW_LOOP, retried: true });
+      await coordinateWatchdogExpired(d);
+      expect(await d.getReworkExpired()).toBe(false);
+    });
+
+    it("a shadow or refused expiry takes the expiry back", async () => {
+      const d = deps([LABELS.AUTO_REWORKING]);
+      d.enforced = (e) => e !== EVENTS.WATCHDOG_EXPIRED;
+      await d.setPendingFire({ owner: OWNER, repo: REPO, issueNumber: PR, run: ROUTINES.REWORK_LOOP, retried: true });
+      await coordinateWatchdogExpired(d);
+      expect(await d.getReworkExpired()).toBe(false);
+    });
+
+    it("the expiry is recorded before the label write, so a failed write keeps it for the retry", async () => {
+      const d = deps([LABELS.AUTO_REWORKING]);
+      d.addLabel = vi.fn().mockRejectedValueOnce(new Error("boom")).mockResolvedValue(undefined);
+      await d.setPendingFire({ owner: OWNER, repo: REPO, issueNumber: PR, run: ROUTINES.REWORK_LOOP, retried: true });
+      await expect(coordinateWatchdogExpired(d)).rejects.toThrow("boom");
+      expect(await d.getReworkExpired()).toBe(true);
+    });
   });
 
   it(`re-adding ${LABELS.AI_REVIEWING} to a kept ${LABELS.AI_STUCK} PR starts with fresh review counts`, async () => {

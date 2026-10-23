@@ -117,7 +117,11 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   // the next run, which a shadow watchdog must not do.
   if (deps.enforced(EVENTS.WATCHDOG_EXPIRED)) {
     const recovered = await recoverOutcome(deps, pending);
-    if (recovered) return recovered;
+    if (recovered) {
+      // An earlier attempt may have recorded the expiry before its label write failed.
+      await deps.setReworkExpired(false);
+      return recovered;
+    }
   }
 
   // Once, a run that never reported a single step is fired again instead of
@@ -157,9 +161,11 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   // A rework started straight from a label has no CI-fix or review state to
   // say its push is still wanted, so the expiry itself is recorded. Before the
   // label write, so a retry after a failure in between still finds it; a
-  // shadow or refused expiry moves no label and so takes it back.
-  const recordExpiry = pending.run === ROUTINES.REWORK_LOOP && deps.enforced(EVENTS.WATCHDOG_EXPIRED);
-  if (recordExpiry) await deps.setReworkExpired(true);
+  // shadow or refused expiry moves no label and so takes it back. Every
+  // enforced expiry writes it, so it is only true if the latest entry into
+  // LABELS.AI_STUCK was a rework expiry.
+  const recordExpiry = deps.enforced(EVENTS.WATCHDOG_EXPIRED);
+  if (recordExpiry) await deps.setReworkExpired(pending.run === ROUTINES.REWORK_LOOP);
   const result = await applyEvent(deps, { ...pending, actor: "watchdog" }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
   if (recordExpiry && result.outcome !== "applied") await deps.setReworkExpired(false);
   await deps.clearPendingFire();
