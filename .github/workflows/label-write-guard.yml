@@ -1,0 +1,21 @@
+name: label write guard
+
+# Plugins must not tell a session to add, remove or swap a lane label; the Worker applies
+# every label. scripts/label-write-guard/allowlist.txt names lines that only mention labels.
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/**'
+      - 'scripts/label-write-guard/**'
+      - '.github/workflows/label-write-guard.yml'
+
+jobs:
+  label-write-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard self-test
+        run: scripts/label-write-guard/test.sh
+      - name: No label writes under plugins/
+        run: scripts/label-write-guard/check.sh plugins
