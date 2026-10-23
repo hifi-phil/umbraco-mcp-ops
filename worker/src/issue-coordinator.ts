@@ -5,8 +5,9 @@
 // tested); this class only wires that logic to real ctx.storage, D1, and
 // the GitHub/routines API clients. Two request shapes reach fetch(): the
 // default path is a GitHub webhook (coordinateWebhook, authoritative);
-// POST .../routine-signal is the direct routine-to-DO heartbeat channel
-// (coordinateRoutineSignal, never authoritative — see
+// POST .../routine-signal is the direct routine-to-DO channel
+// (coordinateRoutineSignal: heartbeats and completions are timing only; an
+// explicit outcome is applied, as its comment would be — see
 // graph/routines/from-routine.ts and coordinate/routine-signal.ts's doc comment on it).
 //
 // This class's own wiring is covered by test/issue-coordinator.test.ts —
@@ -29,6 +30,7 @@ import {
   watchdogOverrideFor,
   capsFor,
   DEFAULT_CAPS,
+  type AppliedOutcome,
   type CiFix,
   type CoordinateInput,
   type Deps,
@@ -106,6 +108,7 @@ const REWORK_EXPIRED_KEY = "reworkExpired"; // the watchdog gave up on a rework-
 const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MAX_BOT_REVIEW_REWORKS)
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
+const APPLIED_OUTCOME_KEY = "appliedOutcome"; // per routine ("appliedOutcome:<run>"): the last outcome applied for its fire (outcome-dedupe.ts)
 const CLOSED_KEY = "closedOnGitHub"; // its status row stays gone until reopened
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
 
@@ -199,6 +202,11 @@ export class IssueCoordinator {
       completedAt: async () => {
         const at = await this.ctx.storage.get<unknown>(COMPLETED_KEY);
         return typeof at === "string" ? at : null;
+      },
+      getAppliedOutcome: async (run: string) => (await this.ctx.storage.get<AppliedOutcome>(`${APPLIED_OUTCOME_KEY}:${run}`)) ?? null,
+      setAppliedOutcome: async (run: string, applied: AppliedOutcome | null) => {
+        if (applied) await this.ctx.storage.put(`${APPLIED_OUTCOME_KEY}:${run}`, applied);
+        else await this.ctx.storage.delete(`${APPLIED_OUTCOME_KEY}:${run}`);
       },
       getReconcileReported: async () => (await this.ctx.storage.get<string>(RECONCILE_REPORTED_KEY)) ?? null,
       setReconcileReported: async (lastActivity: string) => {

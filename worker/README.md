@@ -427,9 +427,21 @@ from `github/from-github.ts` reading the actual GitHub comment, later.
 Losing a call here costs a slightly-late watchdog comment or a
 duplicate-but-harmless cancel a moment later, never a wrong state.
 
+Three more kinds act on the item. `"outcome"` is the run's explicit report
+(never inferred from tool-call text): validated by `graph/outcomes.ts` for
+the pending fire's routine, then applied as its outcome comment would be
+(`coordinateWebhook`, `actor: "routine-signal"`); no pending fire or another
+routine's is refused and logged. Whichever of the signal and the comment's
+webhook comes second is a logged `deduped` no-op
+(`coordinate/outcome-dedupe.ts`, keyed on the fire's `firedAt` + routine +
+outcome, forgotten at that routine's next fire). `"blocked"` comments once
+per fire and records the step, with no label change. `"ended"` comments
+once and applies `watchdog_expired` at once, as the alarm would.
+
 Auth: `ROUTINE_SIGNAL_SECRET`, checked as `Authorization: Bearer <secret>`
-— unset skips the check entirely, same permissive-for-local-dev shape as
-`GITHUB_WEBHOOK_SECRET`. Routing: `{owner, repo, signal}` in the body,
+— unset skips the check for `process` and `completion`, same
+permissive-for-local-dev shape as `GITHUB_WEBHOOK_SECRET`; `outcome`,
+`blocked` and `ended` are refused (401) without it. Routing: `{owner, repo, signal}` in the body,
 keyed to the same DO as the webhook path (`owner/repo#signal.issue`). A
 signal for a routine that isn't the one currently pending on that issue
 (`pending.run !== signal.routine`) is rejected as `mismatched_routine`
