@@ -1,46 +1,23 @@
 ---
 name: issue-build-loop
 description: >-
-  Work the open GitHub issues labelled `ai-ready` in any repo, taking each to an
-  mcp-reviewed PR handed to `ai-reviewing` — then stop (CI and the independent review are
-  the orchestrator's and review-loop's; fixes are rework-loop's; merging is merge-flow's).
-  This loop never responds to reviews and never merges.
-  Repo-agnostic — works whether or not the repo has an Umbraco build/test toolchain
+  Build one `ai-ready` GitHub issue into an mcp-reviewed PR and report `build_succeeded`
+  with its `pr` — then stop (CI and the independent review are review-loop's; fixes are
+  rework-loop's; merging is merge-flow's). This loop never responds to reviews and never
+  merges. Repo-agnostic — works whether or not the repo has an Umbraco build/test toolchain
   (Umbraco MCP repos, or content-only repos like this ops repo, docs repos, plugin
-  repos); github-ops required (agent-outcomes optional, for an outcome artifact in Step 3).
-  Use this whenever someone wants open `ai-ready`
-  issues built, worked, actioned, or turned into PRs — including when they only name
-  the label, "the AI backlog", or specific issue numbers, and even if they never say
-  "loop". Examples: "work the ready issues", "run the issue loop", "work the ready ops
-  issues", "run the content loop", "action the loop-improvement issues", or a routine
-  on Issue: Labeled `ai-ready` (cloud). Not for writing or refining an issue —
-  that's issue-discuss-loop.
+  repos); github-ops and agent-outcomes required. Fired once per issue by the
+  agent-orchestration Worker (route=issue-build-loop). Not for writing or refining an
+  issue — that's issue-discuss-loop.
 ---
 
 # issue-build-loop
 
-A durable loop that turns the `ai-ready` GitHub backlog into reviewed PRs handed to
-`ai-reviewing` — on **any** repo, whether or not it has an Umbraco build/test toolchain.
-Only the per-issue build playbook differs between the two shapes; everything else
-(gathering the backlog, dispatch, review, hand-off, stop conditions) is identical, so it's
-covered once, below.
-
-**Two independent things are set up front:**
-- **Repo shape** — resolved in [Config](#config-resolve-once-up-front): MCP repo (has
-  the toolchain) vs content repo (doesn't). Decides which build playbook a build subagent
-  gets — [`references/mcp-playbook.md`](references/mcp-playbook.md) or
-  [`references/content-playbook.md`](references/content-playbook.md).
-- **Run mode**, set by the caller (default **local**; a routine states **cloud mode**
-  explicitly):
-  - **Local (orchestrated)** — a long-lived loop over the whole backlog. You are the
-    **orchestrator**: one worktree + build subagent per issue (hook-backed for MCP
-    repos), capture hooks running. Everything from *Config* through *Rules* below.
-  - **Cloud (one-shot per issue)** — a routine fires once per `ai-ready` issue
-    (cross-issue parallelism comes from separate sessions); no worktree. See
-    [Cloud mode](#cloud-mode).
-
-`/goal` keeps the loop alive across build/CI waits — set it in Step 2, clear it when every
-issue is handed off or blocked.
+Turns **one** `ai-ready` issue into a reviewed PR and reports `build_succeeded` — on **any**
+repo, whether or not it has an Umbraco build/test toolchain. The fire names the issue; one fire
+is one item. Only the per-issue build playbook differs between the two repo shapes, resolved in
+[Config](#config-resolve-once-up-front): MCP repo (has the toolchain) vs content repo (doesn't).
+How the session runs (checkout, local Umbraco) is in [`references/cloud-mode.md`](references/cloud-mode.md).
 
 ## Config (resolve once, up front)
 
@@ -49,7 +26,6 @@ issue is handed off or blocked.
 | Repo | identify the current repo (github-ops → *Detect base branch / repo*) | current repo |
 | AI label | fixed | `ai-ready` |
 | Base branch | the repo's `CLAUDE.md` if it names one, else the `release-and-branching` skill's detection **from the remote** (gitflow → `dev`). A shallow clone may not show `dev` locally: never take `main` because `dev` isn't in the clone | `dev` |
-| Concurrency cap | fixed | **3** |
 
 **Resolve the repo's shape first — don't go by what the repo is "for".** Check for a
 `CLAUDE.md` and worktree hooks in `.claude/settings.json`, and match against:
@@ -65,109 +41,52 @@ so.
 
 **Ops-repo scope guardrail:** on `umbraco-mcp-ops` specifically, triage files
 `loop-improvement` issues **without** the `ai-ready` label on purpose — a human
-decides whether to promote one. Don't self-label those in Step 1.
+decides whether to promote one. Don't self-label those.
 
 **GitHub operations** (list issues, open/merge PRs, check CI, read failing logs,
 etc.) go through the **`github-ops`** skill — name the *operation*, never a raw `gh`
 command.
 
-## Step 1 — gather the backlog
+## Step 1 — read the issue
 
-**List** the open issues labelled `ai-ready` on the repo (github-ops → *List
-issues by label / state*), reading each one's number/title/body.
+Read the issue the fire names (github-ops → *Get / read*): number, title, body. Confirm it
+is still open and still carries `ai-ready`; if not, quiet no-op.
 
-- No matching issues → report "nothing labelled `ai-ready` is open" and stop.
-  (If the label doesn't exist yet on the repo, say so — someone has to create and
-  apply it before this loop has anything to do.)
-- Otherwise build a queue of `{number, title, body}`. Announce the queue to the
-  user (numbers + titles) before dispatching anything.
+## Step 2 — build
 
-## Step 2 — set the goal
-
-Set the durable terminal condition so the loop persists across turns / wake-ups.
-Make it **satisfiable** — every issue reaching a *terminal* state, not every issue
-merged (a blocked issue or an un-reviewed PR must not keep the loop alive forever):
-
-```
-/goal every open ai-ready issue in <repo> is terminal — a PR that mcp-review passed, handed to ai-reviewing, or blocked-with-a-comment — and no actionable work is left in the queue
-```
-
-Clear it with `/goal clear` when the goal is met or you abort. See
-[Stop conditions](#stop-conditions) for exactly when the loop ends.
-
-## Step 3 — build and review (rolling, cap 3)
-
-Dispatch a **build subagent per issue**, at most 3 running at once. Dispatch the
-first 3 in a single message (parallel); each subsequent dispatch happens when a
-running one completes and frees a slot.
-
-For each issue, spawn a subagent (`agentType: general-purpose`, background) whose
-prompt is the **build playbook matching the repo's shape** —
+Spawn **one** build subagent (`agentType: general-purpose`, background) whose prompt is the
+**build playbook matching the repo's shape** —
 [`references/mcp-playbook.md`](references/mcp-playbook.md) for MCP repos,
 [`references/content-playbook.md`](references/content-playbook.md) for content
-repos — with the issue's number/title/body substituted in. Do **not** pass
-`isolation: worktree` on the Agent call — the subagent creates the worktree itself
-(via `EnterWorktree`, hook-backed on MCP repos), which the generic isolation would
-bypass.
+repos — with the issue's number/title/body substituted in, working per
+[`references/cloud-mode.md`](references/cloud-mode.md).
 
-**You choose the model per issue** — see [Model selection](#model-selection).
-Triage the issue's scope and pass the fitting tier as the Agent `model`.
+**You choose the model** — see [Model selection](#model-selection). Triage the issue's scope
+and pass the fitting tier as the Agent `model`.
 
-Track each subagent's returned report (shape per `mcp-playbook.md` step 7).
-A build subagent's job is done when its PR is open — it does not poll CI or block on it.
+The subagent's job is done when its PR is open — it does not poll CI or block on it.
 
-**Review it with `mcp-review`, here on the orchestrator/main
-thread.** Once a subagent returns an open PR, run `mcp-review` over it. **The build subagent
-does not review its own code**: running the review at the orchestrator level is what makes
-it independent. If it raises findings, fix them (re-dispatch into that worktree, or fix
-inline), **re-run the local tests**, then push. All testing is local (the worktree's Umbraco
-and the diff's tests on MCP repos; whatever check the content playbook ran on content
-repos): never lean on CI to catch a fix's regressions. Never re-push an identical fix
-(**no-progress guard**).
+## Step 3 — review and report
+
+**Review it with `mcp-review`, here on the main thread.** Once the subagent returns an open
+PR, run `mcp-review` over it. **The build subagent does not review its own code**: running the
+review here is what makes it independent. If it raises findings, fix them (re-dispatch into
+the checkout, or fix inline), **re-run the local tests**, then push. All testing is local (the
+diff's tests on MCP repos; whatever check the content playbook ran on content repos): never
+lean on CI to catch a fix's regressions. Never re-push an identical fix (**no-progress
+guard**).
 
 **The work log** (only when the dispatch passed a `log_token`): the subagent's journal,
 yours, the decision list by a fresh subagent, and the build entry, as
 [`references/work-log.md`](references/work-log.md) says.
 
-**Then hand the PR to review and stop.** Add `ai-reviewing` to the PR (github-ops → *Add /
-remove a label*), and comment the PR link on the triggering issue. The build doesn't drive
-CI or wait for it: the orchestrator watches CI, sends red CI to `rework-loop`, and fires
-`review-loop`, a second, independent review on a stronger model,
-once it's green (`docs/agent-orchestration/15-agent-splits.md`).
+**Then report and stop.** Comment the PR link on the triggering issue, with the
+`build_succeeded` artifact (`pr` = the PR's number; load `agent-outcomes` for the marker and
+shape). Don't drive CI or wait for it.
 
-**Mark the outcome** in that same comment, the one place the modes differ:
-- **Unorchestrated:** swap the issue's labels yourself (remove `ai-ready`, add `pr-open`).
-  Only if the `agent-outcomes` skill is available, append the `build_succeeded` artifact;
-  otherwise don't invent a marker.
-- **Orchestrated** (the dispatch said so): **don't swap the labels**; the
-  `build_succeeded` artifact is **required** (load `agent-outcomes` for the marker + shape).
-  The orchestrator reads it and swaps them. Without it the issue stays `ai-ready`.
-
-If a build subagent reports it could not finish (e.g. the issue is genuinely ambiguous), or
-the no-progress guard trips while fixing an `mcp-review` finding, record the issue as
-**blocked**: comment the specific reason (the ambiguity, what was tried) with the
-`build_blocked` artifact, under the same rule (unorchestrated: also swap `ai-ready` for
-`ai-blocked`; orchestrated: the artifact is required, the labels are the orchestrator's).
-Don't let one bad issue stall the queue.
-
-Keep dispatching until the queue is empty, all build subagents have returned, and each PR
-has been through `mcp-review` and handed to `ai-reviewing` (or its issue is blocked).
-
-## Step 4 — hand off (no human-review phase here)
-
-Once an issue has a PR that `mcp-review` passed, handed to `ai-reviewing`, it's **done in
-this loop**.
-**Human reviews are actioned by `rework-loop`, not this one.** Do
-not watch for the human's review, respond to change-requests, or merge:
-
-- **Human change-requests** → the reviewer leaves comments and adds the `auto-reworking` label,
-  which fires `rework-loop`. This loop has no review-response phase and dispatches no
-  response subagents.
-- **Merging** → `merge-flow`'s job, via the `auto-merging` label once the PR is approved.
-
-So after Step 3, hand the worktree back if the repo wants it cleaned up (or leave it for
-`rework-loop`), report the tally (handed-off PRs, blocked issues), and `/goal clear`. The PR
-is ready for review; the human drives it from there.
+If the subagent reports it could not finish (e.g. the issue is genuinely ambiguous), or the
+no-progress guard trips while fixing an `mcp-review` finding, comment the specific reason (the
+ambiguity, what was tried) with the `build_blocked` artifact, and stop.
 
 ## Model selection
 
@@ -204,39 +123,10 @@ model.)
 The tier names resolve to the current model in each family, so the skill doesn't
 go stale as versions advance.
 
-## Stop conditions
-
-The loop ends when **no actionable work remains**. Actionable work = a queued issue, a
-running build subagent, or a returned open PR not yet through `mcp-review` and handed to
-`ai-reviewing`. When none of those exist, every remaining issue is terminal: **handed off**
-(`review-loop`, `rework-loop` and `merge-flow` take it from here) or **blocked** (a
-comment, and `ai-blocked`). This loop does
-**not** wait on human review — that's `rework-loop`'s trigger, not a state this loop sits
-in.
-
-- **Local / interactive** → once every issue is handed off or blocked, stop. `/goal clear`
-  and hand back a summary: what's handed off, what's blocked and why.
-- **Cloud** → one-shot per issue (see [Cloud mode](#cloud-mode)); stop at the handed-off PR.
-
-**Safety backstops (all modes) — stop touching an issue and label it `ai-blocked` per
-[Step 3](#step-3--build-ci-and-review-rolling-cap-3), and hand back if any trips:**
-
-- **No-progress guard** — never retry the same failing command/action verbatim.
-  If a build or review-fix pass produces no new state, treat the issue as blocked rather
-  than looping.
-- **Global backstop (unattended)** — bound total wake-ups / dispatches (or a wall-
-  clock/date limit). When it trips, `log` what was left undone — never silently
-  drop issues.
-- **Label / issue changes** — see Rules.
-
 ## Rules
 
-- **Never touch an issue without the `ai-ready` label.** The label is the
-  only gate. If a human removes it, or the issue is closed, mid-flight, stop work on
-  that issue immediately. The one exception is the **outcome swap** (see Step 3) — that's
-  the loop finishing the issue, not a human pulling the gate.
-- **One worktree per issue, via `EnterWorktree`** — see Step 3 for the isolation detail
-  and hook-backing. Never hand-roll `git worktree add`.
+- **Never touch an issue without the `ai-ready` label.** The label is the only gate. If it's
+  gone, or the issue is closed, mid-flight, stop work on that issue immediately.
 - **Reviews are non-negotiable, honestly reported** — see Step 3 for the mcp-review
   mechanics. Do **not** use the bundled `/security-review` / `/code-review` slash
   commands: they're `disable-model-invocation: true`, so a subagent or headless routine
@@ -244,11 +134,7 @@ in.
   happens. Report only what `mcp-review` actually found; never claim a review passed
   that didn't run.
 - **Follow the repo, not this skill, for specifics.** Test/build commands, the
-  version-bump file list, and worktree cleanup live in the repo's `CLAUDE.md`
-  and the `release-and-branching` skill — obey those.
-- **Recap as you go.** After each dispatch, each subagent completion, each `mcp-review`,
-  give a one-line status (queue depth, in-flight issues, PRs handed off).
-
-## Cloud mode
-
-Set explicitly by the caller — see [`references/cloud-mode.md`](references/cloud-mode.md).
+  version-bump file list, and cleanup live in the repo's `CLAUDE.md` and the
+  `release-and-branching` skill — obey those.
+- **No-progress guard** — never retry the same failing command/action verbatim. If a build or
+  review-fix pass produces no new state, report `build_blocked`.

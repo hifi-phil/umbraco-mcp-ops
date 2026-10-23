@@ -57,7 +57,6 @@ instead).
 | Create an issue | triage (`mcp-repo`, `loop-improvement`) |
 | Comment on an issue | all loops |
 | Rewrite an issue's body | issue-discuss-loop |
-| Add / remove a label on an issue | triage, merge-flow |
 | Close an issue | triage |
 | List PRs (by label / state) | merge-flow |
 | List a repo's open Dependabot PRs (security PRs target the default branch) | dependabot-rollup |

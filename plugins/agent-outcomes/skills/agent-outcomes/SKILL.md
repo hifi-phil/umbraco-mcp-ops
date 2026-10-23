@@ -3,15 +3,11 @@ name: agent-outcomes
 description: >-
   Shared skill for writing the structured outcome artifact a loop appends to a
   comment it already posts — one marker format, one growing catalog of
-  outcome shapes, so umbraco-mcp-ops's agent-orchestration reducer prototype
-  can eventually read what happened instead of relying on a self-swapped
-  label as the only signal. Load this whenever a loop skill needs to report
+  outcome shapes. The agent-orchestration Worker reads the artifact and applies
+  the labels itself. Load this whenever a loop skill needs to report
   build_succeeded, build_blocked, release_blocked, release_published, or any
-  other cataloged outcome, or when
-  adding a new outcome type to the catalog. Additive by default; in
-  orchestrated mode (a repo the agent-orchestration Worker dispatches) the
-  artifact REPLACES the loop's label swap and is required — the Worker
-  reads it and swaps the labels. Bundles a PostToolUse hook that signals the
+  other cataloged outcome, or when adding a new outcome type to the catalog.
+  Bundles a PostToolUse hook that signals the
   Worker on a fast, non-authoritative path automatically (a completion when
   the artifact is posted, heartbeats naming the step while the loop works),
   with nothing extra for the loop to do.
@@ -19,21 +15,12 @@ description: >-
 
 # agent-outcomes
 
-The loops in this marketplace already take a real action when something
-finishes — swap a label, merge a PR, push a fix. `graph/` in
-`umbraco-mcp-ops` (see `docs/agent-orchestration/11-outcome-artifact.md` in
-that repo) is a prototype reducer that will eventually decide what happens
-next instead of a loop deciding for itself — but it can only do that once
-the fact it needs exists somewhere machine-readable. This skill is the one
-place that format is defined, so five loops don't each invent their own.
-
-**Two modes.** On most repos nothing authoritative reads this artifact
-yet: it costs one comment, changes no behaviour, and the loop's own label
-swap stays the real signal. On a repo the agent-orchestration Worker
-dispatches (`worker/` in `umbraco-mcp-ops`), the dispatch says
-**orchestrated mode**: there the Worker reads the artifact from the comment
-and applies the outcome labels itself, so the loop **must** write it and
-must **not** swap the labels. Each loop's skill says which steps that covers.
+The loops in this marketplace do one job and report what happened. The agent-orchestration
+Worker (`worker/` in `umbraco-mcp-ops`; see `docs/agent-orchestration/11-outcome-artifact.md` in
+that repo) decides what happens next, but it can only do that once the fact it needs exists
+somewhere machine-readable. This skill is the one place that format is defined, so the loops
+don't each invent their own. The Worker reads the artifact from the comment and applies the
+labels itself, so the loop **must** write it.
 
 This plugin also bundles a
 `PostToolUse` hook (`hooks/report-completion.sh`) that runs after every tool
@@ -55,13 +42,11 @@ comment write above is still the only thing that counts as the actual fact.
 
 ## The rule
 
-**Append, never replace.** Whatever your loop already does — the label
-swap, the merge, the push — keep doing it exactly as before. The marker
-and JSON below get appended to a comment you're *already* posting, as a
-trailer. Never post a comment solely for this, and never skip your loop's
-real action because you wrote the marker. If that rule and your loop's own
-instructions ever conflict, your loop's own instructions win — this skill
-adds a trailer, it doesn't change what "done" means.
+**Append to a comment you're already posting.** The marker and JSON below get appended to
+a comment your loop already posts, as a trailer. Never post a comment solely for this, and
+never skip your loop's real action because you wrote the marker. If that rule and your
+loop's own instructions ever conflict, your loop's own instructions win — this skill adds a
+trailer, it doesn't change what "done" means.
 
 ## The format
 
@@ -84,12 +69,11 @@ adds a trailer, it doesn't change what "done" means.
 
 | Routine | Outcome | Shape | Reported from |
 |---|---|---|---|
-| `issue-build-loop` | `build_succeeded` | `{"outcome":"build_succeeded","pr":<PR number>}` | Step 3, once `mcp-review` is clean; in orchestrated mode the orchestrator adds `ai-reviewing` to `pr` |
+| `issue-build-loop` | `build_succeeded` | `{"outcome":"build_succeeded","pr":<PR number>}` | Step 3, once `mcp-review` is clean |
 | `issue-build-loop` | `build_blocked` | `{"outcome":"build_blocked","reason":"<one line>"}` | Step 3, when the issue is recorded as blocked |
 | `auto-release-loop` | `release_blocked` | `{"outcome":"release_blocked","reason":"<one line>"}` | Step 2.5 on a BLOCK verdict from `release-reviewer`, or Step 1 when a re-run stops (`<dev>` commits missing, unreviewed commits on the branch, only one of branch/PR exists, or the PR doesn't qualify) |
-| `auto-release-loop` | `release_published` | `{"outcome":"release_published","version":"<version>"}` | Step 4, after publish + dev sync, on the close-out comment |
 | `release-publish` | `release_published` | `{"outcome":"release_published","version":"<version>","tag":"<the tag the repo made>"}` | Its last step, once the tag exists, the note is posted and `main` is merged back into `dev`; `tag` exactly as the repo named it |
-| `auto-release-loop` | `release_approved` | `{"outcome":"release_approved","pr":<PR number>,"sha":"<reviewed head SHA>","version":"<version>","merge_method":"merge" \| "squash" \| "rebase"}` | Orchestrated mode, end of Step 2.5 on a pass: the orchestrator merges (that way, pinned to `sha`) and fires `release-publish` |
+| `auto-release-loop` | `release_approved` | `{"outcome":"release_approved","pr":<PR number>,"sha":"<reviewed head SHA>","version":"<version>","merge_method":"merge" \| "squash" \| "rebase"}` | End of Step 2.5 on a pass: the orchestrator merges (that way, pinned to `sha`) and fires `release-publish` |
 | `review-loop` | `review_passed` | `{"outcome":"review_passed"}` | Its verdict comment on the PR (Step 4), when nothing survives the review |
 | `review-loop` | `review_findings` | `{"outcome":"review_findings","findings":<count>}` | Its verdict comment on the PR (Step 4), after the PR review with one inline comment per finding; `findings` is how many |
 | `review-loop` | `review_blocked` | `{"outcome":"review_blocked","reason":"<one line>"}` | Its verdict comment on the PR (Step 4), after a PR review saying why the approach is wrong, or that the reviewers couldn't be spawned |

@@ -74,7 +74,7 @@ and caller-workflow repos alike.
 2. **Network access.** If the environment limits outbound hosts, allow the Worker's host
    (`<script>.<subdomain>.workers.dev`).
 3. **The plugin is in the env.** `agent-outcomes` is in the `cloud-skill-sync` `SKILLS`
-   list, as it already is for orchestrated mode. A `SKILLS` change reaches the next
+   list. A `SKILLS` change reaches the next
    session once it's on `main`; network access is an environment setting.
 
 **How it behaves:**

@@ -12,7 +12,6 @@ is `owner/name`. Mirror of [`github-mcp.md`](github-mcp.md) — keep both in syn
 | Create | `gh issue create --repo <repo> --title "<t>" --body "<b>" --label <label>` |
 | Comment | `gh issue comment <n> --repo <repo> --body "<text>"` |
 | Rewrite the body | `gh issue edit <n> --repo <repo> --body-file <file>` (a file, not `--body` — issue bodies are long, multi-line Markdown) |
-| Add / remove label | `gh issue edit <n> --repo <repo> --add-label <l>` / `--remove-label <l>` |
 | Close | `gh issue close <n> --repo <repo> --comment "<why>"` |
 
 ## Pull requests

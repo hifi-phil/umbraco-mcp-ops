@@ -83,10 +83,10 @@ Re-add `ai-discussing` when you want to pick it back up.
 <!-- issue-discuss-loop:capped -->
 ```
 
-Then **remove `ai-discussing`** (github-ops → *Add / remove a label on an issue*). This is the
-**one** exception to "never clear the label". With the label gone nothing fires, so the cap can't
-re-post on every later comment — and because the count only looks at marked comments *after* the
-cap marker, re-adding the label genuinely restarts at zero.
+Append the `discussion_capped` outcome (`agent-outcomes`) to that comment. The Worker takes
+`ai-discussing` off, so nothing fires and the cap can't re-post on every later comment — and
+because the count only looks at marked comments *after* the cap marker, re-adding the label
+genuinely restarts at zero.
 
 ## Body or comment?
 

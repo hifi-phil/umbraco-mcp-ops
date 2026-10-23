@@ -30,7 +30,7 @@ own gates, models, and notifications. loop-dispatch adds no policy of its own.
 
 | event | action | label / state | Run |
 |---|---|---|---|
-| `issues` | `labeled` | label = `ai-ready` | **`/issue-build-loop`** (cloud mode) |
+| `issues` | `labeled` | label = `ai-ready` | **`/issue-build-loop`** |
 | `issues` | `labeled` | label = `auto-releasing` (issue title `release <version>`) | **`/auto-release-loop`** |
 | `issues` | `labeled` | label = `ai-discussing` | **`/issue-discuss-loop`** |
 | `issue_comment` | `created` | issue carries `ai-discussing` + is open, comment is unsigned and doesn't start `//`, author is a trusted `User`, not a PR | **`/issue-discuss-loop`** |
@@ -67,8 +67,7 @@ and only fired you because it matched, so **take that route as given; don't re-d
 (If a fire ever arrives with no resolved route, **quiet no-op** — never go looking for work.)
 The fire may also come from the agent-orchestration Worker instead of the caller workflow,
 on a repo that has handed dispatch over to it; the route line is identical, so handle it the
-same way. **If the fire text contains `orchestrated=true`**, the Worker owns that repo's
-outcome labels: tell the loop it is in **orchestrated mode** when you dispatch it (Step 2).
+same way.
 
 **Re-check the entity before acting.** Between the event and this session a label can be
 removed or the PR/issue closed. Fetch it (github-ops → `issue_read`/`pull_request_read`,
@@ -77,17 +76,13 @@ triggering label / is still open. If not, **quiet no-op**.
 
 ## Step 2 — dispatch the route
 
-In orchestrated mode (Step 1), start the loop's instructions with "orchestrated mode: the
-orchestrator applies outcome labels; post the agent-outcomes marker, don't swap labels".
-Each loop's skill says exactly which of its label steps that replaces. If the fire text
-carries a `log_token=…`, pass it to the loop too ("record the work log with the work-log
+If the fire text carries a `log_token=…`, pass it to the loop too ("record the work log with the work-log
 skill, log_token=…"); never echo it anywhere else.
 
 Invoke the matched skill exactly as its own dedicated routine would, scoped to the
 specific issue/PR, and **follow that skill's instructions verbatim**:
 
-- `ai-ready` issue → **`/issue-build-loop`** in **cloud mode** for that issue (local
-  run → its local mode). It detects the repo's shape itself and picks the matching build
+- `ai-ready` issue → **`/issue-build-loop`** for that issue. It detects the repo's shape itself and picks the matching build
   playbook — the MCP toolchain one for server repos and `Umbraco-MCP-Base` (SDK monorepo,
   full test suite), the lightweight content playbook for repos with no toolchain (the ops
   repo, docs/plugin repos). Same `route=issue-build-loop` signal either way.

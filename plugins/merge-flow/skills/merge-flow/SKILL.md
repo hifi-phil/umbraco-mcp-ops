@@ -62,10 +62,7 @@ For each candidate, all must hold — if any fails, **do not merge** (go to Step
    **Never rely on an auto-merge that bypasses this gate** — this org has no branch
    protection, so an auto-merge would land without a real green gate. Wait up to a sane
    cap (e.g. 15 min); if still pending, treat as not-yet-mergeable, **comment on the PR**
-   that CI was still pending at the cap and that it needs a re-trigger (re-add
-   `auto-merging`, or a backstop poll — see *Running as a routine*), and leave the label
-   on. Don't assume a later run will happen on its own: nothing re-fires merge-flow when
-   CI finishes unless one of those is set up.
+   that CI was still pending at the cap, and stop.
 3. **Mergeable / no conflicts.** The PR must report mergeable with no conflicts (get
    it via github-ops → *Get a PR*). If it's behind its base, update the branch first,
    then re-check CI (that restarts checks).
@@ -93,21 +90,11 @@ flags any repo where the setting is off.
 ## Step 4 — when a gate fails
 
 Comment the **specific** blocker on the PR ("CI check `x` failing", "awaiting
-approval", "conflicts with base — rebase needed"), and log it as deferred. By default
-**leave the `auto-merging` label on** so the next run re-checks once the blocker clears.
-Remove the label only for a hard, human-needed block (unresolvable conflicts, changes
-requested) so the loop stops re-poking it — say which in the comment.
-
-**Orchestrated mode** (the dispatch said so): the orchestrator checks for conflicts
-and requested changes itself, when `auto-merging` is added and whenever CI finishes. It
-swaps `auto-merging` → `merge-blocked` and comments the reason, so usually you never see
-a hard block. If you do hit one it missed (say a conflict appeared with no CI run
-since), make the same swap yourself: remove `auto-merging`, add `merge-blocked`, and
-comment the reason. A human re-adds `auto-merging` once it's fixed.
-Failing CI is also the orchestrator's: when the checks finish red it swaps `auto-merging`
-→ `auto-reworking` so `rework-loop` fixes them, and the fix push brings `auto-merging` back.
-After three fix attempts it goes to `merge-blocked`. So on red CI, comment the failing
-checks and stop, and leave the labels alone.
+approval", "conflicts with base — rebase needed"), and log it as deferred. For a hard,
+human-needed block the orchestrator's gate missed (say a conflict appeared with no CI run
+since), post the `merge_blocked` outcome (`agent-outcomes`) in that comment with the reason.
+The orchestrator checks for conflicts and requested changes itself, and sends failing CI to
+`rework-loop`, so on red CI comment the failing checks and stop.
 
 ## Running as a routine
 
@@ -117,10 +104,3 @@ gate-checks the current `auto-merging` PR(s) and merges the eligible ones. This 
 cheapest shape (it only fires when you label — no idle runs) and the most responsive.
 The skill queries for all `auto-merging` PRs, so a single-PR event just runs one pass of
 the same loop; nothing changes for one-at-a-time.
-
-**Backstop (not provisioned by default):** the event trigger fires only on labelling, so a
-PR whose CI went green *after* its run's CI-wait timed out stalls silently — no poll
-exists unless someone creates a scheduled routine (e.g. hourly on weekdays) that runs this
-skill. Without one, either label after CI is green, or re-add `auto-merging` once CI
-passes (the cap comment in Step 2 says so). In orchestrated mode the orchestrator
-re-fires on CI completion, so this gap doesn't apply.

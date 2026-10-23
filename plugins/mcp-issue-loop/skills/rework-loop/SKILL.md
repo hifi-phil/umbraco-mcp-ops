@@ -4,18 +4,17 @@ description: >-
   Label-triggered loop that acts on PR review feedback. When a reviewer has left comments
   and labels the loop-authored PR `auto-reworking`, it reads the feedback, makes the changes,
   runs a local test gate and an independent code review, pushes, replies to the threads,
-  re-requests review, and removes the `auto-reworking` label — then stops. It does NOT
+  and reports its outcome — then stops. It does NOT
   poll/wait for the full CI suite (merge-flow won't merge until CI passes, so CI is
   enforced there) and it never merges. Runs in a cloud routine or locally.
   Requires the github-ops skill. Trigger: a PR labelled `auto-reworking`
-  (uniform with the other loops, and works regardless of who reviewed), or run manually as
-  "rework PR #N".
+  (uniform with the other loops, and works regardless of who reviewed).
 ---
 
 # rework-loop
 
 The **review-response half of the issue loop, split out so it can be event-driven.**
-`issue-build-loop` (cloud mode) takes an `ai-ready` issue to a CI-green PR and stops;
+`issue-build-loop` takes an `ai-ready` issue to a CI-green PR and stops;
 when you review that PR and label it **`auto-reworking`**, **`rework-loop`** picks it up and
 addresses the feedback — closing the write → review → rework → merge chain with no
 long-lived "monitor my review" session.
@@ -41,28 +40,22 @@ point of the split.
 Via `github-ops`, get the PR and its reviews + review comments (→ *Get reviews + review
 comments*). Collect every **unresolved, actionable** item: requested changes, inline
 comments, and review-body asks. If there are none (approval only, or nothing actionable
-after reading) → clear `auto-reworking` with a brief note and stop — clearing on this path
-too, not just Step 5's, keeps the label meaning "rework pending" and the trigger
-re-armable.
+after reading) → post the `rework_no_change` outcome with a brief reason and stop.
 
-**Failing CI (orchestrated mode).** If the orchestrator added `auto-reworking` with a
+**Failing CI.** If the orchestrator added `auto-reworking` with a
 "🔧 CI failing" comment, the failing checks it names are the feedback. Read those
 checks' logs (github-ops → *Get PR CI / check-run status*) and fix what failed; there
 may be no review at all. Read the logs once, don't poll. For this kind of rework, Step 5
-has no threads to reply to and no reviewer to re-request. The orchestrator swaps
-`auto-reworking` back to the label it came from (`auto-merging` or `ai-reviewing`) when it
-sees your push.
+has no threads to reply to and no reviewer to re-request.
 
-**The review's findings (orchestrated mode).** If the orchestrator added `auto-reworking`
+**The review's findings.** If the orchestrator added `auto-reworking`
 with a "🔍 Review round" comment, the feedback is `review-loop`'s latest PR review: its
 inline comments, and its body. Fix each one; reread the issue the PR closes, so a fix
 doesn't drift from what it asked for. A finding you judge wrong: reply on its thread saying
 why, rather than changing the code. A finding whose fix would add
 behaviour the issue didn't ask for is handled the same way: reply on its thread that it is out
 of scope, quoting the issue's scope line (a requirement or its *Out of scope*), and don't
-build it. A finding that the PR's own change is wrong or unsafe (a bug in its new lines, a regression, a security hole) is never out of scope, however it would be fixed. Ignore a review body's *Out of scope* section: its items are informational, not asks, and need no reply. If there's no such review to act on, don't clear the
-label and push nothing: say so on the PR and stop, so a person sees it. After your push the
-orchestrator puts `ai-reviewing` back and the review runs again; don't re-request review.
+build it. A finding that the PR's own change is wrong or unsafe (a bug in its new lines, a regression, a security hole) is never out of scope, however it would be fixed. Ignore a review body's *Out of scope* section: its items are informational, not asks, and need no reply. If there's no such review to act on, push nothing: say so on the PR and stop, so a person sees it.
 
 **The work log** (when the dispatch passed a `log_token`): read the journal before
 changing anything, and weigh a challenged choice before undoing it, as
@@ -100,22 +93,16 @@ for the full CI suite to go green** (see Test gate above).
 With a `log_token`: the rework's journal, decision and build entries, as
 [`references/work-log.md`](references/work-log.md) says.
 
-## Step 5 — reply, re-request & clear the label
+## Step 5 — reply and report
 
 Immediately after pushing (no waiting for CI): **reply briefly on each addressed thread**
-(what changed), **re-request review** from the original reviewer (github-ops → *Re-request
-review*), and **remove the `auto-reworking` label** from the PR (github-ops → *Add / remove a
-label*). **Every round that pushes, even a one-line fix, also post one short summary comment
+(what changed). **Every round that pushes, even a one-line fix, also post one short summary comment
 on the PR** (what was fixed, the commit, what was checked), **with no `agent-outcome`
 marker**: per the `agent-outcomes` skill's catalog, the push is a native GitHub event the
 Worker already sees, so `rework_pushed` is deliberately not reported.
-The label means "rework pending" — clearing it marks the round done and re-arms
-the trigger, so a later review can re-add `auto-reworking` to fire the next round.
-**Orchestrated mode** (the dispatch said so): don't remove the label after a push. The
-orchestrator removes it when it sees your push. If you pushed nothing (no actionable
-feedback), there's no push for it to see, so remove the label yourself as above.
-**Do not merge** — re-approval + `merge-flow` (via the `auto-merging` label) handle that.
-Send a Claude push notification: `Reworked PR #N per review — pushed & re-requested review (CI will verify).`
+If you pushed nothing (no actionable feedback), post the `rework_no_change` outcome
+(`agent-outcomes`) in your closing comment on the PR.
+**Do not merge.**
 
 ## Running as a routine
 

@@ -1,19 +1,15 @@
-# Cloud mode
+# How a build session runs
 
-Everything in `SKILL.md` (Config → Rules) is **local mode**. **Cloud mode** is set explicitly by
-the caller — the routine prompt says *run in cloud mode*. The session is a **thin
-orchestrator on a cheap base model**: it triages the one issue and dispatches a **single**
-build subagent on the best-fit model — the same *Model selection* logic as local, just one
-subagent instead of up to three.
+How a build session runs. The session is a **thin orchestrator on a cheap base model**: it
+triages the one issue and dispatches a **single** build subagent on the best-fit model (*Model
+selection* in `SKILL.md`).
 
-**This doc covers MCP-repo cloud mode** — the SQL-Server-boot dance below is what cloud
-mode has to add over local specifically because the MCP playbook needs a real Umbraco to
-test against. **For a content-repo issue in cloud mode**, there's no toolchain to boot, so
-there's nothing extra to add over local mode: resolve the repo's shape as in `SKILL.md` →
-*Config*, triage + dispatch a single build subagent per step 1 below on
-[`content-playbook.md`](content-playbook.md) instead of `mcp-playbook.md`, working
-directly in the session's checkout (content repos have no worktree hooks to lose either
-way), then review and hand off per step 3 below — that step is shape-agnostic.
+**This doc covers MCP-repo builds** — the SQL-Server-boot dance below is there because the MCP
+playbook needs a real Umbraco to test against. **For a content-repo issue**, there's no toolchain
+to boot: resolve the repo's shape as in `SKILL.md` → *Config*, triage + dispatch a single build
+subagent on [`content-playbook.md`](content-playbook.md) instead of `mcp-playbook.md`, working
+directly in the session's checkout, then review and report per step 3 below — that step is
+shape-agnostic.
 
 **Know the environment first.** Before triaging, consult the **`worker-env`** skill
 (`cat /root/env-manifest.md`) — it tells you what this cloud worker provides (.NET SDK,
@@ -24,8 +20,7 @@ Server** worker-env so the local run is **CI-parity** — the subagent tests on 
 provider CI uses, greens the suite locally, and skips the slow push → CI-fail → fix →
 re-push loop. (SQLite is a degraded fallback only; see step 2.)
 
-For the one triggering issue (identify it from the event; if unclear, take the **oldest**
-open `ai-ready` issue; none → quiet no-op):
+For the one issue the fire names:
 
 1. **Triage + dispatch.** Read the issue, pick its tier from
    [Model selection](../SKILL.md#model-selection), and spawn **one** build subagent on
@@ -68,14 +63,11 @@ open `ai-ready` issue; none → quiet no-op):
      local tests are green, **commit, push, and open the PR** against `<base>` (github-ops →
      *Create a PR*), linking the issue (`Closes #N`), ready for review, not draft — then
      **return**. Reviewing it (step 3) is the **base session's** job.
-3. **Review the PR with `mcp-review`, then hand it to `ai-reviewing` — from the base
-   session.** As `SKILL.md` Step 3: fix any surviving findings by **dispatching a fix on the
-   build subagent's model** (or fix inline; the base session stays on its cheap model, so a
-   fix must not silently inherit that tier), re-run the SQL Server gate from step 2, push,
-   then add `ai-reviewing` and mark the outcome. Removing `ai-ready` (by you, or by the
-   orchestrator in orchestrated mode) is what stops this routine re-firing on the issue.
+3. **Review the PR with `mcp-review`, then report — from the base session.** As `SKILL.md`
+   Step 3: fix any surviving findings by **dispatching a fix on the build subagent's model** (or
+   fix inline; the base session stays on its cheap model, so a fix must not silently inherit that
+   tier), re-run the SQL Server gate from step 2, push, then post the `build_succeeded` artifact.
    Then stop: no CI polling.
 
-**Not used in cloud mode:** the cap-3 queue, worktrees, and the review-response phase. The
-same guardrails in `SKILL.md`'s Rules still apply — plus Step 3's: a blocked issue
-(no-progress guard tripped) gets a comment (and `ai-blocked`, unorchestrated), then stop.
+A blocked issue (no-progress guard tripped) gets a comment with the `build_blocked` artifact,
+then stop. The guardrails in `SKILL.md`'s Rules still apply.
