@@ -3,12 +3,12 @@
 // (manual_override), and check_suite.completed.
 
 import { ALL_LABELS, LABELS } from "@orchestrator/graph/constants/labels";
-import { reduce } from "@orchestrator/graph/graph";
+import { reduce, type State } from "@orchestrator/graph/graph";
 import { translate } from "@orchestrator/graph/github/from-github";
 import { deriveMergeGateOutcome, failedCheckNames, hardBlockReason } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
-import { depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
+import { actorOf, depsFor, type CoordinateInput, type CoordinateResult, type Deps } from "./types";
 import { applyEvent, deriveState } from "./apply";
 import { blockMerge, handToRework, settledGateFacts } from "./merge-gate";
 import { reviewFindings, reviewGate } from "./review-gate";
@@ -189,13 +189,37 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
         // Only an open PR is handed a review: the number comes from a
         // session's report, and a late or redelivered one can name a PR
         // that has since merged, or not a PR at all.
+        // Only a 404 (no such PR) is a drop; any other read error throws, so the
+        // delivery fails and is redelivered rather than losing the hand-off.
         const target = await deps.getPullDetails(input.owner, input.repo, input.issueNumber).catch((e) => {
-          console.error("review hand-off target read failed:", e instanceof Error ? e.message : e);
-          return null;
+          if (e instanceof Error && / failed: 404 /.test(e.message)) return null;
+          throw e;
         });
-        if (!target?.open) return { outcome: "stale_label", event };
+        const io = depsFor(deps, event);
+        const dropped = async (reason: string, from: State | null): Promise<CoordinateResult> => {
+          await io.io.logTransition({
+            deliveryId: input.deliveryId || null,
+            actor: actorOf(input),
+            owner: input.owner,
+            repo: input.repo,
+            issueNumber: input.issueNumber,
+            fromState: from ?? "none",
+            event,
+            toEffect: null,
+            run: null,
+            droppedReason: reason,
+            mode: io.mode,
+          });
+          return from ? { outcome: "dropped_no_rule", from, event } : { outcome: "stale_label", event };
+        };
+        if (!target) return dropped("review hand-off names no such pull request", null);
+        if (!target.open) return dropped("review hand-off names a pull request that is not open", null);
+        // Only a PR with nothing else tracked is handed a review: the other states
+        // that have a rule for the label serve a person re-running a review.
         const state = deriveState(currentLabels);
-        if (state === "ambiguous" || !reduce(state, event)) return applyEvent(deps, input, event, currentLabels);
+        if (state === "ambiguous") return applyEvent(deps, input, event, currentLabels);
+        if (state !== "none") return dropped(`review hand-off to a PR in state ${state}`, state);
+        if (!reduce(state, event)) return applyEvent(deps, input, event, currentLabels);
         await depsFor(deps, event).io.addLabel(input.owner, input.repo, input.issueNumber, LABELS.AI_REVIEWING);
         currentLabels = [...currentLabels, LABELS.AI_REVIEWING];
       }

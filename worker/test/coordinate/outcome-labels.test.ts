@@ -84,7 +84,7 @@ describe("the PR's side of the hand-off", () => {
     for (const getPullDetails of [
       vi.fn(async () => ({ headRef: "b", headSha: "s", baseRef: "dev", defaultBranch: "dev", merged: true, open: false })),
       vi.fn(async () => {
-        throw new Error("404");
+        throw new Error("GitHub API GET /pulls/1 failed: 404 Not Found");
       }),
     ]) {
       const d = deps([], { getMergeGateFacts: vi.fn(async () => green), getPullDetails });
@@ -119,7 +119,7 @@ describe("the PR's side of the hand-off", () => {
     const d = deps([LABELS.AUTO_MERGING]);
     expect(await coordinateWebhook(d, request)).toMatchObject({ outcome: "dropped_no_rule" });
     expect(d.addLabel).not.toHaveBeenCalled();
-    expect(d.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.LABELLED_AI_REVIEWING, droppedReason: expect.stringMatching(/no matching rule/) }));
+    expect(d.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.LABELLED_AI_REVIEWING, droppedReason: expect.stringContaining(LABELS.AUTO_MERGING) }));
   });
 });
 
@@ -235,16 +235,38 @@ describe("gaps the review found", () => {
     expect(vi.mocked(d.forward).mock.calls[1]![2]).toBe(`d-outcome:#${PR}`);
   });
 
-  it.each([[LABELS.AI_STUCK], [LABELS.READY_FOR_REVIEW], [LABELS.AUTO_REWORKING, LABELS.AUTO_MERGING]])(
-    "a review request on a PR labelled %s adds nothing it has no rule for",
+  const handOff = () =>
+    input({ deliveryId: "d-r", issueNumber: PR, payload: { action: "orchestrator.review_requested", reviewRequest: { requestedBy: ISSUE } } });
+
+  it.each([[LABELS.AI_STUCK], [LABELS.READY_FOR_REVIEW], [LABELS.AI_BLOCKED], [LABELS.AUTO_REWORKING, LABELS.AUTO_MERGING]])(
+    "a review request on a PR labelled %s adds no label and is logged as dropped",
     async (...labels) => {
       const d = deps(labels);
-      await coordinateWebhook(
-        d,
-        input({ deliveryId: "d-r", issueNumber: PR, payload: { action: "orchestrator.review_requested", reviewRequest: { requestedBy: ISSUE } } }),
-      );
-      const added = vi.mocked(d.addLabel).mock.calls.map((c) => c[3]);
-      if (labels.length > 1) expect(added).not.toContain(LABELS.AI_REVIEWING);
+      await coordinateWebhook(d, handOff());
+      expect(d.addLabel).not.toHaveBeenCalled();
+      expect(d.removeLabel).not.toHaveBeenCalled();
+      expect(d.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.LABELLED_AI_REVIEWING, droppedReason: expect.any(String) }));
     },
   );
+
+  it("a review request doesn't relabel a PR already reviewed", async () => {
+    const d = deps([LABELS.READY_FOR_REVIEW]);
+    await coordinateWebhook(d, handOff());
+    expect(d.addLabel).not.toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_REVIEWING);
+  });
+
+  it("a failed read of the PR fails the delivery rather than dropping the hand-off", async () => {
+    const d = deps([]);
+    vi.mocked(d.getPullDetails).mockRejectedValueOnce(new Error("GitHub API GET /repos/o/r/pulls/1 failed: 503 down"));
+    await expect(coordinateWebhook(d, handOff())).rejects.toThrow("503");
+    expect(d.addLabel).not.toHaveBeenCalled();
+  });
+
+  it("a PR that doesn't exist (404) is dropped and logged", async () => {
+    const d = deps([]);
+    vi.mocked(d.getPullDetails).mockRejectedValueOnce(new Error("GitHub API GET /repos/o/r/pulls/1 failed: 404 Not Found"));
+    await coordinateWebhook(d, handOff());
+    expect(d.addLabel).not.toHaveBeenCalled();
+    expect(d.logTransition).toHaveBeenCalled();
+  });
 });
