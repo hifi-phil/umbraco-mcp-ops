@@ -99,9 +99,11 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
   // review's findings, back to LABELS.AI_REVIEWING. Instead of just clearing
   // LABELS.AUTO_REWORKING, as a person's rework outside the review flow does
   // (one inside it sets fixPending in the LABELLED_AUTO_REWORKING block below).
+  let reworkPending = false;
   if (event === EVENTS.REWORK_PUSHED || event === EVENTS.UNLABELLED_AUTO_REWORKING) {
     const ciFix = await deps.getCiFix();
     const reviewLoop = ciFix?.pending ? null : await deps.getReviewLoop();
+    reworkPending = Boolean(ciFix?.pending || reviewLoop?.fixPending);
     if (ciFix?.pending) {
       // LABELS.AUTO_REWORKING removed without a push (nothing to fix) ends the CI-fix
       // too, so a later review rework isn't mistaken for one.
@@ -115,6 +117,26 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
       if (event === EVENTS.REWORK_PUSHED && deriveState(currentLabels) === LABELS.AUTO_REWORKING) event = EVENTS.REVIEW_FIX_PUSHED;
       await deps.setReviewLoop({ ...reviewLoop, fixPending: false });
     }
+  }
+
+  // From LABELS.AI_STUCK the push rule is for a late outcome: a rework the
+  // watchdog gave up on that pushed after all. A person's push with no rework
+  // pending matches the same event, but leaves the PR stuck for them to act on.
+  if (event === EVENTS.REWORK_PUSHED && !reworkPending && deriveState(currentLabels) === LABELS.AI_STUCK) {
+    await deps.logTransition({
+      deliveryId: input.deliveryId || null,
+      actor: input.payload.sender?.login ?? null,
+      owner: input.owner,
+      repo: input.repo,
+      issueNumber: input.issueNumber,
+      fromState: LABELS.AI_STUCK,
+      event,
+      toEffect: null,
+      run: null,
+      droppedReason: `a push with no rework pending: ${LABELS.AI_STUCK} stays on`,
+      mode: depsFor(deps, event).mode,
+    });
+    return { outcome: "dropped_no_rule", from: LABELS.AI_STUCK, event };
   }
 
   // A review rework round (LABELS.AUTO_REWORKING added by a reviewer: the Worker's own

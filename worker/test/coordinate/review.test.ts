@@ -205,6 +205,14 @@ describe(`the push that brings a PR back to ${LABELS.AI_REVIEWING}`, () => {
     expect(d.addLabel).not.toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_REVIEWING);
   });
 
+  it("a person's push to an AI_STUCK PR with no rework pending keeps AI_STUCK", async () => {
+    const d = deps([LABELS.AI_STUCK]);
+    expect(await coordinateWebhook(d, pushed())).toMatchObject({ outcome: "dropped_no_rule", from: LABELS.AI_STUCK, event: EVENTS.REWORK_PUSHED });
+    expect(d.removeLabel).not.toHaveBeenCalled();
+    expect(d.addLabel).not.toHaveBeenCalled();
+    expect(d.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.REWORK_PUSHED, droppedReason: expect.stringContaining("no rework pending") }));
+  });
+
   it("a restart resets the CI-fix count", async () => {
     const d = deps([LABELS.AI_STUCK, LABELS.AUTO_REWORKING]);
     await d.setReviewLoop({ botRounds: 1, fixPending: false });
