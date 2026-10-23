@@ -80,10 +80,24 @@ describe("the PR's side of the hand-off", () => {
     expect(d.fireRoutine).not.toHaveBeenCalled();
   });
 
-  it("a PR that already has the label isn't changed", async () => {
+  it("a PR whose review is already out isn't changed", async () => {
     const d = deps([LABELS.AI_REVIEWING], { getMergeGateFacts: vi.fn(async () => green) });
+    await d.setPendingFire({ owner: OWNER, repo: REPO, issueNumber: PR, run: ROUTINES.REVIEW_LOOP });
     expect(await coordinateWebhook(d, request)).toMatchObject({ outcome: "stale_label" });
     expect(d.addLabel).not.toHaveBeenCalled();
+    expect(d.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("a label left by a delivery that failed before its rule ran is completed, not re-added", async () => {
+    const d = deps([LABELS.AI_REVIEWING], { getMergeGateFacts: vi.fn(async () => green) });
+    expect(await coordinateWebhook(d, request)).toMatchObject({ outcome: "applied", event: EVENTS.REVIEW_CI_PASSED });
+    expect(d.addLabel).not.toHaveBeenCalled();
+    expect(d.fireRoutine).toHaveBeenCalledWith(OWNER, REPO, PR, ROUTINES.REVIEW_LOOP);
+  });
+
+  it("a PR already in another state with the label on isn't changed", async () => {
+    const d = deps([LABELS.AI_REVIEWING, LABELS.READY_FOR_REVIEW]);
+    expect(await coordinateWebhook(d, request)).toMatchObject({ outcome: "stale_label" });
     expect(d.fireRoutine).not.toHaveBeenCalled();
   });
 
@@ -162,4 +176,61 @@ describe("discussion_capped", () => {
     expect(await coordinateWebhook(d, capped)).toMatchObject({ outcome: "dropped_no_rule" });
     expect(d.removeLabel).not.toHaveBeenCalled();
   });
+});
+
+describe("gaps the review found", () => {
+  it("rework_no_change ends a pending review fix too", async () => {
+    const d = deps([LABELS.AUTO_REWORKING]);
+    await d.setReviewLoop({ botRounds: 1, fixPending: true });
+    await coordinateWebhook(d, outcomeComment(PR, ROUTINES.REWORK_LOOP, { outcome: "rework_no_change", reason: "nothing to push" }));
+    expect(await d.getReviewLoop()).toMatchObject({ fixPending: false });
+  });
+
+  it(`rework_no_change from ${LABELS.AI_STUCK} takes it off`, async () => {
+    const d = deps([LABELS.AI_STUCK]);
+    await coordinateWebhook(d, outcomeComment(PR, ROUTINES.REWORK_LOOP, { outcome: "rework_no_change", reason: "late" }));
+    expect(d.removeLabel).toHaveBeenCalledWith(OWNER, REPO, PR, LABELS.AI_STUCK);
+  });
+
+  it.each([
+    [ROUTINES.MERGE_FLOW, { outcome: "merge_blocked", reason: "x" }, [LABELS.AUTO_MERGING]],
+    [ROUTINES.ISSUE_DISCUSS_LOOP, { outcome: "discussion_capped" }, [LABELS.AI_DISCUSSING]],
+  ])("%s: an untrusted commenter's report is ignored", async (routine, json, labels) => {
+    const d = deps(labels);
+    expect(await coordinateWebhook(d, outcomeComment(PR, routine, json, "NONE"))).toEqual({ outcome: "no_event" });
+    expect(d.addLabel).not.toHaveBeenCalled();
+    expect(d.removeLabel).not.toHaveBeenCalled();
+    expect(d.commentOnIssue).not.toHaveBeenCalled();
+  });
+
+  it("merge_blocked bounds the reason it comments", async () => {
+    const d = deps([LABELS.AUTO_MERGING]);
+    await coordinateWebhook(d, outcomeComment(PR, ROUTINES.MERGE_FLOW, { outcome: "merge_blocked", reason: "x".repeat(2000) }));
+    const body = vi.mocked(d.commentOnIssue).mock.calls[0]![3] as string;
+    expect(body.length).toBeLessThan(800);
+  });
+
+  it("a failed hand-off fails the delivery, and the redelivery hands on again with the same id", async () => {
+    const d = deps([LABELS.AI_READY]);
+    vi.mocked(d.forward).mockRejectedValueOnce(new Error("DO down"));
+    const built = outcomeComment(ISSUE, ROUTINES.ISSUE_BUILD_LOOP, { outcome: "build_succeeded", pr: PR });
+    await expect(coordinateWebhook(d, built)).rejects.toThrow("DO down");
+    vi.mocked(d.getLabels).mockResolvedValue([LABELS.PR_OPEN]);
+    await coordinateWebhook(d, built);
+    expect(d.forward).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(d.forward).mock.calls[1]![2]).toBe(`d-outcome:#${PR}`);
+  });
+
+  it.each([[LABELS.AI_STUCK], [LABELS.READY_FOR_REVIEW], [LABELS.AUTO_REWORKING, LABELS.AUTO_MERGING]])(
+    "a review request on a PR labelled %s adds nothing it has no rule for",
+    async (...labels) => {
+      const d = deps(labels);
+      await coordinateWebhook(
+        d,
+        input({ deliveryId: "d-r", issueNumber: PR, payload: { action: "orchestrator.review_requested", reviewRequest: { requestedBy: ISSUE } } }),
+      );
+      const added = vi.mocked(d.addLabel).mock.calls.map((c) => c[3]);
+      if (labels.length > 1) expect(added).not.toContain(LABELS.AI_REVIEWING);
+    },
+  );
 });

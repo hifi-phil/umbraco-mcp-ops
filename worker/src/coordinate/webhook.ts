@@ -180,11 +180,17 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
     // One already there was handled when it was added; a state with no rule
     // for it is logged as dropped, with nothing added.
     if (input.payload.action === "orchestrator.review_requested") {
-      if (currentLabels.includes(LABELS.AI_REVIEWING)) return { outcome: "stale_label", event };
-      const state = deriveState(currentLabels);
-      if (state === "ambiguous" || !reduce(state, event)) return applyEvent(deps, input, event, currentLabels);
-      await depsFor(deps, event).io.addLabel(input.owner, input.repo, input.issueNumber, LABELS.AI_REVIEWING);
-      currentLabels = [...currentLabels, LABELS.AI_REVIEWING];
+      if (currentLabels.includes(LABELS.AI_REVIEWING)) {
+        // On with nothing else tracked: either handled already (a review is
+        // pending, below) or added by a delivery that failed before its rule
+        // ran, which this redelivery completes. Anything else is left as it is.
+        if (deriveState(currentLabels.filter((l) => l !== LABELS.AI_REVIEWING)) !== "none") return { outcome: "stale_label", event };
+      } else {
+        const state = deriveState(currentLabels);
+        if (state === "ambiguous" || !reduce(state, event)) return applyEvent(deps, input, event, currentLabels);
+        await depsFor(deps, event).io.addLabel(input.owner, input.repo, input.issueNumber, LABELS.AI_REVIEWING);
+        currentLabels = [...currentLabels, LABELS.AI_REVIEWING];
+      }
     }
     if (!currentLabels.includes(LABELS.AI_REVIEWING)) return { outcome: "stale_label", event };
     // The label's check suite can be handled first (CI finishing as it went
