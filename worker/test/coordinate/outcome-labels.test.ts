@@ -80,6 +80,20 @@ describe("the PR's side of the hand-off", () => {
     expect(d.fireRoutine).not.toHaveBeenCalled();
   });
 
+  it("a PR that is closed, or can't be read as a PR, gets no label", async () => {
+    for (const getPullDetails of [
+      vi.fn(async () => ({ headRef: "b", headSha: "s", baseRef: "dev", defaultBranch: "dev", merged: true, open: false })),
+      vi.fn(async () => {
+        throw new Error("404");
+      }),
+    ]) {
+      const d = deps([], { getMergeGateFacts: vi.fn(async () => green), getPullDetails });
+      expect(await coordinateWebhook(d, request)).toMatchObject({ outcome: "stale_label" });
+      expect(d.addLabel).not.toHaveBeenCalled();
+      expect(d.fireRoutine).not.toHaveBeenCalled();
+    }
+  });
+
   it("a PR whose review is already out isn't changed", async () => {
     const d = deps([LABELS.AI_REVIEWING], { getMergeGateFacts: vi.fn(async () => green) });
     await d.setPendingFire({ owner: OWNER, repo: REPO, issueNumber: PR, run: ROUTINES.REVIEW_LOOP });

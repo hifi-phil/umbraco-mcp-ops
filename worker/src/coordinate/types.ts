@@ -110,7 +110,7 @@ export type PendingFire = {
 // LABELS.AI_REVIEWING (CI red before the review).
 export type Shipped = { pr: number; sha: string };
 
-export type PullDetails = { headRef: string; headSha: string; baseRef: string; defaultBranch: string; merged: boolean };
+export type PullDetails = { headRef: string; headSha: string; baseRef: string; defaultBranch: string; merged: boolean; open: boolean };
 
 export type CiFix = { attempts: number; pending: boolean; returnTo?: Label };
 

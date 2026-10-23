@@ -186,6 +186,14 @@ async function processEvent(deps: Deps, input: CoordinateInput): Promise<Coordin
         // ran, which this redelivery completes. Anything else is left as it is.
         if (deriveState(currentLabels.filter((l) => l !== LABELS.AI_REVIEWING)) !== "none") return { outcome: "stale_label", event };
       } else {
+        // Only an open PR is handed a review: the number comes from a
+        // session's report, and a late or redelivered one can name a PR
+        // that has since merged, or not a PR at all.
+        const target = await deps.getPullDetails(input.owner, input.repo, input.issueNumber).catch((e) => {
+          console.error("review hand-off target read failed:", e instanceof Error ? e.message : e);
+          return null;
+        });
+        if (!target?.open) return { outcome: "stale_label", event };
         const state = deriveState(currentLabels);
         if (state === "ambiguous" || !reduce(state, event)) return applyEvent(deps, input, event, currentLabels);
         await depsFor(deps, event).io.addLabel(input.owner, input.repo, input.issueNumber, LABELS.AI_REVIEWING);

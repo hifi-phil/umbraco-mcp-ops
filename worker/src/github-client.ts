@@ -243,14 +243,15 @@ export async function getPullDetails(
   owner: string,
   repo: string,
   pr: number,
-): Promise<{ headRef: string; headSha: string; baseRef: string; defaultBranch: string; merged: boolean }> {
+): Promise<{ headRef: string; headSha: string; baseRef: string; defaultBranch: string; merged: boolean; open: boolean }> {
   const res = await gh(env, "GET", `/repos/${owner}/${repo}/pulls/${pr}`);
   const p = (await res.json()) as {
     head: { ref: string; sha: string };
     base: { ref: string; repo: { default_branch: string } };
     merged: boolean;
+    state: string;
   };
-  return { headRef: p.head.ref, headSha: p.head.sha, baseRef: p.base.ref, defaultBranch: p.base.repo.default_branch, merged: p.merged };
+  return { headRef: p.head.ref, headSha: p.head.sha, baseRef: p.base.ref, defaultBranch: p.base.repo.default_branch, merged: p.merged, open: p.state === "open" };
 }
 
 /** Merges a PR the way the project says (merge, squash or rebase), only if
