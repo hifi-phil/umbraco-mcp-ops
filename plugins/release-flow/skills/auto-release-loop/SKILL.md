@@ -70,7 +70,7 @@ of their squash subject (a commit with no suffix is counted, not named). Commits
   **with a merge commit**, the repo's release convention, never squash; make sure
   `v<version>` is tagged and released and `<main>` is merged back into `<dev>`; post the Slack
   note only if one is due; and close this issue). Before commenting, work out and state in the
-  comment whether a Slack note is due and to which channel, and whether the repo's own
+  comment whether a Slack note is due (by `release-publish` step 2's rules) and to which channel, and whether the repo's own
   automation tags and releases on merge; don't cite skill steps or `CLAUDE.md` in it. Append the required
   `release_blocked` artifact (`reason` = the comment's first line). No `release_published` fires after a manual ship, so the orchestrator never
   closes the open `ready-for-release` issues: say in the comment that a manual ship needs those
@@ -231,7 +231,7 @@ and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close 
 ## Running as a routine
 
 Set up a routine with trigger **Issue: Labeled**, filtered to **Labels is one of
-`auto-releasing`**, on an environment that has this skill (+ `github-ops`,
+`auto-releasing`**, on an environment that has this skill (+ `github-ops`, `agent-outcomes`,
 `release-and-branching`, `sync-dev`) — firing is instant, so labelling a
 `release <version>` issue kicks it off immediately. The version comes from the issue, so
 nothing else needs configuring per run. *(The `auto-releasing` label must exist on the

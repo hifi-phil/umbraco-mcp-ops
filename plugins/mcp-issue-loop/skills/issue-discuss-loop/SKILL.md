@@ -8,7 +8,7 @@ description: >-
   next round, so it's a real back-and-forth. The aim is consensus on the simplest, most
   surgical change that solves the problem — problem first, then testable requirements, then a
   plan that follows the code already there. Writes issues only: never code, never a PR, never
-  `ai-ready`. Repo-agnostic; github-ops required. Trigger: an issue labelled `ai-discussing`,
+  `ai-ready`. Repo-agnostic; github-ops and agent-outcomes required. Trigger: an issue labelled `ai-discussing`,
   a new comment on one, or "discuss issue #N".
 ---
 

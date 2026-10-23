@@ -7,7 +7,7 @@ description: >-
   and reports its outcome — then stops. It does NOT
   poll/wait for the full CI suite (merge-flow won't merge until CI passes, so CI is
   enforced there) and it never merges.
-  Requires the github-ops skill. Trigger: a PR labelled `auto-reworking`
+  Requires the github-ops and agent-outcomes skills. Trigger: a PR labelled `auto-reworking`
   (uniform with the other loops, and works regardless of who reviewed).
 ---
 
@@ -46,7 +46,7 @@ after reading) → post the `rework_no_change` outcome with a brief reason and s
 "🔧 CI failing" comment, the failing checks it names are the feedback. Read those
 checks' logs (github-ops → *Get PR CI / check-run status*) and fix what failed; there
 may be no review at all. Read the logs once, don't poll. For this kind of rework, Step 5
-has no threads to reply to and no reviewer to re-request.
+has no threads to reply to.
 
 **The review's findings.** If the orchestrator added `auto-reworking`
 with a "🔍 Review round" comment, the feedback is `review-loop`'s latest PR review: its
@@ -106,6 +106,6 @@ If you pushed nothing (no actionable feedback), post the `rework_no_change` outc
 
 ## Running as a routine
 
-On an environment carrying this skill + `github-ops` (and, for good MCP code, the
+On an environment carrying this skill + `github-ops` + `agent-outcomes` (and, for good MCP code, the
 `umbraco-mcp-skills` conventions). One PR per fire. Use a
 capable coding model (Sonnet or better) — it edits code.

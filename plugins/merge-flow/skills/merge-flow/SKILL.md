@@ -5,7 +5,7 @@ description: >-
   `auto-merging` and merges each only once every safety gate holds; on any unmet gate it
   comments the blocker and moves on rather than merging. Replaces error-prone manual
   merges. Repo-agnostic; runs locally or as a scheduled cloud routine; requires the
-  `github-ops` skill. Trigger on "merge the ready PRs", "run merge-flow", "auto-merge
+  `github-ops` and `agent-outcomes` skills. Trigger on "merge the ready PRs", "run merge-flow", "auto-merge
   the queue".
 ---
 
@@ -62,7 +62,7 @@ For each candidate, all must hold — if any fails, **do not merge** (go to Step
    **Never rely on an auto-merge that bypasses this gate** — this org has no branch
    protection, so an auto-merge would land without a real green gate. Wait up to a sane
    cap (e.g. 15 min); if still pending, treat as not-yet-mergeable, **comment on the PR**
-   that CI was still pending at the cap, and stop.
+   that CI was still pending at the cap, and treat it as a failed gate (Step 4): move on to the next candidate.
 3. **Mergeable / no conflicts.** The PR must report mergeable with no conflicts (get
    it via github-ops → *Get a PR*). If it's behind its base, update the branch first,
    then re-check CI (that restarts checks).
