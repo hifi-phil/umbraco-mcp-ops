@@ -4,6 +4,7 @@
 import { LABELS } from "@orchestrator/graph/constants/labels";
 import { reduce, rules } from "@orchestrator/graph/graph";
 import { EVENTS } from "@orchestrator/graph/constants/events";
+import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
 import { coordinateWebhook } from "./webhook";
 import { applyEvent, deriveState, fireUnwatched, fireWatched, type FireOutcome } from "./apply";
@@ -116,7 +117,11 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   // the next run, which a shadow watchdog must not do.
   if (deps.enforced(EVENTS.WATCHDOG_EXPIRED)) {
     const recovered = await recoverOutcome(deps, pending);
-    if (recovered) return recovered;
+    if (recovered) {
+      // An earlier attempt may have recorded the expiry before its label write failed.
+      await deps.setReworkExpired(false);
+      return recovered;
+    }
   }
 
   // Once, a run that never reported a single step is fired again instead of
@@ -153,7 +158,18 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
       `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
   );
 
+  // A rework started straight from a label has no CI-fix or review state to
+  // say its push is still wanted, so the expiry itself is recorded. Before the
+  // label write, so a retry after a failure in between still finds it; a
+  // shadow or refused expiry moves no label and so takes it back. Every
+  // enforced expiry writes it, so it is only true if the latest entry into
+  // LABELS.AI_STUCK was a rework expiry.
+  const recordExpiry = deps.enforced(EVENTS.WATCHDOG_EXPIRED);
+  if (recordExpiry) await deps.setReworkExpired(pending.run === ROUTINES.REWORK_LOOP);
   const result = await applyEvent(deps, { ...pending, actor: "watchdog" }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
+  // A retried alarm may find the label write already landed: the PR reads
+  // AI_STUCK and the expiry's claim must stay.
+  if (recordExpiry && result.outcome !== "applied" && state !== LABELS.AI_STUCK) await deps.setReworkExpired(false);
   await deps.clearPendingFire();
   // The watch is over either way: a shadow watchdog or labels with no expiry
   // rule leave the row alone above, and nothing else would stop it reading
