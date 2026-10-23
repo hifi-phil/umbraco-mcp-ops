@@ -162,9 +162,9 @@ export class IssueCoordinator {
       }
       return this.serial(() =>
         respond(async () => {
-          // Only the latest fire's token may write: a late signal from an earlier
+          // Only the latest fire's token may act (a heartbeat too, since its token may be past its expiry): a late signal from an earlier
           // run of the same routine must not act on the run that replaced it.
-          if (input.signal?.kind !== "process" && input.tokenId !== undefined) {
+          if (input.tokenId !== undefined) {
             const current = await this.ctx.storage.get<string>(FIRE_JTI_KEY);
             if (current !== input.tokenId) return { outcome: "stale_fire" as const };
           }
