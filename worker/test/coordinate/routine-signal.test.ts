@@ -192,6 +192,7 @@ describe("coordinateRoutineSignal — outcome, blocked and ended", () => {
     );
     expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.BUILD_SUCCEEDED, actor: "routine-signal", droppedReason: null }));
     expect(await deps.getPendingFire()).toBeNull();
+    expect(deps.markCompleted).toHaveBeenCalledOnce();
 
     vi.mocked(deps.addLabel).mockClear();
     vi.mocked(deps.removeLabel).mockClear();
@@ -204,6 +205,43 @@ describe("coordinateRoutineSignal — outcome, blocked and ended", () => {
     expect(deps.addLabel).not.toHaveBeenCalled();
     expect(deps.removeLabel).not.toHaveBeenCalled();
     expect(deps.forward).not.toHaveBeenCalled();
+  });
+
+  it("a rule that starts a new run keeps that run's pending fire and is not marked completed; the later comment is deduped", async () => {
+    const reviewing = { ...pending, issueNumber: 123, run: ROUTINES.REVIEW_LOOP };
+    const findings = { outcome: "review_findings", findings: 1 };
+    const deps = liveDeps([LABELS.AI_REVIEWING]);
+    await deps.setPendingFire(reviewing);
+
+    const result = await coordinateRoutineSignal(deps, {
+      owner: "hifi-phil",
+      repo: "umbraco-mcp-ops",
+      signal: { kind: "outcome", routine: ROUTINES.REVIEW_LOOP, issue: 123, outcome: findings },
+    });
+
+    expect(result).toMatchObject({ outcome: "outcome_reported", result: { outcome: "applied", event: EVENTS.REVIEW_FINDINGS } });
+    expect(deps.fireRoutine).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 123, ROUTINES.REWORK_LOOP);
+    expect(await deps.getPendingFire()).toMatchObject({ run: ROUTINES.REWORK_LOOP, issueNumber: 123 });
+    expect(deps.markCompleted).not.toHaveBeenCalled();
+
+    vi.mocked(deps.addLabel).mockClear();
+    const comment = await coordinateWebhook(
+      deps,
+      input({
+        deliveryId: "delivery-findings",
+        issueNumber: 123,
+        payload: {
+          action: "issue_comment.created",
+          sender: { login: "phil", type: "User" },
+          comment: {
+            body: [`<!-- agent-outcome:${ROUTINES.REVIEW_LOOP} -->`, "```json", JSON.stringify(findings), "```"].join("\n"),
+            author_association: "OWNER",
+          },
+        },
+      }),
+    );
+    expect(comment).toEqual({ outcome: "deduped" });
+    expect(deps.addLabel).not.toHaveBeenCalled();
   });
 
   it("the comment first, then the outcome -> deduped, logged, nothing applied twice", async () => {
