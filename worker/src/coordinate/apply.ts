@@ -54,6 +54,7 @@ export async function fireWatched(
 /** A new run of `run` starts: the outcome its last run reported (outcome-dedupe.ts)
  * no longer dedupes, so this run's own outcome applies when it comes. */
 async function forgetAppliedOutcome(deps: Deps, run: string): Promise<void> {
+  if ((await deps.getEndedFire())?.run === run) await deps.setEndedFire(null);
   if ((await deps.getAppliedOutcome())?.run === run) await deps.setAppliedOutcome(null);
 }
 
@@ -191,6 +192,10 @@ export async function applyEvent(
       throw e;
     }
   } else {
+    // Kept, so the run's completion can still apply after this rule (the
+    // loop's own unlabel, say) cleared the fire.
+    const ended = await deps.getPendingFire();
+    if (ended && ended.deferUntil === undefined) await deps.setEndedFire(ended);
     await deps.clearPendingFire();
   }
 

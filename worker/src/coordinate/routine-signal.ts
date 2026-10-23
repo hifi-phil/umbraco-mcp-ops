@@ -50,13 +50,17 @@ export async function coordinateRoutineSignal(
   // an earlier run of the same routine, and must not clear or extend it.
   const live = pending && pending.deferUntil === undefined ? pending : null;
   if (!live || live.run !== update.routine) {
-    // Its comment got here first and the fire is over (or the next run's).
     if (update.kind === "completion") {
       const reported = { routine: update.routine, outcome: update.outcome.outcome };
+      // Its comment got here first and the fire is over (or the next run's).
       if (await alreadyApplied(deps, reported, live)) {
         await logDeduped(deps, { owner: input.owner, repo: input.repo, issueNumber: update.issue, actor: "routine-signal" }, reported);
         return { outcome: "deduped" };
       }
+      // A rule ended the fire first (the loop unlabels before it reports):
+      // the completion is still this run's, and applies against that fire.
+      const ended = live ? null : await deps.getEndedFire();
+      if (ended && ended.run === update.routine) return applyCompletion(deps, ended, update, false);
     }
     if (!live) return { outcome: "no_pending_fire" };
     return { outcome: "mismatched_routine", expected: live.run, got: update.routine };
@@ -72,7 +76,7 @@ export async function coordinateRoutineSignal(
       return { outcome: "heartbeat_extended" };
     }
     case "completion":
-      return applyCompletion(deps, live, update);
+      return applyCompletion(deps, live, update, true);
     case "blocked":
       return noteBlocked(deps, live, update.detail);
     case "ended": {
@@ -107,6 +111,7 @@ async function applyCompletion(
   deps: Deps,
   pending: PendingFire,
   update: Extract<RoutineUpdate, { kind: "completion" }>,
+  stillPending: boolean,
 ): Promise<RoutineSignalResult> {
   const body = `<!-- agent-outcome:${pending.run} -->\n\`\`\`json\n${JSON.stringify(update.outcome)}\n\`\`\``;
   const result = await coordinateWebhook(deps, {
@@ -122,18 +127,25 @@ async function applyCompletion(
       issue: { state: "open", is_pr: false },
     },
   });
-  // Not applied (deduped, dropped, …): nothing moved on, so the watchdog stays
-  // armed and still decides, and the outcome's comment can still apply.
+  // Not applied (dropped, …): nothing moved on, so the watchdog stays armed
+  // and still decides, and the outcome's comment can still apply. The
+  // rejection is a row, so an expiry later isn't read as a run that died.
   if (result.outcome !== "applied") {
-    console.warn(`routine-signal: ${pending.run}'s ${update.outcome.outcome} on #${pending.issueNumber} not applied (${result.outcome})`);
+    if (result.outcome !== "deduped") await logNotApplied(deps, pending, update.outcome.outcome, result.outcome);
     return { outcome: "completion_acknowledged", result };
   }
-  const now = await deps.getPendingFire();
-  if (now && now.run === pending.run && now.dueAt === pending.dueAt && now.firedAt === pending.firedAt) {
+  // Applied: the rule has usually cleared or replaced the fire already (and
+  // written the status row for it, which "done" would overwrite, and for a
+  // new run, wrongly). Only a fire still this one is cleared here, and shown
+  // done. The run is marked completed unless the rule fired a new one: a new
+  // fire clears the mark, and re-setting it would hide that run from the sweep.
+  let now = await deps.getPendingFire();
+  if (stillPending && now && now.run === pending.run && now.dueAt === pending.dueAt && now.firedAt === pending.firedAt) {
     await deps.clearPendingFire();
-    await deps.markCompleted(new Date().toISOString());
     await deps.recordStatus(pending, { kind: "done" });
+    now = null;
   }
+  if (!now) await deps.markCompleted(new Date().toISOString());
   return { outcome: "completion_acknowledged", result };
 }
 
@@ -169,6 +181,24 @@ async function noteBlocked(deps: Deps, pending: PendingFire, detail: string): Pr
     mode,
   });
   return { outcome: "blocked_noted" };
+}
+
+/** A completion the webhook path didn't apply: durable, so it shows on the
+ * dashboard and in the audit rather than only in a console. */
+async function logNotApplied(deps: Deps, pending: PendingFire, outcome: string, result: string): Promise<void> {
+  await deps.logTransition({
+    deliveryId: null,
+    actor: "routine-signal",
+    owner: pending.owner,
+    repo: pending.repo,
+    issueNumber: pending.issueNumber,
+    fromState: "none",
+    event: outcome,
+    toEffect: null,
+    run: pending.run,
+    droppedReason: `completion not applied: ${result}`,
+    mode: depsFor(deps, outcome as Event).mode,
+  });
 }
 
 /** A completion whose outcome isn't one the catalog knows: logged, nothing

@@ -34,11 +34,14 @@ export type StubEnv = {
   GITHUB_APP_PRIVATE_KEY: string;
 };
 
-export function routineSignal(env: StubEnv, owner: string, repo: string): Signal {
+export function routineSignal(env: StubEnv, owner: string, repo: string, logToken?: string): Signal {
   return async (signal) => {
+    // As the hook does: the fire's own token for a completion, blocked or
+    // ended; the shared secret only for a heartbeat.
+    const bearer = signal.kind !== "process" && logToken ? logToken : env.ROUTINE_SIGNAL_SECRET;
     const res = await env.ORCHESTRATOR.fetch("https://orchestrator/routine-signal", {
       method: "POST",
-      headers: { Authorization: `Bearer ${env.ROUTINE_SIGNAL_SECRET}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
       body: JSON.stringify({ owner, repo, signal }),
     });
     const text = await res.text();
@@ -133,7 +136,7 @@ export async function handleFire(
   defer: (work: Promise<unknown>) => void,
   gh: Gh = stubGitHub(env),
   delayMs = STUB_DELAY_MS,
-  signalFor: (owner: string, repo: string) => Signal = (o, r) => routineSignal(env, o, r),
+  signalFor: (owner: string, repo: string, logToken?: string) => Signal = (o, r, t) => routineSignal(env, o, r, t),
 ): Promise<Response> {
   if (request.headers.get("Authorization") !== `Bearer ${env.FIRE_TOKEN}`) {
     return new Response("unauthorized", { status: 401 });
@@ -161,7 +164,7 @@ export async function handleFire(
       const { body } = (await gh("GET", `/repos/${fire.owner}/${fire.repo}/issues/${fire.number}`)) as {
         body: string | null;
       };
-      return act(gh, fire, parseHint(body), signalFor(fire.owner, fire.repo), fire.logToken ? logWriter(env, fire.logToken) : undefined);
+      return act(gh, fire, parseHint(body), signalFor(fire.owner, fire.repo, fire.logToken), fire.logToken ? logWriter(env, fire.logToken) : undefined);
     }),
   );
   return Response.json({ accepted: true, route: fire.route, number: fire.number });

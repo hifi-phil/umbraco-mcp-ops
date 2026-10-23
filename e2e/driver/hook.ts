@@ -8,10 +8,19 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHmac, randomBytes } from "node:crypto";
 import { orchestratorUrl, REPO, tofuSecret } from "./github";
 import { progress } from "./progress";
 
 const HOOK = new URL("../../plugins/agent-outcomes/hooks/report-completion.sh", import.meta.url).pathname;
+
+/** A fire's log_token, as the Worker mints it (worker/src/work-log.ts mintLogToken). */
+function mintLogToken(secret: string, routine: string, number: number): string {
+  const [owner, repo] = REPO.toLowerCase().split("/");
+  const claims = { owner, repo, item: number, routine, exp: Date.now() + 3_600_000, jti: Buffer.from(randomBytes(9)).toString("base64url") };
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  return `${payload}.${createHmac("sha256", secret).update(payload).digest("base64url")}`;
+}
 
 /** One hook call for `routine` on sandbox issue `number`, as `toolCall` (a PostToolUse event's tool_name + tool_input). */
 export async function runHook(
@@ -25,7 +34,7 @@ export async function runHook(
     transcript,
     JSON.stringify({
       type: "user",
-      message: { content: `loop-dispatch (cloud worker). A GitHub loop event was routed at the edge: route=${routine} repo=${REPO} number=${number}. Run the loop-dispatch skill…` },
+      message: { content: `loop-dispatch (cloud worker). A GitHub loop event was routed at the edge: route=${routine} repo=${REPO} number=${number}. Run the loop-dispatch skill… log_token=${mintLogToken(tofuSecret("routine_signal_secret", "E2E_ROUTINE_SIGNAL_SECRET"), routine, number)}` },
     }) + "\n",
   );
   const event = { hook_event_name: "PostToolUse", session_id: `e2e-${number}`, transcript_path: transcript, ...toolCall };

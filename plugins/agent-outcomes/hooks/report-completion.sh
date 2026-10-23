@@ -35,7 +35,13 @@
 #   AGENT_OUTCOMES_ENDPOINT        the Worker's .../routine-signal URL. Unset ->
 #                                  log a detected outcome only, send nothing.
 #   AGENT_OUTCOMES_TOKEN           its bearer secret (tofu output
-#                                  routine_signal_secret).
+#                                  routine_signal_secret), for heartbeats; when
+#                                  unset a heartbeat goes with the run's own
+#                                  log_token (from the fire text), which is
+#                                  also what a completion needs. The secret
+#                                  signs those tokens, so leave it out of a
+#                                  routine environment where the fire text
+#                                  carries a log_token.
 #   AGENT_OUTCOMES_HEARTBEAT_SECS  minimum gap between heartbeats (default 60).
 #   AGENT_OUTCOMES_STATE           where the run cache lives (default
 #                                  ~/.cache/agent-outcomes).
@@ -84,9 +90,33 @@ run_context() {
   fi
 }
 
-# send <signal-json> <what>: POST {owner, repo, signal} to the Worker.
+# The run's own log_token, from the same fire text: it is scoped to this one
+# repo, item and routine, and is what the Worker requires for a completion
+# (the shared AGENT_OUTCOMES_TOKEN only authorises a heartbeat). Prints
+# nothing when the fire carried none.
+# Cached like the run, since a subagent's transcript may not carry the fire
+# text: the last token this container saw, if recent.
+run_token() {
+  local transcript token
+  transcript="$(printf '%s' "$EVENT" | jq -r '.transcript_path // empty' 2>/dev/null)"
+  if [ -n "$transcript" ] && [ -f "$transcript" ]; then
+    token="$(grep -o -m1 -E 'log_token=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+' "$transcript" 2>/dev/null | head -n1 | sed 's/^log_token=//')"
+    if [ -n "$token" ]; then
+      mkdir -p "$STATE" 2>/dev/null || true
+      (umask 077; printf '%s' "$token" >"$STATE/last-token" 2>/dev/null) || true
+      printf '%s' "$token"
+      return 0
+    fi
+  fi
+  if [ -f "$STATE/last-token" ] && [ -n "$(find "$STATE/last-token" -mmin -360 2>/dev/null)" ]; then
+    cat "$STATE/last-token"
+  fi
+}
+
+# send <signal-json> <what> <ctx> [token]: POST {owner, repo, signal} to the Worker.
 send() {
-  local signal="$1" what="$2" ctx owner repo body
+  local signal="$1" what="$2" ctx owner repo body token="${4:-}"
+  [ -n "$token" ] || token="${AGENT_OUTCOMES_TOKEN:-}"
   ctx="$3"
   owner="$(printf '%s' "$ctx" | awk '{print $2}')"
   repo="$(printf '%s' "$ctx" | awk '{print $3}')"
@@ -94,7 +124,7 @@ send() {
   [ -n "$body" ] || { log "failed to assemble $what payload — skipping"; return; }
   command -v curl >/dev/null 2>&1 || { log "curl not available — cannot send $what"; return; }
   local auth=()
-  [ -n "${AGENT_OUTCOMES_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${AGENT_OUTCOMES_TOKEN}")
+  [ -n "$token" ] && auth=(-H "Authorization: Bearer ${token}")
   # ${auth[@]+…}: an empty array is "unbound" under set -u in bash 3.2 (macOS).
   if curl -fsS -m 5 -X POST -H 'Content-Type: application/json' ${auth[@]+"${auth[@]}"} -d "$body" "$AGENT_OUTCOMES_ENDPOINT" >>"$LOG" 2>&1; then
     log "sent $what"
@@ -135,7 +165,9 @@ if [ -n "$BLOB" ]; then
   SIGNAL="$(jq -cn --arg routine "$(printf '%s' "$CTX" | awk '{print $1}')" \
     --argjson issue "$(printf '%s' "$CTX" | awk '{print $4}')" --argjson outcome "$JSON" \
     '{kind:"completion", routine:$routine, issue:$issue, outcome:$outcome}')"
-  send "$SIGNAL" "completion" "$CTX"
+  TOKEN="$(run_token)"
+  [ -n "$TOKEN" ] || log "no log_token in this session — the completion will be refused; its comment still applies"
+  send "$SIGNAL" "completion" "$CTX" "$TOKEN"
   exit 0
 fi
 
@@ -166,5 +198,7 @@ STEP="$(printf '%s' "$EVENT" | jq -r '
 SIGNAL="$(jq -cn --arg routine "$(printf '%s' "$CTX" | awk '{print $1}')" \
   --argjson issue "$(printf '%s' "$CTX" | awk '{print $4}')" --arg step "${STEP:-tool}" \
   '{kind:"process", routine:$routine, issue:$issue, step:$step}')"
-send "$SIGNAL" "heartbeat ($STEP)" "$CTX"
+# The shared secret when the environment has one, else the run's own token:
+# the token's life is bounded, and a long run's heartbeats must outlast it.
+send "$SIGNAL" "heartbeat ($STEP)" "$CTX" "${AGENT_OUTCOMES_TOKEN:-$(run_token)}"
 exit 0

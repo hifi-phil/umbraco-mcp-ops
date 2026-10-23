@@ -59,12 +59,15 @@ async function processWebhook(deps: Deps, input: CoordinateInput): Promise<Coord
   const reported = reportedOutcome(input.payload);
   const pending = reported ? await deps.getPendingFire() : null;
   if (reported && (await alreadyApplied(deps, reported, pending))) return logDeduped(deps, input, reported);
+  // Nothing pending (the loop's own unlabel cleared it first): the outcome
+  // still belongs to the fire that was, and is remembered against it.
+  const ended = reported && !pending ? await deps.getEndedFire() : null;
   const result = await processEvent(deps, input);
   if (reported && result.outcome === "applied") {
     // The outcome is applied: failing here would fail the delivery and apply
     // it again on redelivery. At worst its other carrier isn't deduped.
     try {
-      await rememberApplied(deps, reported, pending);
+      await rememberApplied(deps, reported, pending ?? ended);
     } catch (e) {
       console.error(
         `remembering ${reported.routine}'s ${reported.outcome} on ${input.owner}/${input.repo}#${input.issueNumber} failed:`,

@@ -193,6 +193,13 @@ export function capsFor(raw: string | undefined, owner: string, repo: string): C
  */
 export type AppliedOutcome = { run: string; firedAt: number | null; outcome: string };
 
+/**
+ * The fire a rule last ended (an outcome, or the loop's own unlabel, cleared
+ * it): a completion for that run still applies against it
+ * (routine-signal.ts), though nothing is pending any more.
+ */
+export type EndedFire = PendingFire;
+
 export type Deps = {
   getLabels(owner: string, repo: string, issueNumber: number): Promise<string[]>;
   addLabel(owner: string, repo: string, issueNumber: number, label: string): Promise<void>;
@@ -294,6 +301,10 @@ export type Deps = {
   // and the outcome comment carry the same fact, and only the first applies.
   getAppliedOutcome(): Promise<AppliedOutcome | null>;
   setAppliedOutcome(applied: AppliedOutcome | null): Promise<void>;
+  // The fire a rule last cleared (DO storage), so a completion that comes
+  // after the loop's own unlabel isn't lost; a new fire of that run clears it.
+  getEndedFire(): Promise<EndedFire | null>;
+  setEndedFire(fire: EndedFire | null): Promise<void>;
   // How long a fired routine has before the watchdog expires, for this
   // issue's repo (watchdogMinutesFor, unless the repo overrides it).
   watchdogMinutes(routine: string): number;

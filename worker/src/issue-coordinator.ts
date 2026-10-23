@@ -31,6 +31,7 @@ import {
   capsFor,
   DEFAULT_CAPS,
   type AppliedOutcome,
+  type EndedFire,
   type CiFix,
   type CoordinateInput,
   type Deps,
@@ -108,6 +109,7 @@ const REWORK_EXPIRED_KEY = "reworkExpired"; // the watchdog gave up on a rework-
 const REVIEW_LOOP_KEY = "reviewLoop"; // review-loop's own rounds on this PR (MAX_BOT_REVIEW_REWORKS)
 const RECONCILE_REPORTED_KEY = "reconcileReported";
 const COMPLETED_KEY = "completed";
+const ENDED_FIRE_KEY = "endedFire"; // the fire a rule last cleared (coordinate/routine-signal.ts)
 const APPLIED_OUTCOME_KEY = "appliedOutcome"; // the last outcome applied for a fire (coordinate/outcome-dedupe.ts)
 const CLOSED_KEY = "closedOnGitHub"; // its status row stays gone until reopened
 const seenKeyFor = (deliveryId: string) => `seen:${deliveryId}`;
@@ -207,6 +209,11 @@ export class IssueCoordinator {
       setAppliedOutcome: async (applied: AppliedOutcome | null) => {
         if (applied) await this.ctx.storage.put(APPLIED_OUTCOME_KEY, applied);
         else await this.ctx.storage.delete(APPLIED_OUTCOME_KEY);
+      },
+      getEndedFire: async () => (await this.ctx.storage.get<EndedFire>(ENDED_FIRE_KEY)) ?? null,
+      setEndedFire: async (fire: EndedFire | null) => {
+        if (fire) await this.ctx.storage.put(ENDED_FIRE_KEY, fire);
+        else await this.ctx.storage.delete(ENDED_FIRE_KEY);
       },
       getReconcileReported: async () => (await this.ctx.storage.get<string>(RECONCILE_REPORTED_KEY)) ?? null,
       setReconcileReported: async (lastActivity: string) => {

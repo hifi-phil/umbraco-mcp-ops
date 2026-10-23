@@ -19,7 +19,7 @@ import { Hono } from "hono";
 import { dashboard } from "./dashboard/app";
 import { upsertMeta } from "./db/items";
 import * as transitions from "./db/transitions";
-import { handleLogAdd, handleLogRead } from "./work-log";
+import { handleLogAdd, handleLogRead, verifyLogToken } from "./work-log";
 
 export { IssueCoordinator, Scheduler };
 
@@ -232,16 +232,24 @@ async function routeByCommit(env: Env, body: Record<string, unknown>): Promise<R
 /**
  * The direct routine-to-DO channel (see coordinate/routine-signal.ts's
  * coordinateRoutineSignal). Not a GitHub webhook — no X-GitHub-Event, no
- * HMAC signature; a bearer secret instead, since this is a routine
- * calling in directly, not GitHub delivering a signed payload. Unset, only a
+ * HMAC signature; a bearer instead, since this is a routine calling in
+ * directly, not GitHub delivering a signed payload. Two kinds of bearer: the
+ * shared ROUTINE_SIGNAL_SECRET, good for a heartbeat only (all it can do is
+ * extend or cancel a watchdog), and the fire's own token (work-log.ts's
+ * mintLogToken), good for any kind and required for a completion, blocked or
+ * ended. The tokens are signed with that same secret, so a routine
+ * environment must hold only its token: a session that can read the secret
+ * can mint any token. Those kinds write
+ * (a completion is applied like its comment, and can merge), and the routine
+ * session holding the token has read untrusted text, so the token is scoped
+ * to the one repo, item and routine it was minted for. Unset, only a
  * heartbeat is accepted.
  */
 async function handleRoutineSignal(request: Request, env: Env): Promise<Response> {
-  if (env.ROUTINE_SIGNAL_SECRET) {
-    const auth = request.headers.get("Authorization");
-    if (auth !== `Bearer ${env.ROUTINE_SIGNAL_SECRET}`) {
-      return new Response("unauthorized", { status: 401 });
-    }
+  const auth = request.headers.get("Authorization") ?? "";
+  const secretOk = !!env.ROUTINE_SIGNAL_SECRET && auth === `Bearer ${env.ROUTINE_SIGNAL_SECRET}`;
+  if (env.ROUTINE_SIGNAL_SECRET && !auth) {
+    return new Response("unauthorized", { status: 401 });
   }
 
   let input: RoutineSignalInput;
@@ -253,10 +261,19 @@ async function handleRoutineSignal(request: Request, env: Env): Promise<Response
   if (!input.owner || !input.repo || !input.signal) {
     return new Response("owner, repo, and signal are required", { status: 400 });
   }
-  // Fail closed: without a secret only a heartbeat gets in. Every other kind
-  // writes (a completion is applied like its comment; blocked comments; ended
-  // expires the run), so it never runs unauthenticated.
-  if (!env.ROUTINE_SIGNAL_SECRET && input.signal.kind !== "process") {
+  // Fail closed: a heartbeat takes the shared secret or the fire's own token;
+  // every other kind needs the fire's own token.
+  if (!(secretOk && input.signal.kind === "process") && env.ROUTINE_SIGNAL_SECRET) {
+    const claims = auth.startsWith("Bearer ") ? await verifyLogToken(env.ROUTINE_SIGNAL_SECRET, auth.slice(7)) : null;
+    const signal = input.signal;
+    const scoped =
+      claims &&
+      claims.owner === input.owner.toLowerCase() &&
+      claims.repo === input.repo.toLowerCase() &&
+      claims.item === signal.issue &&
+      claims.routine === signal.routine;
+    if (!scoped) return new Response("unauthorized", { status: 401 });
+  } else if (!env.ROUTINE_SIGNAL_SECRET && input.signal.kind !== "process") {
     return new Response("unauthorized: ROUTINE_SIGNAL_SECRET is not set, so only heartbeats are accepted", { status: 401 });
   }
 

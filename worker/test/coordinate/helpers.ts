@@ -36,6 +36,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   let reconcileReported: string | null = null;
   let completed: string | null = null;
   let appliedOutcome: AppliedOutcome | null = null;
+  let endedFire: PendingFire | null = null;
   return {
     getLabels: vi.fn(async () => []),
     addLabel: vi.fn(async () => {}),
@@ -112,6 +113,10 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
     getAppliedOutcome: vi.fn(async () => appliedOutcome),
     setAppliedOutcome: vi.fn(async (applied: AppliedOutcome | null) => {
       appliedOutcome = applied;
+    }),
+    getEndedFire: vi.fn(async () => endedFire),
+    setEndedFire: vi.fn(async (fire: PendingFire | null) => {
+      endedFire = fire;
     }),
     getReconcileReported: vi.fn(async () => reconcileReported),
     setReconcileReported: vi.fn(async (s: string) => {

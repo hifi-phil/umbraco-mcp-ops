@@ -7,6 +7,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker, { ANSWER_WITHIN_MS, type Env } from "../src/index";
+import { mintLogToken } from "../src/work-log";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 
 function fakeEnv(overrides: Partial<Env> = {}): {
@@ -424,12 +425,53 @@ describe("index.ts fetch() — POST /routine-signal", () => {
     expect(get).not.toHaveBeenCalled();
   });
 
-  it("ROUTINE_SIGNAL_SECRET set, a completion with the right bearer token -> reaches the DO", async () => {
+  const completionSignal = { kind: "completion", routine: "issue-build-loop", issue: 412, outcome: { outcome: "build_succeeded", pr: 9 } };
+
+  it("ROUTINE_SIGNAL_SECRET set, a completion, blocked or ended with the raw secret -> 401: it only authorises a heartbeat", async () => {
+    const { env, get } = fakeEnv({ ROUTINE_SIGNAL_SECRET: "shh" });
+    for (const signal of [
+      completionSignal,
+      { kind: "blocked", routine: "issue-build-loop", issue: 412, detail: "Bash: npm publish" },
+      { kind: "ended", routine: "issue-build-loop", issue: 412, detail: "max turns" },
+    ]) {
+      const res = await worker.fetch(routineSignalRequest(heartbeat({ signal }), { Authorization: "Bearer shh" }), env);
+      expect(res.status, signal.kind).toBe(401);
+    }
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("a completion with this fire's own token -> reaches the DO", async () => {
     const { env, stubFetch } = fakeEnv({ ROUTINE_SIGNAL_SECRET: "shh" });
-    const signal = { kind: "completion", routine: "issue-build-loop", issue: 412, outcome: { outcome: "build_succeeded", pr: 9 } };
-    const res = await worker.fetch(routineSignalRequest(heartbeat({ signal }), { Authorization: "Bearer shh" }), env);
+    const token = await mintLogToken("shh", { owner: "hifi-phil", repo: "umbraco-mcp-ops", item: 412, routine: "issue-build-loop" }, 60);
+    const res = await worker.fetch(routineSignalRequest(heartbeat({ signal: completionSignal }), { Authorization: `Bearer ${token}` }), env);
     expect(res.status).toBe(200);
     expect(stubFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("a heartbeat with this fire's own token -> reaches the DO; with another item's token -> 401", async () => {
+    const { env, stubFetch } = fakeEnv({ ROUTINE_SIGNAL_SECRET: "shh" });
+    const mine = { owner: "hifi-phil", repo: "umbraco-mcp-ops", item: 412, routine: "issue-build-loop" };
+    const ok = await mintLogToken("shh", mine, 60);
+    expect((await worker.fetch(routineSignalRequest(heartbeat(), { Authorization: `Bearer ${ok}` }), env)).status).toBe(200);
+    const other = await mintLogToken("shh", { ...mine, item: 9 }, 60);
+    expect((await worker.fetch(routineSignalRequest(heartbeat(), { Authorization: `Bearer ${other}` }), env)).status).toBe(401);
+    expect(stubFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("a token for another repo, item or routine, or one signed with another secret, is refused for a completion", async () => {
+    const { env, get } = fakeEnv({ ROUTINE_SIGNAL_SECRET: "shh" });
+    const mine = { owner: "hifi-phil", repo: "umbraco-mcp-ops", item: 412, routine: "issue-build-loop" };
+    for (const [secret, claims] of [
+      ["shh", { ...mine, repo: "other" }],
+      ["shh", { ...mine, item: 413 }],
+      ["shh", { ...mine, routine: "auto-release-loop" }],
+      ["not-shh", mine],
+    ] as const) {
+      const token = await mintLogToken(secret, claims, 60);
+      const res = await worker.fetch(routineSignalRequest(heartbeat({ signal: completionSignal }), { Authorization: `Bearer ${token}` }), env);
+      expect(res.status).toBe(401);
+    }
+    expect(get).not.toHaveBeenCalled();
   });
 
   it("ROUTINE_SIGNAL_SECRET set, no/wrong Authorization header -> 401, never reaches the DO", async () => {

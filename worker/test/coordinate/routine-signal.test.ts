@@ -171,6 +171,8 @@ describe("coordinateRoutineSignal — a completion is applied, like its comment"
       expect.objectContaining({ event: EVENTS.BUILD_SUCCEEDED, actor: "routine-signal", droppedReason: null }),
     );
     expect(await deps.getPendingFire()).toBeNull();
+    // The rule cleared the fire, not the signal: the run is still marked completed.
+    expect(deps.markCompleted).toHaveBeenCalledOnce();
 
     vi.mocked(deps.logTransition).mockClear();
     vi.mocked(deps.forward).mockClear();
@@ -228,6 +230,40 @@ describe("coordinateRoutineSignal — a completion is applied, like its comment"
     expect(deps.clearPendingFire).not.toHaveBeenCalled();
     expect(deps.markCompleted).not.toHaveBeenCalled();
     expect(deps.recordStatus).not.toHaveBeenCalledWith(expect.anything(), { kind: "done" });
+    // Not just a console line: a row, so a later expiry isn't read as a run that died.
+    expect(deps.logTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: "routine-signal", event: "build_succeeded", droppedReason: "completion not applied: dropped_no_rule" }),
+    );
+  });
+
+  it("the loop's own unlabel ended the fire first: the completion applies against that fire, and the later comment is deduped", async () => {
+    const deps = liveDeps([LABELS.AI_READY]);
+    await deps.setEndedFire(buildFire);
+    expect(await deps.getPendingFire()).toBeNull();
+
+    const result = await coordinateRoutineSignal(deps, { ...ref, signal: completion() });
+
+    expect(result).toMatchObject({ outcome: "completion_acknowledged", result: { outcome: "applied", event: EVENTS.BUILD_SUCCEEDED } });
+    expect(deps.markCompleted).toHaveBeenCalledOnce();
+    expect(await deps.getAppliedOutcome()).toEqual({ run: ROUTINES.ISSUE_BUILD_LOOP, firedAt: 1_000, outcome: "build_succeeded" });
+    expect(await coordinateWebhook(deps, outcomeWebhook())).toEqual({ outcome: "deduped" });
+  });
+
+  it("a rule that clears the pending fire keeps it as the ended fire; a completion for another routine finds nothing", async () => {
+    const deps = liveDeps([LABELS.AI_READY]);
+    await deps.setPendingFire(buildFire);
+    await coordinateWebhook(deps, outcomeWebhook()); // build_succeeded: a rule with no run of its own
+    expect(await deps.getPendingFire()).toBeNull();
+    expect(await deps.getEndedFire()).toEqual(buildFire);
+    const other: RoutineSignal = { kind: "completion", routine: ROUTINES.MERGE_FLOW, issue: 412, outcome: { outcome: "merge_blocked", reason: "x" } };
+    expect(await coordinateRoutineSignal(deps, { ...ref, signal: other })).toEqual({ outcome: "no_pending_fire" });
+  });
+
+  it("a new fire of the routine forgets its ended fire", async () => {
+    const deps = liveDeps([LABELS.AI_READY]);
+    await deps.setEndedFire(buildFire);
+    await fireWatched(deps, { ...ref, issueNumber: 412 }, ROUTINES.ISSUE_BUILD_LOOP);
+    expect(await deps.getEndedFire()).toBeNull();
   });
 
   it("an applied completion whose rule fires nothing new ends the watch, marked completed", async () => {
