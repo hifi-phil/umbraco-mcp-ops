@@ -75,8 +75,11 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     done
     # Permissions: a routine runs unattended, so a command that would need approval is
     # refused. Allow what every loop has to do, and no more: the work-log skill's script
-    # (16-work-log.md), local git (anything that only changes the session's own checkout:
-    # add, commit, fetch, reset, merge, rebase, stash, branch, restore, …), and
+    # (16-work-log.md), a fixed list of local git subcommands (add, commit, fetch, reset, merge,
+    # stash, branch, restore, rm, mv, status, rev-parse, …; any other subcommand still needs a
+    # person). Not rebase (`-x`/`--exec` runs a command), pull (`--upload-pack` does), or
+    # log/diff/show (`--output` writes any file): use the Read/Grep tools to read, and
+    # fetch + merge/reset instead of pull/rebase. Also
     # pushing its own branch through github-ops' push-branch.sh, which pushes only the
     # current branch, never forces and refuses main/dev. NOT `git push` itself: a prefix
     # rule can't rule out `--force` later in the line, a `+ref`, `--delete` or `--mirror`
@@ -94,15 +97,14 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
             | .permissions.allow = (((.permissions.allow // []) - ["Bash(git push:*)"] + [$a, $b, $c, $d,
                 "Bash(git add:*)", "Bash(git commit:*)", "Bash(git fetch:*)",
                 "Bash(git ls-remote:*)", "Bash(git switch:*)", "Bash(git checkout:*)",
-                "Bash(git reset:*)", "Bash(git merge:*)", "Bash(git rebase:*)",
+                "Bash(git reset:*)", "Bash(git merge:*)",
                 "Bash(git stash:*)", "Bash(git branch:*)", "Bash(git restore:*)",
-                "Bash(git pull:*)", "Bash(git rm:*)", "Bash(git mv:*)", "Bash(git status:*)",
-                "Bash(git log:*)", "Bash(git diff:*)", "Bash(git show:*)",
+                "Bash(git rm:*)", "Bash(git mv:*)", "Bash(git status:*)",
                 "Bash(git rev-parse:*)"]) | unique)
           ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
         mv "$tmp" "$SETTINGS"; echo "allowed: log-entry.sh, push-branch.sh, local git (no git push)"
       else
-        rm -f "$tmp"; echo "WARN: could not allow log-entry.sh (jq merge failed)"
+        rm -f "$tmp"; echo "WARN: could not allow log-entry.sh, push-branch.sh or local git (jq merge failed)"
       fi
     else
       echo "WARN: jq missing — log-entry.sh NOT allowed; work-log writes will be refused"
