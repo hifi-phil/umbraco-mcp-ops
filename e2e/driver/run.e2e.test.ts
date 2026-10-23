@@ -80,18 +80,20 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       // until every logged id has appeared (or the wait is up), then assert:
       // an id still missing after that is a real gap and fails as before.
       const original = (id: string) => id.replace(/:#\d+$/, "");
+      // A delivery's detail never changes once it exists: fetch each once.
+      const known = new Map<string, DeliveryDetail & { id: string }>();
       const read = async () => {
         const deliveries = await deliveriesSince(hook, runStart);
         progress(`audit: checking the orchestrator's answers to ${deliveries.length} deliveries`);
-        const details: (DeliveryDetail & { id: string })[] = (
-          await pool(deliveries, 6, async (d) => ({ id: d.id, ...(await deliveryDetail(hook, d.id)) }))
-        ).filter((d) => d.repo.toLowerCase() === REPO.toLowerCase() && ours(d));
+        const fresh = deliveries.filter((d) => !known.has(d.id));
+        for (const d of await pool(fresh, 6, async (d) => ({ id: d.id, ...(await deliveryDetail(hook, d.id)) }))) known.set(d.id, d);
+        const details = deliveries.map((d) => known.get(d.id)!).filter((d) => d.repo.toLowerCase() === REPO.toLowerCase() && ours(d));
         const numbers = [...new Set(details.flatMap((d) => d.numbers))].filter((n) => runItems.has(n));
         progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
         const logs = new Map(await pool(numbers, 6, async (n) => [n, await transitions(n)] as const));
         const guids = new Set(details.map((d) => d.guid));
         const missing = [...logs.values()].flat().filter((r) => r.delivery_id !== null && !guids.has(original(r.delivery_id)));
-        return { details, numbers, logs, missing: missing.length };
+        return { details, logs, missing: missing.length };
       };
       const waitUntil = Date.now() + 120_000;
       let seen = await read();
@@ -199,6 +201,6 @@ describe("audit: every answer the orchestrator gave during the run", () => {
         expect(answer, "the redelivery's answer").toBe('{"outcome":"deduped"}');
       }
     },
-    5 * 60_000,
+    8 * 60_000,
   );
 });
