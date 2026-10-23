@@ -106,8 +106,7 @@ off and stop.
 
 There is deliberately **no sweep / "check everything" fallback** — routing is only ever
 driven by a real event through `route-event.sh`. No event, or an unmatched one, is a
-quiet no-op. (Working a whole backlog is a separate, explicit action: run the relevant
-loop skill directly.)
+quiet no-op.
 
 ## Rules
 

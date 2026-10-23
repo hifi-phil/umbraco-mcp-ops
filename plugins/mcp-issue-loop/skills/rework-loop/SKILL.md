@@ -14,7 +14,7 @@ description: >-
 # rework-loop
 
 The **review-response half of the issue loop, split out so it can be event-driven.**
-`issue-build-loop` takes an `ai-ready` issue to a CI-green PR and stops;
+`issue-build-loop` takes an `ai-ready` issue to an open PR and stops;
 when you review that PR and label it **`auto-reworking`**, **`rework-loop`** picks it up and
 addresses the feedback — closing the write → review → rework → merge chain with no
 long-lived "monitor my review" session.
@@ -39,7 +39,7 @@ point of the split.
 
 Via `github-ops`, get the PR and its reviews + review comments (→ *Get reviews + review
 comments*). Collect every **unresolved, actionable** item: requested changes, inline
-comments, and review-body asks. If there are none (approval only, or nothing actionable
+comments, and review-body asks. If there are none in a human review (approval only, or nothing actionable
 after reading) → post the `rework_no_change` outcome with a brief reason and stop.
 
 **Failing CI.** If the orchestrator added `auto-reworking` with a

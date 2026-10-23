@@ -230,8 +230,8 @@ and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close 
 
 ## Running as a routine
 
-Set up a routine with trigger **Issue: Labeled**, filtered to **Labels is one of
-`auto-releasing`**, on an environment that has this skill (+ `github-ops`, `agent-outcomes`,
+The Worker fires this through `loop-dispatch` (route `auto-release-loop`) when an issue
+is labelled `auto-releasing`, on an environment that has this skill (+ `github-ops`, `agent-outcomes`,
 `release-and-branching`, `sync-dev`) — firing is instant, so labelling a
 `release <version>` issue kicks it off immediately. The version comes from the issue, so
 nothing else needs configuring per run. *(The `auto-releasing` label must exist on the

@@ -6,8 +6,8 @@ The **build playbook** below. The orchestrator (see `../SKILL.md`) substitutes t
 details and dispatches it as a subagent prompt (`agentType: general-purpose`, so the full
 tool + Skill set is available). It runs once per issue and takes an
 issue from `ai-ready` to a pushed branch with an open PR. The orchestrator then reviews it
-with `mcp-review` (re-dispatching a subagent into the same worktree to fix findings) and
-reports the outcome — CI and later reviews are `review-loop`'s and `rework-loop`'s, not a playbook here (see *Responding to human review*
+with `mcp-review` (re-dispatching a subagent into the same checkout to fix findings) and
+reports the outcome — CI is the Worker's; later reviews and fixes are `review-loop`'s and `rework-loop`'s, not a playbook here (see *Responding to human review*
 at the end).
 
 ---
@@ -41,7 +41,7 @@ gives you a fresh SQL Server DB, a copied `.env`, a dynamic port, and a complete
 prefixes `feature/`). Everything you do happens in this worktree.
 
 **Re-dispatched fix, not a fresh issue?** If the orchestrator sent you back into an
-**existing** worktree (a failing CI check's log, or an `mcp-review` finding) — it will say
+**existing** worktree (an `mcp-review` finding) — it will say
 so and give you `worktreePath` — skip this step entirely: `cd` into that path, do not call
 `EnterWorktree` again (it would fire `WorktreeCreate` a second time for no reason: a new DB,
 a new port, a fresh `npm install`, against a worktree that already has all of that). Go
