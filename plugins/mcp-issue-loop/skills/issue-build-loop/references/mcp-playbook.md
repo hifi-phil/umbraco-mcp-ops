@@ -156,5 +156,5 @@ reuses it to fix any `mcp-review` findings, per step 5 above.
 
 ## Responding to human review
 
-No review-response playbook here — see `SKILL.md` Step 3 for the hand-off
-(rework-loop / merge-flow).
+No review-response playbook here — review responses are `rework-loop`'s and
+merging is `merge-flow`'s.

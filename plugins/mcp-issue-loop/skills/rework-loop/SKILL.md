@@ -100,8 +100,8 @@ Immediately after pushing (no waiting for CI): **reply briefly on each addressed
 on the PR** (what was fixed, the commit, what was checked), **with no `agent-outcome`
 marker**: per the `agent-outcomes` skill's catalog, the push is a native GitHub event the
 Worker already sees, so `rework_pushed` is deliberately not reported.
-If you pushed nothing (no actionable feedback), post the `rework_no_change` outcome
-(`agent-outcomes`) in your closing comment on the PR.
+If you pushed nothing because there was no actionable feedback, Step 1 already posted
+`rework_no_change`; the no-review case posts no outcome, so the label stays and a person sees the PR.
 **Do not merge.**
 
 ## Running as a routine
