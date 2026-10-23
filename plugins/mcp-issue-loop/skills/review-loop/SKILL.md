@@ -14,8 +14,7 @@ description: >-
 # review-loop
 
 The review half of the build/review split (`docs/agent-orchestration/15-agent-splits.md`).
-`issue-build-loop` builds, self-reviews and opens the PR with `ai-reviewing` on it, then
-stops. The Worker waits for the PR's CI to go green and fires this routine. It judges the PR
+`issue-build-loop` builds, reviews and opens the PR, then stops. The Worker waits for the PR's CI to go green and fires this routine. It judges the PR
 with fresh eyes and reports a verdict; the Worker turns that into the next label.
 
 ## Non-negotiables
@@ -138,6 +137,5 @@ Then stop.
 
 ## Running as a routine
 
-Fired only by the Worker, through `loop-dispatch` (`route=review-loop`, always
-orchestrated), on an environment carrying this skill, `mcp-review` and its reviewer agents,
+Fired only by the Worker, through `loop-dispatch` (`route=review-loop`), on an environment carrying this skill, `mcp-review` and its reviewer agents,
 `github-ops` and `agent-outcomes`. One PR per fire.

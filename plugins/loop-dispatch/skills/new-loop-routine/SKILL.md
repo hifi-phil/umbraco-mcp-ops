@@ -40,8 +40,8 @@ Never use `fable`. Never put secrets in the prompt or config.
 
 **Preconditions (once per repo):**
 1. **Labels exist**: `ai-ready`, `pr-open`, `ai-blocked`, `auto-merging`,
-   `ai-discussing` (see `self-learning-system.md`'s "Setup § 2. Labels"); `auto-releasing` and
-   `release-blocked` are `auto-release-loop`'s own (see that skill's `SKILL.md`).
+   `ai-discussing` (see `self-learning-system.md`'s "Setup § 2. Labels"); `auto-releasing` is
+   `auto-release-loop`'s own (see that skill's `SKILL.md`).
 2. **Skills reach the env** — `loop-dispatch` (and the loops) are in the
    `cloud-skill-sync` `SKILLS` list on `main` (each session start pulls it; no rebuild).
 3. **Org Actions policy** allows calling a reusable workflow from `hifi-phil/umbraco-mcp-ops`
@@ -74,7 +74,7 @@ and caller-workflow repos alike.
 2. **Network access.** If the environment limits outbound hosts, allow the Worker's host
    (`<script>.<subdomain>.workers.dev`).
 3. **The plugin is in the env.** `agent-outcomes` is in the `cloud-skill-sync` `SKILLS`
-   list, as it already is for orchestrated mode. A `SKILLS` change reaches the next
+   list. A `SKILLS` change reaches the next
    session once it's on `main`; network access is an environment setting.
 
 **How it behaves:**

@@ -4,51 +4,39 @@ This is the MCP-repo variant; content repos use `content-playbook.md`.
 
 The **build playbook** below. The orchestrator (see `../SKILL.md`) substitutes the issue
 details and dispatches it as a subagent prompt (`agentType: general-purpose`, so the full
-tool + Skill set is available). It runs once per issue, in parallel (cap 3), and takes an
+tool + Skill set is available). It runs once per issue and takes an
 issue from `ai-ready` to a pushed branch with an open PR. The orchestrator then reviews it
-with `mcp-review` (re-dispatching a subagent into the same worktree to fix findings), hands
-it to `ai-reviewing` and marks the issue's outcome — CI and later reviews are the
-orchestrator's and `rework-loop`'s, not a playbook here (see *Responding to human review*
+with `mcp-review` (re-dispatching a subagent into the same checkout to fix findings) and
+reports the outcome — CI is the Worker's; later reviews and fixes are `review-loop`'s and `rework-loop`'s, not a playbook here (see *Responding to human review*
 at the end).
 
 ---
 
 ## Build playbook
 
-> You are completing **one** GitHub issue in an Umbraco MCP repo, working in your
-> own isolated git worktree. Issue: **#{NUMBER} — {TITLE}**.
+> You are completing **one** GitHub issue in an Umbraco MCP repo, working in the
+> session's checkout. Issue: **#{NUMBER} — {TITLE}**.
 >
 > ```
 > {BODY}
 > ```
 >
 > **Definition of done (all must hold before you return):**
-> a hook-backed worktree exists for this issue; the change is implemented
+> you work in the session's checkout (Umbraco booted per `cloud-mode.md`); the change is implemented
 > following established MCP patterns; the local test gate passes — **the repo's own
-> tests, scaled to your diff** in local mode (steps 1 & 4 below); **cloud mode overrides steps 1 & 4**
-> (no worktree; boot Umbraco via `worker-env` and gate on the diff's tests,
-> `npm run test:changed` — see the main SKILL.md → *Cloud mode*);
-> the branch is pushed; and a PR is open against the base branch. Driving that
-> PR's CI green and marking the issue's outcome are the **orchestrator's** job, not
+> tests, scaled to your diff**, `npm run test:changed`;
+> the branch is pushed; and a PR is open against the base branch. Reporting the
+> issue's outcome is the **orchestrator's** job and CI is the Worker's, not
 > yours (see the main `SKILL.md`) — you return as soon as the PR is open. If
 > you cannot reach this state, stop and return a clear blocked report (what's
 > ambiguous / what fails) — do not guess or half-finish.
 
-### 1. Create your worktree
+### 1. Work in the checkout
 
-Call `EnterWorktree` with a name derived from the issue, e.g.
-`issue-{NUMBER}-{short-slug}`. This fires the repo's `WorktreeCreate` hook, which
-gives you a fresh SQL Server DB, a copied `.env`, a dynamic port, and a completed
-`npm install`. The branch is auto-created from the worktree name (the hook
-prefixes `feature/`). Everything you do happens in this worktree.
-
-**Re-dispatched fix, not a fresh issue?** If the orchestrator sent you back into an
-**existing** worktree (a failing CI check's log, or an `mcp-review` finding) — it will say
-so and give you `worktreePath` — skip this step entirely: `cd` into that path, do not call
-`EnterWorktree` again (it would fire `WorktreeCreate` a second time for no reason: a new DB,
-a new port, a fresh `npm install`, against a worktree that already has all of that). Go
-straight to fixing the specific thing you were sent to fix, then repeat steps 4 and 6
-(re-test locally, re-push) and return per step 7.
+Work directly in the session's checkout (see
+`cloud-mode.md`); there is no worktree. **Re-dispatched fix, not a fresh issue?** Go
+straight to fixing the specific thing you were sent to fix (an `mcp-review` finding), then
+repeat steps 4 and 6 (re-test locally, re-push) and return per step 7.
 
 ### 2. Understand the issue, then plan
 
@@ -94,7 +82,7 @@ never rely on pre-existing Umbraco content.
 `start:umbraco` / `test:all` / `test:changed`; the SDK monorepo (`Umbraco-MCP-Base`) has
 `npm test`, `test:integration`, `test:e2e`, `test:template`, `test:cli`. Use what's there.
 
-**Scale the gate to your diff** — the same rule cloud mode uses:
+**Scale the gate to your diff** — the rule `cloud-mode.md` uses:
 
 - **Tests covering what you touched** are the default gate (`npm run test:changed` on a
   server repo; the workspace's own test script in the monorepo — e.g.
@@ -116,21 +104,19 @@ use its non-eval script instead (e.g. `npm test`, or add
 there rather than assuming `test:all` is the right gate. Eval coverage is CI's own gated
 `evals` job on the branches it runs for, which does have the secret provisioned.
 
-If the gate needs a running Umbraco, start it in this worktree if it isn't already
-(`npm run start:umbraco` on a server repo; first run does the unattended install and can
-take minutes — wait for `.demo-site-port` and the base URL to respond).
+If the gate needs a running Umbraco, boot it as `cloud-mode.md` step 2 says (via `worker-env`, not `npm run start:umbraco`).
 
 `npm run compile` alone is not enough for a code change. Fix failures locally until
 green. If state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename the DB in
 `demo-site/appsettings.local.json`, restart, re-run `create-api-user.mjs`).
 
-### 5. CI-driving and review are the orchestrator's job — you do neither
+### 5. Review is the orchestrator's job, CI the Worker's — you do neither
 
 **Do not run `/security-review` or `/code-review` yourself** — see `SKILL.md`'s Rules for
 why they're inert in a subagent; a subagent grading its own code is weak anyway. You also
 do **not** drive CI — once you return, **the orchestrator** runs the
 `mcp-review` skill over the PR, handing you back any surviving
-findings to fix in this worktree. CI is watched later, after the PR goes to `ai-reviewing`.
+findings to fix in this checkout. CI is watched later, by the Worker.
 Just build well and return; don't claim a review ran or that CI is green.
 
 ### 6. Commit, push, open the PR
@@ -144,20 +130,18 @@ to be able to review and approve it; that review is the acceptance gate.
 
 Include in the PR body: what changed, which skills/agents were used, and test
 results. **Do not claim security/code review ran, or that CI is green** — the review and
-marking the issue's outcome happen next, at the orchestrator level.
+reporting the issue's outcome happen next, at the orchestrator level.
 
 ### 7. Return
 
 Once your branch is pushed and the PR is open, **return** the structured report to the
-orchestrator: `{ issue, worktreeName, worktreePath, branch, prNumber, model, tier, status }`
+orchestrator: `{ issue, branch, prNumber, model, tier, status }`
 (`status`: `pr-open`, or `blocked` with the reason if you stopped early per the Definition
-of done or step 2's ambiguity check). Leave the worktree on disk (do **not** remove it) — the orchestrator
-reuses it to drive the PR's CI green (re-dispatching a fix into this same worktree on a
-failing check) and to fix any `mcp-review` findings, per step 5 above.
+of done or step 2's ambiguity check). The orchestrator re-dispatches into the checkout to fix any `mcp-review` findings, per step 5 above.
 
 ---
 
 ## Responding to human review
 
-No review-response playbook here — see `SKILL.md` Step 4 for the hand-off
-(rework-loop / merge-flow).
+No review-response playbook here — review responses are `rework-loop`'s and
+merging is `merge-flow`'s.

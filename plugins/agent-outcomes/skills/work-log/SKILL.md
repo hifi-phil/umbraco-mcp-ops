@@ -6,14 +6,14 @@ description: >-
   decision list derived from it at the end (one line per choice a person should know
   about), and a build entry of what it verified. When to write each, templates, the four
   categories, good and bad examples, what never goes in an entry, and the log-entry.sh
-  calls. Load it in any orchestrated run whose fire text carries a log_token
+  calls. Load it in any run whose fire text carries a log_token
   (issue-build-loop, review-loop, rework-loop). Best effort: a failed write never stops
   the run.
 ---
 
 # work-log
 
-Each orchestrated run leaves three kinds of entry on the issue or PR it worked, kept by the
+Each run leaves three kinds of entry on the issue or PR it worked, kept by the
 Worker next to the label history (`docs/agent-orchestration/16-work-log.md` in
 umbraco-mcp-ops):
 
@@ -199,5 +199,5 @@ bash ~/.claude/skills/work-log/scripts/log-entry.sh --token "$TOKEN" read 412
 The script needs `curl` and `jq`, and finds the Worker from `WORK_LOG_ENDPOINT`, else from
 `AGENT_OUTCOMES_ENDPOINT`. It always exits 0: on a failure it prints `not logged: <why>`
 and you carry on. A run never stops, retries in a loop, or reports a different outcome
-because of the log. No `log_token` in the fire text (an unorchestrated run): skip this
+because of the log. No `log_token` in the fire text: skip this
 skill.
