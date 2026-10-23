@@ -7,6 +7,7 @@ import { EVENTS } from "@orchestrator/graph/constants/events";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
 import { coordinateWebhook } from "./webhook";
+import { OUTCOME_ROUTINE_PATTERN } from "./outcome-dedupe";
 import { applyEvent, deriveState, fireUnwatched, fireWatched, type FireOutcome } from "./apply";
 
 export type WatchdogResult =
@@ -143,6 +144,28 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   const lastStep = pending.lastStep
     ? ` Last reported step: \`${pending.lastStep}\` (${pending.lastStepAt ?? "time unknown"}).`
     : " No progress step was ever reported.";
+  return expirePendingFire(
+    deps,
+    pending,
+    (next) =>
+      `⚠️ The \`${pending.run}\` routine hasn't reported back within ${deps.watchdogMinutes(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
+      `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
+    "watchdog",
+  );
+}
+
+/**
+ * The expiry itself, once nothing else took the fire: the alert (`message`,
+ * given what happens next), then {@link EVENTS.WATCHDOG_EXPIRED} through
+ * applyEvent, then the pending fire cleared. The watchdog's alarm, and a
+ * routine's own "ended" signal (routine-signal.ts), which expires it at once.
+ */
+export async function expirePendingFire(
+  deps: Deps,
+  pending: PendingFire,
+  message: (next: string) => string,
+  actor: "watchdog" | "routine-signal",
+): Promise<CoordinateResult> {
   const currentLabels = await deps.getLabels(pending.owner, pending.repo, pending.issueNumber);
   const state = deriveState(currentLabels);
   const willStick = state !== "ambiguous" && reduce(state, EVENTS.WATCHDOG_EXPIRED) !== null;
@@ -150,13 +173,7 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
     ? ` Moving this to \`${LABELS.AI_STUCK}\`; re-add the trigger label to retry.`
     : ` Its current labels don't allow an automatic move to \`${LABELS.AI_STUCK}\` — needs a human look.`;
   // The alert is a write too: only real when watchdog_expired is enforced.
-  await depsFor(deps, EVENTS.WATCHDOG_EXPIRED).io.commentOnIssue(
-    pending.owner,
-    pending.repo,
-    pending.issueNumber,
-    `⚠️ The \`${pending.run}\` routine hasn't reported back within ${deps.watchdogMinutes(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
-      `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
-  );
+  await depsFor(deps, EVENTS.WATCHDOG_EXPIRED).io.commentOnIssue(pending.owner, pending.repo, pending.issueNumber, message(next));
 
   // A rework started straight from a label has no CI-fix or review state to
   // say its push is still wanted, so the expiry itself is recorded. Before the
@@ -166,7 +183,7 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   // LABELS.AI_STUCK was a rework expiry.
   const recordExpiry = deps.enforced(EVENTS.WATCHDOG_EXPIRED);
   if (recordExpiry) await deps.setReworkExpired(pending.run === ROUTINES.REWORK_LOOP);
-  const result = await applyEvent(deps, { ...pending, actor: "watchdog" }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
+  const result = await applyEvent(deps, { ...pending, actor }, EVENTS.WATCHDOG_EXPIRED, currentLabels);
   // A retried alarm may find the label write already landed: the PR reads
   // AI_STUCK and the expiry's claim must stay.
   if (recordExpiry && result.outcome !== "applied" && state !== LABELS.AI_STUCK) await deps.setReworkExpired(false);
@@ -178,8 +195,6 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
   return result;
 }
 
-const OUTCOME_ROUTINE_PATTERN = /<!-- agent-outcome:([a-zA-Z0-9_-]+) -->/;
-
 /**
  * The watched routine's outcome comment, posted since the fire, whose
  * webhook never got processed: read the comments, newest first, and apply
@@ -188,7 +203,7 @@ const OUTCOME_ROUTINE_PATTERN = /<!-- agent-outcome:([a-zA-Z0-9_-]+) -->/;
  * expiry then carries on as before). An outcome from before the fire, or
  * from another routine, is not this run's.
  */
-async function recoverOutcome(deps: Deps, pending: PendingFire): Promise<WatchdogResult | null> {
+export async function recoverOutcome(deps: Deps, pending: PendingFire): Promise<WatchdogResult | null> {
   if (pending.firedAt === undefined) return null;
   const since = new Date(pending.firedAt).toISOString();
   let comments;

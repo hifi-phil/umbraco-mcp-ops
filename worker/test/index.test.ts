@@ -435,6 +435,26 @@ describe("index.ts fetch() — POST /routine-signal", () => {
     expect(stubFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("no ROUTINE_SIGNAL_SECRET configured -> outcome, blocked and ended are 401, never reach the DO", async () => {
+    const { env, get } = fakeEnv();
+    for (const signal of [
+      { kind: "outcome", routine: "issue-build-loop", issue: 412, outcome: { outcome: "build_succeeded", pr: 1 } },
+      { kind: "blocked", routine: "issue-build-loop", issue: 412, detail: "Bash(npm publish)" },
+      { kind: "ended", routine: "issue-build-loop", issue: 412, detail: "stopped" },
+    ]) {
+      expect((await worker.fetch(routineSignalRequest(heartbeat({ signal })), env)).status).toBe(401);
+    }
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("ROUTINE_SIGNAL_SECRET set, correct bearer token -> an outcome reaches the DO", async () => {
+    const { env, stubFetch } = fakeEnv({ ROUTINE_SIGNAL_SECRET: "shh" });
+    const signal = { kind: "outcome", routine: "issue-build-loop", issue: 412, outcome: { outcome: "build_succeeded", pr: 1 } };
+    const res = await worker.fetch(routineSignalRequest(heartbeat({ signal }), { Authorization: "Bearer shh" }), env);
+    expect(res.status).toBe(200);
+    expect(stubFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("routes on owner/repo/signal.issue, same key shape as the webhook path", async () => {
     const { env, idFromName } = fakeEnv();
     await worker.fetch(routineSignalRequest(heartbeat()), env);

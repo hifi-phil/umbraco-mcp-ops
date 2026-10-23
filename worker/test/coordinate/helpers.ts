@@ -4,6 +4,7 @@ import { vi } from "vitest";
 import {
   DEFAULT_CAPS,
   watchdogMinutesFor,
+  type AppliedOutcome,
   type CiFix,
   type CoordinateInput,
   type Deps,
@@ -34,6 +35,7 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
   let releaseMerged: Shipped | null = null;
   let reconcileReported: string | null = null;
   let completed: string | null = null;
+  let appliedOutcome: AppliedOutcome | null = null;
   return {
     getLabels: vi.fn(async () => []),
     addLabel: vi.fn(async () => {}),
@@ -107,6 +109,10 @@ export function fakeDeps(overrides: Partial<Deps> = {}): Deps {
       completed = at;
     }),
     completedAt: vi.fn(async () => completed),
+    getAppliedOutcome: vi.fn(async () => appliedOutcome),
+    setAppliedOutcome: vi.fn(async (a: AppliedOutcome | null) => {
+      appliedOutcome = a;
+    }),
     getReconcileReported: vi.fn(async () => reconcileReported),
     setReconcileReported: vi.fn(async (s: string) => {
       reconcileReported = s;

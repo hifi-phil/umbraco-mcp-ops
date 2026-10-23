@@ -8,7 +8,8 @@
 //   review-gate.ts     LABELS.AI_REVIEWING's CI gate, and the review's caps
 //   stages.ts          the issue's stages after its PR: hand-offs between items
 //   release.ts         the release split: merge on approval, Slack on the Release
-//   routine-signal.ts  a routine's heartbeat or completion
+//   routine-signal.ts  a routine's heartbeat, completion, outcome, block or end
+//   outcome-dedupe.ts  one outcome, two carriers (signal and comment): applied once
 //   watchdog.ts        the watchdog's expiry
 //   reconcile.ts       the sweep's left-behind check
 //
