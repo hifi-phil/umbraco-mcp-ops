@@ -1,0 +1,11 @@
+# Lines under plugins/ that mention a lane label next to add/remove/swap without telling a
+# session to write one. Format: <path> | <text the line contains>
+plugins/loop-dispatch/skills/loop-dispatch/SKILL.md | at the round cap the Worker removes it
+plugins/mcp-issue-loop/skills/rework-loop/SKILL.md | If the orchestrator added `auto-reworking` with a
+plugins/mcp-issue-loop/skills/rework-loop/SKILL.md | If the orchestrator added `auto-reworking`
+plugins/mcp-issue-loop/skills/issue-discuss-loop/references/thread-protocol.md | Re-add `ai-discussing` when you want to pick it back up.
+plugins/mcp-issue-loop/skills/issue-discuss-loop/SKILL.md | The user removes `ai-discussing`, not you.
+plugins/mcp-issue-loop/skills/issue-discuss-loop/SKILL.md | The user removes it when satisfied
+plugins/agent-outcomes/skills/agent-outcomes/SKILL.md | the orchestrator swaps `
+plugins/self-learning/skills/triage-learnings/references/routing-procedures.md | **Do not** add `ai-ready`
+plugins/self-learning/hooks/test/fixtures/loop-build.jsonl | Add rollback-
