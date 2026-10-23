@@ -18,7 +18,7 @@ one routine per repo instead of one per loop/event.
 
 It is a **router, not a worker.** It never builds, merges, or releases anything
 itself; it invokes the loop skill that owns that job, and that skill enforces all its
-own gates, models, and notifications. loop-dispatch adds no policy of its own.
+own gates and models. loop-dispatch adds no policy of its own.
 
 ## The routing table
 
@@ -112,8 +112,7 @@ quiet no-op.
 
 - **Respect each loop's gate** — `ai-ready` for building, `auto-merging` as the
   merge approval, `auto-releasing` to ship. loop-dispatch does not relax any of them.
-- **Quiet by default.** Say nothing unless a delegated loop does — don't add a
-  dispatch-level notification on top of the loop's own.
+- **Quiet by default.** Say nothing beyond what the delegated loop posts.
 - **Never use `fable`.** The dispatcher runs on a cheap base model (inherit the
   routine's model); the real work — and its model choice — happens inside the loop
   skills and their subagents.

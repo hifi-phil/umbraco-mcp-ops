@@ -37,7 +37,6 @@ Auth is the MCP server's connected GitHub App — no token to paste. Mirror of
 | Update a PR's body | `update_pull_request` |
 | **Close without merging (+ comment)** | `update_pull_request` (`state: "closed"`) + `add_issue_comment` (branch deletion may not be exposed — see Notes) |
 | Update branch (bring up to date) | `update_pull_request_branch` |
-| Re-request / add review | `pull_request_review_write` |
 | **Post a review** (body + inline comments) | `pull_request_review_write` (`method: "create"`, no `event`) to open a pending review; `add_comment_to_pending_review` once per inline comment (`path`, `line`, `side: "RIGHT"`, `subjectType: "LINE"`, `body`); then `pull_request_review_write` (`method: "submit_pending"`, `event: "COMMENT"`, `body`) |
 | List Dependabot security alerts | `list_dependabot_alerts` (security toolset; needs the connected app to grant Dependabot-alerts read) |
 

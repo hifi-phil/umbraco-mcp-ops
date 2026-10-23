@@ -5,8 +5,7 @@ description: >-
   `auto-merging` and merges each only once every safety gate holds; on any unmet gate it
   comments the blocker and moves on rather than merging. Replaces error-prone manual
   merges. Repo-agnostic; fired by the Worker through `loop-dispatch`; requires the
-  `github-ops` and `agent-outcomes` skills. Trigger on "merge the ready PRs", "run merge-flow", "auto-merge
-  the queue".
+  `github-ops` and `agent-outcomes` skills. Trigger: a PR labelled `auto-merging`.
 ---
 
 # merge-flow
@@ -79,7 +78,7 @@ catalog has no merge outcome, because the Worker sees the merge as a native GitH
 If the merge
 itself fails, report it — never retry with a force.
 
-**Then delete the head branch, best-effort.** Locally `gh` does it as part of the merge.
+**Then delete the head branch, best-effort.**
 **In a cloud routine it cannot be done** — the GitHub MCP server has no branch-delete
 tool (see the `github-mcp.md` Notes), so don't treat a surviving branch as a failed
 merge, and don't go hunting for a tool that does it. Two things clean up after you: the

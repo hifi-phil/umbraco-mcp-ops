@@ -22,7 +22,7 @@ at the end).
 > ```
 >
 > **Definition of done (all must hold before you return):**
-> you work in the session's checkout (`cloud-mode.md` replaces step 4; no worktree); the change is implemented
+> you work in the session's checkout (Umbraco booted per `cloud-mode.md`); the change is implemented
 > following established MCP patterns; the local test gate passes — **the repo's own
 > tests, scaled to your diff**, `npm run test:changed`;
 > the branch is pushed; and a PR is open against the base branch. Reporting the

@@ -132,4 +132,4 @@ capable model (Sonnet or better); the thinking is the product here. No local too
 The anti-self-reply guard is the comment marker, not the author, so the edge skips every
 signed comment the same way.
 
-**The trigger only exists once the caller workflow is on the repo's default branch.**
+**The trigger needs the repo onboarded to loop dispatch (`new-loop-routine`).**

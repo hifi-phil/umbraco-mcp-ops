@@ -1,6 +1,6 @@
 # How a build session runs
 
-How a build session runs. The session is a **thin orchestrator on a cheap base model**: it
+The session is a **thin orchestrator on a cheap base model**: it
 triages the one issue and dispatches a **single** build subagent on the best-fit model (*Model
 selection* in `SKILL.md`).
 
@@ -32,8 +32,8 @@ For the one issue the fire names:
    `EnterWorktree` (cloud sessions are already isolated, and the worktree hooks need the
    local DB/toolchain). Implement the issue following the **shared build playbook**
    ([`mcp-playbook.md`](mcp-playbook.md)) and the MCP skills,
-   with one substitution for playbook step 4:
-   - **Instead of `npm run start:umbraco` + `npm run test:all` (playbook step 4):** bring up
+   booting Umbraco for playbook step 4 as follows:
+   - **Booting Umbraco:** bring up
      a local Umbraco via the **`worker-env`**
      skill and run a local test gate **on SQL Server**. As your **first action** (so Umbraco
      boots while you implement — first boot runs the unattended install, ~1–2 min):
