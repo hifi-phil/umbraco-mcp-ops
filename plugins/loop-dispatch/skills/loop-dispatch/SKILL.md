@@ -97,7 +97,8 @@ specific issue/PR, and **follow that skill's instructions verbatim**:
   repo's `CLAUDE.md` names instead.
 - `ai-discussing` issue, or a comment on one → **`/issue-discuss-loop`** for that issue. It
   discusses only: no code, no PR, and it never clears its own label (the human owns
-  `ai-discussing`), so **don't expect the label to be gone afterwards** and don't remove it here.
+  `ai-discussing`; at the round cap the Worker removes it after `discussion_capped`), so
+  **don't expect the label to be gone afterwards** and don't remove it here.
 
 **One event → one loop.** Do not chain (don't build *then* merge *then* release in a
 single fire) — each of those has its own event that will dispatch its own run. Hand

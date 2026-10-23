@@ -18,8 +18,8 @@ deliberate signals are the go-ahead: (1) a maintainer opened an issue naming the
 and applied the **`auto-releasing`** label, and (2) **CI on the release PR is green**.
 That's it — no approval pause — by design, for fast beta/pre-release cycles.
 
-> **Publishing is irreversible.** Once CI is green this ships with no further human
-> look, and a published package version can't be cleanly un-published (you'd ship a
+> **Publishing is irreversible.** Once CI is green and the review passes, the orchestrator
+> merges and publishes with no further human look, and a published package version can't be cleanly un-published (you'd ship a
 > follow-up). Use this only where **CI-green is a sufficient gate** — the deliberate
 > `auto-releasing` label is the one human decision.
 
@@ -204,7 +204,7 @@ hands the agent already-materialized content as plain text. Do this sequence
      the triggering issue.
   2. **Comment on the triggering issue** pointing to the blocked issue + PR, with the
      required `release_blocked` artifact (load `agent-outcomes` for the marker and shape).
-- **WARN** findings → proceed, but include them in the completion comment.
+- **WARN** findings → proceed, but include them in the `release_approved` comment.
 - Report `release_approved` **only** when the checklist passes with no BLOCK.
 
 **Stop here on a pass.** The
@@ -220,7 +220,7 @@ and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close 
   (`merge`, `squash` or `rebase`, from its conventions: `release-and-branching`, or its
   `CLAUDE.md`). For a gitflow repo that's `merge`: the release tooling keys off the
   merge commit.
-- Include any WARN findings in that comment, as the completion comment would.
+- Include any WARN findings in that comment.
 
 ## Guardrails
 

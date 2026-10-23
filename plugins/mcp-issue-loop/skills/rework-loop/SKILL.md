@@ -6,7 +6,7 @@ description: >-
   runs a local test gate and an independent code review, pushes, replies to the threads,
   and reports its outcome — then stops. It does NOT
   poll/wait for the full CI suite (merge-flow won't merge until CI passes, so CI is
-  enforced there) and it never merges. Runs in a cloud routine or locally.
+  enforced there) and it never merges.
   Requires the github-ops skill. Trigger: a PR labelled `auto-reworking`
   (uniform with the other loops, and works regardless of who reviewed).
 ---
@@ -108,5 +108,4 @@ If you pushed nothing (no actionable feedback), post the `rework_no_change` outc
 
 On an environment carrying this skill + `github-ops` (and, for good MCP code, the
 `umbraco-mcp-skills` conventions). One PR per fire. Use a
-capable coding model (Sonnet or better) — it edits code. If the environment is cloud vs
-local, state that explicitly in the routine prompt.
+capable coding model (Sonnet or better) — it edits code.

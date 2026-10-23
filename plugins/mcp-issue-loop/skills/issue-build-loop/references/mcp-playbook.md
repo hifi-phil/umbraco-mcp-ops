@@ -150,12 +150,11 @@ Once your branch is pushed and the PR is open, **return** the structured report 
 orchestrator: `{ issue, worktreeName, worktreePath, branch, prNumber, model, tier, status }`
 (`status`: `pr-open`, or `blocked` with the reason if you stopped early per the Definition
 of done or step 2's ambiguity check). Leave the worktree on disk (do **not** remove it) — the orchestrator
-reuses it to drive the PR's CI green (re-dispatching a fix into this same worktree on a
-failing check) and to fix any `mcp-review` findings, per step 5 above.
+reuses it to fix any `mcp-review` findings, per step 5 above.
 
 ---
 
 ## Responding to human review
 
-No review-response playbook here — see `SKILL.md` Step 4 for the hand-off
+No review-response playbook here — see `SKILL.md` Step 3 for the hand-off
 (rework-loop / merge-flow).
