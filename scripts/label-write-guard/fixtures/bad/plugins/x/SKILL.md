@@ -8,3 +8,7 @@ gh pr edit 1 --remove-label foo
 call add_label
 call remove_label
 mcp__github__issue_write with labels set
+the Worker adds `ai-reviewing`
+Add `ai-ready` to the issue.
+`ai-reviewing`: put it on the PR, then add it again.
+set labels with mcp__github__issue_write

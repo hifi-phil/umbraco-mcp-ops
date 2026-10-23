@@ -8,7 +8,7 @@ fail=0
 rel="scripts/label-write-guard"
 
 out="$("$rel/check.sh" "$rel/fixtures/bad" "$rel/fixtures/allowlist.txt" 2>&1)" && { echo "FAIL: bad fixture passed"; fail=1; }
-for n in 1 2 3 4 5 6 7 8 9 10; do
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
   grep -q "plugins/x/SKILL.md:$n:" <<<"$out" || { echo "FAIL: bad fixture line $n not reported"; fail=1; }
 done
 
