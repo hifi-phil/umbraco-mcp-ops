@@ -32,7 +32,7 @@
 # session); the environment *build* log is not visible to the session.
 set -u
 
-VERSION="35"                                  # log marker only: busting the env cache is the stub's `rebuild:`
+VERSION="36"                                  # log marker only: busting the env cache is the stub's `rebuild:`
 REPO="https://github.com/hifi-phil/umbraco-mcp-ops"
 SKILLS_DEST="$HOME/.claude/skills"
 AGENTS_DEST="$HOME/.claude/agents"
@@ -75,8 +75,14 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     done
     # Permissions: a routine runs unattended, so a command that would need approval is
     # refused. Allow what every loop has to do, and no more: the work-log skill's script
-    # (16-work-log.md), local git (add, commit, fetch, ls-remote, switch, checkout), and
-    # pushing its own branch through github-ops' push-branch.sh, which pushes only the
+    # (16-work-log.md), these 15 local git subcommands: add, commit, fetch, ls-remote, switch,
+    # checkout, reset, merge, stash (push, pop, apply, drop only), branch, restore, rm, mv, status,
+    # rev-parse. Any other subcommand still needs a person. Not rebase (`-x`/`--exec` runs a
+    # command), pull (`--upload-pack` does), log/diff/show (`--output` writes any file) or
+    # `stash show`/`stash list` (same diff/log options): use the Read/Grep tools to read, and
+    # fetch + merge/reset instead of pull/rebase. `fetch` and `ls-remote` still accept
+    # `--upload-pack` (already the case, out of scope here). Also allowed: pushing its own branch
+    # through github-ops' push-branch.sh, which pushes only the
     # current branch, never forces and refuses main/dev. NOT `git push` itself: a prefix
     # rule can't rule out `--force` later in the line, a `+ref`, `--delete` or `--mirror`
     # (release 2.2.4's review, #278), so any other push still needs a person. Each path is
@@ -92,14 +98,20 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
             .permissions = (.permissions // {})
             | .permissions.allow = (((.permissions.allow // []) - ["Bash(git push:*)"] + [$a, $b, $c, $d,
                 "Bash(git add:*)", "Bash(git commit:*)", "Bash(git fetch:*)",
-                "Bash(git ls-remote:*)", "Bash(git switch:*)", "Bash(git checkout:*)"]) | unique)
+                "Bash(git ls-remote:*)", "Bash(git switch:*)", "Bash(git checkout:*)",
+                "Bash(git reset:*)", "Bash(git merge:*)",
+                "Bash(git stash push:*)", "Bash(git stash pop:*)",
+                "Bash(git stash apply:*)", "Bash(git stash drop:*)",
+                "Bash(git branch:*)", "Bash(git restore:*)",
+                "Bash(git rm:*)", "Bash(git mv:*)", "Bash(git status:*)",
+                "Bash(git rev-parse:*)"]) | unique)
           ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
         mv "$tmp" "$SETTINGS"; echo "allowed: log-entry.sh, push-branch.sh, local git (no git push)"
       else
-        rm -f "$tmp"; echo "WARN: could not allow log-entry.sh (jq merge failed)"
+        rm -f "$tmp"; echo "WARN: could not allow log-entry.sh, push-branch.sh or local git (jq merge failed)"
       fi
     else
-      echo "WARN: jq missing — log-entry.sh NOT allowed; work-log writes will be refused"
+      echo "WARN: jq missing — log-entry.sh, push-branch.sh and local git NOT allowed; work-log writes and those git commands will be refused"
     fi
     # Agents: copy every plugin agent definition (e.g. release-reviewer) into the agents dir.
     find "$OPS_DIR/plugins" -type f -path "*/agents/*.md" 2>/dev/null | while read -r a; do
