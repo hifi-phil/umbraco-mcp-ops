@@ -122,6 +122,15 @@ arrive"), then the D1 log ("what did it do").
 - **The D1 log** (`agent-orchestration-log`, the `transitions` table): what the Worker *did* for an issue, one row per transition, with `dropped_reason` when it chose not to act. A narrow query by `owner`, `repo` and `issue_number` (the indexed columns) in the D1 console. Free plan: 5M rows read a day, so never an unfiltered scan.
 - **The GitHub App's Recent Deliveries**: whether GitHub sent the webhook, and **Redeliver** for one that failed.
 
+### A routine's direct signals
+
+Since 2.3.14–2.3.15 (#391), routines report straight to the Worker instead of waiting for a label or comment to be seen. When a run looks stuck, these are where to look:
+
+- **Heartbeats** set `issue_status.last_step` in D1 for the item while it's open.
+- **An explicit outcome** from `post-outcome.sh` is logged in `transitions` with a `delivery_id` starting `routine-signal:`. A later outcome comment for the same fire logs as `deduped`.
+- **`blocked`** (a permission prompt) and **`ended`** (the session stopped without an outcome) each post one comment on the item at once.
+- In Workers Logs, `POST /routine-signal` requests that get **401** mean `AGENT_OUTCOMES_TOKEN` doesn't match the Worker's secret (watch for a trailing `%` copied from zsh). Permission and hook changes reach sessions only after the routine environment's `rebuild:` bump.
+
 ### When the routines API refuses a fire
 
 Each repo has **one** loop-dispatch routine, and every loop (build, review,
