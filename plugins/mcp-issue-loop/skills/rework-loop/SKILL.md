@@ -89,10 +89,12 @@ true` and won't run here. Report only what mcp-review actually found.
 
 First run `issue-build-loop`'s **pre-PR checks** (its Step 3) on your rework's diff: leftover
 text, tests that can fail, failure paths, skill text. A fix that renames or changes behaviour
-is where leftovers come from.
+is where leftovers come from. Fix what they find, re-run the affected tests, and re-run
+`mcp-review` over any fix the checks produced. If a check's fix makes no progress or its test
+can't be added, stop and say so on the PR rather than pushing.
 
-Commit and push to the PR branch. The local compile + test gate (Step 2) plus
-`mcp-review` (Step 3) are the only gates this session applies — **do not poll or wait
+Commit and push to the PR branch. The local compile + test gate (Step 2),
+`mcp-review` (Step 3) and the pre-PR checks are the only gates this session applies — **do not poll or wait
 for the full CI suite to go green** (see Test gate above).
 
 With a `log_token`: the rework's journal, decision and build entries, as
