@@ -109,6 +109,15 @@ export async function coordinateReconcile(
   const completed = await deps.completedAt();
   if (completed !== null && (lastMs === null || Date.parse(completed) >= lastMs)) return { outcome: "completed" };
 
+  // A PR left in LABELS.AI_REVIEWING (a lost check_suite webhook, or a lost review
+  // fire): the CI gate again, as when the label went on. Enforced whatever the
+  // sweep's mode: the gate is one idempotent fire, bounded by the caps, and it
+  // follows the Worker's own per-event enforcement (applyEvent logs only when
+  // that is shadow), so the trigger labels' shadow -> enforce switch is separate.
+  if (state === LABELS.AI_REVIEWING) {
+    return { outcome: "gated", result: await reviewGate(deps, { ...ref, actor: "sweep" }, labels) };
+  }
+
   const held = !enforced
     ? undefined
     : !deps.enforced(event!)
@@ -152,12 +161,6 @@ export async function coordinateReconcile(
       }
       return { outcome: "gated", result };
     }
-  }
-
-  // A PR left in LABELS.AI_REVIEWING (a lost check_suite webhook, or a lost review
-  // fire): the CI gate again, as when the label went on.
-  if (enforced && state === LABELS.AI_REVIEWING) {
-    return { outcome: "gated", result: await reviewGate(deps, { ...ref, actor: "sweep" }, labels) };
   }
 
   if (enforced) {

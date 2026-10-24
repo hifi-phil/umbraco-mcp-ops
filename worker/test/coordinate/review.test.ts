@@ -532,6 +532,25 @@ describe(`the sweep and a PR left in ${LABELS.AI_REVIEWING}`, () => {
     expectFiredOnce(d, ROUTINES.REVIEW_LOOP);
   });
 
+  it("the sweep in shadow mode still runs the gate: CI green, no pending fire -> review-loop fired once, with a row", async () => {
+    const d = deps([LABELS.AI_REVIEWING], green, idle);
+    const result = await coordinateReconcile(d, ref, { ...opts, enforced: false });
+    expect(result).toMatchObject({ outcome: "gated", result: { outcome: "applied", event: EVENTS.REVIEW_CI_PASSED } });
+    expectFiredOnce(d, ROUTINES.REVIEW_LOOP);
+    expect(d.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.REVIEW_CI_PASSED, actor: "sweep" }));
+  });
+
+  it("a review already pending: nothing fired, and the skip is logged", async () => {
+    const d = deps([LABELS.AI_REVIEWING], green, idle);
+    await d.setPendingFire({ ...ref, run: ROUTINES.REVIEW_LOOP, dueAt: opts.now - 60 * 60_000 });
+    vi.mocked(d.watchdogArmed).mockResolvedValue(false);
+    expect(await coordinateReconcile(d, ref, opts)).toEqual({ outcome: "gated", result: { outcome: "no_event" } });
+    expect(d.fireRoutine).not.toHaveBeenCalled();
+    expect(d.logTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "review_gate_skipped", droppedReason: expect.stringMatching(/already pending/), actor: "sweep" }),
+    );
+  });
+
   it("idle, CI still running: nothing fired", async () => {
     const d = deps([LABELS.AI_REVIEWING], running, idle);
     expect(await coordinateReconcile(d, ref, opts)).toEqual({ outcome: "gated", result: { outcome: "no_event" } });
