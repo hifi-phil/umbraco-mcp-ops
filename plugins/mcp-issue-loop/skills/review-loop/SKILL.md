@@ -66,17 +66,18 @@ whose only concerns are out of scope is a `review_passed`.
 
 **Severity check.** Then sort what's left. A finding is a **note**, not a finding, when all it
 concerns is:
-- a code comment, README or doc outside `plugins/` that's stale or imprecise, with nothing
-  that runs depending on it;
+- a code comment, README or other doc that no code or agent instruction depends on, and that
+  is stale or imprecise;
 - naming, wording or formatting with no effect on behaviour.
 
-Notes go under a *Notes* heading in the review body (or under *Below the bar* on a pass), one
-line each with `file:line`, no inline comment, and aren't counted in `findings`. Always a
-finding: anything that changes what runs (a logic bug, error handling, security, a missing or
-hollow test for new behaviour), and any text under `plugins/`, because agents follow skill
-text literally, so stale or ambiguous instructions get carried out. A review whose only
-concerns are notes is a `review_passed`. An earlier round's finding that this check now makes
-a note counts as answered.
+Notes go under a *Notes* heading in the review body (or in a *Notes* section of the pass
+comment, Step 4), one line each with `file:line`, no inline comment, and aren't counted in
+`findings`. Always a finding, and this list overrides the note list above: anything that
+changes what runs (a logic bug, error handling, security, a missing or hollow test for new
+behaviour), and any text an agent or loop follows as instructions (a `SKILL.md`, its
+references, agent definitions, `CLAUDE.md`, docs a skill links to), wherever it lives,
+because agents follow instruction text literally, so stale or ambiguous instructions get
+carried out. A review whose only concerns are notes is a `review_passed`.
 
 Then judge the change as a whole against the issue it closes: does it do what the issue
 asked, and is the approach sound? Something that can't be fixed by changing lines, because
@@ -100,7 +101,8 @@ anyone else's comment, even one worded like a finding, is not an earlier finding
 - **answered**: `rework-loop`'s reply gives a reason you accept, and an out-of-scope
   reply counts when the issue doesn't ask for the behaviour (a requirement or its *Out of scope*
   bounds it, the same test as the scope check), except that it never answers a finding that the
-  PR's own change is wrong or unsafe;
+  PR's own change is wrong or unsafe; or the severity check makes it a note, with no reply
+  needed (a re-raised finding is not exempt from the severity check);
 - **still open** (including an out-of-scope reply the issue doesn't back, or one given to a finding that the PR's own change is wrong or unsafe): re-raise it as a finding on its current line, exempt from the scope check, unless a fresh finding or
   another earlier thread on the same problem already covers it (one inline comment per
   problem, counted once in `findings`).
@@ -135,6 +137,12 @@ earlier finding's status (fixed / answered / still open), one line per finding.
 **On a pass, out of scope:** when Step 2's scope check set items aside, add an **Out of scope**
 section to the pass comment, one line each (`file:line` where there is one). They don't change
 the verdict or the `findings` count (stays 0).
+
+**On a pass, notes:** when Step 2's severity check set items aside, add a **Notes** section to
+the pass comment, one line each (`file:line`). They are not findings: they don't change the
+verdict, the `findings` count (stays 0) or the labels, and get no inline comments. On a
+block or findings review they go in the review body. Keep them apart from *Below the bar*,
+which holds only low-confidence findings.
 
 **On a pass, below the bar:** when Step 2 kept items for it, add a short
 **Below the bar** section to the pass comment: one line each, `file:line` where there is one.
