@@ -76,6 +76,25 @@ diff's tests on MCP repos; whatever check the content playbook ran on content re
 lean on CI to catch a fix's regressions. Never re-push an identical fix (**no-progress
 guard**).
 
+**Then the pre-PR checks**, on the PR's final diff. Each is quick; run them, don't assume.
+They catch what most reviews send back for:
+1. **Leftover text.** For every name, step, flag or behaviour the change renamed, removed or
+   altered, grep the repo (code comments, docs, `plugins/` skill text, READMEs) and fix
+   each place that still describes the old one.
+2. **Tests that can fail.** For code with a test suite (not prose or skill text), break each
+   new guard, branch or condition locally (delete or invert it) and run its tests: one must
+   fail. If none does, add the test. Restore the code and check `git diff` shows no leftover.
+3. **Failure paths.** Where a call can throw (a GitHub call, a write, a fire), state recorded
+   before it must still be right if the call fails and is retried; an error that's caught
+   logs a line naming the owner/repo and item.
+4. **Skill text** (when `plugins/` changed): every stop path reports its outcome through the
+   `agent-outcomes` script (or is a documented no-outcome stop), every operation it names is
+   in `github-ops`, and no step points at one that's gone.
+
+Fix what they find and re-run the local tests before reporting. A check you can't satisfy
+(say, no test harness for the code) doesn't block the build: say which and why in the issue
+comment.
+
 **The work log** (only when the dispatch passed a `log_token`): the subagent's journal,
 yours, the decision list by a fresh subagent, and the build entry, as
 [`references/work-log.md`](references/work-log.md) says.

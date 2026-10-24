@@ -87,7 +87,7 @@ never skip your loop's real action because you reported an outcome.
 
 | Routine | Outcome | Shape | Reported from |
 |---|---|---|---|
-| `issue-build-loop` | `build_succeeded` | `{"outcome":"build_succeeded","pr":<PR number>}` | Step 3, once `mcp-review` is clean |
+| `issue-build-loop` | `build_succeeded` | `{"outcome":"build_succeeded","pr":<PR number>}` | Step 3, once `mcp-review` and the pre-PR checks are clean |
 | `issue-build-loop` | `build_blocked` | `{"outcome":"build_blocked","reason":"<one line>"}` | Step 3, when the issue is recorded as blocked |
 | `auto-release-loop` | `release_blocked` | `{"outcome":"release_blocked","reason":"<one line>"}` | Step 2.5 on a BLOCK verdict from `release-reviewer`, or Step 1 when a re-run stops (`<dev>` commits missing, unreviewed commits on the branch, only one of branch/PR exists, or the PR doesn't qualify) |
 | `release-publish` | `release_published` | `{"outcome":"release_published","version":"<version>","tag":"<the tag the repo made>"}` | Its last step, once the tag exists, the note is posted and `main` is merged back into `dev`; `tag` exactly as the repo named it |
