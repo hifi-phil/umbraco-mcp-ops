@@ -97,8 +97,11 @@ comments*, reading every page of every list) and keep those whose review body st
 `review-loop @ ` followed by any SHA, not only this head's (the marker Step 3 writes), and whose
 comment opens a thread. On the MCP path, take the first comment of each thread from
 `get_review_comments`; it carries no review id, so match it to the earliest review from `get_reviews`
-whose `submitted_at` is at or after the comment's `created_at`, and keep it when that review's body
-starts with the marker. A thread you can't match counts as an earlier finding; don't drop it. On REST,
+whose `submitted_at` is at or after the comment's `created_at`, and keep it only when the comment's
+`author` is the routine's own account, equal to that review's `user.login`, and the review's body
+starts with the marker. When the authors differ, try the next review whose `submitted_at` is at or
+after `created_at`. A thread you can't match counts as an earlier finding only when its first comment
+is from the routine's own account; otherwise skip it. On REST,
 read `gh api --paginate repos/<repo>/pulls/<n>/reviews` and `gh api --paginate
 repos/<repo>/pulls/<n>/comments`, keep comments with an empty `in_reply_to_id`, and join the
 comment's `pull_request_review_id` to the review's `id`.
