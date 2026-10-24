@@ -546,6 +546,19 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
+    name: `outcome signal: a build that reports through the script and posts no comment still moves to ${LABELS.PR_OPEN}`,
+    timeoutMs: 3 * MIN,
+    run: () =>
+      scoped(async (t) => {
+        const issue = t.n(await openIssue("Build by script", "The build reports through post-outcome.sh's signal alone.", "success_by_script"));
+        await addLabel(issue, LABELS.AI_READY);
+        const built = await waitFor(issue, labelsAre(LABELS.PR_OPEN), 2 * MIN);
+        expectLabels(built, issue, LABELS.PR_OPEN);
+        expect(hasMarker(built, "issue-build-loop", "build_succeeded"), `#${issue} posted no outcome comment`).toBe(false);
+        await expectLogged(issue, { event: "build_succeeded", effect: LABELS.PR_OPEN, run: "issue-build-loop" });
+      }),
+  },
+  {
     name: "real hook: a heartbeat from the agent-outcomes hook is quoted by the expiry",
     timeoutMs: STUCK_WAIT + 2 * MIN,
     run: () =>

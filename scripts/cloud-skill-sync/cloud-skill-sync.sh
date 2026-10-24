@@ -94,9 +94,11 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
       if jq --arg a "Bash(bash ~/.claude/skills/work-log/scripts/log-entry.sh:*)" \
             --arg b "Bash(bash $SKILLS_DEST/work-log/scripts/log-entry.sh:*)" \
             --arg c "Bash(bash ~/.claude/skills/github-ops/scripts/push-branch.sh:*)" \
-            --arg d "Bash(bash $SKILLS_DEST/github-ops/scripts/push-branch.sh:*)" '
+            --arg d "Bash(bash $SKILLS_DEST/github-ops/scripts/push-branch.sh:*)" \
+            --arg e "Bash(bash ~/.claude/skills/agent-outcomes/scripts/post-outcome.sh:*)" \
+            --arg f "Bash(bash $SKILLS_DEST/agent-outcomes/scripts/post-outcome.sh:*)" '
             .permissions = (.permissions // {})
-            | .permissions.allow = (((.permissions.allow // []) - ["Bash(git push:*)"] + [$a, $b, $c, $d,
+            | .permissions.allow = (((.permissions.allow // []) - ["Bash(git push:*)"] + [$a, $b, $c, $d, $e, $f,
                 "Bash(git add:*)", "Bash(git commit:*)", "Bash(git fetch:*)",
                 "Bash(git ls-remote:*)", "Bash(git switch:*)", "Bash(git checkout:*)",
                 "Bash(git reset:*)", "Bash(git merge:*)",
@@ -106,12 +108,12 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
                 "Bash(git rm:*)", "Bash(git mv:*)", "Bash(git status:*)",
                 "Bash(git rev-parse:*)"]) | unique)
           ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
-        mv "$tmp" "$SETTINGS"; echo "allowed: log-entry.sh, push-branch.sh, local git (no git push)"
+        mv "$tmp" "$SETTINGS"; echo "allowed: log-entry.sh, push-branch.sh, post-outcome.sh, local git (no git push)"
       else
-        rm -f "$tmp"; echo "WARN: could not allow log-entry.sh, push-branch.sh or local git (jq merge failed)"
+        rm -f "$tmp"; echo "WARN: could not allow log-entry.sh, push-branch.sh, post-outcome.sh or local git (jq merge failed)"
       fi
     else
-      echo "WARN: jq missing — log-entry.sh, push-branch.sh and local git NOT allowed; work-log writes and those git commands will be refused"
+      echo "WARN: jq missing — log-entry.sh, push-branch.sh, post-outcome.sh and local git NOT allowed; work-log writes, outcome reports and those git commands will be refused"
     fi
     # Agents: copy every plugin agent definition (e.g. release-reviewer) into the agents dir.
     find "$OPS_DIR/plugins" -type f -path "*/agents/*.md" 2>/dev/null | while read -r a; do
@@ -156,37 +158,46 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     else
       echo "NOT FOUND in source: self-learning hooks"
     fi
-    # The heartbeat hook: agent-outcomes' report-completion.sh, on PostToolUse. It tells
-    # the Worker the run is alive and what step it's on (pushing its watchdog back, and
-    # what an expiry quotes), and signals completion when an outcome is posted. Without
-    # it a routine never reports a step, so the Worker can't tell a run that never
-    # started from one that went quiet. It sends only when the environment sets
-    # AGENT_OUTCOMES_ENDPOINT and AGENT_OUTCOMES_TOKEN; otherwise it only logs.
+    # The agent-outcomes hooks: report-completion.sh on PostToolUse (a heartbeat naming the
+    # step, which pushes the Worker's watchdog back and is what an expiry quotes, so the
+    # Worker can tell a run that never started from one that went quiet) and
+    # report-early-end.sh on Notification (a permission prompt: blocked) and on Stop and
+    # SessionEnd (ended, when the session reported no outcome). Outcomes themselves go
+    # through the skill's post-outcome.sh. They send only when the environment sets
+    # AGENT_OUTCOMES_ENDPOINT and AGENT_OUTCOMES_TOKEN; otherwise they only log.
     ao="$(find "$OPS_DIR/plugins" -maxdepth 1 -type d -name agent-outcomes 2>/dev/null | head -1)"
-    if [ -n "$ao" ] && [ -f "$ao/hooks/report-completion.sh" ]; then
+    if [ -n "$ao" ] && [ -f "$ao/hooks/report-completion.sh" ] && [ -f "$ao/hooks/report-early-end.sh" ]; then
       AO_HOOKS="$HOME/.claude/agent-outcomes-hooks"
       rm -rf "$AO_HOOKS"; mkdir -p "$AO_HOOKS"
-      cp "$ao/hooks/report-completion.sh" "$AO_HOOKS/"; chmod +x "$AO_HOOKS/report-completion.sh"
+      cp "$ao"/hooks/*.sh "$AO_HOOKS/"; chmod +x "$AO_HOOKS"/*.sh
       if command -v jq >/dev/null 2>&1; then
         [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
-        cmd="bash $AO_HOOKS/report-completion.sh"
-        tmp="$(mktemp)"
-        if jq --arg cmd "$cmd" '
-              .hooks = (.hooks // {})
-              | .hooks.PostToolUse = (.hooks.PostToolUse // [])
-              | if any(.hooks.PostToolUse[]?; any(.hooks[]?; .command == $cmd)) then .
-                else .hooks.PostToolUse += [ {"hooks": [ {"type":"command","command":$cmd,"async":true} ]} ] end
-            ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
-          mv "$tmp" "$SETTINGS"; echo "registered hook: PostToolUse -> report-completion (heartbeats)"
-        else
-          rm -f "$tmp"; echo "WARN: could not register the heartbeat hook (jq merge failed)"
-        fi
+        # register <event> <script> <matcher or "">
+        register_ao_hook() {
+          local ev="$1" cmd="bash $AO_HOOKS/$2" matcher="$3" tmp
+          tmp="$(mktemp)"
+          if jq --arg ev "$ev" --arg cmd "$cmd" --arg matcher "$matcher" '
+                .hooks = (.hooks // {})
+                | .hooks[$ev] = (.hooks[$ev] // [])
+                | if any(.hooks[$ev][]?; any(.hooks[]?; .command == $cmd)) then .
+                  else .hooks[$ev] += [ ({"hooks": [ {"type":"command","command":$cmd,"async":true} ]}
+                                          + (if $matcher == "" then {} else {"matcher":$matcher} end)) ] end
+              ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
+            mv "$tmp" "$SETTINGS"; echo "registered hook: $ev -> $2"
+          else
+            rm -f "$tmp"; echo "WARN: could not register the $ev agent-outcomes hook (jq merge failed)"
+          fi
+        }
+        register_ao_hook PostToolUse report-completion.sh ""
+        register_ao_hook Notification report-early-end.sh "permission_prompt"
+        register_ao_hook Stop report-early-end.sh ""
+        register_ao_hook SessionEnd report-early-end.sh ""
       else
-        echo "WARN: jq missing — heartbeat hook copied but NOT registered"
+        echo "WARN: jq missing — agent-outcomes hooks copied but NOT registered"
       fi
-      [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] || echo "NOTE: AGENT_OUTCOMES_ENDPOINT isn't set in this environment: the heartbeat hook will only log"
+      [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] || echo "NOTE: AGENT_OUTCOMES_ENDPOINT isn't set in this environment: the agent-outcomes hooks will only log"
     else
-      echo "NOT FOUND in source: agent-outcomes hook"
+      echo "NOT FOUND in source: agent-outcomes hooks"
     fi
     # The session-start refresh: copy session-refresh.sh out of the checkout (it's
     # removed below) and register it on SessionStart, synchronously, so a session's

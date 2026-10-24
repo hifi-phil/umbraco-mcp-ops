@@ -203,7 +203,8 @@ hands the agent already-materialized content as plain text. Do this sequence
      review`, detailing the reviewer's BLOCK findings plus links to the release PR and
      the triggering issue.
   2. **Comment on the triggering issue** pointing to the blocked issue + PR, with the
-     required `release_blocked` artifact (load `agent-outcomes` for the marker and shape).
+     required `release_blocked` artifact: report it through the `agent-outcomes` script (load it)
+     and use the body it printed.
 - **WARN** findings → proceed, but include them in the `release_approved` comment.
 - Report `release_approved` **only** when the checklist passes with no BLOCK.
 
@@ -212,8 +213,8 @@ orchestrator merges the PR as its GitHub App, the way you say, pinned to the com
 reviewed; the repo's own workflow tags it; then `release-publish` (a separate, small run)
 posts the release note, merges `<main>` back into `<dev>` and reports, and the orchestrator
 closes this issue. So on a pass, post one comment on the triggering issue with the
-**required** `release_approved` artifact (load `agent-outcomes` for the marker and shape),
-and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close anything.
+**required** `release_approved` artifact (report it through the `agent-outcomes` script, load
+it, and use the body it printed), and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close anything.
 - `pr`: the release PR's number; `sha`: the **head SHA the review judged** (Step 2.5's
   re-fetched one). A push after the review makes the merge refuse, which is the point.
 - `version`: `<version>`; `merge_method`: how this repo merges a release into `<main>`

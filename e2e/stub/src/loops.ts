@@ -89,7 +89,7 @@ export async function act(gh: Gh, fire: Fire, hint: string | null, signal?: Sign
     case "issue-discuss-loop":
       return discuss(gh, fire, hint);
     case "issue-build-loop":
-      return build(gh, fire, hint, log);
+      return build(gh, fire, hint, log, signal);
     case "rework-loop":
       return rework(gh, fire, hint);
     case "merge-flow":
@@ -117,12 +117,14 @@ async function discuss(gh: Gh, f: Fire, hint: string | null): Promise<Action> {
   return "discussed";
 }
 
-async function build(gh: Gh, f: Fire, hint: string | null, log?: LogWriter): Promise<Action> {
+async function build(gh: Gh, f: Fire, hint: string | null, log?: LogWriter, signal?: Signal): Promise<Action> {
   if (hint === "blocked") {
     await comment(gh, f, outcomeComment("issue-build-loop", { outcome: "build_blocked", reason: "e2e stub: scripted block" }));
     return "build_blocked";
   }
-  if (hint !== "success") return "none";
+  // "success_by_script": reports through the outcome signal alone, as post-outcome.sh does, with no comment.
+  const byScript = hint === "success_by_script" && signal !== undefined;
+  if (hint !== "success" && !byScript) return "none";
 
   const { object } = (await gh("GET", `${base(f)}/git/ref/heads/dev`)) as { object: { sha: string } };
   const branch = `e2e/build-${f.number}-${Date.now()}`;
@@ -153,7 +155,9 @@ async function build(gh: Gh, f: Fire, hint: string | null, log?: LogWriter): Pro
     }).catch(() => null);
     await log({ kind: "build", body: `Commit: e2e stub\nTests: none (the stub)\nReview: none\nNot verified: everything (it's the stub)` }).catch(() => null);
   }
-  await comment(gh, f, outcomeComment("issue-build-loop", { outcome: "build_succeeded", pr: pr.number }));
+  const succeeded: Outcome = { outcome: "build_succeeded", pr: pr.number };
+  if (byScript && signal) await signal({ kind: "outcome", routine: f.route, issue: f.number, outcome: succeeded });
+  else await comment(gh, f, outcomeComment("issue-build-loop", succeeded));
   return "build_succeeded";
 }
 

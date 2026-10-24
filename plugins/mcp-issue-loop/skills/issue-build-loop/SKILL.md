@@ -80,13 +80,14 @@ guard**).
 yours, the decision list by a fresh subagent, and the build entry, as
 [`references/work-log.md`](references/work-log.md) says.
 
-**Then report and stop.** Comment the PR link on the triggering issue, with the
-`build_succeeded` artifact (`pr` = the PR's number; load `agent-outcomes` for the marker and
-shape). Don't drive CI or wait for it.
+**Then report and stop.** Report `build_succeeded` (`pr` = the PR's number) with the
+`agent-outcomes` script, then comment the PR link on the triggering issue with the body it
+printed (load `agent-outcomes`). Don't drive CI or wait for it.
 
 If the subagent reports it could not finish (e.g. the issue is genuinely ambiguous), or the
-no-progress guard trips while fixing an `mcp-review` finding, comment the specific reason (the
-ambiguity, what was tried) with the `build_blocked` artifact, and stop.
+no-progress guard trips while fixing an `mcp-review` finding, report `build_blocked` through the
+script and comment the specific reason (the ambiguity, what was tried) with the body it
+printed, and stop.
 
 ## Model selection
 

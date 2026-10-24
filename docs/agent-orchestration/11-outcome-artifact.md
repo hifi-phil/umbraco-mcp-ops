@@ -182,6 +182,23 @@ POST has never been sent to or verified against it — that's a manual
 config step (plus a real deployment) that hasn't happened, and this
 whole channel remains unconfirmed against a real cloud routine.
 
+### Update: agents report through a script
+
+The "never authoritative" premise above did not survive contact (#391): a
+webhook was dropped, an outcome was posted in the wrong format, a session died
+on a permission prompt. So an outcome is now reported, deliberately, through
+`plugins/agent-outcomes/skills/agent-outcomes/scripts/post-outcome.sh
+<outcome> '<json>'`. It POSTs `{kind:"outcome"}` to `/routine-signal`, which the
+Worker applies as the comment would be (whichever lands second is `deduped`), and
+prints the exact comment body for the session to post. Bad JSON or no run
+context exits non-zero and sends nothing.
+
+`report-completion.sh` is heartbeats only: it no longer greps tool calls for the
+marker, so nothing is inferred from a tool call's text. `report-early-end.sh`
+adds `Notification` (permission prompt) -> `blocked` and `Stop`/`SessionEnd` ->
+`ended`, the latter only when the session ran no `post-outcome.sh`.
+`cloud-skill-sync` installs the script's permission and the hooks.
+
 **What this doesn't fix:** the comment's JSON is still hand-typed by the
 model into a fence, which is exactly the kind of thing that can go quietly
 wrong — a mangled fence, a typo'd field, and both `translate()` and the

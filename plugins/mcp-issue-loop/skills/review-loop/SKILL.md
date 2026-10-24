@@ -108,8 +108,8 @@ your fresh findings. No earlier `review-loop` threads → nothing to settle.
 
 ## Step 4 — report
 
-One comment on the PR with the **required** verdict artifact (load `agent-outcomes` for the
-marker and shape), in a separate comment, not the review body: the Worker reads comments.
+Report the verdict through the `agent-outcomes` script (load `agent-outcomes`), then post one
+comment on the PR with the **required** body it printed, in a separate comment, not the review body: the Worker reads comments.
 Name the reviewers that ran and the head SHA reviewed. Whatever the verdict, list each
 earlier finding's status (fixed / answered / still open), one line per finding.
 - No in-scope finding survived (out-of-scope items don't count), and every earlier finding is fixed or answered → `review_passed`.
