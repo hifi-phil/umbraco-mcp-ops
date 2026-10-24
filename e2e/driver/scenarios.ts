@@ -58,7 +58,9 @@ const CI_WAIT = 8 * MIN;
 const CAP = Number(process.env.E2E_REWORK_CAP ?? 1);
 
 /** For the audit (run.e2e.test.ts): an issue whose label delivery to redeliver, and the two PRs sharing a head. */
-export const runLog: { redeliverIssue?: number; sharedHead?: number[]; manualOverrideIssue?: number; sweepIssue?: number } = {};
+// sweepIssues: every attempt's issue (a retried scenario leaves its first
+// attempt's scripted refusal behind); sweepIssue: the latest.
+export const runLog: { redeliverIssue?: number; sharedHead?: number[]; manualOverrideIssue?: number; sweepIssue?: number; sweepIssues?: number[] } = {};
 
 /** Every issue and PR this run's scenarios created (each registers its own,
  * see scoped()), so the audit judges only the run's items, not whatever
@@ -590,6 +592,7 @@ export const scenarios: Scenario[] = [
         // on. Nothing but the sweep will ever look at it again.
         const issue = t.n(await openIssue("Left behind", "Its fire never gets out; the sweep finds it.", "fail_fire"));
         runLog.sweepIssue = issue;
+        (runLog.sweepIssues ??= []).push(issue);
         const key = `${REPO}#${issue}`.toLowerCase();
         await addLabel(issue, LABELS.AI_READY);
         await sleep(15_000); // the Worker's fire, and its retries, refused
