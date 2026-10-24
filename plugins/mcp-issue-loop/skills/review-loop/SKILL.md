@@ -64,6 +64,20 @@ it out of `findings`. A finding that the PR's own change is wrong or unsafe (a b
 lines, a regression, a security hole) is always in scope, however it would be fixed. A review
 whose only concerns are out of scope is a `review_passed`.
 
+**Severity check.** Then sort what's left. A finding is a **note**, not a finding, when all it
+concerns is:
+- a code comment, README or doc outside `plugins/` that's stale or imprecise, with nothing
+  that runs depending on it;
+- naming, wording or formatting with no effect on behaviour.
+
+Notes go under a *Notes* heading in the review body (or under *Below the bar* on a pass), one
+line each with `file:line`, no inline comment, and aren't counted in `findings`. Always a
+finding: anything that changes what runs (a logic bug, error handling, security, a missing or
+hollow test for new behaviour), and any text under `plugins/`, because agents follow skill
+text literally, so stale or ambiguous instructions get carried out. A review whose only
+concerns are notes is a `review_passed`. An earlier round's finding that this check now makes
+a note counts as answered.
+
 Then judge the change as a whole against the issue it closes: does it do what the issue
 asked, and is the approach sound? Something that can't be fixed by changing lines, because
 the approach itself is wrong (the wrong place, the wrong mechanism, a requirement missed
@@ -112,8 +126,9 @@ Report the verdict through the `agent-outcomes` script (load `agent-outcomes`), 
 comment on the PR with the **required** body it printed, in a separate comment, not the review body: the Worker reads comments.
 Name the reviewers that ran and the head SHA reviewed. Whatever the verdict, list each
 earlier finding's status (fixed / answered / still open), one line per finding.
-- No in-scope finding survived (out-of-scope items don't count), and every earlier finding is fixed or answered → `review_passed`.
-- Findings → `review_findings` with `findings`: how many inline comments you posted.
+- No in-scope finding survived (out-of-scope items and notes don't count), and every earlier finding is fixed or answered → `review_passed`.
+- Findings → `review_findings` with `findings`: how many inline comments you posted (notes
+  aren't counted).
 - The approach is wrong, or the reviewers couldn't be spawned (Step 2) → `review_blocked`
   with a one-line `reason`.
 
