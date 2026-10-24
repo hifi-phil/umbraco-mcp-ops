@@ -1,0 +1,24 @@
+name: skill lint
+
+# Deterministic checks on skill text: SKILL.md descriptions within Claude Code's
+# 1024-character limit, and relative Markdown links that resolve.
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/**'
+      - 'scripts/skill-lint/**'
+      - '.github/workflows/skill-lint.yml'
+
+jobs:
+  skill-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Lint self-test
+        run: scripts/skill-lint/test.sh
+      - name: Skill text under plugins/
+        run: node scripts/skill-lint/check.mjs plugins

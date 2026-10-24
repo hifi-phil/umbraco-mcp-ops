@@ -46,7 +46,7 @@ supersedes that; the field contract is identical either way.)
    for `issue_comment`, the issue's labels + state and the comment's association, author type,
    and marker (see the second table above). No inference, no guessing what to look up.
 3. **Gate on the exact tuple *before* doing any work — with a script, not judgement.**
-   loop-dispatch ships [`route-event.sh`](route-event.sh): pass it the parsed fields and
+   loop-dispatch ships [`route-event.sh`](../route-event.sh): pass it the parsed fields and
    it prints `route=<loop|none>`. Act only on a named route; **any other value → quiet
    no-op.** Do **not** wake a loop and let it sweep on a label you don't care about —
    that's the wasteful pattern (a Dependabot PR labelled `dependencies` must *not* trigger
