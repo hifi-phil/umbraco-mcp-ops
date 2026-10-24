@@ -18,21 +18,22 @@ function markdownFiles(dir) {
   });
 }
 
-/** The frontmatter `description`, plain or a `>-`/`|` block, joined as YAML folds it.
+/** The frontmatter `description`: a plain or quoted value (continuation lines folded) or a
+ * `>-`/`|` block, joined as YAML folds it.
  * @param {string} text @returns {string | null} */
 function description(text) {
-  const fm = text.match(/^---\n([\s\S]*?)\n---/);
+  const fm = text.replace(/\r\n/g, "\n").replace(/^\uFEFF/, "").match(/^---\n([\s\S]*?)\n---/);
   if (!fm) return null;
   const lines = fm[1].split("\n");
   const i = lines.findIndex((l) => /^description:/.test(l));
   if (i < 0) return null;
-  const first = lines[i].replace(/^description:\s*/, "");
-  if (!/^[>|][-+]?$/.test(first)) return first.replace(/^["']|["']$/g, "");
+  const first = lines[i].replace(/^description:\s*/, "").trimEnd();
   const block = [];
   for (const l of lines.slice(i + 1)) {
     if (!/^\s+\S/.test(l) && l.trim() !== "") break;
     block.push(l.trim());
   }
+  if (!/^[>|][-+]?$/.test(first)) return [first, ...block].join(" ").trim().replace(/^["']|["']$/g, "");
   return first.startsWith(">") ? block.join(" ").trim() : block.join("\n").trim();
 }
 
@@ -41,7 +42,8 @@ for (const file of markdownFiles(root)) {
   const text = readFileSync(file, "utf8");
   if (file.endsWith("SKILL.md")) {
     const d = description(text);
-    if (d !== null && d.length > MAX_DESCRIPTION) {
+    if (d === null) problems.push(`${file}: no frontmatter description found`);
+    else if (d.length > MAX_DESCRIPTION) {
       problems.push(`${file}: description is ${d.length} characters (max ${MAX_DESCRIPTION})`);
     }
   }
