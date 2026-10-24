@@ -13,7 +13,7 @@ description: >-
 
 # issue-build-loop
 
-Turns **one** `ai-ready` issue into a reviewed PR and reports `build_succeeded` — on **any**
+Turns **one** `ai-ready` issue into a PR and reports `build_succeeded` — on **any**
 repo, whether or not it has an Umbraco build/test toolchain. The fire names the issue; one fire
 is one item. Only the per-issue build playbook differs between the two repo shapes, resolved in
 [Config](#config-resolve-once-up-front): MCP repo (has the toolchain) vs content repo (doesn't).
@@ -66,7 +66,7 @@ and pass the fitting tier as the Agent `model`.
 
 The subagent's job is done when its PR is open — it does not poll CI or block on it.
 
-## Step 3 — review and report
+## Step 3 — pre-PR checks and report
 
 **No review here.** The independent review is `review-loop`'s: it runs its own `mcp-review`
 over the PR once CI is green, and only its verdict decides anything. Once the subagent returns
