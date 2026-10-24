@@ -131,8 +131,8 @@ New plugin: `plugins/agent-outcomes`, matching `github-ops`'s shape — one
 shared skill, other plugins point at it rather than each re-explaining the
 format. Both loops reference it by name instead of inlining the
 marker/JSON; the catalog now has four rows, added without touching either
-loop's own format definition (there isn't one) or `report-completion.sh`
-(it matches on the marker itself, not on any particular routine or shape).
+loop's own format definition (there isn't one) or `post-outcome.sh`
+(it forwards any outcome whose JSON names it).
 
 ## The fast path: a hook, not a replacement for GitHub
 
@@ -142,9 +142,10 @@ session dies mid-call, while a GitHub write either exists or doesn't and
 survives independently of the session. A direct "completion" ping doesn't
 get to skip that just because it's more convenient — so the resolution is:
 
-- **The GitHub comment stays the authoritative write**, unchanged in
-  role. `github/from-github.ts` reading it is still the only path that
-  drives a state transition.
+- **The GitHub comment was the only authoritative write** when this was
+  first written. Since #391 the explicit outcome signal from
+  `post-outcome.sh` is authoritative too (see below); whichever lands
+  second is deduped.
 - **A direct ping is allowed, but only as a non-authoritative fast path**
   — the same category as the heartbeat (§3.4/§3.6): losing it costs
   detail (the watchdog waits out its full alarm instead of cancelling
@@ -194,7 +195,9 @@ on a permission prompt. So an outcome is now reported, deliberately, through
 Worker applies as the comment would be (whichever lands second is `deduped`), and
 prints the exact comment body for the session to post. Bad JSON or a name
 mismatch exits non-zero and sends nothing; with no run context it sends nothing
-but still prints the body, and the Worker recovers the outcome from the comment.
+but still prints the body (the routine taken from the outcome's name; a name it
+can't map exits non-zero and prints nothing), and the Worker recovers the outcome
+from the comment.
 
 `report-completion.sh` is heartbeats only: it no longer greps tool calls for the
 marker, so nothing is inferred from a tool call's text. `report-early-end.sh`
@@ -205,7 +208,7 @@ subagent), only when no outcome was delivered for this run (`post-outcome.sh`).
 
 **What this fixes:** the marker comment is no longer hand-typed.
 `post-outcome.sh` validates the JSON, signals the Worker directly, and prints
-the exact comment body, so a mangled fence is not possible. The model still
+the exact comment body, so the marker and fence are always well-formed. The model still
 writes the outcome's JSON argument, and `post-outcome.sh` only checks that it
 parses and that its `outcome` matches the name given: a typo'd field is still
 sent, and the Worker refuses it.

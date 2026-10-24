@@ -14,9 +14,11 @@
 #    for the session to post. Nothing else goes to stdout.
 #
 # Exits non-zero, with a message on stderr, on bad JSON or an outcome-name
-# mismatch, and sends nothing. Neither a failed POST nor a missing run context
-# is an error: the comment still carries the outcome (the Worker recovers it
-# from there), so the body is printed, with a note on stderr, and the exit is 0.
+# mismatch, and sends nothing. Neither a failed POST, a refused outcome nor a
+# missing run context is an error: the comment still carries the outcome (the
+# Worker recovers it from there), so the body is printed, with a note on stderr,
+# and the exit is 0. With no run context the routine comes from the outcome's
+# name (the case below); a name it doesn't know exits non-zero, printing nothing.
 #
 # <outcome> is the outcome's name (e.g. build_succeeded). The JSON must carry
 # the same name in its "outcome" field. graph/outcomes.ts decides the rest.
@@ -24,7 +26,8 @@
 # Env: CLAUDE_CONFIG_DIR (default ~/.claude, where the session transcripts are),
 # AGENT_OUTCOMES_ENDPOINT, AGENT_OUTCOMES_TOKEN, AGENT_OUTCOMES_STATE
 # (default ~/.cache/agent-outcomes), AGENT_OUTCOMES_LOG, AGENT_OUTCOMES_TRANSCRIPT
-# (the session transcript to read the run from, when it can't be found).
+# (the session transcript to read the run from; read first, before the run the
+# hooks recorded and the newest session transcript).
 set -uo pipefail
 
 STATE="${AGENT_OUTCOMES_STATE:-${HOME}/.cache/agent-outcomes}"
@@ -116,15 +119,27 @@ if [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] && command -v curl >/dev/null 2>&1; the
     '{owner:$owner, repo:$repo, signal:{kind:"outcome", routine:$routine, issue:$issue, outcome:$outcome}}')"
   auth=()
   [ -n "${AGENT_OUTCOMES_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${AGENT_OUTCOMES_TOKEN}")
+  # The Worker answers 200 for a refused outcome too (a bad field, no pending
+  # fire), so only an applied or deduped answer counts as sent.
+  refused=""
   for attempt in 1 2; do
-    if curl -fsS -m 10 -X POST -H 'Content-Type: application/json' ${auth[@]+"${auth[@]}"} \
-         -d "$BODY" "$AGENT_OUTCOMES_ENDPOINT" >>"$LOG" 2>&1; then
-      sent=1; break
+    if resp="$(curl -fsS -m 10 -X POST -H 'Content-Type: application/json' ${auth[@]+"${auth[@]}"} \
+         -d "$BODY" "$AGENT_OUTCOMES_ENDPOINT" 2>>"$LOG")"; then
+      log "answer: $resp"
+      if printf '%s' "$resp" | jq -e '.outcome == "deduped" or (.outcome == "outcome_reported" and .result.outcome == "applied")' >/dev/null 2>&1; then
+        sent=1
+      else
+        refused="$(printf '%s' "$resp" | jq -r '.result.outcome // .outcome // "unknown"' 2>/dev/null)"
+      fi
+      break
     fi
     [ "$attempt" -eq 1 ] && sleep 1
   done
   if [ "$sent" -eq 1 ]; then
     log "sent outcome $OUTCOME ($ROUTINE #$ISSUE)"
+  elif [ -n "$refused" ]; then
+    log "Worker refused outcome $OUTCOME ($ROUTINE #$ISSUE): $refused"
+    echo "post-outcome.sh: the Worker refused this outcome ($refused); post the comment below anyway" >&2
   else
     log "POST outcome $OUTCOME to $AGENT_OUTCOMES_ENDPOINT failed twice — the comment still carries it"
     echo "post-outcome.sh: could not reach the Worker; post the comment below" >&2

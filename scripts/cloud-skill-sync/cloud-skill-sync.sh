@@ -165,7 +165,8 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     # SessionEnd (ended, when no outcome was delivered for this run; not Stop, which fires each time
     # the main thread waits on a background subagent). Outcomes themselves go
     # through the skill's post-outcome.sh. They send only when the environment sets
-    # AGENT_OUTCOMES_ENDPOINT and AGENT_OUTCOMES_TOKEN; otherwise they send nothing.
+    # AGENT_OUTCOMES_ENDPOINT and AGENT_OUTCOMES_TOKEN: without the endpoint they send
+    # nothing; without the token the Worker refuses what they send.
     ao="$(find "$OPS_DIR/plugins" -maxdepth 1 -type d -name agent-outcomes 2>/dev/null | head -1)"
     if [ -n "$ao" ] && [ -f "$ao/hooks/report-completion.sh" ] && [ -f "$ao/hooks/report-early-end.sh" ] && [ -f "$ao/hooks/signal-lib.sh" ]; then
       AO_HOOKS="$HOME/.claude/agent-outcomes-hooks"

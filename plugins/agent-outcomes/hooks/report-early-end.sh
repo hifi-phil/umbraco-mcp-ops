@@ -7,7 +7,7 @@
 #
 # - Notification, for a permission prompt (matcher: permission_prompt): the
 #   session is waiting on an answer nobody will give.
-#   {kind:"blocked", detail:"<tool> <first 120 chars of what it asked>"}
+#   {kind:"blocked", detail:"<tool> <first 120 chars of its message, credentials redacted>"}
 # - SessionEnd: the session ended. (Not Stop: that fires whenever the main thread ends a turn,
 #   e.g. to wait on a background subagent, with the run still going.)
 #   {kind:"ended", detail:"<reason>"}

@@ -35,8 +35,10 @@ script:
 - reads the run (`route=… repo=… number=…`, from the fire text) and validates the JSON, and
   that its `outcome` is the one named. On bad JSON or a mismatch it exits non-zero
   with a message and sends nothing: fix the call, don't write the marker by hand. With no
-  run found it sends nothing but still prints the body, and the Worker recovers the
-  outcome from the posted comment;
+  run found it sends nothing but still prints the body (the routine taken from the
+  outcome's name), and the Worker recovers the outcome from the posted comment. An
+  outcome whose name the script can't map to a routine then exits non-zero and prints
+  nothing;
 - POSTs `{kind:"outcome", routine, issue, outcome}` to the Worker's `/routine-signal`
   (`AGENT_OUTCOMES_ENDPOINT`, bearer `AGENT_OUTCOMES_TOKEN`), retrying once. The Worker
   applies it as authoritative, within seconds, whether or not the comment's webhook
@@ -48,7 +50,8 @@ Append that body, as printed, to the comment you post (see [The rule](#the-rule)
 routine name in the marker is the run's, so it's right without your passing it.
 
 This plugin's hooks (`hooks/`) signal the Worker too, in a session the Worker fired. They
-need the same two env vars, and without them send nothing (they still record the run):
+need the same env vars. Without `AGENT_OUTCOMES_ENDPOINT` they send nothing (they still
+record the run); without `AGENT_OUTCOMES_TOKEN` the Worker refuses what they send:
 - `PostToolUse` (`report-completion.sh`): a **heartbeat** naming the current step, at most
   once a minute. It keeps the watchdog's deadline moving, and an expiry quotes the last step.
   It never reports an outcome and infers nothing from a tool call's text.
@@ -120,6 +123,7 @@ behind each.
    (umbraco-mcp-ops) that parses it, plus fixture tests.
 
 Steps 1–3 land together — a catalog row with no parser, or a parser with
-no catalog row, is a silent way for the two to drift. No fourth step for
-the script or hooks: `post-outcome.sh` forwards any outcome whose JSON names it, and the
-Worker validates the shape, so a new outcome type needs no change there.
+no catalog row, is a silent way for the two to drift. The script and hooks need no change
+for a new outcome type: `post-outcome.sh` forwards any outcome whose JSON names it, and the
+Worker validates the shape. The one exception is a new routine prefix: add a line for it to
+the script's `case`, used when no run context is found.

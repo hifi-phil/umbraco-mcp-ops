@@ -58,24 +58,38 @@ else
 fi
 
 # --- Signals to the Worker's /routine-signal, against a local stub server ---
-# The server records each request as one JSON line: {auth, body}.
+# The server records each request as one JSON line: {auth, body}. It binds a
+# free port (written to $WORK/port) and answers with $WORK/reply if present,
+# else an applied outcome, as the Worker would.
 if command -v python3 >/dev/null 2>&1; then
   SERVER_LOG="$WORK/server.log"
   python3 -c '
-import http.server, json, sys
+import http.server, json, os, sys
 class H(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length))
         with open(sys.argv[1], "a") as f:
             f.write(json.dumps({"auth": self.headers.get("Authorization"), "body": body}) + "\n")
-        self.send_response(200); self.end_headers(); self.wfile.write(b"{}")
+        reply = os.path.join(os.path.dirname(sys.argv[1]), "reply")
+        out = open(reply, "rb").read() if os.path.exists(reply) else json.dumps({"outcome": "outcome_reported", "result": {"outcome": "applied"}}).encode()
+        self.send_response(200); self.end_headers(); self.wfile.write(out)
     def log_message(self, *a): pass
-http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
+s = http.server.HTTPServer(("127.0.0.1", 0), H)
+open(os.path.join(os.path.dirname(sys.argv[1]), "port"), "w").write(str(s.server_address[1]))
+s.serve_forever()
 ' "$SERVER_LOG" &
   SERVER_PID=$!
   trap 'kill "$SERVER_PID" 2>/dev/null; rm -rf "$WORK"' EXIT
-  for _ in $(seq 1 20); do curl -fsS -m 1 -X POST -d '{}' http://127.0.0.1:8943/ >/dev/null 2>&1 && break; sleep 0.1; done
+  for _ in $(seq 1 50); do [ -s "$WORK/port" ] && break; sleep 0.1; done
+  PORT="$(cat "$WORK/port" 2>/dev/null)"
+  # Fatal unless this run's own server answers (a probe lands in its own log).
+  ready=0
+  for _ in $(seq 1 20); do
+    curl -fsS -m 1 -X POST -d '{"probe":true}' "http://127.0.0.1:${PORT:-1}/" >/dev/null 2>&1 && grep -q probe "$SERVER_LOG" 2>/dev/null && { ready=1; break; }
+    sleep 0.1
+  done
+  [ "$ready" -eq 1 ] || { echo "FAIL [stub_server]: no server of this run's own on port ${PORT:-none}"; exit 1; }
   : >"$SERVER_LOG"
 
   # A routine's transcript: its first prompt is the Worker's fire text.
@@ -90,7 +104,7 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   # signal <name> <event-json> <state-dir>: run the hook against the stub.
   signal() {
     printf '%s' "$2" | env AGENT_OUTCOMES_LOG="$WORK/$1.log" AGENT_OUTCOMES_STATE="$3" \
-      AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" AGENT_OUTCOMES_TOKEN="tok" AGENT_OUTCOMES_HEARTBEAT_SECS="${HB:-60}" bash "$SCRIPT"
+      AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:${PORT}/routine-signal" AGENT_OUTCOMES_TOKEN="tok" AGENT_OUTCOMES_HEARTBEAT_SECS="${HB:-60}" bash "$SCRIPT"
     sleep 0.3
   }
   # expect_last <name> <jq-filter over the last request, must be true>
@@ -148,7 +162,7 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   end_event() { jq -n --arg r "${1:-other}" '{hook_event_name:"SessionEnd", session_id:"test", reason:$r}'; }
   esignal() {
     printf '%s' "$2" | env AGENT_OUTCOMES_LOG="$WORK/$1.log" AGENT_OUTCOMES_STATE="$3" \
-      AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" AGENT_OUTCOMES_TOKEN="tok" bash "$EARLY_END"
+      AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:${PORT}/routine-signal" AGENT_OUTCOMES_TOKEN="tok" bash "$EARLY_END"
     sleep 0.3
   }
 
@@ -230,7 +244,7 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   # post <name> <state> <outcome> <json>: run it as a session whose transcript carries the run.
   post() {
     env AGENT_OUTCOMES_LOG="$WORK/$1.log" AGENT_OUTCOMES_STATE="$2" AGENT_OUTCOMES_TRANSCRIPT="$TRANSCRIPT" \
-      AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" AGENT_OUTCOMES_TOKEN="tok" \
+      AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:${PORT}/routine-signal" AGENT_OUTCOMES_TOKEN="tok" \
       bash "$POST_OUTCOME" "$3" "$4"
   }
 
@@ -254,13 +268,13 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
 
   # 20. No run context -> nothing sent (the body is still printed, case 20a)
   OUT="$(env HOME="$WORK/nohome" AGENT_OUTCOMES_LOG="$WORK/po_noctx.log" AGENT_OUTCOMES_STATE="$WORK/s20" AGENT_OUTCOMES_TRANSCRIPT="$NO_ROUTE" \
-    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" bash "$POST_OUTCOME" build_succeeded '{"outcome":"build_succeeded","pr":1}' 2>/dev/null)"; RC=$?
+    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:${PORT}/routine-signal" bash "$POST_OUTCOME" build_succeeded '{"outcome":"build_succeeded","pr":1}' 2>/dev/null)"; RC=$?
   if [ "$RC" -eq 0 ]; then echo "PASS [outcome_no_run]"; pass=$((pass+1)); else echo "FAIL [outcome_no_run]: rc=$RC"; fail=$((fail+1)); fi
   expect_requests outcome_no_run_nothing_sent 0
 
   # 20a. ...unless the catalog names the routine: with no run, the body is still printed (nothing sent)
   OUT="$(env HOME="$WORK/nohome" AGENT_OUTCOMES_LOG="$WORK/po_noctx2.log" AGENT_OUTCOMES_STATE="$WORK/s20a" AGENT_OUTCOMES_TRANSCRIPT="$NO_ROUTE" \
-    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" bash "$POST_OUTCOME" build_succeeded '{"outcome":"build_succeeded","pr":1}' 2>/dev/null)"; RC=$?
+    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:${PORT}/routine-signal" bash "$POST_OUTCOME" build_succeeded '{"outcome":"build_succeeded","pr":1}' 2>/dev/null)"; RC=$?
   if [ "$RC" -eq 0 ] && [ "$OUT" = '<!-- agent-outcome:issue-build-loop -->
 ```json
 {"outcome":"build_succeeded","pr":1}
@@ -271,7 +285,7 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   signal hb_record "$(with_transcript "$SKILL_CALL" "$TRANSCRIPT" rec)" "$WORK/s20b"
   : >"$SERVER_LOG"
   env AGENT_OUTCOMES_LOG="$WORK/po_lastrun.log" AGENT_OUTCOMES_STATE="$WORK/s20b" \
-    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" AGENT_OUTCOMES_TOKEN="tok" \
+    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:${PORT}/routine-signal" AGENT_OUTCOMES_TOKEN="tok" \
     bash "$POST_OUTCOME" build_succeeded '{"outcome":"build_succeeded","pr":5}' >/dev/null 2>&1
   expect_last outcome_from_last_run '.body.signal.routine == "issue-build-loop" and .body.signal.issue == 412'
 
@@ -279,7 +293,7 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   mkdir -p "$WORK/home20c/.claude/projects/p"; cp "$TRANSCRIPT" "$WORK/home20c/.claude/projects/p/s.jsonl"
   : >"$SERVER_LOG"
   env HOME="$WORK/home20c" AGENT_OUTCOMES_LOG="$WORK/po_scan.log" AGENT_OUTCOMES_STATE="$WORK/s20c" \
-    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" AGENT_OUTCOMES_TOKEN="tok" \
+    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:${PORT}/routine-signal" AGENT_OUTCOMES_TOKEN="tok" \
     bash "$POST_OUTCOME" build_succeeded '{"outcome":"build_succeeded","pr":6}' >/dev/null 2>&1
   expect_last outcome_from_newest_transcript '.body.signal.issue == 412 and .body.signal.outcome.pr == 6'
 
@@ -287,6 +301,26 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   : >"$SERVER_LOG"
   esignal ended_after "$(with_transcript "$(end_event other)" "$TRANSCRIPT" a1)" "$WORK/s18"
   expect_requests ended_after_outcome_nothing 0
+
+  # 21b. The Worker answers 200 but refuses the outcome -> no reported marker,
+  #      a warning on stderr, and a later end still sends ended
+  printf '%s' '{"outcome":"invalid_signal"}' >"$WORK/reply"
+  : >"$SERVER_LOG"
+  ERR="$(post po_refused "$WORK/s21b" build_succeeded '{"outcome":"build_succeeded","pr":"123"}' 2>&1 >/dev/null)"
+  rm -f "$WORK/reply"
+  if ! ls "$WORK/s21b"/reported-* >/dev/null 2>&1 && printf '%s' "$ERR" | grep -q 'refused'; then echo "PASS [refused_outcome_not_reported]"; pass=$((pass+1)); else echo "FAIL [refused_outcome_not_reported]: $ERR"; fail=$((fail+1)); fi
+  : >"$SERVER_LOG"
+  esignal ended_after_refused "$(with_transcript "$(end_event)" "$TRANSCRIPT" r1)" "$WORK/s21b"
+  expect_last ended_after_refused_sends '.body.signal.kind == "ended" and .body.signal.issue == 412'
+
+  # 21c. A reason with three backticks can't close the printed fence
+  : >"$SERVER_LOG"
+  TICKS='has ``` inside'
+  BODY="$(post po_ticks "$WORK/s21c" build_blocked "$(jq -cn --arg r "$TICKS" '{outcome:"build_blocked", reason:$r}')")"
+  FENCES="$(printf '%s\n' "$BODY" | grep -c '^```')"
+  PARSED="$(printf '%s\n' "$BODY" | sed -n '/^```json$/,/^```$/p' | sed '1d;$d' | jq -r '.reason' 2>/dev/null)"
+  if [ "$FENCES" -eq 2 ] && [ "$PARSED" = "$TICKS" ]; then echo "PASS [backticks_escaped]"; pass=$((pass+1)); else echo "FAIL [backticks_escaped]: fences=$FENCES parsed=$PARSED"; fail=$((fail+1)); fi
+  expect_last backticks_sent_raw '.body.signal.outcome.reason == "has ``` inside"'
 
   # 22. The Worker unreachable -> still prints the body, exit 0 (the comment carries the outcome)
   OUT="$(env AGENT_OUTCOMES_LOG="$WORK/po_down.log" AGENT_OUTCOMES_STATE="$WORK/s22" AGENT_OUTCOMES_TRANSCRIPT="$TRANSCRIPT" \

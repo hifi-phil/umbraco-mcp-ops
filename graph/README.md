@@ -113,13 +113,11 @@ transports can't drift into two different ideas of "a valid outcome."
   source is a live gate re-check, not something a comment can carry. Same
   category as the CI-aggregation stub below: needs real infrastructure,
   not an artifact.
-- `routines/from-routine.ts` is pure logic with nothing calling it *for
-  real* — but the mechanism that would call it now exists and is tested:
-  `plugins/agent-outcomes/hooks/report-completion.sh`, a `PostToolUse`
-  hook that fires automatically and forwards a detected outcome artifact
-  to `AGENT_OUTCOMES_ENDPOINT`. Nothing is listening at that endpoint —
-  there's no DO/Worker — so the hook logs only. See
-  `agent-orchestration-plan/11-outcome-artifact.md`.
+- `routines/from-routine.ts` parses what routines send the Worker's
+  `/routine-signal`: heartbeats from the `agent-outcomes` hooks, `blocked`
+  and `ended` from `report-early-end.sh`, and explicit outcomes from
+  `post-outcome.sh`, which the Worker applies. See
+  `docs/agent-orchestration/11-outcome-artifact.md`.
 - The CI-aggregation helpers in `github/from-github.ts` are stubs — real
   aggregation needs the full check-run list for a SHA (a `github-ops`
   call), not just the one `check_suite` payload that triggered the webhook.

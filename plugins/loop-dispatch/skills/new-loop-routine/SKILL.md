@@ -83,10 +83,12 @@ and caller-workflow repos alike.
 - The step is the tool plus the call's own description or skill name (`Bash: Run the
   tests`, `Skill: mcp-review`), never a command, prompt or path, because an expiry quotes
   it in a public GitHub comment.
-- Nothing runs between tool calls or after the session ends, so the heartbeats never keep
-  the environment alive.
-- A failed send is logged in the container (`~/.cache/agent-outcomes/capture.log`) and
-  changes nothing: the GitHub write stays the authoritative signal.
+- The heartbeat runs only after tool calls, so it never keeps the environment alive. The
+  `Notification` and `SessionEnd` hooks run once each, when a permission prompt appears
+  and when the session ends.
+- A failed send is logged in the container (`~/.cache/agent-outcomes/capture.log`). A lost
+  heartbeat costs only detail. A lost `blocked` or `ended` means the Worker learns of the
+  stall only when the watchdog expires.
 
 **Checking it works:** the e2e suite's `real hook` scenario (`e2e/` in
 `umbraco-mcp-ops`) run this hook against the deployed Worker, which proves the contract.

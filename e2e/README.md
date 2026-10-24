@@ -99,6 +99,7 @@ re-checks a gate that still reads "CI running".
   8. A stuck rework retried.
   9. A stuck merge-flow retried.
   10. A stuck merge-flow merged by hand.
+  11. A completion signal cancels the watchdog (no `ai-stuck`).
 - The outcome signal: a build that reports through `post-outcome.sh`'s signal alone,
   with no comment, still moves to `pr-open` (hint `success_by_script`).
 - Phase 7:
