@@ -7,7 +7,7 @@
 #
 # - Notification, for a permission prompt (matcher: permission_prompt): the
 #   session is waiting on an answer nobody will give.
-#   {kind:"blocked", detail:"<tool>[: <the command's first word>]"}
+#   {kind:"blocked", detail:"<tool>[: <the command's first word, if a plain name>]"}
 # - SessionEnd: the session ended. (Not Stop: that fires whenever the main thread ends a turn,
 #   e.g. to wait on a background subagent, with the run still going.)
 #   {kind:"ended", detail:"<reason>"}
@@ -17,7 +17,7 @@
 # Which run this is comes from the session's own first prompt (signal-lib.sh,
 # no fallback to another session's run); a session the Worker didn't fire sends nothing. The detail is quoted on GitHub,
 # so it never carries more than the tool's name and a command's first word, never
-# its arguments (a short credential, `-u user:pass`, would slip past any redaction).
+# its arguments (a short credential, `-u user:pass`, is not caught by pattern redaction).
 #
 # Env: AGENT_OUTCOMES_ENDPOINT / _TOKEN / _STATE / _LOG, as report-completion.sh.
 set -uo pipefail
@@ -63,7 +63,7 @@ case "$(printf '%s' "$EVENT" | jq -r '.hook_event_name // empty' 2>/dev/null)" i
       TOOL="$(printf '%s' "$MSG" | sed -nE 's/.*permission to (use|run) ([^ ]+).*/\2/p' | head -n1)"
     fi
     # Only a plain command name as the first word (letters, digits, `._+/-`, up to 32); anything else
-    # (an inline VAR=secret, a URL, a token, glued operators) is dropped, as is a non-string command.
+    # (an inline VAR=secret, a URL, a token, glued operators, `@`) is dropped, as is a non-string command.
     CMD="$(printf '%s' "$EVENT" | jq -r '(.tool_input // {}) | (.command // empty) | select(type == "string")' 2>/dev/null | one_line 200 | awk '{print $1}' | grep -E '^[A-Za-z0-9._+/-]{1,32}$')"
     DETAIL="${TOOL:-a tool}${CMD:+: $CMD}"
     SIGNAL="$(jq -cn --arg routine "$ROUTINE" --argjson issue "$ISSUE" --arg detail "$DETAIL" \

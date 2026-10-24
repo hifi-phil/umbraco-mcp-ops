@@ -197,10 +197,10 @@ s.serve_forever()
   esignal quoting_block "$(with_transcript "$PROMPT" "$QUOTING" q2)" "$WORK/s13e"
   expect_requests quoted_route_not_a_run 0
 
-  # 13c. Arguments never go out: not a short credential (`-u user:pass`), not a long one
+  # 13c. Arguments never go out: not a short credential (`-u user:pass`), nor any other argument
   : >"$SERVER_LOG"
   ARGS="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:"curl -u admin:hunter2 --password hunter2 https://x.io/"}}')"
-  esignal args "$(with_transcript "$ARGS" "$TRANSCRIPT" b2)" "$WORK/s13h"
+  esignal args "$(with_transcript "$ARGS" "$TRANSCRIPT" b3)" "$WORK/s13h"
   expect_last args_not_sent '.body.signal.detail == "Bash: curl"'
   # ...nor an inline VAR=secret standing as the first word
   : >"$SERVER_LOG"
@@ -219,6 +219,15 @@ s.serve_forever()
   ARRC="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:["hunter2;ls"]}}')"
   esignal arraycmd "$(with_transcript "$ARRC" "$TRANSCRIPT" b8)" "$WORK/s13arr"
   expect_last array_command_dropped '.body.signal.detail == "Bash"'
+  : >"$SERVER_LOG"
+  NUMC="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:4242}}')"
+  esignal numcmd "$(with_transcript "$NUMC" "$TRANSCRIPT" b9)" "$WORK/s13num"
+  expect_last scalar_command_dropped '.body.signal.detail == "Bash"'
+  # ...and a non-Bash tool's url / file_path stay out
+  : >"$SERVER_LOG"
+  WEBF="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"WebFetch", tool_input:{url:"https://u:pw0rd@x.io/", file_path:"/home/u/secret.txt"}}')"
+  esignal webfetch "$(with_transcript "$WEBF" "$TRANSCRIPT" b10)" "$WORK/s13web"
+  expect_last non_bash_input_not_sent '.body.signal.detail == "WebFetch"'
 
   # 13f. The production Notification shape: no tool_name/tool_input, only message + notification_type
   : >"$SERVER_LOG"
