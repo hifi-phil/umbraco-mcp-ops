@@ -7,7 +7,7 @@ import { LABELS } from "@orchestrator/graph/constants/labels";
 import { ROUTINES } from "@orchestrator/graph/constants/routines";
 import { failedCheckNames, type MergeGateFacts } from "@orchestrator/graph/github/merge-gate";
 import { EVENTS } from "@orchestrator/graph/constants/events";
-import { depsFor, type Acting, type CoordinateResult, type Deps, type IssueRef } from "./types";
+import { actorOf, depsFor, type Acting, type CoordinateInput, type CoordinateResult, type Deps, type IssueRef } from "./types";
 import { applyEvent } from "./apply";
 
 /**
@@ -18,7 +18,24 @@ import { applyEvent } from "./apply";
  * its verdict decides what's next.
  */
 export async function reviewGate(deps: Deps, input: IssueRef & Acting, currentLabels: string[]): Promise<CoordinateResult> {
-  if ((await deps.getPendingFire())?.run === ROUTINES.REVIEW_LOOP) return { outcome: "no_event" };
+  if ((await deps.getPendingFire())?.run === ROUTINES.REVIEW_LOOP) {
+    // Logged so a gate that was dropped (a lost fire or delivery) shows in D1,
+    // not only the ones that fired.
+    await deps.logTransition({
+      deliveryId: (input as Partial<CoordinateInput>).deliveryId || null,
+      actor: actorOf(input),
+      owner: input.owner,
+      repo: input.repo,
+      issueNumber: input.issueNumber,
+      fromState: LABELS.AI_REVIEWING,
+      event: "review_gate_skipped",
+      toEffect: null,
+      run: null,
+      droppedReason: "a review-loop fire is already pending",
+      mode: deps.enforced(EVENTS.REVIEW_CI_PASSED) ? "enforce" : "shadow",
+    });
+    return { outcome: "no_event" };
+  }
   const facts = await deps.getMergeGateFacts(input.owner, input.repo, input.issueNumber);
   // No checks yet is "CI hasn't started", not "CI passed": a PR labelled the
   // moment it opens would otherwise be reviewed before CI ran.
