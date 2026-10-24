@@ -5,7 +5,7 @@
 # is comes from the session itself: the Worker's fire text, the routine's first
 # prompt, carries `route=<routine> repo=<owner>/<repo> number=<n>`
 # (routines-client.ts's dispatchText). Found once in the transcript and cached
-# per session; the last run found is a fallback for a subagent's transcript,
+# per session (from the first user entry only); the last run found is a fallback for a subagent's transcript,
 # which may not carry the line (a routine container runs one fire). A session
 # without one (an interactive session, say) never sends anything.
 # `run_context strict` skips that last-run fallback: the signals that change
@@ -20,7 +20,10 @@ run_context() {
   transcript="$(printf '%s' "$EVENT" | jq -r '.transcript_path // empty' 2>/dev/null)"
   line=""
   if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-    line="$(grep -o -m1 -E 'route=[a-z-]+ repo=[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+ number=[0-9]+' "$transcript" 2>/dev/null | head -n1)"
+    # Only the session's first prompt: a later tool result that quotes a route line
+    # (a nested analyzer reading the loop's transcript) isn't this session's run.
+    line="$(jq -c 'select(.type == "user")' "$transcript" 2>/dev/null | head -n1 \
+      | grep -o -m1 -E 'route=[a-z-]+ repo=[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+ number=[0-9]+' | head -n1)"
   fi
   if [ -n "$line" ]; then
     local routine owner repo number

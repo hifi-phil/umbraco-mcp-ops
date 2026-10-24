@@ -151,6 +151,8 @@ get to skip that just because it's more convenient — so the resolution is:
   early; the dashboard shows "in progress" a little longer), never
   correctness.
 
+*(Historical: the marker-sniffing echo described here is gone; see "Update: agents report through a script" below.)*
+
 The mechanism is a **`PostToolUse` hook**, not the model calling out
 mid-turn: `plugins/agent-outcomes/hooks/report-completion.sh` fires
 automatically, deterministically, after every tool call in the loop's
@@ -190,22 +192,23 @@ on a permission prompt. So an outcome is now reported, deliberately, through
 `plugins/agent-outcomes/skills/agent-outcomes/scripts/post-outcome.sh
 <outcome> '<json>'`. It POSTs `{kind:"outcome"}` to `/routine-signal`, which the
 Worker applies as the comment would be (whichever lands second is `deduped`), and
-prints the exact comment body for the session to post. Bad JSON or no run
-context exits non-zero and sends nothing.
+prints the exact comment body for the session to post. Bad JSON or a name
+mismatch exits non-zero and sends nothing; with no run context it sends nothing
+but still prints the body, and the Worker recovers the outcome from the comment.
 
 `report-completion.sh` is heartbeats only: it no longer greps tool calls for the
 marker, so nothing is inferred from a tool call's text. `report-early-end.sh`
 adds `Notification` (permission prompt) -> `blocked` and `SessionEnd` ->
 `ended` (not `Stop`: it fires whenever the main thread waits on a background
-subagent), only when the run delivered no outcome (`post-outcome.sh`).
+subagent), only when no outcome was delivered for this run (`post-outcome.sh`).
 `cloud-skill-sync` installs the script's permission and the hooks.
 
 **What this fixes:** the marker comment is no longer hand-typed.
 `post-outcome.sh` validates the JSON, signals the Worker directly, and prints
-the exact comment body, so a mangled fence or a typo'd field is rejected
-before anything is sent. The model still writes the outcome's JSON argument,
-but `post-outcome.sh` checks that it parses and that its `outcome` matches
-the name given.
+the exact comment body, so a mangled fence is not possible. The model still
+writes the outcome's JSON argument, and `post-outcome.sh` only checks that it
+parses and that its `outcome` matches the name given: a typo'd field is still
+sent, and the Worker refuses it.
 
 ## Open questions this raises
 

@@ -1,5 +1,5 @@
 {
-  "description": "Signals to the agent-orchestration Worker's POST /routine-signal (AGENT_OUTCOMES_ENDPOINT, bearer AGENT_OUTCOMES_TOKEN), shared by every loop, in a session the Worker fired (its first prompt carries route=… repo=… number=…). PostToolUse: a heartbeat naming the step, at most once a minute. Notification (a permission prompt): blocked. SessionEnd: ended, when the session reported no outcome. Outcomes themselves go through skills/agent-outcomes/scripts/post-outcome.sh, never inferred from a tool call. See docs/agent-orchestration/11-outcome-artifact.md in umbraco-mcp-ops.",
+  "description": "Signals to the agent-orchestration Worker's POST /routine-signal (AGENT_OUTCOMES_ENDPOINT, bearer AGENT_OUTCOMES_TOKEN), shared by every loop, in a session the Worker fired (its first prompt carries route=… repo=… number=…). PostToolUse: a heartbeat naming the step, at most once a minute. Notification (a permission prompt): blocked. SessionEnd (synchronous, so the session's teardown can't cut the send short): ended, when no outcome was delivered for this run. Outcomes themselves go through skills/agent-outcomes/scripts/post-outcome.sh, never inferred from a tool call. See docs/agent-orchestration/11-outcome-artifact.md in umbraco-mcp-ops.",
   "hooks": {
     "PostToolUse": [
       {
@@ -29,8 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/report-early-end.sh\"",
-            "async": true
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/report-early-end.sh\""
           }
         ]
       }

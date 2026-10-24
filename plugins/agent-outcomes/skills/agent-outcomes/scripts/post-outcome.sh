@@ -2,10 +2,10 @@
 #
 # post-outcome.sh <outcome> '<json>' — how a loop reports its outcome.
 #
-# 1. Finds the run (`route=<routine> repo=<owner>/<repo> number=<n>`): the
+# 1. Validates that <json> parses and that its "outcome" matches <outcome>.
+# 2. Finds the run (`route=<routine> repo=<owner>/<repo> number=<n>`): the
 #    explicit transcript if given, else the last run the hooks recorded, else
 #    the newest session transcripts (the fire text is the session's first prompt).
-# 2. Validates that <json> parses.
 # 3. POSTs {kind:"outcome", routine, issue, outcome} to the Worker's
 #    /routine-signal (AGENT_OUTCOMES_ENDPOINT, bearer AGENT_OUTCOMES_TOKEN),
 #    retrying once. The Worker applies it as authoritative; the comment below
@@ -13,14 +13,16 @@
 # 4. Prints the exact comment body (the marker plus the fenced JSON) on stdout
 #    for the session to post. Nothing else goes to stdout.
 #
-# Exits non-zero, with a message on stderr, on bad JSON or no run context —
-# and sends nothing. A failed POST is not an error: the comment still carries
-# the outcome, so the body is printed and the exit is 0.
+# Exits non-zero, with a message on stderr, on bad JSON or an outcome-name
+# mismatch, and sends nothing. Neither a failed POST nor a missing run context
+# is an error: the comment still carries the outcome (the Worker recovers it
+# from there), so the body is printed, with a note on stderr, and the exit is 0.
 #
 # <outcome> is the outcome's name (e.g. build_succeeded). The JSON must carry
 # the same name in its "outcome" field. graph/outcomes.ts decides the rest.
 #
-# Env: AGENT_OUTCOMES_ENDPOINT, AGENT_OUTCOMES_TOKEN, AGENT_OUTCOMES_STATE
+# Env: CLAUDE_CONFIG_DIR (default ~/.claude, where the session transcripts are),
+# AGENT_OUTCOMES_ENDPOINT, AGENT_OUTCOMES_TOKEN, AGENT_OUTCOMES_STATE
 # (default ~/.cache/agent-outcomes), AGENT_OUTCOMES_LOG, AGENT_OUTCOMES_TRANSCRIPT
 # (the session transcript to read the run from, when it can't be found).
 set -uo pipefail
@@ -58,8 +60,12 @@ parse_line() {
     "$(printf '%s' "$line" | sed -E 's/.* repo=[^/]+\/([^ ]+) .*/\1/')" \
     "$(printf '%s' "$line" | sed -E 's/.* number=([0-9]+).*/\1/')"
 }
+# first_prompt_line <transcript>: the run line from the session's first user entry only.
+first_prompt_line() {
+  jq -c 'select(.type == "user")' "$1" 2>/dev/null | head -n1 | grep -o -m1 -E "$LINE_RE" | head -n1
+}
 if [ -n "${AGENT_OUTCOMES_TRANSCRIPT:-}" ] && [ -f "$AGENT_OUTCOMES_TRANSCRIPT" ]; then
-  line="$(grep -o -m1 -E "$LINE_RE" "$AGENT_OUTCOMES_TRANSCRIPT" 2>/dev/null | head -n1)"
+  line="$(first_prompt_line "$AGENT_OUTCOMES_TRANSCRIPT")"
   [ -n "$line" ] && { CTX="$(parse_line "$line")"; SOURCE="transcript"; }
 fi
 if [ -z "$CTX" ] && [ -f "$STATE/last-run" ] && [ -n "$(find "$STATE/last-run" -mmin -360 2>/dev/null)" ]; then
@@ -68,13 +74,30 @@ fi
 if [ -z "$CTX" ]; then
   # Hooks not registered, or no tool call has run one yet: scan the newest transcripts.
   # shellcheck disable=SC2012
-  for t in $(ls -t "${HOME}"/.claude/projects/*/*.jsonl 2>/dev/null | head -n 5); do
+  for t in $(ls -t "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/*.jsonl 2>/dev/null | head -n 5); do
     [ -n "$(find "$t" -mmin -360 2>/dev/null)" ] || continue
-    line="$(grep -o -m1 -E "$LINE_RE" "$t" 2>/dev/null | head -n1)"
+    line="$(first_prompt_line "$t")"
     [ -n "$line" ] && { CTX="$(parse_line "$line")"; SOURCE="a recent session transcript"; break; }
   done
 fi
-[ -n "$CTX" ] || die "no run context (route=… repo=… number=…) found in this session — nothing sent"
+if [ -z "$CTX" ]; then
+  # Nothing to send the Worker, but the comment still carries the outcome.
+  echo "post-outcome.sh: no run context (route=… repo=… number=…) found in this session; nothing sent, post the comment below" >&2
+  log "no run context — outcome $OUTCOME printed, not sent"
+  # The catalog's outcome names say which routine reports them.
+  case "$OUTCOME" in
+    build_*) ROUTINE=issue-build-loop ;;
+    release_blocked|release_approved) ROUTINE=auto-release-loop ;;
+    release_published) ROUTINE=release-publish ;;
+    review_*) ROUTINE=review-loop ;;
+    rework_*) ROUTINE=rework-loop ;;
+    merge_*) ROUTINE=merge-flow ;;
+    discussion_*) ROUTINE=issue-discuss-loop ;;
+    *) die "no run context found and $OUTCOME isn't in the catalog — nothing sent" ;;
+  esac
+  printf '<!-- agent-outcome:%s -->\n```json\n%s\n```\n' "$ROUTINE" "$JSON"
+  exit 0
+fi
 
 ROUTINE="$(printf '%s' "$CTX" | awk '{print $1}')"
 OWNER="$(printf '%s' "$CTX" | awk '{print $2}')"

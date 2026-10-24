@@ -174,11 +174,31 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   esignal no_route_block_lastrun "$(with_transcript "$PROMPT" "$NO_ROUTE" n3)" "$WORK/s13d"
   expect_requests no_route_lastrun_nothing 0
 
+  # 13e. A nested session that only quotes the route line (in a tool result, say) isn't the run
+  QUOTING="$WORK/quoting.jsonl"
+  { jq -cn '{type:"user", message:{content:"analyse this transcript"}}'
+    jq -cn '{type:"user", message:{content:[{type:"tool_result", content:"fire text: route=issue-build-loop repo=hifi-phil/umbraco-mcp-ops number=412"}]}}'; } >"$QUOTING"
+  : >"$SERVER_LOG"
+  esignal quoting_end "$(with_transcript "$(end_event)" "$QUOTING" q1)" "$WORK/s13e"
+  esignal quoting_block "$(with_transcript "$PROMPT" "$QUOTING" q2)" "$WORK/s13e"
+  expect_requests quoted_route_not_a_run 0
+
   # 13c. A credential in the command never goes out
   : >"$SERVER_LOG"
   SECRET="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:"curl -H \"Authorization: Bearer s3cretvalue\" https://u:pw0rd@x.io/ log_token=eyJabc.def GH=ghp_0123456789abcdef0123456789abcdef0123"}}')"
   esignal secret "$(with_transcript "$SECRET" "$TRANSCRIPT" b3)" "$WORK/s13c"
   expect_last secrets_redacted '.body.signal.kind == "blocked" and (.body.signal.detail | test("s3cretvalue|pw0rd|eyJabc|ghp_0123") | not)'
+
+  # 13f. The production Notification shape: no tool_name/tool_input, only message + notification_type
+  : >"$SERVER_LOG"
+  REAL_PROMPT="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", message:"Claude needs your permission to use Bash"}')"
+  esignal blocked_msg "$(with_transcript "$REAL_PROMPT" "$TRANSCRIPT" b4)" "$WORK/s13f"
+  expect_last blocked_tool_from_message '.body.signal.kind == "blocked" and .body.signal.detail == "Bash"'
+  # ...and with no notification_type, a message mentioning a permission still counts
+  : >"$SERVER_LOG"
+  NO_TYPE="$(jq -n '{hook_event_name:"Notification", message:"Claude needs your permission to use Edit"}')"
+  esignal blocked_no_type "$(with_transcript "$NO_TYPE" "$TRANSCRIPT" b5)" "$WORK/s13g"
+  expect_last blocked_without_type '.body.signal.kind == "blocked" and .body.signal.detail == "Edit"'
 
   # 14. Any other notification (an idle prompt) -> nothing
   : >"$SERVER_LOG"
@@ -232,11 +252,19 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   if [ "$RC" -ne 0 ] && [ "$RC2" -ne 0 ] && [ -z "$OUT$OUT2" ]; then echo "PASS [outcome_bad_json]"; pass=$((pass+1)); else echo "FAIL [outcome_bad_json]: rc=$RC/$RC2 out=$OUT$OUT2"; fail=$((fail+1)); fi
   expect_requests outcome_bad_json_nothing_sent 0
 
-  # 20. No run context -> non-zero, nothing sent
+  # 20. No run context -> nothing sent (the body is still printed, case 20a)
   OUT="$(env HOME="$WORK/nohome" AGENT_OUTCOMES_LOG="$WORK/po_noctx.log" AGENT_OUTCOMES_STATE="$WORK/s20" AGENT_OUTCOMES_TRANSCRIPT="$NO_ROUTE" \
     AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" bash "$POST_OUTCOME" build_succeeded '{"outcome":"build_succeeded","pr":1}' 2>/dev/null)"; RC=$?
-  if [ "$RC" -ne 0 ] && [ -z "$OUT" ]; then echo "PASS [outcome_no_run]"; pass=$((pass+1)); else echo "FAIL [outcome_no_run]: rc=$RC"; fail=$((fail+1)); fi
+  if [ "$RC" -eq 0 ]; then echo "PASS [outcome_no_run]"; pass=$((pass+1)); else echo "FAIL [outcome_no_run]: rc=$RC"; fail=$((fail+1)); fi
   expect_requests outcome_no_run_nothing_sent 0
+
+  # 20a. ...unless the catalog names the routine: with no run, the body is still printed (nothing sent)
+  OUT="$(env HOME="$WORK/nohome" AGENT_OUTCOMES_LOG="$WORK/po_noctx2.log" AGENT_OUTCOMES_STATE="$WORK/s20a" AGENT_OUTCOMES_TRANSCRIPT="$NO_ROUTE" \
+    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" bash "$POST_OUTCOME" build_succeeded '{"outcome":"build_succeeded","pr":1}' 2>/dev/null)"; RC=$?
+  if [ "$RC" -eq 0 ] && [ "$OUT" = '<!-- agent-outcome:issue-build-loop -->
+```json
+{"outcome":"build_succeeded","pr":1}
+```' ]; then echo "PASS [outcome_no_run_prints_body]"; pass=$((pass+1)); else echo "FAIL [outcome_no_run_prints_body]: rc=$RC out=$OUT"; fail=$((fail+1)); fi
 
   # 20b. With no explicit transcript, the run recorded by the heartbeat hook is found
   : >"$SERVER_LOG"
@@ -271,6 +299,16 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   expect_last ended_after_failed_post_sends '.body.signal.kind == "ended" and .body.signal.issue == 412'
 else
   echo "SKIP [signals]: python3 not available for the stub server"
+fi
+
+# hooks.json registers SessionEnd (not Stop, and synchronous) and the permission_prompt matcher
+HJ="$PLUGIN_ROOT/hooks/hooks.json"
+if jq -e '(.hooks.SessionEnd | length) == 1 and (.hooks | has("Stop") | not)
+    and (.hooks.SessionEnd[0].hooks[0].async // false) == false
+    and .hooks.Notification[0].matcher == "permission_prompt"' "$HJ" >/dev/null 2>&1; then
+  echo "PASS [hooks_json_registration]"; pass=$((pass+1))
+else
+  echo "FAIL [hooks_json_registration]"; fail=$((fail+1))
 fi
 
 echo "-----"

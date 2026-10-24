@@ -145,7 +145,7 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
                 .hooks = (.hooks // {})
                 | .hooks[$ev] = (.hooks[$ev] // [])
                 | if any(.hooks[$ev][]?; any(.hooks[]?; .command == $cmd)) then .
-                  else .hooks[$ev] += [ {"hooks": [ {"type":"command","command":$cmd,"async":true} ]} ] end
+                  else .hooks[$ev] += [ {"hooks": [ {"type":"command","command":$cmd,"async":$async} ]} ] end
               ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
             mv "$tmp" "$SETTINGS"; echo "registered hook: $ev -> $scope"
           else
@@ -162,7 +162,7 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     # step, which pushes the Worker's watchdog back and is what an expiry quotes, so the
     # Worker can tell a run that never started from one that went quiet) and
     # report-early-end.sh on Notification (a permission prompt: blocked) and on
-    # SessionEnd (ended, when the session reported no outcome; not Stop, which fires each time
+    # SessionEnd (ended, when no outcome was delivered for this run; not Stop, which fires each time
     # the main thread waits on a background subagent). Outcomes themselves go
     # through the skill's post-outcome.sh. They send only when the environment sets
     # AGENT_OUTCOMES_ENDPOINT and AGENT_OUTCOMES_TOKEN; otherwise they send nothing.
@@ -173,11 +173,13 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
       cp "$ao"/hooks/*.sh "$AO_HOOKS/"; chmod +x "$AO_HOOKS"/*.sh
       if command -v jq >/dev/null 2>&1; then
         [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
-        # register <event> <script> <matcher or "">
+        # register <event> <script> <matcher or ""> <async: true|false>
+        # SessionEnd is synchronous: an async one can be torn down with the session
+        # before it sends (the send is bounded by curl -m 5).
         register_ao_hook() {
-          local ev="$1" cmd="bash $AO_HOOKS/$2" matcher="$3" tmp
+          local ev="$1" cmd="bash $AO_HOOKS/$2" matcher="$3" async="${4:-true}" tmp
           tmp="$(mktemp)"
-          if jq --arg ev "$ev" --arg cmd "$cmd" --arg matcher "$matcher" '
+          if jq --arg ev "$ev" --arg cmd "$cmd" --arg matcher "$matcher" --argjson async "$async" '
                 .hooks = (.hooks // {})
                 | .hooks[$ev] = (.hooks[$ev] // [])
                 | if any(.hooks[$ev][]?; any(.hooks[]?; .command == $cmd)) then .
@@ -191,7 +193,7 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
         }
         register_ao_hook PostToolUse report-completion.sh ""
         register_ao_hook Notification report-early-end.sh "permission_prompt"
-        register_ao_hook SessionEnd report-early-end.sh ""
+        register_ao_hook SessionEnd report-early-end.sh "" false
       else
         echo "WARN: jq missing — agent-outcomes hooks copied but NOT registered"
       fi

@@ -54,10 +54,10 @@ Never use `fable`. Never put secrets in the prompt or config.
 
 ## Routine heartbeats (Worker-dispatched repos)
 
-The `agent-outcomes` hook runs after every tool call in the routine. In a session the
-Worker fired, it sends the Worker's `POST /routine-signal`:
-- a heartbeat naming the step, at most once a minute
-- blocked on a permission prompt, and ended when the session stops without an outcome (a loop reports its outcome through `post-outcome.sh`, not the hook)
+The `agent-outcomes` hooks run in the routine. In a session the Worker fired, they send
+the Worker's `POST /routine-signal`:
+- a heartbeat naming the step, at most once a minute (the `PostToolUse` hook, after every tool call)
+- blocked on a permission prompt (a `Notification` hook), and ended when the session ends without an outcome (a `SessionEnd` hook). A loop reports its outcome through `post-outcome.sh`, not a hook
 
 A session the Worker didn't fire sends nothing, so one environment can serve Worker repos
 and caller-workflow repos alike.
@@ -88,7 +88,7 @@ and caller-workflow repos alike.
 - A failed send is logged in the container (`~/.cache/agent-outcomes/capture.log`) and
   changes nothing: the GitHub write stays the authoritative signal.
 
-**Checking it works:** the e2e suite's two `real hook` scenarios (`e2e/` in
+**Checking it works:** the e2e suite's `real hook` scenario (`e2e/` in
 `umbraco-mcp-ops`) run this hook against the deployed Worker, which proves the contract.
 On a live repo, the proof is a run's `ai-stuck` comment quoting a step (`Last reported
 step: …`) instead of "No progress step was ever reported".

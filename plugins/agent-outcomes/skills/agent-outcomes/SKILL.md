@@ -33,8 +33,10 @@ bash ~/.claude/skills/agent-outcomes/scripts/post-outcome.sh <outcome> '<json>'
 For example `post-outcome.sh build_succeeded '{"outcome":"build_succeeded","pr":123}'`. The
 script:
 - reads the run (`route=… repo=… number=…`, from the fire text) and validates the JSON, and
-  that its `outcome` is the one named. On bad JSON, a mismatch or no run it exits non-zero
-  with a message and sends nothing: fix the call, don't write the marker by hand;
+  that its `outcome` is the one named. On bad JSON or a mismatch it exits non-zero
+  with a message and sends nothing: fix the call, don't write the marker by hand. With no
+  run found it sends nothing but still prints the body, and the Worker recovers the
+  outcome from the posted comment;
 - POSTs `{kind:"outcome", routine, issue, outcome}` to the Worker's `/routine-signal`
   (`AGENT_OUTCOMES_ENDPOINT`, bearer `AGENT_OUTCOMES_TOKEN`), retrying once. The Worker
   applies it as authoritative, within seconds, whether or not the comment's webhook
