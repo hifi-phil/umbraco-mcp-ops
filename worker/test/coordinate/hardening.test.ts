@@ -171,6 +171,17 @@ describe("a fire's watchdog is armed before the fire", () => {
     expect(closed.fireRoutine).not.toHaveBeenCalled();
   });
 
+  it("a second rate-limited discussion fire is not said again", async () => {
+    const discuss = (deliveryId: string) => input({ deliveryId, payload: { action: "issues.labeled", label: { name: LABELS.AI_DISCUSSING } } });
+    const limited = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]),
+      fireRoutine: vi.fn(async () => Promise.reject(new FireRateLimited("429", 5000))),
+    });
+    await coordinateWebhook(limited, discuss("d-1"));
+    await coordinateWebhook(limited, discuss("d-2"));
+    expect(limited.commentOnIssue).toHaveBeenCalledTimes(1);
+  });
+
   it("an unwatched fire (a discussion) defers too, and is disarmed once it's out", async () => {
     const discuss = input({ payload: { action: "issues.labeled", label: { name: LABELS.AI_DISCUSSING } } });
     const limited = fakeDeps({
