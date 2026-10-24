@@ -76,9 +76,12 @@ fix's regressions. Never re-push an identical fix (**no-progress guard**).
 
 **The pre-PR checks**, on the PR's final diff. Each is quick; run them, don't assume.
 They catch what most reviews send back for:
-1. **Leftover text.** For every name, step, flag or behaviour the change renamed, removed or
-   altered, grep the repo (code comments, docs, `plugins/` skill text, READMEs) and fix
-   each place that still describes the old one.
+1. **Leftover text.** Write down every term the change retires or redefines: a renamed name,
+   a removed step or flag, the label of a removed step. Run
+   `git grep -niF -e '<term>' -- ':/'` for each (the whole repo, the term taken literally) and
+   read **every** hit, not only those near your edit: fix it, or confirm it's still true. For a
+   phrase, grep its most distinctive word (a name or a step label, not a common word).
+   Leftovers far from the diff are what reviews keep finding.
 2. **Tests that can fail.** For code with a test suite (not prose or skill text), break each
    new guard, branch or condition locally (delete or invert it) and run its tests: one must
    fail. If none does, add the test. Restore the code and check `git diff` shows no leftover.
