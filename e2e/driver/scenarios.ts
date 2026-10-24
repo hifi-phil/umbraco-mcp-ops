@@ -555,7 +555,12 @@ export const scenarios: Scenario[] = [
         const built = await waitFor(issue, labelsAre(LABELS.PR_OPEN), 2 * MIN);
         expectLabels(built, issue, LABELS.PR_OPEN);
         expect(hasMarker(built, "issue-build-loop", "build_succeeded"), `#${issue} posted no outcome comment`).toBe(false);
-        await expectLogged(issue, { event: "build_succeeded", effect: LABELS.PR_OPEN, run: "issue-build-loop" });
+        // Applied from the signal: build_succeeded fires nothing on the issue (review starts on the PR).
+        const rows = await expectLogged(issue, { event: "build_succeeded", effect: LABELS.PR_OPEN });
+        expect(
+          rows.some((r) => r.event === "build_succeeded" && r.delivery_id?.startsWith("routine-signal:")),
+          `#${issue}'s build_succeeded came from the outcome signal`,
+        ).toBe(true);
       }),
   },
   {
