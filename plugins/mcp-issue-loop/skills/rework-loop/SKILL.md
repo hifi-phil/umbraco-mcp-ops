@@ -5,7 +5,7 @@ description: >-
   and labels the loop-authored PR `auto-reworking`, it reads the feedback, makes the changes,
   runs a local test gate, an independent code review and the pre-PR checks, pushes and replies to the
   threads. When there is nothing to push it reports `rework_no_change` instead (unless
-  there is no `review-loop` review to act on), then stops. It does NOT
+  there is no `review-loop` review to act on, or a pre-PR check is stuck), then stops. It does NOT
   poll/wait for the full CI suite (merge-flow won't merge until CI passes, so CI is
   enforced there) and it never merges.
   Requires the github-ops and agent-outcomes skills. Trigger: a PR labelled `auto-reworking`
@@ -90,8 +90,9 @@ true` and won't run here. Report only what mcp-review actually found.
 First run `issue-build-loop`'s **pre-PR checks** on your rework's diff. A fix that renames or
 changes behaviour is where leftovers come from. Fix what they find, re-run the affected tests, and re-run
 `mcp-review` over any fix the checks produced. If a check's fix makes no progress or its test
-can't be added, push nothing: report `rework_no_change` with that reason (Step 5) and reply on
-the threads it leaves unaddressed.
+can't be added although a test harness exists, push nothing and post no outcome (Step 5): say
+which check is stuck, and why, in a comment on the PR and reply on the threads it leaves
+unaddressed, so the label stays and a person sees the PR.
 
 Commit and push to the PR branch. The local compile + test gate (Step 2),
 `mcp-review` (Step 3) and the pre-PR checks are the only gates this session applies — **do not poll or wait
@@ -108,9 +109,10 @@ on the PR** (what was fixed, the commit, what was checked), **with no `agent-out
 marker**: per the `agent-outcomes` skill's catalog, the push is a native GitHub event the
 Worker already sees, so `rework_pushed` is deliberately not reported.
 If you pushed nothing because there was no actionable feedback, Step 1 already posted
-`rework_no_change`. A round that pushed nothing because every item was answered on its thread
-(a failing check needed no change, or a pre-PR check's fix made no progress) also posts `rework_no_change` with a one-line reason; the
-Review round with no `review-loop` review to act on (Step 1) is the only non-pushing round that posts no outcome, so the label stays and a person sees the PR.
+`rework_no_change`. A round that pushed nothing because every item was answered on its thread,
+or because a failing check needed no change, also posts `rework_no_change` with a one-line
+reason. Two non-pushing rounds post no outcome, so the label stays and a person sees the PR: the
+Review round with no `review-loop` review to act on (Step 1), and a stuck pre-PR check (Step 4).
 **Do not merge.**
 
 ## Running as a routine

@@ -66,7 +66,8 @@ For the one issue the fire names:
    Step 3: fix any surviving findings by **dispatching a fix on the build subagent's model** (or
    fix inline; the base session stays on its cheap model, so a fix must not silently inherit that
    tier), re-run the SQL Server gate from step 2, then run `SKILL.md` Step 3's pre-PR checks (fixes on
-   the build subagent's model, `mcp-review` re-run over them), push, then post the `build_succeeded` artifact.
+   the build subagent's model, `mcp-review` re-run over them), re-run the SQL Server gate over
+   any fix the checks produced, push, then post the `build_succeeded` artifact.
    Then stop: no CI polling.
 
 A blocked issue (no-progress guard tripped) gets a comment with the `build_blocked` artifact,
