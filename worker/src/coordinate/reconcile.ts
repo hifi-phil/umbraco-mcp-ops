@@ -111,10 +111,11 @@ export async function coordinateReconcile(
 
   // A PR left in LABELS.AI_REVIEWING (a lost check_suite webhook, or a lost review
   // fire): the CI gate again, as when the label went on. Enforced whatever the
-  // sweep's mode: the gate is one idempotent fire, bounded by the caps, and it
-  // follows the Worker's own per-event enforcement (applyEvent logs only when
-  // that is shadow), so the trigger labels' shadow -> enforce switch is separate.
-  if (state === LABELS.AI_REVIEWING) {
+  // sweep's own mode (the trigger labels' shadow -> enforce switch is separate),
+  // but not while this repo's watchdog is shadow: a review run that dies is
+  // never counted by the caps, and a shadow watchdog leaves the label on, so it
+  // would be re-fired every sweep. The gate follows applyEvent's per-event enforcement.
+  if (state === LABELS.AI_REVIEWING && deps.enforced(EVENTS.WATCHDOG_EXPIRED)) {
     return { outcome: "gated", result: await reviewGate(deps, { ...ref, actor: "sweep" }, labels) };
   }
 
