@@ -59,6 +59,7 @@ Latest full run (01-10-2026): all 21 scenarios and the audit pass in about
 | `issue-discuss-loop` | `discuss` | one signed question per round |
 | any | `heartbeat` | one `process` signal to the orchestrator's `/routine-signal`, then nothing |
 | any | `complete` | one `completion` signal, then nothing |
+| `issue-build-loop` | `success_by_script` | an `outcome` signal alone, as `post-outcome.sh` sends it, with no comment |
 | any | `fail_fire` | refuses the fire itself (500): a fire that never got out |
 | any | `silent` | nothing |
 
@@ -90,15 +91,17 @@ re-checks a gate that still reads "CI running".
 - The watchdog and `ai-stuck`, one scenario each:
   1. Silent build, then a late `build_succeeded`.
   2. A heartbeat quoted by the expiry, then a late `build_blocked`.
-  3. A completion signal cancels the watchdog.
-  4. A stuck build retried.
-  5. A stuck release, then a late publish.
-  6. A stuck release, then a late block.
-  7. A stuck release retried.
-  8. A stuck rework, then a late push.
-  9. A stuck rework retried.
-  10. A stuck merge-flow retried.
-  11. A stuck merge-flow merged by hand.
+  3. A stuck build retried.
+  4. A stuck release, then a late publish.
+  5. A stuck release, then a late block.
+  6. A stuck release retried.
+  7. A stuck rework, then a late push.
+  8. A stuck rework retried.
+  9. A stuck merge-flow retried.
+  10. A stuck merge-flow merged by hand.
+  11. A completion signal cancels the watchdog (no `ai-stuck`).
+- The outcome signal: a build that reports through `post-outcome.sh`'s signal alone,
+  with no comment, still moves to `pr-open` (hint `success_by_script`).
 - Phase 7:
   1. A person clears `ai-blocked` by hand → a `manual_override` row, and
      nothing else done.
@@ -108,7 +111,6 @@ re-checks a gate that still reads "CI running".
 - The real `agent-outcomes` hook (`driver/hook.ts` runs it, as a routine
   session would, against the deployed Worker):
   1. Its heartbeat is quoted by the expiry.
-  2. Its completion signal cancels the watchdog.
 
 **The audit**, after every run, over every delivery the orchestrator answered:
 - none errored

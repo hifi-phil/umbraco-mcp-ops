@@ -153,6 +153,8 @@ ISOLATE=(env
   -u CLAUDE_CODE_REMOTE_SESSION_ID
   -u CLAUDE_CODE_SESSION_ID
   -u CLAUDE_PID
+  -u AGENT_OUTCOMES_ENDPOINT
+  -u AGENT_OUTCOMES_TOKEN
 )
 # Bound the analyzer's runtime, where the tool exists: detached and disowned
 # (below), nothing on the loop's side supervises it any more, so a hang would

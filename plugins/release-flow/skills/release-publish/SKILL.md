@@ -80,7 +80,7 @@ differently.
    squash or rebase. A conflict: leave the PR open, say so on the
    issue, and carry on (the release is out; syncing is a person's job then).
 4. **Report.** One comment on the release issue with the **required** `release_published`
-   artifact (load `agent-outcomes` for the marker and shape): `version`, and `tag`, the tag
+   artifact (report it through the `agent-outcomes` script, load it, and use the body it printed): `version`, and `tag`, the tag
    from step 1, exactly as the repo named it. Mention anything that didn't go to plan (the
    Slack post, the sync). Don't close the issue or touch its labels: the orchestrator does.
 

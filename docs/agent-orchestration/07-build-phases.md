@@ -208,11 +208,11 @@ within 30 minutes, quoting its last known step, not an invisible stall.
   fired:
   - a heartbeat naming the step, at most once a minute, which extends the
     watchdog and gets quoted by an expiry
-  - a completion when the loop posts its outcome
+  - (since #393: blocked and ended signals from `report-early-end.sh`; outcomes go through `post-outcome.sh`, not the hook)
 
   It finds the run from the fire text in the session's transcript. Tested
-  in the hook's own suite and live by two e2e scenarios, which run the real
-  hook against the real Worker. It's live once the routine environment
+  in the hook's own suite; the heartbeat also live by an e2e scenario,
+  which runs the real hook against the real Worker. It's live once the routine environment
   sets `AGENT_OUTCOMES_ENDPOINT` and `AGENT_OUTCOMES_TOKEN`.
   - **Heartbeats change what times out:** a run now expires only after a
     whole timeout with no tool calls, so a dead session, not a slow one.

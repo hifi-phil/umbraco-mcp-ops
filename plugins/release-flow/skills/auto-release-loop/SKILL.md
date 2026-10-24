@@ -71,14 +71,14 @@ of their squash subject (a commit with no suffix is counted, not named). Commits
   `v<version>` is tagged and released and `<main>` is merged back into `<dev>`; post the Slack
   note only if one is due; and close this issue). Before commenting, work out and state in the
   comment whether a Slack note is due (by `release-publish` step 2's rules) and to which channel, and whether the repo's own
-  automation tags and releases on merge; don't cite skill steps or `CLAUDE.md` in it. Append the required
-  `release_blocked` artifact (`reason` = the comment's first line). No `release_published` fires after a manual ship, so the orchestrator never
+  automation tags and releases on merge; don't cite skill steps or `CLAUDE.md` in it. Report the required
+  `release_blocked` outcome through the `agent-outcomes` script and append the body it prints (`reason` = the comment's first line). No `release_published` fires after a manual ship, so the orchestrator never
   closes the open `ready-for-release` issues: say in the comment that a manual ship needs those
   closed by hand.
 
 The final comment (the `release_approved` one) repeats the
 re-run line in one line. If only one of the branch and its open PR exists, comment on the
-issue and stop (post the `release_blocked` artifact as in the "Any
+issue and stop (report `release_blocked` through the script as in the "Any
 missing" case), never guess. With neither, do items 1-3 below as written.
 
 1. From up-to-date `<dev>`, cut `release/<version>`.
@@ -203,7 +203,8 @@ hands the agent already-materialized content as plain text. Do this sequence
      review`, detailing the reviewer's BLOCK findings plus links to the release PR and
      the triggering issue.
   2. **Comment on the triggering issue** pointing to the blocked issue + PR, with the
-     required `release_blocked` artifact (load `agent-outcomes` for the marker and shape).
+     required `release_blocked` artifact: report it through the `agent-outcomes` script (load it)
+     and use the body it printed.
 - **WARN** findings → proceed, but include them in the `release_approved` comment.
 - Report `release_approved` **only** when the checklist passes with no BLOCK.
 
@@ -212,8 +213,8 @@ orchestrator merges the PR as its GitHub App, the way you say, pinned to the com
 reviewed; the repo's own workflow tags it; then `release-publish` (a separate, small run)
 posts the release note, merges `<main>` back into `<dev>` and reports, and the orchestrator
 closes this issue. So on a pass, post one comment on the triggering issue with the
-**required** `release_approved` artifact (load `agent-outcomes` for the marker and shape),
-and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close anything.
+**required** `release_approved` artifact (report it through the `agent-outcomes` script, load
+it, and use the body it printed), and **stop**: don't merge, tag, create a Release, post to Slack, sync, or close anything.
 - `pr`: the release PR's number; `sha`: the **head SHA the review judged** (Step 2.5's
   re-fetched one). A push after the review makes the merge refuse, which is the point.
 - `version`: `<version>`; `merge_method`: how this repo merges a release into `<main>`

@@ -91,7 +91,7 @@ flags any repo where the setting is off.
 Comment the **specific** blocker on the PR ("CI check `x` failing", "awaiting
 approval", "conflicts with base — rebase needed"), and log it as deferred. For a hard,
 human-needed block the orchestrator's gate missed (say a conflict appeared with no CI run
-since), post the `merge_blocked` outcome (`agent-outcomes`) in that comment with the reason.
+since), report `merge_blocked` through the `agent-outcomes` script and put the body it printed in that comment, with the reason.
 The orchestrator checks for conflicts and requested changes itself, and sends failing CI to
 `rework-loop`, so on red CI comment the failing checks and move on to the next candidate.
 

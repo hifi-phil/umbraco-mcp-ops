@@ -131,8 +131,8 @@ New plugin: `plugins/agent-outcomes`, matching `github-ops`'s shape — one
 shared skill, other plugins point at it rather than each re-explaining the
 format. Both loops reference it by name instead of inlining the
 marker/JSON; the catalog now has four rows, added without touching either
-loop's own format definition (there isn't one) or `report-completion.sh`
-(it matches on the marker itself, not on any particular routine or shape).
+loop's own format definition (there isn't one) or `post-outcome.sh`
+(it forwards any outcome whose JSON names it).
 
 ## The fast path: a hook, not a replacement for GitHub
 
@@ -142,14 +142,17 @@ session dies mid-call, while a GitHub write either exists or doesn't and
 survives independently of the session. A direct "completion" ping doesn't
 get to skip that just because it's more convenient — so the resolution is:
 
-- **The GitHub comment stays the authoritative write**, unchanged in
-  role. `github/from-github.ts` reading it is still the only path that
-  drives a state transition.
+- **The GitHub comment was the only authoritative write** when this was
+  first written. Since #391 the explicit outcome signal from
+  `post-outcome.sh` is authoritative too (see below); whichever lands
+  second is deduped.
 - **A direct ping is allowed, but only as a non-authoritative fast path**
   — the same category as the heartbeat (§3.4/§3.6): losing it costs
   detail (the watchdog waits out its full alarm instead of cancelling
   early; the dashboard shows "in progress" a little longer), never
   correctness.
+
+*(Historical: the marker-sniffing echo described here is gone; see "Update: agents report through a script" below.)*
 
 The mechanism is a **`PostToolUse` hook**, not the model calling out
 mid-turn: `plugins/agent-outcomes/hooks/report-completion.sh` fires
@@ -182,14 +185,33 @@ POST has never been sent to or verified against it — that's a manual
 config step (plus a real deployment) that hasn't happened, and this
 whole channel remains unconfirmed against a real cloud routine.
 
-**What this doesn't fix:** the comment's JSON is still hand-typed by the
-model into a fence, which is exactly the kind of thing that can go quietly
-wrong — a mangled fence, a typo'd field, and both `translate()` and the
-hook just skip it with nothing to show for it (the hook's own shape check
-catches this gracefully rather than forwarding garbage, but that's
-damage control, not a fix). Having `agent-outcomes` construct the comment
-itself from typed arguments, rather than leaving the model to hand-type
-it, is still a separate, unbuilt improvement.
+### Update: agents report through a script
+
+The "never authoritative" premise above did not survive contact (#391): a
+webhook was dropped, an outcome was posted in the wrong format, a session died
+on a permission prompt. So an outcome is now reported, deliberately, through
+`plugins/agent-outcomes/skills/agent-outcomes/scripts/post-outcome.sh
+<outcome> '<json>'`. It POSTs `{kind:"outcome"}` to `/routine-signal`, which the
+Worker applies as the comment would be (whichever lands second is `deduped`), and
+prints the exact comment body for the session to post. Bad JSON or a name
+mismatch exits non-zero and sends nothing; with no run context it sends nothing
+but still prints the body (the routine taken from the outcome's name; a name it
+can't map exits non-zero and prints nothing), and the Worker recovers the outcome
+from the comment.
+
+`report-completion.sh` is heartbeats only: it no longer greps tool calls for the
+marker, so nothing is inferred from a tool call's text. `report-early-end.sh`
+adds `Notification` (permission prompt) -> `blocked` and `SessionEnd` ->
+`ended` (not `Stop`: it fires whenever the main thread waits on a background
+subagent), only when no outcome was delivered for this run (`post-outcome.sh`).
+`cloud-skill-sync` installs the script's permission and the hooks.
+
+**What this fixes:** the marker comment is no longer hand-typed.
+`post-outcome.sh` validates the JSON, signals the Worker directly, and prints
+the exact comment body, so the marker and fence are always well-formed. The model still
+writes the outcome's JSON argument, and `post-outcome.sh` only checks that it
+parses and that its `outcome` matches the name given: a typo'd field is still
+sent, and the Worker refuses it.
 
 ## Open questions this raises
 
@@ -197,10 +219,9 @@ it, is still a separate, unbuilt improvement.
   locally is unconfirmed** — see [08-open-questions.md](08-open-questions.md).
   Everything above is verified against fixture events run locally; nothing
   has exercised it against a real cloud routine session yet.
-- **The comment's JSON is still hand-typed, not script-constructed** — see
-  above. Worth a point of visibility once something is actually consuming
-  the fast path (a reconciliation-sweep-style check: "this issue's hook
-  fired but the shape was invalid").
+- **The outcome's JSON argument is still typed by the model**, though
+  `post-outcome.sh` validates it (see above). Worth a point of visibility
+  once something is actually consuming the fast path.
 - `pr` in the `build_succeeded` payload isn't used by anything downstream
   yet (no rule consumes it) — kept because the design docs' original
   sketch implied the outcome fact should carry a branch/PR reference; if

@@ -41,7 +41,7 @@ point of the split.
 Via `github-ops`, get the PR and its reviews + review comments (→ *Get reviews + review
 comments*). Collect every **unresolved, actionable** item: requested changes, inline
 comments, and review-body asks. If there are none in a human review (approval only, or nothing actionable
-after reading) → post the `rework_no_change` outcome with a brief reason and stop.
+after reading) → report `rework_no_change` through the `agent-outcomes` script, post its body as a comment with a brief reason, and stop.
 
 **Failing CI.** If the orchestrator added `auto-reworking` with a
 "🔧 CI failing" comment, the failing checks it names are the feedback. Read those

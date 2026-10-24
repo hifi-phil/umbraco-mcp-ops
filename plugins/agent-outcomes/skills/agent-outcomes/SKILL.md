@@ -7,10 +7,9 @@ description: >-
   the labels itself. Load this whenever a loop skill needs to report
   build_succeeded, build_blocked, release_blocked, release_published, or any
   other cataloged outcome, or when adding a new outcome type to the catalog.
-  Bundles a PostToolUse hook that signals the
-  Worker on a fast, non-authoritative path automatically (a completion when
-  the artifact is posted, heartbeats naming the step while the loop works),
-  with nothing extra for the loop to do.
+  Reports go through post-outcome.sh, which signals the Worker and prints the
+  comment body to post. Bundles hooks that send heartbeats, and blocked and
+  ended signals when a session waits on a permission prompt or stops early.
 ---
 
 # agent-outcomes
@@ -22,29 +21,50 @@ somewhere machine-readable. This skill is the one place that format is defined, 
 don't each invent their own. The Worker reads the artifact from the comment and applies the
 labels itself, so the loop **must** write it.
 
-This plugin also bundles a
-`PostToolUse` hook (`hooks/report-completion.sh`) that runs after every tool
-call, with no extra step for the loop. In a session the Worker fired (its
-first prompt carries `route=… repo=… number=…`), it signals the Worker's
-`/routine-signal` endpoint in two ways:
-- **A completion** when the loop posts the artifact. This cancels the run's
-  watchdog early.
-- **A heartbeat** naming the current step, at most once a minute. This keeps
-  the watchdog's deadline moving, and an expiry quotes the last step.
+## How to report: the script
 
-It needs `AGENT_OUTCOMES_ENDPOINT` (the Worker's `.../routine-signal` URL) and
-`AGENT_OUTCOMES_TOKEN` set in the routine environment. Without them it only
-logs, and it sends nothing from a session the Worker didn't fire.
+**Report an outcome through `post-outcome.sh`, then post the body it printed.** Never
+hand-write the marker.
 
-It's deliberately not authoritative: losing a signal costs a slower watchdog
-cancel or a vaguer `ai-stuck` comment, never a wrong state transition. The
-comment write above is still the only thing that counts as the actual fact.
+```
+bash ~/.claude/skills/agent-outcomes/scripts/post-outcome.sh <outcome> '<json>'
+```
+
+For example `post-outcome.sh build_succeeded '{"outcome":"build_succeeded","pr":123}'`. The
+script:
+- reads the run (`route=… repo=… number=…`, from the fire text) and validates the JSON, and
+  that its `outcome` is the one named. On bad JSON or a mismatch it exits non-zero
+  with a message and sends nothing: fix the call, don't write the marker by hand. With no
+  run found it sends nothing but still prints the body (the routine taken from the
+  outcome's name), and the Worker recovers the outcome from the posted comment. An
+  outcome whose name the script can't map to a routine then exits non-zero and prints
+  nothing;
+- POSTs `{kind:"outcome", routine, issue, outcome}` to the Worker's `/routine-signal`
+  (`AGENT_OUTCOMES_ENDPOINT`, bearer `AGENT_OUTCOMES_TOKEN`), retrying once. The Worker
+  applies it as authoritative, within seconds, whether or not the comment's webhook
+  arrives; whichever of the two lands second is deduped. A failed POST is not an error: the
+  comment still carries the outcome;
+- prints the exact comment body (the marker plus the fenced JSON) on stdout.
+
+Append that body, as printed, to the comment you post (see [The rule](#the-rule)). The
+routine name in the marker is the run's, so it's right without your passing it.
+
+This plugin's hooks (`hooks/`) signal the Worker too, in a session the Worker fired. They
+need the same env vars. Without `AGENT_OUTCOMES_ENDPOINT` they send nothing (they still
+record the run); without `AGENT_OUTCOMES_TOKEN` the Worker refuses what they send:
+- `PostToolUse` (`report-completion.sh`): a **heartbeat** naming the current step, at most
+  once a minute. It keeps the watchdog's deadline moving, and an expiry quotes the last step.
+  It never reports an outcome and infers nothing from a tool call's text.
+- `Notification` for a permission prompt (`report-early-end.sh`): **blocked**, naming the tool
+  and the start of the command. The Worker comments at once.
+- `SessionEnd` (`report-early-end.sh`): **ended**, unless it delivered an outcome
+  for this run (`post-outcome.sh`). The Worker then treats the run as the watchdog would on expiry.
 
 ## The rule
 
-**Append to a comment you're already posting.** The marker and JSON below get appended to
+**Append to a comment you're already posting.** The body the script printed gets appended to
 a comment your loop already posts, as a trailer. Never post a comment solely for this, and
-never skip your loop's real action because you wrote the marker. 
+never skip your loop's real action because you reported an outcome.
 
 ## The format
 
@@ -96,13 +116,14 @@ behind each.
 1. Add a row to the catalog above: routine, outcome name (matching
    `graph/constants/events.ts`'s `EVENTS` — don't invent a new event name
    here), the exact JSON shape, and which step reports it.
-2. Add the loop's instruction to append the marker + shape to a comment it
-   already posts — per the rule above. Point at this skill by
+2. Add the loop's instruction to report it through `post-outcome.sh` and append the
+   body it printed to a comment it already posts — per the rules above. Point at this skill by
    name; don't inline the format into the loop's own `SKILL.md`.
 3. Add the matching `translate()` case in `graph/github/from-github.ts`
    (umbraco-mcp-ops) that parses it, plus fixture tests.
 
 Steps 1–3 land together — a catalog row with no parser, or a parser with
-no catalog row, is a silent way for the two to drift. No fourth step for
-the hook: `report-completion.sh` matches on the marker itself, not on any
-particular routine or shape, so a new outcome type needs no hook change.
+no catalog row, is a silent way for the two to drift. The script and hooks need no change
+for a new outcome type: `post-outcome.sh` forwards any outcome whose JSON names it, and the
+Worker validates the shape. The one exception is a new routine prefix: add a line for it to
+the script's `case`, used when no run context is found.
