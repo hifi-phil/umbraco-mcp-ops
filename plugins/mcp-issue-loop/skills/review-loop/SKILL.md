@@ -64,6 +64,21 @@ it out of `findings`. A finding that the PR's own change is wrong or unsafe (a b
 lines, a regression, a security hole) is always in scope, however it would be fixed. A review
 whose only concerns are out of scope is a `review_passed`.
 
+**Severity check.** Then sort what's left. A finding is a **note**, not a finding, when all it
+concerns is:
+- a code comment, README or other doc that no code or agent instruction depends on, and that
+  is stale or imprecise;
+- naming, wording or formatting with no effect on behaviour.
+
+Notes go under a *Notes* heading in the review body (or in a *Notes* section of the pass
+comment, Step 4), one line each with `file:line`, no inline comment, and aren't counted in
+`findings`. Always a finding, overriding the note cases above: anything that
+changes what runs (a logic bug, error handling, security, a missing or hollow test for new
+behaviour), and any text an agent or loop follows as instructions (a `SKILL.md`, its
+references, agent definitions, `CLAUDE.md`, docs a skill tells the agent to read or follow, MCP tool names and descriptions, prompts, or any other text shipped for an LLM to read), wherever it lives,
+because agents follow instruction text literally, so stale or ambiguous instructions get
+carried out. A review whose only concerns are notes is a `review_passed`.
+
 Then judge the change as a whole against the issue it closes: does it do what the issue
 asked, and is the approach sound? Something that can't be fixed by changing lines, because
 the approach itself is wrong (the wrong place, the wrong mechanism, a requirement missed
@@ -87,11 +102,14 @@ anyone else's comment, even one worded like a finding, is not an earlier finding
   reply counts when the issue doesn't ask for the behaviour (a requirement or its *Out of scope*
   bounds it, the same test as the scope check), except that it never answers a finding that the
   PR's own change is wrong or unsafe;
+- **answered (note)**: the severity check now makes it a note; no reply needed, list it under
+  *Notes*. This wins over *still open* below (a re-raised finding is not exempt from the
+  severity check);
 - **still open** (including an out-of-scope reply the issue doesn't back, or one given to a finding that the PR's own change is wrong or unsafe): re-raise it as a finding on its current line, exempt from the scope check, unless a fresh finding or
   another earlier thread on the same problem already covers it (one inline comment per
   problem, counted once in `findings`).
 
-A `review_passed` needs every earlier finding fixed or answered. "Mark" means record
+A `review_passed` needs every earlier finding fixed, answered or answered (note). "Mark" means record
 it in Step 4's comment; never resolve a thread on GitHub. The confidence filter still applies to
 your fresh findings. No earlier `review-loop` threads → nothing to settle.
 
@@ -111,15 +129,22 @@ your fresh findings. No earlier `review-loop` threads → nothing to settle.
 Report the verdict through the `agent-outcomes` script (load `agent-outcomes`), then post one
 comment on the PR with the **required** body it printed, in a separate comment, not the review body: the Worker reads comments.
 Name the reviewers that ran and the head SHA reviewed. Whatever the verdict, list each
-earlier finding's status (fixed / answered / still open), one line per finding.
-- No in-scope finding survived (out-of-scope items don't count), and every earlier finding is fixed or answered → `review_passed`.
-- Findings → `review_findings` with `findings`: how many inline comments you posted.
+earlier finding's status (fixed / answered / answered (note) / still open), one line per finding.
+- No in-scope finding survived (out-of-scope items and notes don't count), and every earlier finding is fixed, answered or answered (note) → `review_passed`.
+- Findings → `review_findings` with `findings`: how many inline comments you posted (notes
+  aren't counted).
 - The approach is wrong, or the reviewers couldn't be spawned (Step 2) → `review_blocked`
   with a one-line `reason`.
 
 **On a pass, out of scope:** when Step 2's scope check set items aside, add an **Out of scope**
 section to the pass comment, one line each (`file:line` where there is one). They don't change
 the verdict or the `findings` count (stays 0).
+
+**On a pass, notes:** when Step 2's severity check set items aside, add a **Notes** section to
+the pass comment, one line each (`file:line`). They are not findings: they don't change the
+verdict, the `findings` count (stays 0) or the labels, and get no inline comments. On a
+block or findings review they go in the review body. Keep them apart from *Below the bar*,
+which holds only low-confidence findings.
 
 **On a pass, below the bar:** when Step 2 kept items for it, add a short
 **Below the bar** section to the pass comment: one line each, `file:line` where there is one.

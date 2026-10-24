@@ -109,7 +109,8 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       const line = (d: DeliveryDetail) => `${d.event}.${d.action} #${d.numbers.join(",")} -> ${d.statusCode} ${d.response}`;
 
       // The sweep scenario's refused fire is scripted; any other failure isn't.
-      const scripted = (d: DeliveryDetail) => d.numbers.includes(runLog.sweepIssue ?? -1) && d.response.includes("scripted fire failure");
+      const sweeps = new Set(runLog.sweepIssues ?? []);
+      const scripted = (d: DeliveryDetail) => d.numbers.some((n) => sweeps.has(n)) && d.response.includes("scripted fire failure");
       const failed = details.filter((d) => (d.statusCode >= 400 || d.response.includes('"outcome":"error"')) && !scripted(d));
       expect(failed.map(line), "deliveries the Worker failed").toEqual([]);
       // Answered 202 (the Worker's answer deadline, under GitHub's 10 s):
@@ -130,7 +131,7 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       // Bar one: the sweep scenario's scripted refusal, which the Worker logs
       // as "fire refused: …" (#319) and must, so a refused fire isn't silent.
       const scriptedRow = (n: number, r: { dropped_reason: string | null }) =>
-        n === runLog.sweepIssue && (r.dropped_reason ?? "").startsWith("fire refused:") && (r.dropped_reason ?? "").includes("scripted fire failure");
+        sweeps.has(n) && (r.dropped_reason ?? "").startsWith("fire refused:") && (r.dropped_reason ?? "").includes("scripted fire failure");
       const badRows = [...logs].flatMap(([n, rows]) =>
         rows
           .filter((r) => (r.mode !== "enforce" || r.dropped_reason !== null) && !scriptedRow(n, r))
@@ -162,7 +163,7 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       // And only the sweep scenario's issue was left behind: the sweep
       // re-firing anything else would mean it misread a live run.
       const refires = [...logs].flatMap(([n, rows]) =>
-        rows.filter((r) => r.event === "reconcile_refire" && n !== runLog.sweepIssue).map((r) => `#${n} ${r.from_state} ${r.run}`),
+        rows.filter((r) => r.event === "reconcile_refire" && !sweeps.has(n)).map((r) => `#${n} ${r.from_state} ${r.run}`),
       );
       expect(refires, "reconcile_refire rows outside the sweep scenario").toEqual([]);
       const guids = new Set(details.map((d) => d.guid));

@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 # Local dev (`wrangler dev`) and bundling (`npm run build`) only. Real
 # deploys go through terraform/ (OpenTofu), which creates the D1 database,
 # Worker, secrets and GitHub webhook, and removes them all on
-# `tofu destroy`. See README.md's "Deploying". The database_id below stays
+# `tofu destroy`. See docs/agent-orchestration/19-deploy.md. The database_id below stays
 # a placeholder: tofu binds the real one itself, and a personal account's
 # id doesn't belong in this public repo.
 
