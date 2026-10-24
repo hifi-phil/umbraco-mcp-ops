@@ -51,10 +51,10 @@ question — don't invent scope.
 
 **If the work creates or changes MCP tools, use the Umbraco MCP skills for every
 step below — tools, tests, and evals, skipping none.** They encode the conventions
-`mcp-review` and CI actually check for (one file per tool in the right verb folder,
+`review-loop`'s review and CI actually check for (one file per tool in the right verb folder,
 `withStandardDecorators`, builders/helpers before test files, the new tool added to
 every eval's `allTools` array); a hand-rolled tool passes local compile and then
-fails review, costing a full re-dispatch. Load `/mcp-patterns` first, then use the
+fails review, costing a rework round. Load `/mcp-patterns` first, then use the
 relevant skills/agents:
 
 - Tool creation/changes → `/add-tool` (or `/build-tools` for a whole collection),

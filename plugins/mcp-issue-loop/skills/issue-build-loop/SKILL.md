@@ -89,7 +89,7 @@ They catch what most reviews send back for:
    `agent-outcomes` script (or is a documented no-outcome stop), every operation it names is
    in `github-ops`, and no step points at one that's gone.
 
-Fix what they find and re-run the local tests before reporting. A check you can't satisfy
+Fix what they find, re-run the local tests, push, then report. A check you can't satisfy
 (say, no test harness for the code) doesn't block the build: say which and why in the issue
 comment.
 
