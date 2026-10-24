@@ -166,14 +166,14 @@ s.serve_forever()
     sleep 0.3
   }
 
-  # 13. A permission prompt -> blocked, naming the tool and the start of its command
+  # 13. A permission prompt -> blocked, naming the tool and the command's first word only
   : >"$SERVER_LOG"
   LONG_CMD="git reset --hard $(printf 'x%.0s' $(seq 1 200))"
   PROMPT="$(jq -n --arg c "$LONG_CMD" '{hook_event_name:"Notification", notification_type:"permission_prompt", message:"Claude needs your permission to use Bash", tool_name:"Bash", tool_input:{command:$c}}')"
   esignal blocked "$(with_transcript "$PROMPT" "$TRANSCRIPT" b1)" "$WORK/s13"
   expect_last permission_blocked '.auth == "Bearer tok" and .body.signal.kind == "blocked"
     and .body.signal.routine == "issue-build-loop" and .body.signal.issue == 412
-    and (.body.signal.detail | startswith("Bash git reset --hard")) and (.body.signal.detail | length <= 140)'
+    and .body.signal.detail == "Bash: git"'
 
   # 13b. A session with no route line -> an end sends nothing either
   : >"$SERVER_LOG"
@@ -196,6 +196,17 @@ s.serve_forever()
   esignal quoting_end "$(with_transcript "$(end_event)" "$QUOTING" q1)" "$WORK/s13e"
   esignal quoting_block "$(with_transcript "$PROMPT" "$QUOTING" q2)" "$WORK/s13e"
   expect_requests quoted_route_not_a_run 0
+
+  # 13c. Arguments never go out: not a short credential (`-u user:pass`), not a long one
+  : >"$SERVER_LOG"
+  ARGS="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:"curl -u admin:hunter2 --password hunter2 https://x.io/"}}')"
+  esignal args "$(with_transcript "$ARGS" "$TRANSCRIPT" b2)" "$WORK/s13h"
+  expect_last args_not_sent '.body.signal.detail == "Bash: curl"'
+  # ...nor an inline VAR=secret standing as the first word
+  : >"$SERVER_LOG"
+  ENVW="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:"TOKEN=hunter2 make deploy"}}')"
+  esignal envword "$(with_transcript "$ENVW" "$TRANSCRIPT" b6)" "$WORK/s13i"
+  expect_last env_word_dropped '.body.signal.detail == "Bash"'
 
   # 13c. A credential in the command never goes out
   : >"$SERVER_LOG"
