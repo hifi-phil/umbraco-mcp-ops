@@ -8,7 +8,7 @@ selection* in `SKILL.md`).
 playbook needs a real Umbraco to test against. **For a content-repo issue**, there's no toolchain
 to boot: resolve the repo's shape as in `SKILL.md` → *Config*, triage + dispatch a single build
 subagent on [`content-playbook.md`](content-playbook.md) instead of `mcp-playbook.md`, working
-directly in the session's checkout, then review and report per step 3 below — that step is
+directly in the session's checkout, then run the pre-PR checks and report per step 3 below — that step is
 shape-agnostic.
 
 **Know the environment first.** Before triaging, consult the **`worker-env`** skill
@@ -61,13 +61,12 @@ For the one issue the fire names:
      run `/security-review`/`/code-review` here — see `SKILL.md`'s Rules for why. Once
      local tests are green, **commit, push, and open the PR** against `<base>` (github-ops →
      *Create a PR*), linking the issue (`Closes #N`), ready for review, not draft — then
-     **return**. Reviewing it (step 3) is the **base session's** job.
-3. **Review the PR with `mcp-review`, then report — from the base session.** As `SKILL.md`
-   Step 3: fix any surviving findings by **dispatching a fix on the build subagent's model** (or
-   fix inline; the base session stays on its cheap model, so a fix must not silently inherit that
-   tier), re-run the SQL Server gate from step 2, then run `SKILL.md` Step 3's pre-PR checks and
-   re-run the gate over any fix they produced, push, then post the `build_succeeded` artifact.
-   Then stop: no CI polling.
+     **return**. The pre-PR checks and reporting (step 3) are the **base session's** job.
+3. **Run the pre-PR checks, then report — from the base session.** As `SKILL.md` Step 3:
+   run its pre-PR checks; fix what they find by **dispatching a fix on the build subagent's
+   model** (or fix inline; the base session stays on its cheap model, so a fix must not silently
+   inherit that tier), re-run the SQL Server gate from step 2 over any fix, push, then post the
+   `build_succeeded` artifact. Then stop: no CI polling, no review (`review-loop`'s).
 
 A blocked issue (no-progress guard tripped) gets a comment with the `build_blocked` artifact,
 then stop. The guardrails in `SKILL.md`'s Rules still apply.

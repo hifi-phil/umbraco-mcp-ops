@@ -1,7 +1,7 @@
 ---
 name: issue-build-loop
 description: >-
-  Build one `ai-ready` GitHub issue into an mcp-reviewed PR and report `build_succeeded`
+  Build one `ai-ready` GitHub issue into a PR and report `build_succeeded`
   with its `pr` — then stop (CI is the Worker's; the independent review is review-loop's; fixes are
   rework-loop's; merging is merge-flow's). This loop never responds to reviews and never
   merges. Repo-agnostic — works whether or not the repo has an Umbraco build/test toolchain
@@ -13,7 +13,7 @@ description: >-
 
 # issue-build-loop
 
-Turns **one** `ai-ready` issue into a reviewed PR and reports `build_succeeded` — on **any**
+Turns **one** `ai-ready` issue into a PR and reports `build_succeeded` — on **any**
 repo, whether or not it has an Umbraco build/test toolchain. The fire names the issue; one fire
 is one item. Only the per-issue build playbook differs between the two repo shapes, resolved in
 [Config](#config-resolve-once-up-front): MCP repo (has the toolchain) vs content repo (doesn't).
@@ -66,17 +66,15 @@ and pass the fitting tier as the Agent `model`.
 
 The subagent's job is done when its PR is open — it does not poll CI or block on it.
 
-## Step 3 — review and report
+## Step 3 — pre-PR checks and report
 
-**Review it with `mcp-review`, here on the main thread.** Once the subagent returns an open
-PR, run `mcp-review` over it. **The build subagent does not review its own code**: running the
-review here is what makes it independent. If it raises findings, fix them (re-dispatch into
-the checkout, or fix inline), **re-run the local tests**, then push. All testing is local (the
-diff's tests on MCP repos; whatever check the content playbook ran on content repos): never
-lean on CI to catch a fix's regressions. Never re-push an identical fix (**no-progress
-guard**).
+**No review here.** The independent review is `review-loop`'s: it runs its own `mcp-review`
+over the PR once CI is green, and only its verdict decides anything. Once the subagent returns
+an open PR, run the pre-PR checks. All testing is local (the diff's tests on MCP repos;
+whatever check the content playbook ran on content repos): never lean on CI to catch a
+fix's regressions. Never re-push an identical fix (**no-progress guard**).
 
-**Then the pre-PR checks**, on the PR's final diff. Each is quick; run them, don't assume.
+**The pre-PR checks**, on the PR's final diff. Each is quick; run them, don't assume.
 They catch what most reviews send back for:
 1. **Leftover text.** For every name, step, flag or behaviour the change renamed, removed or
    altered, grep the repo (code comments, docs, `plugins/` skill text, READMEs) and fix
@@ -91,7 +89,7 @@ They catch what most reviews send back for:
    `agent-outcomes` script (or is a documented no-outcome stop), every operation it names is
    in `github-ops`, and no step points at one that's gone.
 
-Fix what they find and re-run the local tests before reporting. A check you can't satisfy
+Fix what they find, re-run the local tests, push, then report. A check you can't satisfy
 (say, no test harness for the code) doesn't block the build: say which and why in the issue
 comment.
 
@@ -104,7 +102,7 @@ yours, the decision list by a fresh subagent, and the build entry, as
 printed (load `agent-outcomes`). Don't drive CI or wait for it.
 
 If the subagent reports it could not finish (e.g. the issue is genuinely ambiguous), or the
-no-progress guard trips while fixing an `mcp-review` finding, report `build_blocked` through the
+no-progress guard trips while fixing a pre-PR check finding, report `build_blocked` through the
 script and comment the specific reason (the ambiguity, what was tried) with the body it
 printed, and stop.
 
@@ -147,14 +145,12 @@ go stale as versions advance.
 
 - **Never touch an issue without the `ai-ready` label.** The label is the only gate. If it's
   gone, or the issue is closed, mid-flight, stop work on that issue immediately.
-- **Reviews are non-negotiable, honestly reported** — see Step 3 for the mcp-review
-  mechanics. Do **not** use the bundled `/security-review` / `/code-review` slash
-  commands: they're `disable-model-invocation: true`, so a subagent or headless routine
-  can't run them — they reach the model as inert text and the review silently never
-  happens. Report only what `mcp-review` actually found; never claim a review passed
-  that didn't run.
+- **This loop doesn't review its PR; `review-loop` does.** Do **not** use the bundled
+  `/security-review` / `/code-review` slash commands: they're `disable-model-invocation: true`,
+  so a subagent or headless routine can't run them — they reach the model as inert text and
+  the review silently never happens. Never claim a review ran or passed.
 - **Follow the repo, not this skill, for specifics.** Test/build commands, the
   version-bump file list, and cleanup live in the repo's `CLAUDE.md` and the
   `release-and-branching` skill — obey those.
 - **No-progress guard** — never retry the same failing command/action verbatim. If a build or
-  review-fix pass produces no new state, report `build_blocked`.
+  pre-PR-check fix pass produces no new state, report `build_blocked`.

@@ -22,11 +22,9 @@ the per-issue prompt substituted into each build subagent, in place of the MCP s
      touched the capture hook; validate any JSON/YAML/bash you changed.
    - Other repos: run their documented lint/test (a `package.json` script, a linter)
      if present. A pure-docs change may have nothing to run — that's fine.
-4. **Review is the orchestrator's job — don't do it.** Don't run
-   `/security-review` / `/code-review` — see `SKILL.md`'s Rules for why they can't run
-   in a subagent. After you return an open PR, the orchestrator runs
-   `mcp-review` over it and hands back any findings. For a
-   pure-prose change the review will find little — that's fine.
+4. **Review isn't yours.** Don't run `/security-review` / `/code-review` — see
+   `SKILL.md`'s Rules for why they can't run in a subagent. `review-loop` reviews the PR
+   independently once CI is green.
 5. **Commit, push, open the PR** against the base branch (detect via
    `release-and-branching` — never assume it; these repos don't share one model).
    Link the issue (`Closes #N`), ready for review, never draft. `umbraco-mcp-ops` runs
