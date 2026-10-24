@@ -81,21 +81,19 @@ They catch what most reviews send back for:
 1. **Leftover text.** For every name, step, flag or behaviour the change renamed, removed or
    altered, grep the repo (code comments, docs, `plugins/` skill text, READMEs) and fix
    each place that still describes the old one.
-2. **Tests that can fail.** For executable code covered by a test suite (skip for prose or
-   skill-text changes), break each new guard, branch or condition locally (delete or invert
-   it) and run its tests: one must fail. If none does, add the test. Restore the code and
-   confirm `git diff` shows no leftover mutation.
+2. **Tests that can fail.** For code with a test suite (not prose or skill text), break each
+   new guard, branch or condition locally (delete or invert it) and run its tests: one must
+   fail. If none does, add the test. Restore the code and check `git diff` shows no leftover.
 3. **Failure paths.** Where a call can throw (a GitHub call, a write, a fire), state recorded
    before it must still be right if the call fails and is retried; an error that's caught
    logs a line naming the owner/repo and item.
-4. **Skill text** (when `plugins/` changed): every stop path either reports its cataloged
-   outcome through the `agent-outcomes` script or is a documented deliberate no-outcome stop
-   (a quiet no-op, or an outcome the Worker sees as a native event), every operation it names is in `github-ops`, and no step points
-   at one that's gone.
+4. **Skill text** (when `plugins/` changed): every stop path reports its outcome through the
+   `agent-outcomes` script (or is a documented no-outcome stop), every operation it names is
+   in `github-ops`, and no step points at one that's gone.
 
-Fix what they find, re-run the local tests, **re-run `mcp-review` over any fix the checks
-produced** (so those edits are reviewed independently too; fix its findings as above, under
-the same no-progress guard), and push before reporting.
+Fix what they find and re-run the local tests before reporting. A check you can't satisfy
+(say, no test harness for the code) doesn't block the build: say which and why in the issue
+comment.
 
 **The work log** (only when the dispatch passed a `log_token`): the subagent's journal,
 yours, the decision list by a fresh subagent, and the build entry, as
@@ -106,8 +104,7 @@ yours, the decision list by a fresh subagent, and the build entry, as
 printed (load `agent-outcomes`). Don't drive CI or wait for it.
 
 If the subagent reports it could not finish (e.g. the issue is genuinely ambiguous), or the
-no-progress guard trips while fixing an `mcp-review` finding or a pre-PR check finding (or a check's
-test can't be added although a test harness exists), report `build_blocked` through the
+no-progress guard trips while fixing an `mcp-review` finding, report `build_blocked` through the
 script and comment the specific reason (the ambiguity, what was tried) with the body it
 printed, and stop.
 
@@ -159,5 +156,5 @@ go stale as versions advance.
 - **Follow the repo, not this skill, for specifics.** Test/build commands, the
   version-bump file list, and cleanup live in the repo's `CLAUDE.md` and the
   `release-and-branching` skill — obey those.
-- **No-progress guard** — never retry the same failing command/action verbatim. If a build,
-  review-fix or pre-PR-check-fix pass produces no new state, report `build_blocked`.
+- **No-progress guard** — never retry the same failing command/action verbatim. If a build or
+  review-fix pass produces no new state, report `build_blocked`.

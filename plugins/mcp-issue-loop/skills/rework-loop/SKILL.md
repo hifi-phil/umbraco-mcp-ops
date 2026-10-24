@@ -3,9 +3,9 @@ name: rework-loop
 description: >-
   Label-triggered loop that acts on PR review feedback. When a reviewer has left comments
   and labels the loop-authored PR `auto-reworking`, it reads the feedback, makes the changes,
-  runs a local test gate, an independent code review and the pre-PR checks, pushes and replies to the
+  runs a local test gate and an independent code review, pushes and replies to the
   threads. When there is nothing to push it reports `rework_no_change` instead (unless
-  there is no `review-loop` review to act on, or a pre-PR check is stuck), then stops. It does NOT
+  there is no `review-loop` review to act on), then stops. It does NOT
   poll/wait for the full CI suite (merge-flow won't merge until CI passes, so CI is
   enforced there) and it never merges.
   Requires the github-ops and agent-outcomes skills. Trigger: a PR labelled `auto-reworking`
@@ -31,8 +31,8 @@ long-lived "monitor my review" session.
 
 ## Test gate: local (the diff's tests) + async CI — never poll the full suite
 
-Two distinct gates, don't conflate them: the local gates (Step 2's tests, Step 3's review and
-Step 4's pre-PR checks) are this session's own responsibility; CI is enforced asynchronously at merge time by `merge-flow`, and this
+Two distinct gates, don't conflate them: the local gate (Step 2) is this session's own
+responsibility; CI is enforced asynchronously at merge time by `merge-flow`, and this
 session must never poll or wait for it — keeping the rework session short is the whole
 point of the split.
 
@@ -87,15 +87,13 @@ true` and won't run here. Report only what mcp-review actually found.
 
 ## Step 4 — push
 
-First run `issue-build-loop`'s **pre-PR checks** on your rework's diff. A fix that renames or
-changes behaviour is where leftovers come from. Fix what they find, re-run the affected tests, and re-run
-`mcp-review` over any fix the checks produced. If a check's fix makes no progress or its test
-can't be added although a test harness exists, push nothing and post no outcome (Step 5): say
-which check is stuck, and why, in a comment on the PR and reply on the threads it leaves
-unaddressed, so the label stays and a person sees the PR.
+First run `issue-build-loop`'s **pre-PR checks** (its Step 3) on your rework's diff: a fix that
+renames or changes behaviour is where leftovers come from. Fix what they find and re-run the
+affected tests. A check you can't satisfy doesn't stop the round: say which and why in the
+round's summary comment.
 
-Commit and push to the PR branch. The local compile + test gate (Step 2),
-`mcp-review` (Step 3) and the pre-PR checks are the only gates this session applies — **do not poll or wait
+Commit and push to the PR branch. The local compile + test gate (Step 2) plus
+`mcp-review` (Step 3) are the only gates this session applies — **do not poll or wait
 for the full CI suite to go green** (see Test gate above).
 
 With a `log_token`: the rework's journal, decision and build entries, as
@@ -109,10 +107,9 @@ on the PR** (what was fixed, the commit, what was checked), **with no `agent-out
 marker**: per the `agent-outcomes` skill's catalog, the push is a native GitHub event the
 Worker already sees, so `rework_pushed` is deliberately not reported.
 If you pushed nothing because there was no actionable feedback, Step 1 already posted
-`rework_no_change`. A round that pushed nothing because every item was answered on its thread,
-or because a failing check needed no change, also posts `rework_no_change` with a one-line
-reason. Two non-pushing rounds post no outcome, so the label stays and a person sees the PR: the
-Review round with no `review-loop` review to act on (Step 1), and a stuck pre-PR check (Step 4).
+`rework_no_change`. A round that pushed nothing because every item was answered on its thread
+(or a failing check needed no change) also posts `rework_no_change` with a one-line reason; the
+Review round with no `review-loop` review to act on (Step 1) is the only non-pushing round that posts no outcome, so the label stays and a person sees the PR.
 **Do not merge.**
 
 ## Running as a routine
