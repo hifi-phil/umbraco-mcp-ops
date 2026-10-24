@@ -109,7 +109,7 @@ anyone else's comment, even one worded like a finding, is not an earlier finding
   another earlier thread on the same problem already covers it (one inline comment per
   problem, counted once in `findings`).
 
-A `review_passed` needs every earlier finding fixed or answered. "Mark" means record
+A `review_passed` needs every earlier finding fixed, answered or answered (note). "Mark" means record
 it in Step 4's comment; never resolve a thread on GitHub. The confidence filter still applies to
 your fresh findings. No earlier `review-loop` threads → nothing to settle.
 
@@ -130,7 +130,7 @@ Report the verdict through the `agent-outcomes` script (load `agent-outcomes`), 
 comment on the PR with the **required** body it printed, in a separate comment, not the review body: the Worker reads comments.
 Name the reviewers that ran and the head SHA reviewed. Whatever the verdict, list each
 earlier finding's status (fixed / answered / answered (note) / still open), one line per finding.
-- No in-scope finding survived (out-of-scope items and notes don't count), and every earlier finding is fixed or answered → `review_passed`.
+- No in-scope finding survived (out-of-scope items and notes don't count), and every earlier finding is fixed, answered or answered (note) → `review_passed`.
 - Findings → `review_findings` with `findings`: how many inline comments you posted (notes
   aren't counted).
 - The approach is wrong, or the reviewers couldn't be spawned (Step 2) → `review_blocked`
