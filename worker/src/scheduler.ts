@@ -172,7 +172,8 @@ export class Scheduler {
               repo,
               issueNumber,
               updatedAt,
-              enforced: this.enforcedFor(full) && summary.refired.length < this.maxRefires(),
+              enforced: this.enforcedFor(full),
+              budget: summary.refired.length < this.maxRefires(),
             }),
           });
           const result = (await res.json().catch(() => null)) as ReconcileResult | { outcome: "error"; error: string } | null;

@@ -22,12 +22,12 @@ function fakeCtx(alarmAt: number | null = null) {
 }
 
 function fakeEnv(
-  reconcile: (body: { issueNumber: number; enforced: boolean }) => unknown,
+  reconcile: (body: { issueNumber: number; enforced: boolean; budget: boolean }) => unknown,
   overrides: Partial<SchedulerEnv> = {},
   sweepOff: { owner: string; repo: string }[] = [],
 ) {
   const inserted: unknown[][] = [];
-  const asked: { key: string; body: { issueNumber: number; enforced: boolean } }[] = [];
+  const asked: { key: string; body: { issueNumber: number; enforced: boolean; budget: boolean } }[] = [];
   const env: SchedulerEnv = {
     GITHUB_APP_TOKEN: "t",
     REPO_ROUTINES_JSON: JSON.stringify({ "hifi-phil/umbraco-mcp-ops": {}, "hifi-phil/mcp-ops-e2e-testing": {} }),
@@ -192,7 +192,7 @@ describe("Scheduler", () => {
     const { ctx } = fakeCtx();
     const { env, inserted, asked } = fakeEnv(() => ({ outcome: "would_refire", run: "issue-build-loop", idleMinutes: null }));
     const summary = await new Scheduler(ctx, env).sweep();
-    expect(asked).toEqual([{ key: "hifi-phil/umbraco-mcp-ops#7", body: { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, enforced: false } }]);
+    expect(asked).toEqual([{ key: "hifi-phil/umbraco-mcp-ops#7", body: { owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, enforced: false, budget: true } }]);
     expect(summary).toMatchObject({ checked: 1, wouldRefire: ["hifi-phil/umbraco-mcp-ops#7"], refired: [], errors: [] });
     expect(inserted[0]).toEqual(expect.arrayContaining(["_scheduler", "sweep", "shadow"]));
   });
@@ -207,12 +207,12 @@ describe("Scheduler", () => {
       ),
     );
     const { ctx } = fakeCtx();
-    const { env, asked } = fakeEnv((b) => ({ outcome: b.enforced ? "refired" : "would_refire" }), {
+    const { env, asked } = fakeEnv((b) => ({ outcome: b.enforced && b.budget ? "refired" : "would_refire" }), {
       SWEEP_MODE: "enforce",
       SWEEP_MAX_REFIRES: "2",
     });
     const summary = await new Scheduler(ctx, env).sweep();
-    expect(asked.map((a) => a.body.enforced)).toEqual([true, true, false]);
+    expect(asked.map((a) => a.body.budget)).toEqual([true, true, false]);
     expect(summary.refired).toHaveLength(2);
     expect(summary.wouldRefire).toEqual(["hifi-phil/umbraco-mcp-ops#3"]);
   });

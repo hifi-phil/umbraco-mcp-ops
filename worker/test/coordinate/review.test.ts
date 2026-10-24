@@ -540,10 +540,17 @@ describe(`the sweep and a PR left in ${LABELS.AI_REVIEWING}`, () => {
     expect(d.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.REVIEW_CI_PASSED, actor: "sweep" }));
   });
 
+  it("the sweep's re-fire budget spent: the gate isn't run, nothing fired", async () => {
+    const d = deps([LABELS.AI_REVIEWING], green, idle);
+    expect(await coordinateReconcile(d, ref, { ...opts, budget: false })).toMatchObject({ outcome: "would_refire" });
+    expect(d.fireRoutine).not.toHaveBeenCalled();
+  });
+
   it("this repo's watchdog in shadow: the gate isn't run (a dying review would be re-fired every sweep), only logged", async () => {
     const d = deps([LABELS.AI_REVIEWING], green, { ...idle, enforced: (e) => e !== EVENTS.WATCHDOG_EXPIRED });
     expect(await coordinateReconcile(d, ref, opts)).toMatchObject({ outcome: "would_refire", held: "watchdog_shadow" });
     expect(d.fireRoutine).not.toHaveBeenCalled();
+    expect(d.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: "reconcile_refire" }));
   });
 
   it("a review already pending: nothing fired, and the skip is logged", async () => {

@@ -57,12 +57,13 @@ const d1Time = (s: string) => Date.parse(`${s.replace(" ", "T")}Z`);
  * bound only holds while this repo's watchdog enforces (a shadow one leaves
  * the label on, so the issue would be re-fired every sweep), and a real
  * fire needs MODE=enforce, so either one shadowed holds the re-fire to a
- * log row. `enforced` false (the sweep's shadow mode) only logs too.
+ * log row. `enforced` false (the sweep's shadow mode) only logs too. `budget`
+ * false (the sweep's re-fire cap is spent) holds every act back, the review gate's included.
  */
 export async function coordinateReconcile(
   deps: Deps,
   ref: IssueRef,
-  { enforced, now = Date.now(), updatedAt }: { enforced: boolean; now?: number; updatedAt?: string },
+  { enforced, budget = true, now = Date.now(), updatedAt }: { enforced: boolean; budget?: boolean; now?: number; updatedAt?: string },
 ): Promise<ReconcileResult> {
   // A pending fire with no alarm behind it, well after it was due, is a lost
   // watchdog: nothing will notice, so it's swept like any other (the idle
@@ -111,14 +112,15 @@ export async function coordinateReconcile(
 
   // A PR left in LABELS.AI_REVIEWING (a lost check_suite webhook, or a lost review
   // fire): the CI gate again, as when the label went on. Enforced whatever the
-  // sweep's own mode (the trigger labels' shadow -> enforce switch is separate),
-  // but not while this repo's watchdog is shadow: a review run that dies is
+  // sweep's shadow mode (the trigger labels' shadow -> enforce switch is separate),
+  // but not once the sweep's re-fire budget is spent, and not while this repo's watchdog is shadow: a review run that dies is
   // never counted by the caps, and a shadow watchdog leaves the label on, so it
   // would be re-fired every sweep. The gate follows applyEvent's per-event enforcement.
-  if (state === LABELS.AI_REVIEWING && deps.enforced(EVENTS.WATCHDOG_EXPIRED)) {
+  if (state === LABELS.AI_REVIEWING && budget && deps.enforced(EVENTS.WATCHDOG_EXPIRED)) {
     return { outcome: "gated", result: await reviewGate(deps, { ...ref, actor: "sweep" }, labels) };
   }
 
+  if (!budget) enforced = false;
   const held = !enforced
     ? undefined
     : !deps.enforced(event!)

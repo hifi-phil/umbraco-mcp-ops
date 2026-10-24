@@ -139,14 +139,14 @@ export class IssueCoordinator {
 
     // The sweep (scheduler.ts) asking whether this issue was left behind.
     if (new URL(request.url).pathname === "/reconcile") {
-      let input: { owner: string; repo: string; issueNumber: number; enforced: boolean; updatedAt?: string };
+      let input: { owner: string; repo: string; issueNumber: number; enforced: boolean; budget?: boolean; updatedAt?: string };
       try {
         input = await request.json();
       } catch {
         return new Response("invalid JSON body", { status: 400 });
       }
       return this.serial(() =>
-        respond(() => coordinateReconcile(this.deps(input), input, { enforced: input.enforced, updatedAt: input.updatedAt })),
+        respond(() => coordinateReconcile(this.deps(input), input, { enforced: input.enforced, budget: input.budget, updatedAt: input.updatedAt })),
       );
     }
 
