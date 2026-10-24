@@ -40,11 +40,12 @@ export async function fireWatched(
   redeferral = false,
 ): Promise<FireOutcome> {
   await forgetAppliedOutcome(deps, run);
+  const alreadyDeferred = await deferredFor(deps, run);
   await deps.setPendingFire({ owner: ref.owner, repo: ref.repo, issueNumber: ref.issueNumber, run, ...extra });
   try {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
   } catch (e) {
-    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, extra, redeferral);
+    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, extra, redeferral || alreadyDeferred);
     await deps.clearPendingFire();
     throw e;
   }
@@ -60,15 +61,23 @@ async function forgetAppliedOutcome(deps: Deps, run: string): Promise<void> {
 /** Whether a fire went out, or was rate-limited and is waiting for its alarm. */
 export type FireOutcome = "sent" | "deferred";
 
+/** Whether `run` is already deferred on this issue, so a second rate-limited
+ * fire of it needn't say so again. */
+async function deferredFor(deps: Deps, run: string): Promise<boolean> {
+  const pending = await deps.getPendingFire();
+  return pending?.run === run && pending.deferUntil !== undefined;
+}
+
 /** An unwatched fire (a discussion): no watchdog, but a rate-limited one is
  * still deferred, and disarmed again once it's out. */
 export async function fireUnwatched(deps: Deps, ref: IssueRef, run: string, redeferral = false): Promise<FireOutcome> {
   await forgetAppliedOutcome(deps, run);
+  const alreadyDeferred = await deferredFor(deps, run);
   await deps.clearPendingFire();
   try {
     await deps.fireRoutine(ref.owner, ref.repo, ref.issueNumber, run);
   } catch (e) {
-    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, { unwatched: true }, redeferral);
+    if (e instanceof FireRateLimited) return deferFire(deps, ref, run, e, { unwatched: true }, redeferral || alreadyDeferred);
     throw e;
   }
   return "sent";
@@ -82,7 +91,8 @@ export async function fireUnwatched(deps: Deps, ref: IssueRef, run: string, rede
  * removed without an event (the discussion one) is caught by the watchdog's
  * `stillWanted` check before it sends.
  *
- * Said once: a re-deferral at the alarm stays quiet. Every issue shares the
+ * Said once: a re-deferral at the alarm stays quiet, and so does a second
+ * fire of a run that is already deferred on the issue. Every issue shares the
  * repo's one routine, so each is nudged a few seconds apart (by its number)
  * instead of all re-tripping the limit at the same instant.
  */

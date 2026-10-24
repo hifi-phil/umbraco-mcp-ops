@@ -111,6 +111,23 @@ describe("a fire's watchdog is armed before the fire", () => {
     expect(deps.logTransition).toHaveBeenCalledWith(expect.objectContaining({ event: EVENTS.LABELLED_AI_READY, droppedReason: null }));
   });
 
+  it("a second rate-limited fire of a run already deferred on the issue is logged but not said again; another run is", async () => {
+    const retryAt = Date.parse("2026-10-21T19:24:57Z");
+    const deps = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_READY]),
+      fireRoutine: vi.fn(async () => Promise.reject(new FireRateLimited("rate-limited: 429", retryAt))),
+    });
+    const again = (deliveryId: string) => input({ deliveryId, payload: { action: "issues.labeled", label: { name: LABELS.AI_READY } } });
+    await coordinateWebhook(deps, again("d-1"));
+    await coordinateWebhook(deps, again("d-2"));
+    expect(deps.commentOnIssue).toHaveBeenCalledTimes(1);
+    expect(deps.logTransition).toHaveBeenCalledTimes(2);
+    expect(await deps.getPendingFire()).toMatchObject({ run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: retryAt + 22_000 });
+    await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 412, run: ROUTINES.MERGE_FLOW, deferUntil: 1000 });
+    await coordinateWebhook(deps, again("d-3"));
+    expect(deps.commentOnIssue).toHaveBeenCalledTimes(2);
+  });
+
   it("the alarm sends a deferred fire, watched again and no longer deferred; still limited, it defers again", async () => {
     const deps = fakeDeps({ getLabels: vi.fn(async () => [LABELS.AI_READY]) });
     await deps.setPendingFire({ owner: "hifi-phil", repo: "umbraco-mcp-ops", issueNumber: 7, run: ROUTINES.ISSUE_BUILD_LOOP, deferUntil: 1000 });
@@ -152,6 +169,17 @@ describe("a fire's watchdog is armed before the fire", () => {
     await coordinateWebhook(closed, input({ payload: { action: "issues.closed", issue: { state: "closed" } } }));
     expect(await closed.getPendingFire()).toBeNull();
     expect(closed.fireRoutine).not.toHaveBeenCalled();
+  });
+
+  it("a second rate-limited discussion fire is not said again", async () => {
+    const discuss = (deliveryId: string) => input({ deliveryId, payload: { action: "issues.labeled", label: { name: LABELS.AI_DISCUSSING } } });
+    const limited = fakeDeps({
+      getLabels: vi.fn(async () => [LABELS.AI_DISCUSSING]),
+      fireRoutine: vi.fn(async () => Promise.reject(new FireRateLimited("429", 5000))),
+    });
+    await coordinateWebhook(limited, discuss("d-1"));
+    await coordinateWebhook(limited, discuss("d-2"));
+    expect(limited.commentOnIssue).toHaveBeenCalledTimes(1);
   });
 
   it("an unwatched fire (a discussion) defers too, and is disarmed once it's out", async () => {
