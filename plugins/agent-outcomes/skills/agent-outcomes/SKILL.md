@@ -52,7 +52,7 @@ need the same two env vars, and without them only log:
   It never reports an outcome and infers nothing from a tool call's text.
 - `Notification` for a permission prompt (`report-early-end.sh`): **blocked**, naming the tool
   and the start of the command. The Worker comments at once.
-- `Stop` and `SessionEnd` (`report-early-end.sh`): **ended**, unless this session ran
+- `SessionEnd` (`report-early-end.sh`): **ended**, unless this session ran
   `post-outcome.sh`. The Worker then treats the run as the watchdog would on expiry.
 
 ## The rule

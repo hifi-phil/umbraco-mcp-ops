@@ -189,9 +189,14 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   esignal ended_twice "$(with_transcript "$(stop_event)" "$TRANSCRIPT" e1)" "$WORK/s15"
   expect_requests ended_once 0
 
-  # 17. A stop with no completion -> ended
+  # 17. A Stop (the main thread waiting on a background subagent) -> nothing
+  : >"$SERVER_LOG"
   esignal stopped "$(with_transcript "$(stop_event)" "$TRANSCRIPT" e2)" "$WORK/s17"
-  expect_last stop_ended '.body.signal.kind == "ended"'
+  expect_requests stop_is_not_ended 0
+
+  # 17b. With no endpoint the hooks still record the run, for post-outcome.sh
+  printf '%s' "$(with_transcript "$SKILL_CALL" "$TRANSCRIPT" noep)" | env AGENT_OUTCOMES_LOG="$WORK/noep.log" AGENT_OUTCOMES_STATE="$WORK/s17b" bash "$SCRIPT"
+  if [ -s "$WORK/s17b/last-run" ] && grep -q 'issue-build-loop hifi-phil umbraco-mcp-ops 412' "$WORK/s17b/last-run"; then echo "PASS [run_recorded_without_endpoint]"; pass=$((pass+1)); else echo "FAIL [run_recorded_without_endpoint]"; fail=$((fail+1)); fi
 
   # --- post-outcome.sh ---------------------------------------------------------
   # post <name> <state> <outcome> <json>: run it as a session whose transcript carries the run.

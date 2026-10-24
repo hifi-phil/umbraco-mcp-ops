@@ -161,8 +161,9 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     # The agent-outcomes hooks: report-completion.sh on PostToolUse (a heartbeat naming the
     # step, which pushes the Worker's watchdog back and is what an expiry quotes, so the
     # Worker can tell a run that never started from one that went quiet) and
-    # report-early-end.sh on Notification (a permission prompt: blocked) and on Stop and
-    # SessionEnd (ended, when the session reported no outcome). Outcomes themselves go
+    # report-early-end.sh on Notification (a permission prompt: blocked) and on
+    # SessionEnd (ended, when the session reported no outcome; not Stop, which fires each time
+    # the main thread waits on a background subagent). Outcomes themselves go
     # through the skill's post-outcome.sh. They send only when the environment sets
     # AGENT_OUTCOMES_ENDPOINT and AGENT_OUTCOMES_TOKEN; otherwise they only log.
     ao="$(find "$OPS_DIR/plugins" -maxdepth 1 -type d -name agent-outcomes 2>/dev/null | head -1)"
@@ -190,7 +191,6 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
         }
         register_ao_hook PostToolUse report-completion.sh ""
         register_ao_hook Notification report-early-end.sh "permission_prompt"
-        register_ao_hook Stop report-early-end.sh ""
         register_ao_hook SessionEnd report-early-end.sh ""
       else
         echo "WARN: jq missing — agent-outcomes hooks copied but NOT registered"

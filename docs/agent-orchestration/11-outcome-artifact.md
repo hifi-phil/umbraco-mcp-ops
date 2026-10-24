@@ -195,8 +195,9 @@ context exits non-zero and sends nothing.
 
 `report-completion.sh` is heartbeats only: it no longer greps tool calls for the
 marker, so nothing is inferred from a tool call's text. `report-early-end.sh`
-adds `Notification` (permission prompt) -> `blocked` and `Stop`/`SessionEnd` ->
-`ended`, the latter only when the session ran no `post-outcome.sh`.
+adds `Notification` (permission prompt) -> `blocked` and `SessionEnd` ->
+`ended` (not `Stop`: it fires whenever the main thread waits on a background
+subagent), only when the session ran no `post-outcome.sh`.
 `cloud-skill-sync` installs the script's permission and the hooks.
 
 **What this doesn't fix:** the comment's JSON is still hand-typed by the

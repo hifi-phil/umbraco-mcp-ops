@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Notification, Stop and SessionEnd hook: tells the agent-orchestration Worker
+# Notification and SessionEnd hook: tells the agent-orchestration Worker
 # a loop's session has stopped short, by its own signal to POST /routine-signal.
 # The only signal a dead session sends: without it the Worker finds out when
 # the watchdog expires, up to an hour later.
@@ -8,11 +8,11 @@
 # - Notification, for a permission prompt (matcher: permission_prompt): the
 #   session is waiting on an answer nobody will give.
 #   {kind:"blocked", detail:"<tool> <first 120 chars of what it asked>"}
-# - Stop / SessionEnd: the session stopped.
+# - SessionEnd: the session ended. (Not Stop: that fires whenever the main thread ends a turn,
+#   e.g. to wait on a background subagent, with the run still going.)
 #   {kind:"ended", detail:"<reason>"}
 #   Only if this session reported no outcome (post-outcome.sh leaves a state
-#   file when it does), and once per run: the second of Stop and SessionEnd,
-#   or a Stop per turn, sends nothing.
+#   file when it does), and once per run.
 #
 # Which run this is comes from the session's first prompt (signal-lib.sh); a
 # session the Worker didn't fire sends nothing. The detail is quoted on GitHub,
@@ -34,9 +34,10 @@ command -v jq >/dev/null 2>&1 || { log "missing jq — skipping"; exit 0; }
 EVENT="$(cat)"
 . "$(dirname "${BASH_SOURCE[0]}")/signal-lib.sh" || { log "signal-lib.sh missing — skipping"; exit 0; }
 
-[ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] || exit 0
+# The run is looked up first, endpoint or not: post-outcome.sh reads the cache this writes.
 CTX="$(run_context)"
 [ -n "$CTX" ] || exit 0
+[ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] || exit 0
 ROUTINE="$(printf '%s' "$CTX" | awk '{print $1}')"
 ISSUE="$(printf '%s' "$CTX" | awk '{print $4}')"
 KEY="$(run_key "$CTX")"
@@ -77,17 +78,14 @@ case "$(printf '%s' "$EVENT" | jq -r '.hook_event_name // empty' 2>/dev/null)" i
       '{kind:"blocked", routine:$routine, issue:$issue, detail:$detail}')"
     send "$SIGNAL" "blocked ($TOOL)" "$CTX"
     ;;
-  Stop|SessionEnd)
+  SessionEnd)
     [ -f "$STATE/reported-$KEY" ] && exit 0
     [ -f "$STATE/ended-$KEY" ] && exit 0
     REASON="$(printf '%s' "$EVENT" | jq -r '.reason // empty' 2>/dev/null | one_line 80)"
-    case "$(printf '%s' "$EVENT" | jq -r '.hook_event_name' 2>/dev/null)" in
-      Stop) DETAIL="the session stopped without reporting an outcome" ;;
-      *) DETAIL="the session ended${REASON:+ ($REASON)} without reporting an outcome" ;;
-    esac
+    DETAIL="the session ended${REASON:+ ($REASON)} without reporting an outcome"
     SIGNAL="$(jq -cn --arg routine "$ROUTINE" --argjson issue "$ISSUE" --arg detail "$DETAIL" \
       '{kind:"ended", routine:$routine, issue:$issue, detail:$detail}')"
-    # The once-per-run marker only once it went out: a failed send leaves the other of Stop/SessionEnd to retry.
+    # The once-per-run marker only once it went out: a failed send leaves a later attempt free to retry.
     send "$SIGNAL" "ended" "$CTX" && { : >"$STATE/ended-$KEY" 2>/dev/null || true; }
     ;;
   *) log "unhandled hook event: $(printf '%s' "$EVENT" | head -c 200)" ;;

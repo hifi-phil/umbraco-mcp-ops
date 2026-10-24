@@ -40,10 +40,11 @@ EVENT="$(cat)"
 . "$(dirname "${BASH_SOURCE[0]}")/signal-lib.sh" || { log "signal-lib.sh missing — skipping"; exit 0; }
 
 # --- A heartbeat -------------------------------------------------------------
-# Cheap exits first: no endpoint, or a heartbeat sent too recently.
-[ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] || exit 0
+# The run is looked up first, endpoint or not: post-outcome.sh reads the cache this writes.
+# Then the cheap exits: no endpoint, or a heartbeat sent too recently.
 CTX="$(run_context)"
 [ -n "$CTX" ] || exit 0
+[ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] || exit 0
 
 BEAT="$STATE/beat-$(printf '%s' "$CTX" | tr -c 'A-Za-z0-9_-' '_')"
 NOW="$(date +%s)"
