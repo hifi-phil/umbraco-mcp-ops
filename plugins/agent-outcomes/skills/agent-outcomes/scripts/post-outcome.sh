@@ -47,6 +47,7 @@ JSON="$(printf '%s' "$JSON" | jq -c .)"
 # the cache the hooks keep, an explicit transcript, then the newest transcript.
 LINE_RE='route=[a-z-]+ repo=[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+ number=[0-9]+'
 CTX=""
+SOURCE=""
 parse_line() {
   local line="$1"
   printf '%s %s %s %s\n' \
@@ -57,16 +58,10 @@ parse_line() {
 }
 if [ -n "${AGENT_OUTCOMES_TRANSCRIPT:-}" ] && [ -f "$AGENT_OUTCOMES_TRANSCRIPT" ]; then
   line="$(grep -o -m1 -E "$LINE_RE" "$AGENT_OUTCOMES_TRANSCRIPT" 2>/dev/null | head -n1)"
-  [ -n "$line" ] && CTX="$(parse_line "$line")"
+  [ -n "$line" ] && { CTX="$(parse_line "$line")"; SOURCE="transcript"; }
 fi
 if [ -z "$CTX" ] && [ -f "$STATE/last-run" ] && [ -n "$(find "$STATE/last-run" -mmin -360 2>/dev/null)" ]; then
-  CTX="$(cat "$STATE/last-run")"
-fi
-if [ -z "$CTX" ]; then
-  for t in $(ls -t "${HOME}"/.claude/projects/*/*.jsonl 2>/dev/null | head -n 5); do
-    line="$(grep -o -m1 -E "$LINE_RE" "$t" 2>/dev/null | head -n1)"
-    if [ -n "$line" ]; then CTX="$(parse_line "$line")"; break; fi
-  done
+  CTX="$(cat "$STATE/last-run")"; SOURCE="the last run this container saw"
 fi
 [ -n "$CTX" ] || die "no run context (route=… repo=… number=…) found in this session — nothing sent"
 
@@ -74,17 +69,18 @@ ROUTINE="$(printf '%s' "$CTX" | awk '{print $1}')"
 OWNER="$(printf '%s' "$CTX" | awk '{print $2}')"
 REPO="$(printf '%s' "$CTX" | awk '{print $3}')"
 ISSUE="$(printf '%s' "$CTX" | awk '{print $4}')"
+echo "post-outcome.sh: reporting for $ROUTINE $OWNER/$REPO#$ISSUE (from ${SOURCE})" >&2
 mkdir -p "$STATE" 2>/dev/null || true
 printf '%s' "$CTX" >"$STATE/last-run" 2>/dev/null || true
 
 # --- The authoritative POST ----------------------------------------------------
+sent=0
 if [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] && command -v curl >/dev/null 2>&1; then
   BODY="$(jq -cn --arg owner "$OWNER" --arg repo "$REPO" --arg routine "$ROUTINE" \
     --argjson issue "$ISSUE" --argjson outcome "$JSON" \
     '{owner:$owner, repo:$repo, signal:{kind:"outcome", routine:$routine, issue:$issue, outcome:$outcome}}')"
   auth=()
   [ -n "${AGENT_OUTCOMES_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${AGENT_OUTCOMES_TOKEN}")
-  sent=0
   for attempt in 1 2; do
     if curl -fsS -m 10 -X POST -H 'Content-Type: application/json' ${auth[@]+"${auth[@]}"} \
          -d "$BODY" "$AGENT_OUTCOMES_ENDPOINT" >>"$LOG" 2>&1; then
@@ -100,11 +96,13 @@ if [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] && command -v curl >/dev/null 2>&1; the
   fi
 else
   log "AGENT_OUTCOMES_ENDPOINT not set (or no curl) — outcome $OUTCOME printed, not sent"
+  echo "post-outcome.sh: AGENT_OUTCOMES_ENDPOINT unset or curl missing; nothing sent, post the comment below" >&2
 fi
 
-# The run has reported (the comment below carries it even if the POST didn't
-# get through): the Stop/SessionEnd hooks send no "ended" for it.
-touch "$STATE/reported-$(printf '%s' "$CTX" | tr -c 'A-Za-z0-9_-' '_')" 2>/dev/null || true
+# Only a sent outcome stops the Stop/SessionEnd hooks sending "ended": if the
+# POST failed, the run is reported only if the session posts the comment below.
+[ "$sent" -eq 1 ] && touch "$STATE/reported-$(printf '%s' "$CTX" | tr -c 'A-Za-z0-9_-' '_')" 2>/dev/null
+true
 
 # --- The comment body ------------------------------------------------------------
 printf '<!-- agent-outcome:%s -->\n```json\n%s\n```\n' "$ROUTINE" "$JSON"

@@ -166,7 +166,7 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     # through the skill's post-outcome.sh. They send only when the environment sets
     # AGENT_OUTCOMES_ENDPOINT and AGENT_OUTCOMES_TOKEN; otherwise they only log.
     ao="$(find "$OPS_DIR/plugins" -maxdepth 1 -type d -name agent-outcomes 2>/dev/null | head -1)"
-    if [ -n "$ao" ] && [ -f "$ao/hooks/report-completion.sh" ] && [ -f "$ao/hooks/report-early-end.sh" ]; then
+    if [ -n "$ao" ] && [ -f "$ao/hooks/report-completion.sh" ] && [ -f "$ao/hooks/report-early-end.sh" ] && [ -f "$ao/hooks/signal-lib.sh" ]; then
       AO_HOOKS="$HOME/.claude/agent-outcomes-hooks"
       rm -rf "$AO_HOOKS"; mkdir -p "$AO_HOOKS"
       cp "$ao"/hooks/*.sh "$AO_HOOKS/"; chmod +x "$AO_HOOKS"/*.sh

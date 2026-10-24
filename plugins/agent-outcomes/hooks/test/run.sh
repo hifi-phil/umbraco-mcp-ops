@@ -166,6 +166,12 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   esignal no_route_end "$(with_transcript "$(stop_event)" "$NO_ROUTE" n1)" "$WORK/s13b"
   expect_requests no_route_end_nothing 0
 
+  # 13c. A credential in the command never goes out
+  : >"$SERVER_LOG"
+  SECRET="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:"curl -H \"Authorization: Bearer s3cretvalue\" https://u:pw0rd@x.io/ log_token=eyJabc.def GH=ghp_0123456789abcdef0123456789abcdef0123"}}')"
+  esignal secret "$(with_transcript "$SECRET" "$TRANSCRIPT" b3)" "$WORK/s13c"
+  expect_last secrets_redacted '.body.signal.kind == "blocked" and (.body.signal.detail | test("s3cretvalue|pw0rd|eyJabc|ghp_0123") | not)'
+
   # 14. Any other notification (an idle prompt) -> nothing
   : >"$SERVER_LOG"
   IDLE="$(jq -n '{hook_event_name:"Notification", notification_type:"idle_prompt", message:"Claude is waiting for your input"}')"

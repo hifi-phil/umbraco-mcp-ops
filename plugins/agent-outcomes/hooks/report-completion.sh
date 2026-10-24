@@ -37,7 +37,7 @@ command -v jq >/dev/null 2>&1 || { log "missing jq — skipping"; exit 0; }
 
 EVENT="$(cat)"
 
-. "$(dirname "${BASH_SOURCE[0]}")/signal-lib.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/signal-lib.sh" || { log "signal-lib.sh missing — skipping"; exit 0; }
 
 # --- A heartbeat -------------------------------------------------------------
 # Cheap exits first: no endpoint, or a heartbeat sent too recently.

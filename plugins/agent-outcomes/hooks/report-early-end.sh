@@ -16,8 +16,8 @@
 #
 # Which run this is comes from the session's first prompt (signal-lib.sh); a
 # session the Worker didn't fire sends nothing. The detail is quoted on GitHub,
-# so it is cut short and never carries more than the tool's name and the
-# start of what it asked.
+# so it is cut short and redacted (credentials masked), and never carries more
+# than the tool's name and the start of what it asked.
 #
 # Env: AGENT_OUTCOMES_ENDPOINT / _TOKEN / _STATE / _LOG, as report-completion.sh.
 set -uo pipefail
@@ -32,7 +32,7 @@ log() {
 command -v jq >/dev/null 2>&1 || { log "missing jq — skipping"; exit 0; }
 
 EVENT="$(cat)"
-. "$(dirname "${BASH_SOURCE[0]}")/signal-lib.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/signal-lib.sh" || { log "signal-lib.sh missing — skipping"; exit 0; }
 
 [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] || exit 0
 CTX="$(run_context)"
@@ -41,6 +41,17 @@ ROUTINE="$(printf '%s' "$CTX" | awk '{print $1}')"
 ISSUE="$(printf '%s' "$CTX" | awk '{print $4}')"
 KEY="$(run_key "$CTX")"
 mkdir -p "$STATE" 2>/dev/null || true
+
+# redact: stdin with what looks like a credential masked. The detail is quoted
+# on GitHub, and a command can carry a token (a URL's userinfo, an
+# Authorization header, key=value, a log_token, a long opaque string).
+redact() {
+  sed -E \
+    -e 's#(://)[^/@[:space:]]+@#\1***@#g' \
+    -e 's/([Bb]earer|[Bb]asic|[Tt]oken)[[:space:]:=]+[^[:space:]]+/\1 ***/g' \
+    -e 's/([A-Za-z_-]*([Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo]?[Rr]?[Dd]|[Kk][Ee][Yy]))=[^[:space:]]+/\1=***/g' \
+    -e 's#[A-Za-z0-9_+/=.-]{32,}#***#g'
+}
 
 # one_line <max>: stdin squeezed to one line, cut to <max> characters.
 one_line() { tr -s '[:space:]' ' ' | cut -c "1-$1" | sed -E 's/^ +| +$//g'; }
@@ -60,7 +71,7 @@ case "$(printf '%s' "$EVENT" | jq -r '.hook_event_name // empty' 2>/dev/null)" i
     if [ -z "$TOOL" ]; then
       TOOL="$(printf '%s' "$MSG" | sed -nE 's/.*permission to (use|run) ([^ ]+).*/\2/p' | head -n1)"
     fi
-    CMD="$(printf '%s' "$EVENT" | jq -r '(.tool_input // {}) | (.command // .file_path // .path // .url // .description // empty) | tostring' 2>/dev/null | one_line 120)"
+    CMD="$(printf '%s' "$EVENT" | jq -r '(.tool_input // {}) | (.command // .file_path // .path // .url // .description // empty) | tostring' 2>/dev/null | redact | one_line 120)"
     DETAIL="$(printf '%s %s' "${TOOL:-a tool}" "$CMD" | one_line 140)"
     SIGNAL="$(jq -cn --arg routine "$ROUTINE" --argjson issue "$ISSUE" --arg detail "$DETAIL" \
       '{kind:"blocked", routine:$routine, issue:$issue, detail:$detail}')"
@@ -74,10 +85,11 @@ case "$(printf '%s' "$EVENT" | jq -r '.hook_event_name // empty' 2>/dev/null)" i
       Stop) DETAIL="the session stopped without reporting an outcome" ;;
       *) DETAIL="the session ended${REASON:+ ($REASON)} without reporting an outcome" ;;
     esac
-    : >"$STATE/ended-$KEY" 2>/dev/null || true
     SIGNAL="$(jq -cn --arg routine "$ROUTINE" --argjson issue "$ISSUE" --arg detail "$DETAIL" \
       '{kind:"ended", routine:$routine, issue:$issue, detail:$detail}')"
-    send "$SIGNAL" "ended" "$CTX"
+    # The once-per-run marker only once it went out: a failed send leaves the other of Stop/SessionEnd to retry.
+    send "$SIGNAL" "ended" "$CTX" && { : >"$STATE/ended-$KEY" 2>/dev/null || true; }
     ;;
+  *) log "unhandled hook event: $(printf '%s' "$EVENT" | head -c 200)" ;;
 esac
 exit 0

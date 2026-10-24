@@ -38,14 +38,15 @@ run_context() {
 run_key() { printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_'; }
 
 # send <signal-json> <what> <ctx>: POST {owner, repo, signal} to the Worker.
+# Returns non-zero when it was not sent.
 send() {
   local signal="$1" what="$2" ctx owner repo body
   ctx="$3"
   owner="$(printf '%s' "$ctx" | awk '{print $2}')"
   repo="$(printf '%s' "$ctx" | awk '{print $3}')"
   body="$(jq -cn --arg owner "$owner" --arg repo "$repo" --argjson signal "$signal" '{owner:$owner, repo:$repo, signal:$signal}' 2>/dev/null)"
-  [ -n "$body" ] || { log "failed to assemble $what payload — skipping"; return; }
-  command -v curl >/dev/null 2>&1 || { log "curl not available — cannot send $what"; return; }
+  [ -n "$body" ] || { log "failed to assemble $what payload — skipping"; return 1; }
+  command -v curl >/dev/null 2>&1 || { log "curl not available — cannot send $what"; return 1; }
   local auth=()
   [ -n "${AGENT_OUTCOMES_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${AGENT_OUTCOMES_TOKEN}")
   # ${auth[@]+…}: an empty array is "unbound" under set -u in bash 3.2 (macOS).
@@ -53,5 +54,6 @@ send() {
     log "sent $what"
   else
     log "POST $what to $AGENT_OUTCOMES_ENDPOINT failed"
+    return 1
   fi
 }
