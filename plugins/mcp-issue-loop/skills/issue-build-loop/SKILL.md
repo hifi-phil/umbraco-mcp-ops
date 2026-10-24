@@ -80,8 +80,9 @@ They catch what most reviews send back for:
    a removed step or flag, a phrase for old behaviour (e.g. "review and report"). Then
    `git grep -niF -e '<term>'` for each one (the whole tracked checkout, the term taken
    literally) and read **every** hit, not only those near your edit: fix it, or confirm it's
-   still true. For a multi-word phrase, grep its rarest single word too, since wrapped text
-   splits phrases across lines. Leftovers far from the diff are what reviews keep finding.
+   still true. For a multi-word phrase, also run `git grep -niF -A1 -e '<rarest word>'` and
+   act only on hits where the phrase continues onto the next line, since wrapped text splits
+   phrases across lines. Leftovers far from the diff are what reviews keep finding.
 2. **Tests that can fail.** For code with a test suite (not prose or skill text), break each
    new guard, branch or condition locally (delete or invert it) and run its tests: one must
    fail. If none does, add the test. Restore the code and check `git diff` shows no leftover.
