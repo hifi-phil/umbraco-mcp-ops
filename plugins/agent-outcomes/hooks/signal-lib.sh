@@ -8,7 +8,11 @@
 # per session; the last run found is a fallback for a subagent's transcript,
 # which may not carry the line (a routine container runs one fire). A session
 # without one (an interactive session, say) never sends anything.
+# `run_context strict` skips that last-run fallback: the signals that change
+# the run's state (blocked, ended) must come from a session that knows its run,
+# not from any other session in the container (a nested `claude -p`, say).
 run_context() {
+  local strict="${1:-}"
   local session transcript cache line
   session="$(printf '%s' "$EVENT" | jq -r '.session_id // "unknown"' 2>/dev/null)"
   cache="$STATE/run-$(printf '%s' "$session" | tr -c 'A-Za-z0-9_-' '_')"
@@ -29,7 +33,7 @@ run_context() {
     return
   fi
   # A transcript without the line: the last run this container saw, if recent.
-  if [ -f "$STATE/last-run" ] && [ -n "$(find "$STATE/last-run" -mmin -360 2>/dev/null)" ]; then
+  if [ "$strict" != strict ] && [ -f "$STATE/last-run" ] && [ -n "$(find "$STATE/last-run" -mmin -360 2>/dev/null)" ]; then
     cat "$STATE/last-run"
   fi
 }

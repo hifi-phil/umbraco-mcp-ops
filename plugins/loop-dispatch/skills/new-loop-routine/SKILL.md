@@ -57,7 +57,7 @@ Never use `fable`. Never put secrets in the prompt or config.
 The `agent-outcomes` hook runs after every tool call in the routine. In a session the
 Worker fired, it sends the Worker's `POST /routine-signal`:
 - a heartbeat naming the step, at most once a minute
-- a completion when the loop posts its outcome
+- blocked on a permission prompt, and ended when the session stops without an outcome (a loop reports its outcome through `post-outcome.sh`, not the hook)
 
 A session the Worker didn't fire sends nothing, so one environment can serve Worker repos
 and caller-workflow repos alike.

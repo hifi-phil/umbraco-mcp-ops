@@ -197,17 +197,15 @@ context exits non-zero and sends nothing.
 marker, so nothing is inferred from a tool call's text. `report-early-end.sh`
 adds `Notification` (permission prompt) -> `blocked` and `SessionEnd` ->
 `ended` (not `Stop`: it fires whenever the main thread waits on a background
-subagent), only when the session ran no `post-outcome.sh`.
+subagent), only when the run delivered no outcome (`post-outcome.sh`).
 `cloud-skill-sync` installs the script's permission and the hooks.
 
-**What this doesn't fix:** the comment's JSON is still hand-typed by the
-model into a fence, which is exactly the kind of thing that can go quietly
-wrong — a mangled fence, a typo'd field, and both `translate()` and the
-hook just skip it with nothing to show for it (the hook's own shape check
-catches this gracefully rather than forwarding garbage, but that's
-damage control, not a fix). Having `agent-outcomes` construct the comment
-itself from typed arguments, rather than leaving the model to hand-type
-it, is still a separate, unbuilt improvement.
+**What this fixes:** the marker comment is no longer hand-typed.
+`post-outcome.sh` validates the JSON, signals the Worker directly, and prints
+the exact comment body, so a mangled fence or a typo'd field is rejected
+before anything is sent. The model still writes the outcome's JSON argument,
+but `post-outcome.sh` checks that it parses and that its `outcome` matches
+the name given.
 
 ## Open questions this raises
 
@@ -215,10 +213,9 @@ it, is still a separate, unbuilt improvement.
   locally is unconfirmed** — see [08-open-questions.md](08-open-questions.md).
   Everything above is verified against fixture events run locally; nothing
   has exercised it against a real cloud routine session yet.
-- **The comment's JSON is still hand-typed, not script-constructed** — see
-  above. Worth a point of visibility once something is actually consuming
-  the fast path (a reconciliation-sweep-style check: "this issue's hook
-  fired but the shape was invalid").
+- **The outcome's JSON argument is still typed by the model**, though
+  `post-outcome.sh` validates it (see above). Worth a point of visibility
+  once something is actually consuming the fast path.
 - `pr` in the `build_succeeded` payload isn't used by anything downstream
   yet (no rule consumes it) — kept because the design docs' original
   sketch implied the outcome fact should carry a branch/PR reference; if

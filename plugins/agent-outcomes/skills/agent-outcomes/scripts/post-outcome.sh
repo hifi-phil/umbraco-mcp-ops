@@ -2,8 +2,9 @@
 #
 # post-outcome.sh <outcome> '<json>' — how a loop reports its outcome.
 #
-# 1. Reads the run (`route=<routine> repo=<owner>/<repo> number=<n>`) the same
-#    way hooks/report-completion.sh does: from the session's own first prompt.
+# 1. Finds the run (`route=<routine> repo=<owner>/<repo> number=<n>`): the
+#    explicit transcript if given, else the last run the hooks recorded, else
+#    the newest session transcripts (the fire text is the session's first prompt).
 # 2. Validates that <json> parses.
 # 3. POSTs {kind:"outcome", routine, issue, outcome} to the Worker's
 #    /routine-signal (AGENT_OUTCOMES_ENDPOINT, bearer AGENT_OUTCOMES_TOKEN),
@@ -43,8 +44,9 @@ NAME="$(printf '%s' "$JSON" | jq -r '.outcome // empty')"
 JSON="$(printf '%s' "$JSON" | jq -c .)"
 
 # --- Which run is this? ------------------------------------------------------
-# The fire text is the session's first prompt. Look for it where it's found:
-# the cache the hooks keep, an explicit transcript, then the newest transcript.
+# The fire text is the session's first prompt. Look for it in order: an
+# explicit transcript, the last run the hooks recorded (recent), then the
+# newest session transcripts.
 LINE_RE='route=[a-z-]+ repo=[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+ number=[0-9]+'
 CTX=""
 SOURCE=""
@@ -62,6 +64,15 @@ if [ -n "${AGENT_OUTCOMES_TRANSCRIPT:-}" ] && [ -f "$AGENT_OUTCOMES_TRANSCRIPT" 
 fi
 if [ -z "$CTX" ] && [ -f "$STATE/last-run" ] && [ -n "$(find "$STATE/last-run" -mmin -360 2>/dev/null)" ]; then
   CTX="$(cat "$STATE/last-run")"; SOURCE="the last run this container saw"
+fi
+if [ -z "$CTX" ]; then
+  # Hooks not registered, or no tool call has run one yet: scan the newest transcripts.
+  # shellcheck disable=SC2012
+  for t in $(ls -t "${HOME}"/.claude/projects/*/*.jsonl 2>/dev/null | head -n 5); do
+    [ -n "$(find "$t" -mmin -360 2>/dev/null)" ] || continue
+    line="$(grep -o -m1 -E "$LINE_RE" "$t" 2>/dev/null | head -n1)"
+    [ -n "$line" ] && { CTX="$(parse_line "$line")"; SOURCE="a recent session transcript"; break; }
+  done
 fi
 [ -n "$CTX" ] || die "no run context (route=… repo=… number=…) found in this session — nothing sent"
 
@@ -99,7 +110,7 @@ else
   echo "post-outcome.sh: AGENT_OUTCOMES_ENDPOINT unset or curl missing; nothing sent, post the comment below" >&2
 fi
 
-# Only a sent outcome stops the Stop/SessionEnd hooks sending "ended": if the
+# Only a sent outcome stops the SessionEnd hook sending "ended": if the
 # POST failed, the run is reported only if the session posts the comment below.
 [ "$sent" -eq 1 ] && touch "$STATE/reported-$(printf '%s' "$CTX" | tr -c 'A-Za-z0-9_-' '_')" 2>/dev/null
 true

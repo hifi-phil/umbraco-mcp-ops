@@ -108,7 +108,6 @@ re-checks a gate that still reads "CI running".
 - The real `agent-outcomes` hook (`driver/hook.ts` runs it, as a routine
   session would, against the deployed Worker):
   1. Its heartbeat is quoted by the expiry.
-  2. Its completion signal cancels the watchdog.
 
 **The audit**, after every run, over every delivery the orchestrator answered:
 - none errored

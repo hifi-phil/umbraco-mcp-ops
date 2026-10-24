@@ -577,25 +577,6 @@ export const scenarios: Scenario[] = [
       }),
   },
   {
-    name: "real hook: an outcome comment's completion signal cancels the watchdog",
-    timeoutMs: STUCK_WAIT + MIN,
-    run: () =>
-      scoped(async (t) => {
-        const issue = t.n(await openIssue("Hook completion", "The real hook signals completion; nothing else reports.", "silent"));
-        await addLabel(issue, LABELS.AI_READY);
-        await sleep(10_000);
-        const log = await runHook("issue-build-loop", issue, {
-          tool_name: "mcp__github__add_issue_comment",
-          tool_input: { body: outcomeComment("issue-build-loop", { outcome: "build_blocked", reason: "e2e: hook completion" }) },
-        });
-        expect(log, "the hook sent its completion").toContain("sent completion");
-        await sleep((WATCHDOG_MINUTES + 1) * MIN);
-        const s = await snapshot(issue);
-        expectLabels(s, issue, LABELS.AI_READY);
-        expect(hasComment(s, "hasn't reported back"), "no watchdog comment").toBe(false);
-      }),
-  },
-  {
     name: "sweep: a fire that never got out -> re-fired once idle twice its timeout",
     timeoutMs: (2 * WATCHDOG_MINUTES + 4) * MIN,
     run: () =>

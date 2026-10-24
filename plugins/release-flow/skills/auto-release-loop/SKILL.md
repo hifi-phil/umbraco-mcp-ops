@@ -71,14 +71,14 @@ of their squash subject (a commit with no suffix is counted, not named). Commits
   `v<version>` is tagged and released and `<main>` is merged back into `<dev>`; post the Slack
   note only if one is due; and close this issue). Before commenting, work out and state in the
   comment whether a Slack note is due (by `release-publish` step 2's rules) and to which channel, and whether the repo's own
-  automation tags and releases on merge; don't cite skill steps or `CLAUDE.md` in it. Append the required
-  `release_blocked` artifact (`reason` = the comment's first line). No `release_published` fires after a manual ship, so the orchestrator never
+  automation tags and releases on merge; don't cite skill steps or `CLAUDE.md` in it. Report the required
+  `release_blocked` outcome through the `agent-outcomes` script and append the body it prints (`reason` = the comment's first line). No `release_published` fires after a manual ship, so the orchestrator never
   closes the open `ready-for-release` issues: say in the comment that a manual ship needs those
   closed by hand.
 
 The final comment (the `release_approved` one) repeats the
 re-run line in one line. If only one of the branch and its open PR exists, comment on the
-issue and stop (post the `release_blocked` artifact as in the "Any
+issue and stop (report `release_blocked` through the script as in the "Any
 missing" case), never guess. With neither, do items 1-3 below as written.
 
 1. From up-to-date `<dev>`, cut `release/<version>`.

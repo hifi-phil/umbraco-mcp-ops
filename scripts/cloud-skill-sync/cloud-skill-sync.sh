@@ -165,7 +165,7 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
     # SessionEnd (ended, when the session reported no outcome; not Stop, which fires each time
     # the main thread waits on a background subagent). Outcomes themselves go
     # through the skill's post-outcome.sh. They send only when the environment sets
-    # AGENT_OUTCOMES_ENDPOINT and AGENT_OUTCOMES_TOKEN; otherwise they only log.
+    # AGENT_OUTCOMES_ENDPOINT and AGENT_OUTCOMES_TOKEN; otherwise they send nothing.
     ao="$(find "$OPS_DIR/plugins" -maxdepth 1 -type d -name agent-outcomes 2>/dev/null | head -1)"
     if [ -n "$ao" ] && [ -f "$ao/hooks/report-completion.sh" ] && [ -f "$ao/hooks/report-early-end.sh" ] && [ -f "$ao/hooks/signal-lib.sh" ]; then
       AO_HOOKS="$HOME/.claude/agent-outcomes-hooks"
@@ -195,7 +195,7 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
       else
         echo "WARN: jq missing — agent-outcomes hooks copied but NOT registered"
       fi
-      [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] || echo "NOTE: AGENT_OUTCOMES_ENDPOINT isn't set in this environment: the agent-outcomes hooks will only log"
+      [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] || echo "NOTE: AGENT_OUTCOMES_ENDPOINT isn't set in this environment: the agent-outcomes hooks will send nothing"
     else
       echo "NOT FOUND in source: agent-outcomes hooks"
     fi

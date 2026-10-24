@@ -11,11 +11,11 @@
 # - SessionEnd: the session ended. (Not Stop: that fires whenever the main thread ends a turn,
 #   e.g. to wait on a background subagent, with the run still going.)
 #   {kind:"ended", detail:"<reason>"}
-#   Only if this session reported no outcome (post-outcome.sh leaves a state
-#   file when it does), and once per run.
+#   Only if this run delivered no outcome (post-outcome.sh leaves a state
+#   file when its POST went out), and once per run.
 #
-# Which run this is comes from the session's first prompt (signal-lib.sh); a
-# session the Worker didn't fire sends nothing. The detail is quoted on GitHub,
+# Which run this is comes from the session's own first prompt (signal-lib.sh,
+# no fallback to another session's run); a session the Worker didn't fire sends nothing. The detail is quoted on GitHub,
 # so it is cut short and redacted (credentials masked), and never carries more
 # than the tool's name and the start of what it asked.
 #
@@ -35,7 +35,8 @@ EVENT="$(cat)"
 . "$(dirname "${BASH_SOURCE[0]}")/signal-lib.sh" || { log "signal-lib.sh missing — skipping"; exit 0; }
 
 # The run is looked up first, endpoint or not: post-outcome.sh reads the cache this writes.
-CTX="$(run_context)"
+# Strict: blocked and ended change the run's state, so no last-run fallback.
+CTX="$(run_context strict)"
 [ -n "$CTX" ] || exit 0
 [ -n "${AGENT_OUTCOMES_ENDPOINT:-}" ] || exit 0
 ROUTINE="$(printf '%s' "$CTX" | awk '{print $1}')"

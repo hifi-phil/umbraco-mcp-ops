@@ -163,8 +163,16 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
 
   # 13b. A session with no route line -> an end sends nothing either
   : >"$SERVER_LOG"
-  esignal no_route_end "$(with_transcript "$(stop_event)" "$NO_ROUTE" n1)" "$WORK/s13b"
+  esignal no_route_end "$(with_transcript "$(end_event)" "$NO_ROUTE" n1)" "$WORK/s13b"
   expect_requests no_route_end_nothing 0
+
+  # 13d. ...even when the container's last run is recent: another session's end
+  #      (a nested `claude -p`) must not report the live run as ended or blocked.
+  : >"$SERVER_LOG"
+  mkdir -p "$WORK/s13d"; printf 'issue-build-loop hifi-phil umbraco-mcp-ops 412\n' >"$WORK/s13d/last-run"
+  esignal no_route_end_lastrun "$(with_transcript "$(end_event)" "$NO_ROUTE" n2)" "$WORK/s13d"
+  esignal no_route_block_lastrun "$(with_transcript "$PROMPT" "$NO_ROUTE" n3)" "$WORK/s13d"
+  expect_requests no_route_lastrun_nothing 0
 
   # 13c. A credential in the command never goes out
   : >"$SERVER_LOG"
@@ -184,9 +192,9 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   expect_last session_end_ended '.body.signal.kind == "ended" and .body.signal.issue == 412
     and (.body.signal.detail | contains("prompt_input_exit"))'
 
-  # 16. ...once: a Stop after it sends nothing
+  # 16. ...once: a second SessionEnd for the run sends nothing
   : >"$SERVER_LOG"
-  esignal ended_twice "$(with_transcript "$(stop_event)" "$TRANSCRIPT" e1)" "$WORK/s15"
+  esignal ended_twice "$(with_transcript "$(end_event)" "$TRANSCRIPT" e1)" "$WORK/s15"
   expect_requests ended_once 0
 
   # 17. A Stop (the main thread waiting on a background subagent) -> nothing
@@ -230,6 +238,23 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   if [ "$RC" -ne 0 ] && [ -z "$OUT" ]; then echo "PASS [outcome_no_run]"; pass=$((pass+1)); else echo "FAIL [outcome_no_run]: rc=$RC"; fail=$((fail+1)); fi
   expect_requests outcome_no_run_nothing_sent 0
 
+  # 20b. With no explicit transcript, the run recorded by the heartbeat hook is found
+  : >"$SERVER_LOG"
+  signal hb_record "$(with_transcript "$SKILL_CALL" "$TRANSCRIPT" rec)" "$WORK/s20b"
+  : >"$SERVER_LOG"
+  env AGENT_OUTCOMES_LOG="$WORK/po_lastrun.log" AGENT_OUTCOMES_STATE="$WORK/s20b" \
+    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" AGENT_OUTCOMES_TOKEN="tok" \
+    bash "$POST_OUTCOME" build_succeeded '{"outcome":"build_succeeded","pr":5}' >/dev/null 2>&1
+  expect_last outcome_from_last_run '.body.signal.routine == "issue-build-loop" and .body.signal.issue == 412'
+
+  # 20c. With neither, the newest recent session transcript is scanned
+  mkdir -p "$WORK/home20c/.claude/projects/p"; cp "$TRANSCRIPT" "$WORK/home20c/.claude/projects/p/s.jsonl"
+  : >"$SERVER_LOG"
+  env HOME="$WORK/home20c" AGENT_OUTCOMES_LOG="$WORK/po_scan.log" AGENT_OUTCOMES_STATE="$WORK/s20c" \
+    AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:8943/routine-signal" AGENT_OUTCOMES_TOKEN="tok" \
+    bash "$POST_OUTCOME" build_succeeded '{"outcome":"build_succeeded","pr":6}' >/dev/null 2>&1
+  expect_last outcome_from_newest_transcript '.body.signal.issue == 412 and .body.signal.outcome.pr == 6'
+
   # 21. A session end after an outcome -> nothing (same state dir as case 18)
   : >"$SERVER_LOG"
   esignal ended_after "$(with_transcript "$(end_event other)" "$TRANSCRIPT" a1)" "$WORK/s18"
@@ -239,6 +264,11 @@ http.server.HTTPServer(("127.0.0.1", 8943), H).serve_forever()
   OUT="$(env AGENT_OUTCOMES_LOG="$WORK/po_down.log" AGENT_OUTCOMES_STATE="$WORK/s22" AGENT_OUTCOMES_TRANSCRIPT="$TRANSCRIPT" \
     AGENT_OUTCOMES_ENDPOINT="http://127.0.0.1:1/routine-signal" bash "$POST_OUTCOME" build_succeeded '{"outcome":"build_succeeded","pr":9}' 2>/dev/null)"; RC=$?
   if [ "$RC" -eq 0 ] && [ "$OUT" != "${OUT#<!-- agent-outcome:issue-build-loop -->}" ]; then echo "PASS [outcome_worker_down]"; pass=$((pass+1)); else echo "FAIL [outcome_worker_down]: rc=$RC"; fail=$((fail+1)); fi
+  # 22b. ...and a failed POST leaves no reported marker, so a later end still sends ended
+  if ! ls "$WORK/s22"/reported-* >/dev/null 2>&1; then echo "PASS [failed_post_not_reported]"; pass=$((pass+1)); else echo "FAIL [failed_post_not_reported]"; fail=$((fail+1)); fi
+  : >"$SERVER_LOG"
+  esignal ended_after_failed_post "$(with_transcript "$(end_event)" "$TRANSCRIPT" f1)" "$WORK/s22"
+  expect_last ended_after_failed_post_sends '.body.signal.kind == "ended" and .body.signal.issue == 412'
 else
   echo "SKIP [signals]: python3 not available for the stub server"
 fi

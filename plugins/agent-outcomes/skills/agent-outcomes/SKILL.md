@@ -46,14 +46,14 @@ Append that body, as printed, to the comment you post (see [The rule](#the-rule)
 routine name in the marker is the run's, so it's right without your passing it.
 
 This plugin's hooks (`hooks/`) signal the Worker too, in a session the Worker fired. They
-need the same two env vars, and without them only log:
+need the same two env vars, and without them send nothing (they still record the run):
 - `PostToolUse` (`report-completion.sh`): a **heartbeat** naming the current step, at most
   once a minute. It keeps the watchdog's deadline moving, and an expiry quotes the last step.
   It never reports an outcome and infers nothing from a tool call's text.
 - `Notification` for a permission prompt (`report-early-end.sh`): **blocked**, naming the tool
   and the start of the command. The Worker comments at once.
-- `SessionEnd` (`report-early-end.sh`): **ended**, unless this session ran
-  `post-outcome.sh`. The Worker then treats the run as the watchdog would on expiry.
+- `SessionEnd` (`report-early-end.sh`): **ended**, unless it delivered an outcome
+  for this run (`post-outcome.sh`). The Worker then treats the run as the watchdog would on expiry.
 
 ## The rule
 
