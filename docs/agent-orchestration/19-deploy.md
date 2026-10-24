@@ -127,8 +127,8 @@ arrive"), then the D1 log ("what did it do").
 Since 2.3.14–2.3.15 (#391), routines report straight to the Worker instead of waiting for a label or comment to be seen. When a run looks stuck, these are where to look:
 
 - **Heartbeats** set `issue_status.last_step` in D1 for the item while it's open.
-- **An explicit outcome** from `post-outcome.sh` is logged in `transitions` with a `delivery_id` starting `routine-signal:`. A later outcome comment for the same fire logs as `deduped`.
-- **`blocked`** (a permission prompt) and **`ended`** (the session stopped without an outcome) each post one comment on the item at once.
+- **An explicit outcome** from `post-outcome.sh` is logged in `transitions` with `actor` `routine-signal` (applied ones also carry a `delivery_id` starting `routine-signal:`); whichever of it and its outcome comment arrives second logs as `deduped`.
+- **`blocked`** (a permission prompt) and **`ended`** (the session stopped without an outcome) each post one comment on the item at once, where enforced (`blocked` under `MODE=enforce`, `ended` only with `WATCHDOG=enforce` too).
 - In Workers Logs, `POST /routine-signal` requests that get **401** mean `AGENT_OUTCOMES_TOKEN` doesn't match the Worker's secret (watch for a trailing `%` copied from zsh). Permission and hook changes reach sessions at their next start once released to `main` (`session-refresh.sh`); only an `env-setup.sh` change needs the stub's `rebuild:` bump.
 
 ### When the routines API refuses a fire
