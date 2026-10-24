@@ -43,7 +43,8 @@ JSON="$2"
 printf '%s' "$JSON" | jq -e 'type == "object"' >/dev/null 2>&1 || die "the outcome JSON doesn't parse as an object — nothing sent"
 NAME="$(printf '%s' "$JSON" | jq -r '.outcome // empty')"
 [ "$NAME" = "$OUTCOME" ] || die "the JSON's \"outcome\" ($NAME) isn't $OUTCOME — nothing sent"
-JSON="$(printf '%s' "$JSON" | jq -c .)"
+# escape backticks so a ```-bearing field cannot end the json fence early
+JSON="$(printf '%s' "$JSON" | jq -c . | sed 's/`/\\u0060/g')"
 
 # --- Which run is this? ------------------------------------------------------
 # The fire text is the session's first prompt. Look for it in order: an

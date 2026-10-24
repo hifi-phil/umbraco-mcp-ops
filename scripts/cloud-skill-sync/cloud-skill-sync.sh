@@ -145,7 +145,7 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
                 .hooks = (.hooks // {})
                 | .hooks[$ev] = (.hooks[$ev] // [])
                 | if any(.hooks[$ev][]?; any(.hooks[]?; .command == $cmd)) then .
-                  else .hooks[$ev] += [ {"hooks": [ {"type":"command","command":$cmd,"async":$async} ]} ] end
+                  else .hooks[$ev] += [ {"hooks": [ {"type":"command","command":$cmd,"async":true} ]} ] end
               ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
             mv "$tmp" "$SETTINGS"; echo "registered hook: $ev -> $scope"
           else
@@ -182,9 +182,9 @@ mkdir -p "$SKILLS_DEST" "$AGENTS_DEST"
           if jq --arg ev "$ev" --arg cmd "$cmd" --arg matcher "$matcher" --argjson async "$async" '
                 .hooks = (.hooks // {})
                 | .hooks[$ev] = (.hooks[$ev] // [])
-                | if any(.hooks[$ev][]?; any(.hooks[]?; .command == $cmd)) then .
-                  else .hooks[$ev] += [ ({"hooks": [ {"type":"command","command":$cmd,"async":true} ]}
-                                          + (if $matcher == "" then {} else {"matcher":$matcher} end)) ] end
+                | .hooks[$ev] |= map(select(any(.hooks[]?; .command == $cmd) | not))
+                | .hooks[$ev] += [ ({"hooks": [ {"type":"command","command":$cmd,"async":$async} ]}
+                                          + (if $matcher == "" then {} else {"matcher":$matcher} end)) ]
               ' "$SETTINGS" > "$tmp" 2>>"$LOG"; then
             mv "$tmp" "$SETTINGS"; echo "registered hook: $ev -> $2"
           else
