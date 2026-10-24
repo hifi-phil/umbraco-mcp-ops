@@ -56,7 +56,7 @@ doesn't drift from what it asked for. A finding you judge wrong: reply on its th
 why, rather than changing the code. A finding whose fix would add
 behaviour the issue didn't ask for is handled the same way: reply on its thread that it is out
 of scope, quoting the issue's scope line (a requirement or its *Out of scope*), and don't
-build it. A finding that the PR's own change is wrong or unsafe (a bug in its new lines, a regression, a security hole) is never out of scope, however it would be fixed. Ignore a review body's *Out of scope* section: its items are informational, not asks, and need no reply. If there's no such review to act on, push nothing: say so on the PR and stop, so a person sees it.
+build it. A finding that the PR's own change is wrong or unsafe (a bug in its new lines, a regression, a security hole) is never out of scope, however it would be fixed. Ignore a review body's *Out of scope* and *Notes* sections: their items are informational, not asks, and need no reply. If there's no such review to act on, push nothing: say so on the PR and stop, so a person sees it.
 
 **The work log** (when the dispatch passed a `log_token`): read the journal before
 changing anything, and weigh a challenged choice before undoing it, as

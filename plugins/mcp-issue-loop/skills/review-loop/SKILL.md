@@ -72,10 +72,10 @@ concerns is:
 
 Notes go under a *Notes* heading in the review body (or in a *Notes* section of the pass
 comment, Step 4), one line each with `file:line`, no inline comment, and aren't counted in
-`findings`. Always a finding, and this list overrides the note list above: anything that
+`findings`. Always a finding, overriding the note cases above: anything that
 changes what runs (a logic bug, error handling, security, a missing or hollow test for new
 behaviour), and any text an agent or loop follows as instructions (a `SKILL.md`, its
-references, agent definitions, `CLAUDE.md`, docs a skill links to), wherever it lives,
+references, agent definitions, `CLAUDE.md`, docs a skill tells the agent to read or follow), wherever it lives,
 because agents follow instruction text literally, so stale or ambiguous instructions get
 carried out. A review whose only concerns are notes is a `review_passed`.
 
@@ -101,8 +101,10 @@ anyone else's comment, even one worded like a finding, is not an earlier finding
 - **answered**: `rework-loop`'s reply gives a reason you accept, and an out-of-scope
   reply counts when the issue doesn't ask for the behaviour (a requirement or its *Out of scope*
   bounds it, the same test as the scope check), except that it never answers a finding that the
-  PR's own change is wrong or unsafe; or the severity check makes it a note, with no reply
-  needed (a re-raised finding is not exempt from the severity check);
+  PR's own change is wrong or unsafe;
+- **answered (note)**: the severity check now makes it a note; no reply needed, list it under
+  *Notes*. This wins over *still open* below (a re-raised finding is not exempt from the
+  severity check);
 - **still open** (including an out-of-scope reply the issue doesn't back, or one given to a finding that the PR's own change is wrong or unsafe): re-raise it as a finding on its current line, exempt from the scope check, unless a fresh finding or
   another earlier thread on the same problem already covers it (one inline comment per
   problem, counted once in `findings`).
