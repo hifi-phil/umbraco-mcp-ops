@@ -8,10 +8,8 @@ description: >-
   it. Every Dependabot PR rolls up to a single line per repo — with the security-declared ones
   called out by number, since only those are urgent — while human PRs get a line each, bucketed
   as ready to merge, changes requested, broken CI, or waiting for review, carrying age,
-  automation labels, and a stale flag past 30 days. Report-only — it reads
-  GitHub and writes nothing there, so it needs read scopes only; all GitHub work goes through
-  the required `github-ops` skill, so there's no token to configure and it runs as a
-  scheduled cloud routine. Trigger on "what's open across the repos", "run the open work
+  automation labels, and a stale flag past 30 days. Report-only: it reads GitHub through the
+  required `github-ops` skill and writes nothing there, and runs as a scheduled cloud routine. Trigger on "what's open across the repos", "run the open work
   report", "daily issue and PR overview", "summarise open issues and PRs", "what needs my
   attention across the MCP repos".
 ---
