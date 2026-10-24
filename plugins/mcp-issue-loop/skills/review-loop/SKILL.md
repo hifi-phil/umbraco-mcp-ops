@@ -75,7 +75,7 @@ comment, Step 4), one line each with `file:line`, no inline comment, and aren't 
 `findings`. Always a finding, overriding the note cases above: anything that
 changes what runs (a logic bug, error handling, security, a missing or hollow test for new
 behaviour), and any text an agent or loop follows as instructions (a `SKILL.md`, its
-references, agent definitions, `CLAUDE.md`, docs a skill tells the agent to read or follow), wherever it lives,
+references, agent definitions, `CLAUDE.md`, docs a skill tells the agent to read or follow, MCP tool names and descriptions, prompts, or any other text shipped for an LLM to read), wherever it lives,
 because agents follow instruction text literally, so stale or ambiguous instructions get
 carried out. A review whose only concerns are notes is a `review_passed`.
 
@@ -129,7 +129,7 @@ your fresh findings. No earlier `review-loop` threads → nothing to settle.
 Report the verdict through the `agent-outcomes` script (load `agent-outcomes`), then post one
 comment on the PR with the **required** body it printed, in a separate comment, not the review body: the Worker reads comments.
 Name the reviewers that ran and the head SHA reviewed. Whatever the verdict, list each
-earlier finding's status (fixed / answered / still open), one line per finding.
+earlier finding's status (fixed / answered / answered (note) / still open), one line per finding.
 - No in-scope finding survived (out-of-scope items and notes don't count), and every earlier finding is fixed or answered → `review_passed`.
 - Findings → `review_findings` with `findings`: how many inline comments you posted (notes
   aren't counted).
