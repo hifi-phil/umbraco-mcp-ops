@@ -62,8 +62,9 @@ case "$(printf '%s' "$EVENT" | jq -r '.hook_event_name // empty' 2>/dev/null)" i
     if [ -z "$TOOL" ]; then
       TOOL="$(printf '%s' "$MSG" | sed -nE 's/.*permission to (use|run) ([^ ]+).*/\2/p' | head -n1)"
     fi
-    # Only a command's first word; a word with `=` or `:` (an inline VAR=secret, a URL) is dropped.
-    CMD="$(printf '%s' "$EVENT" | jq -r '(.tool_input // {}) | (.command // empty) | tostring' 2>/dev/null | one_line 200 | awk '{print $1}' | grep -vE '[=:@]' | cut -c 1-40)"
+    # Only a plain command name as the first word (letters, digits, `._+/-`, up to 32); anything else
+    # (an inline VAR=secret, a URL, a token, glued operators) is dropped, as is a non-string command.
+    CMD="$(printf '%s' "$EVENT" | jq -r '(.tool_input // {}) | (.command // empty) | select(type == "string")' 2>/dev/null | one_line 200 | awk '{print $1}' | grep -E '^[A-Za-z0-9._+/-]{1,32}$')"
     DETAIL="${TOOL:-a tool}${CMD:+: $CMD}"
     SIGNAL="$(jq -cn --arg routine "$ROUTINE" --argjson issue "$ISSUE" --arg detail "$DETAIL" \
       '{kind:"blocked", routine:$routine, issue:$issue, detail:$detail}')"

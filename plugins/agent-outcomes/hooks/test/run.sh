@@ -208,11 +208,17 @@ s.serve_forever()
   esignal envword "$(with_transcript "$ENVW" "$TRANSCRIPT" b6)" "$WORK/s13i"
   expect_last env_word_dropped '.body.signal.detail == "Bash"'
 
-  # 13c. A credential in the command never goes out
+  # ...nor a token as the first word, glued operators, or a non-string command
+  for CASE in 'tok:ghp_0123456789abcdef0123456789abcdef0123 x' 'glue:cat<<<ghp_0123456789abcdef0123456789abcdef0123|gh auth login --with-token'; do
+    : >"$SERVER_LOG"
+    GLUED="$(jq -n --arg c "${CASE#*:}" '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:$c}}')"
+    esignal "first_word_${CASE%%:*}" "$(with_transcript "$GLUED" "$TRANSCRIPT" "b7${CASE%%:*}")" "$WORK/s13${CASE%%:*}"
+    expect_last "first_word_${CASE%%:*}_dropped" '.body.signal.detail == "Bash"'
+  done
   : >"$SERVER_LOG"
-  SECRET="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:"curl -H \"Authorization: Bearer s3cretvalue\" https://u:pw0rd@x.io/ log_token=eyJabc.def GH=ghp_0123456789abcdef0123456789abcdef0123"}}')"
-  esignal secret "$(with_transcript "$SECRET" "$TRANSCRIPT" b3)" "$WORK/s13c"
-  expect_last secrets_redacted '.body.signal.kind == "blocked" and (.body.signal.detail | test("s3cretvalue|pw0rd|eyJabc|ghp_0123") | not)'
+  ARRC="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:["hunter2;ls"]}}')"
+  esignal arraycmd "$(with_transcript "$ARRC" "$TRANSCRIPT" b8)" "$WORK/s13arr"
+  expect_last array_command_dropped '.body.signal.detail == "Bash"'
 
   # 13f. The production Notification shape: no tool_name/tool_input, only message + notification_type
   : >"$SERVER_LOG"
