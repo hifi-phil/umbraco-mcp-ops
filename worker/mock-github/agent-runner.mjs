@@ -145,8 +145,8 @@ const OUTCOME_CONFIGS = {
     section: () => readSection(ISSUE_BUILD_LOOP_SKILL, "## Step 3", "## Step 4"),
     prompt: ({ issueNumber, owner, repo, params }) =>
       `Issue #${issueNumber} in ${owner}/${repo}. Everything up to the outcome step has already ` +
-      `happened: a build subagent implemented the fix, CI is green, and mcp-review just came back ` +
-      `clean on PR #${params.pr}. Perform Step 3's outcome step for exactly this situation now.`,
+      `happened: a build subagent opened the PR and the pre-PR checks ` +
+      `came back clean on PR #${params.pr}. Perform Step 3's outcome step for exactly this situation now.`,
     checks: (toolCalls, issue) => {
       const comment = toolCalls.find((c) => c.name.endsWith("post_comment"));
       const marker = markerCheck(comment?.input?.body ?? "", { routine: "issue-build-loop" }, (j) => j.outcome === "build_succeeded");

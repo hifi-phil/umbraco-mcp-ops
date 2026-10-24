@@ -91,7 +91,10 @@ describe("audit: every answer the orchestrator gave during the run", () => {
         const fresh = deliveries.filter((d) => !known.has(d.id));
         for (const d of await pool(fresh, 6, async (d) => ({ id: d.id, ...(await deliveryDetail(hook, d.id)) }))) known.set(d.id, d);
         const details = deliveries.map((d) => known.get(d.id)!).filter((d) => d.repo.toLowerCase() === REPO.toLowerCase() && ours(d));
-        const numbers = [...new Set(details.flatMap((d) => d.numbers))].filter((n) => runItems.has(n));
+        // The redelivery issue is always read: its label delivery is needed below even if
+        // none of its deliveries has reached GitHub's list yet (so the wait covers it).
+        const extra = runLog.redeliverIssue !== undefined ? [runLog.redeliverIssue] : [];
+        const numbers = [...new Set([...details.flatMap((d) => d.numbers), ...extra])].filter((n) => runItems.has(n));
         progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
         const logs = new Map(await pool(numbers, 6, async (n) => [n, await transitions(n)] as const));
         const guids = new Set(details.map((d) => d.guid));

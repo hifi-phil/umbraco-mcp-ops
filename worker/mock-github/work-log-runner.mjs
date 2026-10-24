@@ -114,7 +114,7 @@ const CONFIGS = {
       { kind: "journal", category: "judgment-call", body: "Decision: call the helper toCsvRow.\nOptions: formatRow.\nRationale: matches the names around it.\nRejected: formatRow." },
     ],
     prompt: () =>
-      "Issue #530, \"Export form submissions\". The build is done and mcp-review has passed. The journal " +
+      "Issue #530, \"Export form submissions\". The build is done and its pre-PR checks have passed. The journal " +
       "is in the log (read it). The PR's diff adds tools/form/export-submissions.ts: rows streamed out, " +
       "dates in UTC, and a semicolon as the field delimiter, where CLAUDE.md says exports use commas " +
       "(nothing in the journal mentions the delimiter). Do your job now, as the work-log skill's " +
@@ -141,8 +141,7 @@ const CONFIGS = {
     prompt: () =>
       "Issue #530. The build subagent has returned and journalled its choices; the decision-list " +
       "subagent has written the decision list. Facts: the PR's head commit is 3f9c2a1; the local gate " +
-      "ran `npm run test:changed` on SQL Server, 42 run, 42 passed; mcp-review ran code-reviewer, " +
-      "security-reviewer and pr-test-analyzer and found 2 issues (a missing uuid check, an untested 404), " +
+      "ran `npm run test:changed` on SQL Server, 42 run, 42 passed; the pre-PR checks ran and found 2 issues (a missing uuid check, an untested 404), " +
       "both fixed; the eval suite wasn't run (only CI runs it). Write what you write at this point, " +
       "as references/work-log.md says, and nothing else.",
     checks: (log) => {
@@ -152,7 +151,7 @@ const CONFIGS = {
         oneBuildEntry: builds.length === 1,
         hasCommit: b.includes("3f9c2a1"),
         hasTestCounts: /42/.test(b),
-        hasReview: /mcp-review|uuid|404/i.test(b),
+        hasReview: /pre-PR|uuid|404/i.test(b),
         hasNotVerified: /not verified/i.test(b) && /eval/i.test(b),
         noOtherKinds: log.added.every((e) => e.kind === "build"),
       };

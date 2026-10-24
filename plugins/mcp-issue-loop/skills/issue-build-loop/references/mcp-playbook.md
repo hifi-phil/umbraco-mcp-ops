@@ -5,8 +5,8 @@ This is the MCP-repo variant; content repos use `content-playbook.md`.
 The **build playbook** below. The orchestrator (see `../SKILL.md`) substitutes the issue
 details and dispatches it as a subagent prompt (`agentType: general-purpose`, so the full
 tool + Skill set is available). It runs once per issue and takes an
-issue from `ai-ready` to a pushed branch with an open PR. The orchestrator then reviews it
-with `mcp-review` (re-dispatching a subagent into the same checkout to fix findings) and
+issue from `ai-ready` to a pushed branch with an open PR. The orchestrator then runs the pre-PR checks
+(re-dispatching a subagent into the same checkout to fix what they find) and
 reports the outcome — CI is the Worker's; later reviews and fixes are `review-loop`'s and `rework-loop`'s, not a playbook here (see *Responding to human review*
 at the end).
 
@@ -35,7 +35,7 @@ at the end).
 
 Work directly in the session's checkout (see
 `cloud-mode.md`); there is no worktree. **Re-dispatched fix, not a fresh issue?** Go
-straight to fixing the specific thing you were sent to fix (an `mcp-review` finding), then
+straight to fixing the specific thing you were sent to fix (a pre-PR check finding), then
 repeat steps 4 and 6 (re-test locally, re-push) and return per step 7.
 
 ### 2. Understand the issue, then plan
@@ -51,10 +51,10 @@ question — don't invent scope.
 
 **If the work creates or changes MCP tools, use the Umbraco MCP skills for every
 step below — tools, tests, and evals, skipping none.** They encode the conventions
-`mcp-review` and CI actually check for (one file per tool in the right verb folder,
+`review-loop`'s review and CI actually check for (one file per tool in the right verb folder,
 `withStandardDecorators`, builders/helpers before test files, the new tool added to
 every eval's `allTools` array); a hand-rolled tool passes local compile and then
-fails review, costing a full re-dispatch. Load `/mcp-patterns` first, then use the
+fails review, costing a rework round. Load `/mcp-patterns` first, then use the
 relevant skills/agents:
 
 - Tool creation/changes → `/add-tool` (or `/build-tools` for a whole collection),
@@ -110,13 +110,13 @@ If the gate needs a running Umbraco, boot it as `cloud-mode.md` step 2 says (via
 green. If state got corrupted mid-run, recycle the DB per `CLAUDE.md` (rename the DB in
 `demo-site/appsettings.local.json`, restart, re-run `create-api-user.mjs`).
 
-### 5. Review is the orchestrator's job, CI the Worker's — you do neither
+### 5. Review is `review-loop`'s, CI the Worker's — you do neither
 
 **Do not run `/security-review` or `/code-review` yourself** — see `SKILL.md`'s Rules for
 why they're inert in a subagent; a subagent grading its own code is weak anyway. You also
-do **not** drive CI — once you return, **the orchestrator** runs the
-`mcp-review` skill over the PR, handing you back any surviving
-findings to fix in this checkout. CI is watched later, by the Worker.
+do **not** drive CI — once you return, **the orchestrator** runs the pre-PR
+checks and may hand you back findings to fix in this checkout. `review-loop` reviews the PR
+independently later; CI is watched by the Worker.
 Just build well and return; don't claim a review ran or that CI is green.
 
 ### 6. Commit, push, open the PR
@@ -129,7 +129,7 @@ gitflow repos — defer to the `release-and-branching` skill), linking the issue
 to be able to review and approve it; that review is the acceptance gate.
 
 Include in the PR body: what changed, which skills/agents were used, and test
-results. **Do not claim security/code review ran, or that CI is green** — the review and
+results. **Do not claim security/code review ran, or that CI is green** — the pre-PR checks and
 reporting the issue's outcome happen next, at the orchestrator level.
 
 ### 7. Return
@@ -137,7 +137,7 @@ reporting the issue's outcome happen next, at the orchestrator level.
 Once your branch is pushed and the PR is open, **return** the structured report to the
 orchestrator: `{ issue, branch, prNumber, model, tier, status }`
 (`status`: `pr-open`, or `blocked` with the reason if you stopped early per the Definition
-of done or step 2's ambiguity check). The orchestrator re-dispatches into the checkout to fix any `mcp-review` findings, per step 5 above.
+of done or step 2's ambiguity check). The orchestrator re-dispatches into the checkout to fix any pre-PR check findings, per step 5 above.
 
 ---
 
