@@ -143,8 +143,7 @@ Not verified: <what wasn't checked, and why> | none
 **Examples**
 
 - ✅ Commit: 3f9c2a1 · Tests: `npm run test:changed` on SQL Server: 42 run, 42 passed ·
-  Review: `mcp-review` (code-reviewer, security-reviewer, pr-test-analyzer): 2 findings,
-  both fixed (missing uuid check, untested 404) · Not verified: the eval suite, which only
+  Pre-PR checks: 2 findings, both fixed (leftover text in a README, untested 404) · Not verified: the eval suite, which only
   CI runs.
 - ✅ (`review-loop`) Commit: 3f9c2a1 · Tests: none (review only) · Review: round 1,
   findings: 3 inline comments; challenges journal #7 (offset vs cursor) · Not verified: the

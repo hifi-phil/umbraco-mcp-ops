@@ -62,12 +62,11 @@ For the one issue the fire names:
      local tests are green, **commit, push, and open the PR** against `<base>` (github-ops →
      *Create a PR*), linking the issue (`Closes #N`), ready for review, not draft — then
      **return**. Reviewing it (step 3) is the **base session's** job.
-3. **Review the PR with `mcp-review`, then report — from the base session.** As `SKILL.md`
-   Step 3: fix any surviving findings by **dispatching a fix on the build subagent's model** (or
-   fix inline; the base session stays on its cheap model, so a fix must not silently inherit that
-   tier), re-run the SQL Server gate from step 2, then run `SKILL.md` Step 3's pre-PR checks and
-   re-run the gate over any fix they produced, push, then post the `build_succeeded` artifact.
-   Then stop: no CI polling.
+3. **Run the pre-PR checks, then report — from the base session.** As `SKILL.md` Step 3:
+   run its pre-PR checks; fix what they find by **dispatching a fix on the build subagent's
+   model** (or fix inline; the base session stays on its cheap model, so a fix must not silently
+   inherit that tier), re-run the SQL Server gate from step 2 over any fix, push, then post the
+   `build_succeeded` artifact. Then stop: no CI polling, no review (`review-loop`'s).
 
 A blocked issue (no-progress guard tripped) gets a comment with the `build_blocked` artifact,
 then stop. The guardrails in `SKILL.md`'s Rules still apply.
