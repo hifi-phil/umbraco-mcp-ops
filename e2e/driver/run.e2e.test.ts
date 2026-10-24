@@ -80,6 +80,9 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       // until every logged id has appeared (or the wait is up), then assert:
       // an id still missing after that is a real gap and fails as before.
       const original = (id: string) => id.replace(/:#\d+$/, "");
+      // A routine's explicit outcome signal (post-outcome.sh) is logged under a
+      // routine-signal: id, not a GitHub delivery: it has no delivery to find.
+      const fromSignal = (id: string) => id.startsWith("routine-signal:");
       // A delivery's detail never changes once it exists: fetch each once.
       const known = new Map<string, DeliveryDetail & { id: string }>();
       const read = async () => {
@@ -92,7 +95,7 @@ describe("audit: every answer the orchestrator gave during the run", () => {
         progress(`audit: reading the D1 log for ${numbers.length} issues and PRs`);
         const logs = new Map(await pool(numbers, 6, async (n) => [n, await transitions(n)] as const));
         const guids = new Set(details.map((d) => d.guid));
-        const missing = [...logs.values()].flat().filter((r) => r.delivery_id !== null && !guids.has(original(r.delivery_id)));
+        const missing = [...logs.values()].flat().filter((r) => r.delivery_id !== null && !fromSignal(r.delivery_id) && !guids.has(original(r.delivery_id)));
         return { details, logs, missing: missing.length };
       };
       const waitUntil = Date.now() + 120_000;
@@ -171,7 +174,7 @@ describe("audit: every answer the orchestrator gave during the run", () => {
           .filter((r) =>
             r.delivery_id === null
               ? !["watchdog_expired", "watchdog_retried", "reconcile_refire"].includes(r.event)
-              : !guids.has(original(r.delivery_id)),
+              : !fromSignal(r.delivery_id) && !guids.has(original(r.delivery_id)),
           )
           .map((r) => `#${n} ${r.event} delivery=${r.delivery_id}`),
       );
