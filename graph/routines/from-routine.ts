@@ -8,9 +8,9 @@
 //   design in 03-components.md §3.4/§3.6: losing one costs nothing but
 //   detail, so it's allowed to be a direct callback where an outcome isn't.
 //
-// - "completion" — timing only: the PostToolUse hook's echo of an outcome
-//   artifact it saw go by (see ../outcomes.ts for the shared shape). It is
-//   sniffed from tool-call text, so it is NOT authoritative and never
+// - "completion" — timing only (no hook sends it any more; the PostToolUse
+//   hook used to echo an outcome artifact it sniffed from tool-call text, see
+//   ../outcomes.ts for the shared shape). It is NOT authoritative and never
 //   applied: it only lets the watchdog cancel its alarm promptly and the
 //   dashboard show "done" sooner. The state change comes from the outcome's
 //   comment (github/from-github.ts) or from an explicit "outcome".
@@ -32,8 +32,9 @@
 // 05-technical-elements.md's "no way to nudge a running session"
 // constraint) — so there's nothing to write there yet.
 //
-// The heartbeat and completion come from a PostToolUse hook
-// (plugins/agent-outcomes/hooks/report-completion.sh), not the model
+// The heartbeat comes from a PostToolUse hook
+// (plugins/agent-outcomes/hooks/report-completion.sh), blocked and ended from
+// report-early-end.sh (Notification, SessionEnd), not the model
 // calling out mid-turn — see 08-open-questions.md. This file is pure logic
 // like everything in graph/: the Worker's coordinate/routine-signal.ts acts
 // on what it returns.

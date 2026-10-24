@@ -69,8 +69,8 @@
   the progress heartbeat
   ([03-components.md §3.4](03-components.md#34-the-serialiser-and-watchdog--durable-object-per-issue))
   needs, and what
-  [11-outcome-artifact.md](11-outcome-artifact.md)'s fast-path completion
-  ping now uses. **Still open:** whether hooks fire the same way in a
+  [11-outcome-artifact.md](11-outcome-artifact.md)'s explicit outcome
+  signal (`post-outcome.sh`) now uses. **Still open:** whether hooks fire the same way in a
   *cloud* routine as they do locally — `self-learning`'s existing
   SubagentStop/SessionEnd hooks are the closest precedent that they do, but
   that's not the same event type, and this hasn't been confirmed against a

@@ -54,10 +54,10 @@ Never use `fable`. Never put secrets in the prompt or config.
 
 ## Routine heartbeats (Worker-dispatched repos)
 
-The `agent-outcomes` hook runs after every tool call in the routine. In a session the
-Worker fired, it sends the Worker's `POST /routine-signal`:
-- a heartbeat naming the step, at most once a minute
-- a completion when the loop posts its outcome
+The `agent-outcomes` hooks run in the routine. In a session the Worker fired, they send
+the Worker's `POST /routine-signal`:
+- a heartbeat naming the step, at most once a minute (the `PostToolUse` hook, after every tool call)
+- blocked on a permission prompt (a `Notification` hook), and ended when the session ends without an outcome (a `SessionEnd` hook). A loop reports its outcome through `post-outcome.sh`, not a hook
 
 A session the Worker didn't fire sends nothing, so one environment can serve Worker repos
 and caller-workflow repos alike.
@@ -83,12 +83,14 @@ and caller-workflow repos alike.
 - The step is the tool plus the call's own description or skill name (`Bash: Run the
   tests`, `Skill: mcp-review`), never a command, prompt or path, because an expiry quotes
   it in a public GitHub comment.
-- Nothing runs between tool calls or after the session ends, so the heartbeats never keep
-  the environment alive.
-- A failed send is logged in the container (`~/.cache/agent-outcomes/capture.log`) and
-  changes nothing: the GitHub write stays the authoritative signal.
+- The heartbeat runs only after tool calls, so it never keeps the environment alive. The
+  `Notification` and `SessionEnd` hooks run once each, when a permission prompt appears
+  and when the session ends.
+- A failed send is logged in the container (`~/.cache/agent-outcomes/capture.log`). A lost
+  heartbeat costs only detail. A lost `blocked` or `ended` means the Worker learns of the
+  stall only when the watchdog expires.
 
-**Checking it works:** the e2e suite's two `real hook` scenarios (`e2e/` in
+**Checking it works:** the e2e suite's `real hook` scenario (`e2e/` in
 `umbraco-mcp-ops`) run this hook against the deployed Worker, which proves the contract.
 On a live repo, the proof is a run's `ai-stuck` comment quoting a step (`Last reported
 step: …`) instead of "No progress step was ever reported".

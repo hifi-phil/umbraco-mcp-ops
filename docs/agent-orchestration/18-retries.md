@@ -87,8 +87,8 @@ entry (tofu), next to `mode` and `minutes`.
    (e2e #689: it drops any webhook not answered within 10 seconds; the Worker
    answers within 8). The sweep catches a dropped trigger label, but not other
    events. A dropped **outcome comment** shows as a watchdog expiry on a run
-   that actually finished; the heartbeat hook's completion signal now covers
-   that, by stopping the watchdog when the outcome is posted.
+   that actually finished; `post-outcome.sh` now covers
+   that: it sends the outcome to the Worker directly, stopping the watchdog.
 3. **The Worker being down.** Webhooks in that window are lost. The sweep
    recovers trigger labels afterwards; anything else needs a person.
 4. **A routine that keeps failing the same way.** Every layer here is
