@@ -59,6 +59,8 @@ Latest full run (01-10-2026): all 21 scenarios and the audit pass in about
 | `issue-discuss-loop` | `discuss` | one signed question per round |
 | any | `heartbeat` | one `process` signal to the orchestrator's `/routine-signal`, then nothing |
 | any | `complete` | one `completion` signal, then nothing |
+| any | `blocked_signal` | the same `blocked` signal twice (a permission prompt, as `report-early-end.sh` sends it), then nothing |
+| any | `ended_signal` | one `ended` signal (the session stopped with no outcome), then nothing |
 | `issue-build-loop` | `success_by_script` | an `outcome` signal alone, as `post-outcome.sh` sends it, with no comment |
 | any | `fail_fire` | refuses the fire itself (500): a fire that never got out |
 | any | `silent` | nothing |
@@ -100,6 +102,12 @@ re-checks a gate that still reads "CI running".
   9. A stuck merge-flow retried.
   10. A stuck merge-flow merged by hand.
   11. A completion signal cancels the watchdog (no `ai-stuck`).
+- The `blocked` and `ended` signals (`report-early-end.sh`'s, sent by the stub):
+  1. `blocked`, sent twice: one comment naming the detail, labels unchanged,
+     then the watchdog's expiry quotes it as the last step.
+  2. `ended` with no outcome: one comment, and `ai-stuck` at once, well
+     inside the watchdog's timeout, logged as a `watchdog_expired` row by
+     `routine-signal`.
 - The outcome signal: a build that reports through `post-outcome.sh`'s signal alone,
   with no comment, still moves to `pr-open` (hint `success_by_script`).
 - Phase 7:
@@ -121,7 +129,9 @@ re-checks a gate that still reads "CI running".
   - every row for the run's issues and PRs is enforced and applied
   - every delivery the Worker applied has exactly one row, carrying its
     delivery id and event
-  - the only rows no delivery caused are the watchdog's expiries
+  - the only rows no delivery caused are the watchdog's expiries and
+    retries, the sweep's re-fires, and an `ended` signal's expiry (each by
+    its own actor); a `blocked` signal logs no row
 
 **The D1 log.** The driver reads it through the Worker's `GET /transitions`
 route, which tofu turns on for the sandbox alone, with its own secret. The

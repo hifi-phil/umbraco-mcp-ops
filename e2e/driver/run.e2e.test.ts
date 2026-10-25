@@ -173,14 +173,23 @@ describe("audit: every answer the orchestrator gave during the run", () => {
       // A hand-off between items (a merged PR to the issue it closes, a
       // release to the issues it ships) logs under the original delivery's
       // id plus ":#<item>" (see `original`).
+      // The rows no delivery causes, and who may write each: the watchdog's
+      // expiry and retry, the sweep's re-fire, and a routine's "ended" signal,
+      // which is the expiry at once (actor routine-signal). A "blocked" signal
+      // logs no row: it only comments, and that comment's webhook is a delivery.
+      const undelivered: Record<string, string[]> = {
+        watchdog_expired: ["watchdog", "routine-signal"],
+        watchdog_retried: ["watchdog"],
+        reconcile_refire: ["sweep"],
+      };
       const orphans = [...logs].flatMap(([n, rows]) =>
         rows
           .filter((r) =>
             r.delivery_id === null
-              ? !["watchdog_expired", "watchdog_retried", "reconcile_refire"].includes(r.event)
+              ? !(undelivered[r.event] ?? []).includes(r.actor ?? "")
               : !fromSignal(r.delivery_id) && !guids.has(original(r.delivery_id)),
           )
-          .map((r) => `#${n} ${r.event} delivery=${r.delivery_id}`),
+          .map((r) => `#${n} ${r.event} delivery=${r.delivery_id} actor=${r.actor}`),
       );
       expect(orphans, "log rows no delivery in the run explains").toEqual([]);
 

@@ -460,8 +460,10 @@ in `report-early-end.sh` (a `Notification` and a `SessionEnd` hook, not
 `PostToolUse`), `blocked` on a permission prompt and `ended` when a session
 stops without an outcome (a loop sends its outcome through `post-outcome.sh`).
 The heartbeat is verified live by the e2e suite's `real hook` scenario, which runs
-the real hook against this deployed Worker; `blocked` and `ended` are covered by the
-hook's own test suite, not yet by e2e. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
+the real hook against this deployed Worker. `blocked` and `ended` have e2e scenarios of
+their own, sent by the stub as the hook would (the hook's own test suite covers the sending
+side): `blocked` comments once and leaves the labels alone, and `ended` moves the build to
+`ai-stuck` at once. To turn it on for real routines, set `AGENT_OUTCOMES_ENDPOINT` and
 `AGENT_OUTCOMES_TOKEN` on the routine environment: see `new-loop-routine`'s
 "Routine heartbeats" section.
 

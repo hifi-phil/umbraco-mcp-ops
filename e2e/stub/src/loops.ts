@@ -40,6 +40,8 @@ export type Action =
   | "review_blocked"
   | "heartbeat"
   | "completion"
+  | "blocked"
+  | "ended"
   | "none";
 
 /** plugins/agent-outcomes's comment format, which from-github.ts parses. */
@@ -49,6 +51,15 @@ export function outcomeComment(loop: string, outcome: Outcome): string {
     `<!-- agent-outcome:${loop} -->\n\`\`\`json\n${JSON.stringify(outcome)}\n\`\`\``
   );
 }
+
+/** What the stub's `blocked` and `ended` signals say, as report-early-end.sh
+ * would (the permission prompt's text; why the session stopped). The
+ * orchestrator's comments name them, so the scenarios look for them. */
+export const BLOCKED_DETAIL = "e2e-permission: Bash(npm publish)";
+export const ENDED_DETAIL = "e2e-ended: the session stopped early";
+/** Posted when a blocked signal's answer isn't the one expected, so the driver
+ * (which can't see the stub's deferred task) can fail on it. */
+export const BLOCKED_MISMATCH = "e2e stub: unexpected blocked-signal answer";
 
 const base = (f: Pick<Fire, "owner" | "repo">) => `/repos/${f.owner}/${f.repo}`;
 
@@ -84,6 +95,25 @@ export async function act(gh: Gh, fire: Fire, hint: string | null, signal?: Sign
         : { ...base, kind: "completion", outcome: { outcome: "build_blocked", reason: "e2e stub: completion signal only" } },
     );
     return hint === "heartbeat" ? "heartbeat" : "completion";
+  }
+  // A session waiting on a permission prompt (sent twice, as a second prompt
+  // would: the orchestrator says so once per fire), or one that stopped
+  // without an outcome: report-early-end.sh's two signals, and nothing else.
+  if (hint === "blocked_signal" && signal) {
+    const blocked = { routine: fire.route, issue: fire.number, kind: "blocked", detail: BLOCKED_DETAIL };
+    // A refused signal still answers 200, so read the outcome of each. A call
+    // that throws counts as that call's answer, so the marker still posts.
+    const ask = () => signal(blocked).catch((e) => `error: ${e instanceof Error ? e.message : e}`);
+    const answers = [await ask(), await ask()];
+    const expected = ["blocked_noted", "blocked_already_noted"];
+    if (answers.some((a, i) => !a.includes(`"${expected[i]}"`))) {
+      await comment(gh, fire, `${BLOCKED_MISMATCH}: ${answers.join(" then ")}`);
+    }
+    return "blocked";
+  }
+  if (hint === "ended_signal" && signal) {
+    await signal({ routine: fire.route, issue: fire.number, kind: "ended", detail: ENDED_DETAIL });
+    return "ended";
   }
   switch (fire.route) {
     case "issue-discuss-loop":
