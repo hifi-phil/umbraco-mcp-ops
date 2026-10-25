@@ -57,6 +57,9 @@ export function outcomeComment(loop: string, outcome: Outcome): string {
  * orchestrator's comments name them, so the scenarios look for them. */
 export const BLOCKED_DETAIL = "e2e-permission: Bash(npm publish)";
 export const ENDED_DETAIL = "e2e-ended: the session stopped early";
+/** Posted when a blocked signal's answer isn't the one expected, so the driver
+ * (which can't see the stub's deferred task) can fail on it. */
+export const BLOCKED_MISMATCH = "e2e stub: unexpected blocked-signal answer";
 
 const base = (f: Pick<Fire, "owner" | "repo">) => `/repos/${f.owner}/${f.repo}`;
 
@@ -98,8 +101,12 @@ export async function act(gh: Gh, fire: Fire, hint: string | null, signal?: Sign
   // without an outcome: report-early-end.sh's two signals, and nothing else.
   if (hint === "blocked_signal" && signal) {
     const blocked = { routine: fire.route, issue: fire.number, kind: "blocked", detail: BLOCKED_DETAIL };
-    await signal(blocked);
-    await signal(blocked);
+    // A refused signal still answers 200, so read the outcome of each.
+    const answers = [await signal(blocked), await signal(blocked)];
+    const expected = ["blocked_noted", "blocked_already_noted"];
+    if (answers.some((a, i) => !a.includes(`"${expected[i]}"`))) {
+      await comment(gh, fire, `${BLOCKED_MISMATCH}: ${answers.join(" then ")}`);
+    }
     return "blocked";
   }
   if (hint === "ended_signal" && signal) {

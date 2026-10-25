@@ -8,7 +8,7 @@
 
 import { expect } from "vitest";
 import { LABELS } from "@orchestrator/graph/constants/labels";
-import { BLOCKED_DETAIL, ENDED_DETAIL, outcomeComment } from "../stub/src/loops";
+import { BLOCKED_DETAIL, BLOCKED_MISMATCH, ENDED_DETAIL, outcomeComment } from "../stub/src/loops";
 import { runHook } from "./hook";
 import type { Outcome } from "@orchestrator/graph/outcomes";
 import {
@@ -560,6 +560,7 @@ export const scenarios: Scenario[] = [
         await sleep(10_000); // the second signal, and anything it might wrongly do
         const s = await snapshot(issue);
         expect(said(s), `#${issue} one blocked comment for two signals`).toBe(1);
+        expect(hasComment(s, BLOCKED_MISMATCH), `#${issue} the stub saw blocked_noted, then blocked_already_noted`).toBe(false);
         expectLabels(s, issue, LABELS.AI_READY);
 
         // No label moved, so the watchdog still decides, quoting the blocked
@@ -573,7 +574,7 @@ export const scenarios: Scenario[] = [
   },
   {
     name: `ended signal: no outcome -> one comment, ${LABELS.AI_STUCK} at once, not after the watchdog`,
-    timeoutMs: 3 * MIN,
+    timeoutMs: 3 * MIN + (WATCHDOG_MINUTES + 1) * MIN,
     run: () =>
       scoped(async (t) => {
         const issue = t.n(await openIssue("End early", "The agent's session stops without reporting an outcome.", "ended_signal"));
@@ -583,12 +584,22 @@ export const scenarios: Scenario[] = [
         expectLabels(s, issue, LABELS.AI_STUCK);
         const ended = s.comments.filter((c) => c.includes("session ended without reporting an outcome") && c.includes(ENDED_DETAIL));
         expect(ended, `#${issue} one ended comment`).toHaveLength(1);
+        const check = async (when: string) => {
+          const rows = await expectLogged(issue, { event: "labelled_ai_ready", run: "issue-build-loop" }, { event: "watchdog_expired", effect: LABELS.AI_STUCK });
+          const expired = rows.filter((r) => r.event === "watchdog_expired");
+          expect(expired, `${when}: one expiry`).toHaveLength(1);
+          expect(expired[0]!.actor, `${when}: the expiry came from the ended signal`).toBe("routine-signal");
+          expect(rows.map((r) => r.event), `${when}: no watchdog_retried logged`).not.toContain("watchdog_retried");
+        };
         expect(hasComment(s, "hasn't reported back"), "no watchdog comment").toBe(false);
-        const rows = await expectLogged(issue, { event: "labelled_ai_ready", run: "issue-build-loop" }, { event: "watchdog_expired", effect: LABELS.AI_STUCK });
-        const expired = rows.filter((r) => r.event === "watchdog_expired");
-        expect(expired, "one expiry").toHaveLength(1);
-        expect(expired[0]!.actor, "the expiry came from the ended signal").toBe("routine-signal");
-        expect(rows.map((r) => r.event), "no watchdog_retried logged").not.toContain("watchdog_retried");
+        await check("at once");
+        // The watchdog cannot have fired yet: wait past its timeout, then check it stayed disarmed.
+        await sleep((WATCHDOG_MINUTES + 1) * MIN);
+        const later = await snapshot(issue);
+        expectLabels(later, issue, LABELS.AI_STUCK);
+        expect(hasComment(later, "hasn't reported back"), "no watchdog comment after its timeout").toBe(false);
+        expect(later.comments.filter((c) => c.includes("session ended without reporting an outcome")), "still one ended comment").toHaveLength(1);
+        await check("after the watchdog's timeout");
       }),
   },
   {

@@ -13,7 +13,7 @@ import {
   type Gh,
   type StubEnv,
 } from "../src/index";
-import { act, BLOCKED_DETAIL, ENDED_DETAIL, mergeIfGreen, type LogEntry } from "../src/loops";
+import { act, BLOCKED_DETAIL, BLOCKED_MISMATCH, ENDED_DETAIL, mergeIfGreen, type LogEntry } from "../src/loops";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 
 const env: StubEnv = {
@@ -315,13 +315,26 @@ describe("act — heartbeat and completion signals", () => {
 
   it("blocked_signal -> the same blocked signal twice (said once per fire by the orchestrator), no GitHub writes", async () => {
     const gh = fakeGh();
-    const signal = vi.fn(async () => '{"outcome":"blocked_noted"}');
+    const signal = vi.fn()
+      .mockResolvedValueOnce('{"outcome":"blocked_noted"}')
+      .mockResolvedValueOnce('{"outcome":"blocked_already_noted"}');
     expect(await act(gh, fireFor("issue-build-loop"), "blocked_signal", signal)).toBe("blocked");
     expect(signal.mock.calls).toEqual([
       [{ routine: "issue-build-loop", issue: 7, kind: "blocked", detail: BLOCKED_DETAIL }],
       [{ routine: "issue-build-loop", issue: 7, kind: "blocked", detail: BLOCKED_DETAIL }],
     ]);
     expect(gh).not.toHaveBeenCalled();
+  });
+
+  it("blocked_signal -> a marker comment when the second signal isn't answered blocked_already_noted", async () => {
+    const gh = fakeGh();
+    const signal = vi.fn(async () => '{"outcome":"blocked_noted"}');
+    await act(gh, fireFor("issue-build-loop"), "blocked_signal", signal);
+    expect(gh).toHaveBeenCalledWith(
+      "POST",
+      `${R}/issues/7/comments`,
+      expect.objectContaining({ body: expect.stringContaining(BLOCKED_MISMATCH) }),
+    );
   });
 
   it("ended_signal -> one ended signal, no outcome, no GitHub writes", async () => {
