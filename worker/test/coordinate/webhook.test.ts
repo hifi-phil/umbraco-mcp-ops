@@ -389,6 +389,20 @@ describe("coordinateWebhook — manual_override (a person editing a tracked labe
     expect(result).toMatchObject({ outcome: "manual_override", change: `-${LABELS.AUTO_MERGING}` });
   });
 
+  it(`a quick ${LABELS.AI_BLOCKED} removal then ${LABELS.AI_READY} add: each row names the state the person left, never ambiguous`, async () => {
+    // Live labels already hold both changes; each event's own snapshot doesn't.
+    const live = vi.fn(async () => [LABELS.AI_READY]);
+    const withLabels = (action: string, label: string, labels: string[]) =>
+      input({ deliveryId: "d-manual", payload: { action, label: { name: label }, labels, sender: { login: "phil", type: "User" } } });
+    const removed = fakeDeps({ botLogin: async () => bot, getLabels: live });
+    await coordinateWebhook(removed, withLabels("issues.unlabeled", LABELS.AI_BLOCKED, []));
+    expect(row(removed).fromState).toBe(LABELS.AI_BLOCKED);
+    expect(JSON.parse(row(removed).toEffect).now).toBe("none");
+    const added = fakeDeps({ botLogin: async () => bot, getLabels: live });
+    await coordinateWebhook(added, withLabels("issues.labeled", LABELS.AI_READY, [LABELS.AI_READY]));
+    expect(row(added).event).toBe(EVENTS.LABELLED_AI_READY);
+  });
+
   it("the Worker's own bot changing a label -> not an override, nothing logged", async () => {
     const deps = fakeDeps({ botLogin: async () => bot, getLabels: vi.fn(async () => []) });
     expect(await coordinateWebhook(deps, change("issues.unlabeled", LABELS.AI_BLOCKED, bot, "Bot"))).toEqual({ outcome: "no_event" });

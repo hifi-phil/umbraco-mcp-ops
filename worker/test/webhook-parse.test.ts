@@ -195,3 +195,13 @@ describe("extractItemMeta — what the dashboard's items table keeps", () => {
     expect(extractItemMeta({ issue: { number: 7, title: 42, state: "weird" } })).toEqual({ kind: "issue", title: null, state: null });
   });
 });
+
+describe("toWebhookPayload — labels snapshot", () => {
+  it("carries the item's labels as of the event, from issue or pull_request", () => {
+    expect(toWebhookPayload({ action: "unlabeled", issue: { labels: [{ name: LABELS.AI_READY }] } }, "issues").labels).toEqual([LABELS.AI_READY]);
+    expect(
+      toWebhookPayload({ action: "labeled", pull_request: { labels: [{ name: LABELS.AUTO_MERGING }] } }, "pull_request").labels,
+    ).toEqual([LABELS.AUTO_MERGING]);
+    expect(toWebhookPayload({ action: "completed", check_suite: {} }, "check_suite").labels).toBeUndefined();
+  });
+});
