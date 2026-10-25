@@ -404,6 +404,23 @@ describe("coordinateRoutineSignal — outcome, blocked and ended", () => {
     expect(deps.commentOnIssue).toHaveBeenCalledOnce();
   });
 
+  it("ended -> the comment quotes the last reported step and when, or says none was reported", async () => {
+    const ended = signalInput({ kind: "ended", routine: ROUTINES.ISSUE_BUILD_LOOP, issue: 412, detail: "session stopped: max turns" });
+
+    const withStep = liveDeps([LABELS.AI_READY]);
+    await withStep.setPendingFire({ ...pending, lastStep: "running tests", lastStepAt: "2026-09-28T10:00:00.000Z" });
+    await coordinateRoutineSignal(withStep, ended);
+    expect(withStep.commentOnIssue).toHaveBeenCalledWith(
+      "hifi-phil", "umbraco-mcp-ops", 412,
+      expect.stringContaining("Last reported step: `running tests` (2026-09-28T10:00:00.000Z)"),
+    );
+
+    const noStep = liveDeps([LABELS.AI_READY]);
+    await noStep.setPendingFire(pending);
+    await coordinateRoutineSignal(noStep, ended);
+    expect(noStep.commentOnIssue).toHaveBeenCalledWith("hifi-phil", "umbraco-mcp-ops", 412, expect.stringContaining("No progress step was ever reported."));
+  });
+
   it("a completion still only cancels the watchdog: nothing applied, no label, no row, no hand-off", async () => {
     const deps = liveDeps([LABELS.AI_READY]);
     await deps.setPendingFire(pending);
