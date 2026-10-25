@@ -141,17 +141,21 @@ export async function coordinateWatchdogExpired(deps: Deps, now = Date.now()): P
     }
   }
 
-  const lastStep = pending.lastStep
-    ? ` Last reported step: \`${pending.lastStep}\` (${pending.lastStepAt ?? "time unknown"}).`
-    : " No progress step was ever reported.";
   return expirePendingFire(
     deps,
     pending,
     (next) =>
-      `⚠️ The \`${pending.run}\` routine hasn't reported back within ${deps.watchdogMinutes(pending.run)} minutes — it may have died mid-run.${lastStep}${next} ` +
+      `⚠️ The \`${pending.run}\` routine hasn't reported back within ${deps.watchdogMinutes(pending.run)} minutes — it may have died mid-run.${lastStepSentence(pending)}${next} ` +
       `This comment is automatic; see docs/agent-orchestration/03-components.md §3.4.`,
     "watchdog",
   );
+}
+
+/** What the run last reported, as the sentence an expiry or an "ended" comment carries. */
+export function lastStepSentence(pending: PendingFire): string {
+  return pending.lastStep
+    ? ` Last reported step: \`${pending.lastStep}\` (${pending.lastStepAt ?? "time unknown"}).`
+    : " No progress step was ever reported.";
 }
 
 /**

@@ -8,7 +8,7 @@ import { EVENTS, type Event } from "@orchestrator/graph/constants/events";
 import { depsFor, type CoordinateResult, type Deps, type PendingFire } from "./types";
 import { coordinateWebhook } from "./webhook";
 import { alreadyApplied, logDeduped } from "./outcome-dedupe";
-import { expirePendingFire, recoverOutcome, type WatchdogResult } from "./watchdog";
+import { expirePendingFire, lastStepSentence, recoverOutcome, type WatchdogResult } from "./watchdog";
 
 export type RoutineSignalInput = { owner: string; repo: string; signal: RoutineSignal };
 
@@ -177,7 +177,7 @@ async function endFire(deps: Deps, pending: PendingFire, detail: string): Promis
   return expirePendingFire(
     deps,
     pending,
-    (next) => `⚠️ The \`${pending.run}\` routine's session ended without reporting an outcome: \`${quote(detail)}\`.${next} (Automatic, from the orchestrator.)`,
+    (next) => `⚠️ The \`${pending.run}\` routine's session ended without reporting an outcome: \`${quote(detail)}\`.${lastStepSentence(pending)}${next} (Automatic, from the orchestrator.)`,
     "routine-signal",
   );
 }
