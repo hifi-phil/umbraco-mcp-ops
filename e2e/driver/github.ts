@@ -349,6 +349,8 @@ export type LogRow = {
   dropped_reason: string | null;
   mode: string;
   created_at: string;
+  /** Who caused it: a GitHub login, or the Worker's own "watchdog", "sweep", "routine-signal". */
+  actor: string | null;
 };
 
 const secrets = new Map<string, string>();

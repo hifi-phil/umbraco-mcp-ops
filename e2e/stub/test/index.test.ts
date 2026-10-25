@@ -13,7 +13,7 @@ import {
   type Gh,
   type StubEnv,
 } from "../src/index";
-import { act, mergeIfGreen, type LogEntry } from "../src/loops";
+import { act, BLOCKED_DETAIL, ENDED_DETAIL, mergeIfGreen, type LogEntry } from "../src/loops";
 import { LABELS } from "@orchestrator/graph/constants/labels";
 
 const env: StubEnv = {
@@ -310,6 +310,26 @@ describe("act — heartbeat and completion signals", () => {
     expect(signal).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "completion", outcome: expect.objectContaining({ outcome: "build_blocked" }) }),
     );
+    expect(gh).not.toHaveBeenCalled();
+  });
+
+  it("blocked_signal -> the same blocked signal twice (said once per fire by the orchestrator), no GitHub writes", async () => {
+    const gh = fakeGh();
+    const signal = vi.fn(async () => '{"outcome":"blocked_noted"}');
+    expect(await act(gh, fireFor("issue-build-loop"), "blocked_signal", signal)).toBe("blocked");
+    expect(signal.mock.calls).toEqual([
+      [{ routine: "issue-build-loop", issue: 7, kind: "blocked", detail: BLOCKED_DETAIL }],
+      [{ routine: "issue-build-loop", issue: 7, kind: "blocked", detail: BLOCKED_DETAIL }],
+    ]);
+    expect(gh).not.toHaveBeenCalled();
+  });
+
+  it("ended_signal -> one ended signal, no outcome, no GitHub writes", async () => {
+    const gh = fakeGh();
+    const signal = vi.fn(async () => '{"outcome":"ended_expired"}');
+    expect(await act(gh, fireFor("issue-build-loop"), "ended_signal", signal)).toBe("ended");
+    expect(signal).toHaveBeenCalledOnce();
+    expect(signal).toHaveBeenCalledWith({ routine: "issue-build-loop", issue: 7, kind: "ended", detail: ENDED_DETAIL });
     expect(gh).not.toHaveBeenCalled();
   });
 });
