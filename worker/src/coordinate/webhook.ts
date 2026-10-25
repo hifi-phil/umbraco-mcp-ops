@@ -454,7 +454,9 @@ async function logManualOverride(
   change: LabelChange,
   labels?: string[],
 ): Promise<CoordinateResult> {
-  const now = labels ?? (await deps.getLabels(input.owner, input.repo, input.issueNumber));
+  // The event's own snapshot first: the live labels already hold a person's
+  // next quick change too, which would read the state they left as ambiguous.
+  const now = input.payload.labels ?? labels ?? (await deps.getLabels(input.owner, input.repo, input.issueNumber));
   const before = change.sign === "+" ? now.filter((l) => l !== change.label) : [...now, change.label];
   const by = input.payload.sender?.login ?? null;
   const summary = `${change.sign}${change.label}`;

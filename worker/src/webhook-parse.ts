@@ -65,9 +65,12 @@ export function toWebhookPayload(body: Record<string, unknown>, eventType: strin
   const comment = body.comment as
     | { body?: string; author_association?: string; user?: { type?: "Bot" | "User" } }
     | undefined;
-  const issue = body.issue as { state?: "open" | "closed"; pull_request?: unknown } | undefined;
+  const issue = body.issue as { state?: "open" | "closed"; pull_request?: unknown; labels?: { name?: string }[] } | undefined;
   const review = body.review as { state?: "approved" | "changes_requested" | "commented" } | undefined;
-  const pullRequest = body.pull_request as { merged?: boolean; body?: string | null; merge_commit_sha?: string | null } | undefined;
+  const pullRequest = body.pull_request as
+    | { merged?: boolean; body?: string | null; merge_commit_sha?: string | null; labels?: { name?: string }[] }
+    | undefined;
+  const snapshot = (issue ?? pullRequest)?.labels;
   const checkSuite = body.check_suite as
     | { conclusion?: "success" | "failure" | null; status?: "completed" | "in_progress" }
     | undefined;
@@ -76,6 +79,7 @@ export function toWebhookPayload(body: Record<string, unknown>, eventType: strin
     action: combineEventAction(eventType, body.action as string | undefined),
     sender: sender?.login ? { login: sender.login, type: sender.type ?? "User" } : undefined,
     label: label?.name ? { name: label.name } : undefined,
+    labels: Array.isArray(snapshot) ? snapshot.flatMap((l) => (l.name ? [l.name] : [])) : undefined,
     comment:
       comment?.body !== undefined
         ? { body: comment.body, author_association: comment.author_association, user_type: comment.user?.type }
