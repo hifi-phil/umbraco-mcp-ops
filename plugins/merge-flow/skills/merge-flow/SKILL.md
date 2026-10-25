@@ -18,8 +18,9 @@ every gate holds**, and never otherwise.
 
 One fire is one PR: the one the fire names, and only that one. `/goal` makes "done"
 unambiguous: the loop keeps working until that PR is either **merged** (branch deleted
-where the environment can — see Step 3), **flagged with the reason it couldn't be**, or,
-for a release PR into `main`, left alone without comment.
+where the environment can — see Step 3), **flagged with the reason it couldn't be**,
+left alone without comment (a release PR into `main`), or found no longer open or
+labelled `auto-merging` (Step 1).
 No half-done merges.
 
 ## Runtime & auth
@@ -42,11 +43,11 @@ Scheduled-routine wiring is set up separately (see
 
 **Get that PR** (github-ops → *Get a PR*) by the number in the fire. Don't list or look
 at any other `auto-merging` PR. If it is no longer open or no longer carries
-`auto-merging`, report "nothing to merge" and stop.
+`auto-merging`, stop quietly, with no comment on the PR.
 
 ## Step 2 — verify EVERY gate (this is the whole point)
 
-All of these must hold for the PR — if any fails, **do not merge** (go to Step 4, except gate 4, which stops quietly):
+All of these must hold for the PR — if any fails, **do not merge** (go to Step 4, except a gitflow release PR into `main` under gate 4, which stops quietly):
 
 1. **Human approval = the `auto-merging` label.** The merge stays human-gated: a
    maintainer must deliberately apply the `auto-merging` label after reviewing the PR,
