@@ -86,8 +86,7 @@ specific issue/PR, and **follow that skill's instructions verbatim**:
   playbook — the MCP toolchain one for server repos and `Umbraco-MCP-Base` (SDK monorepo,
   full test suite), the lightweight content playbook for repos with no toolchain (the ops
   repo, docs/plugin repos). Same `route=issue-build-loop` signal either way.
-- `auto-merging` PR → **`/merge-flow`** (it sweeps all `auto-merging` PRs; the event is
-  just the wake-up).
+- `auto-merging` PR → **`/merge-flow`** for that PR (it handles only the PR the fire names).
 - `auto-reworking` PR label → **`/rework-loop`** for that PR.
 - `route=review-loop` on an `ai-reviewing` PR (only ever from the orchestrator, once the
   PR's CI is green) → **`/review-loop`** for that PR.
