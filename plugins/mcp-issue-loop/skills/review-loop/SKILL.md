@@ -119,8 +119,8 @@ your fresh findings. An empty list is the only case with nothing to settle.
 
 - **Findings:** post **one PR review** (github-ops → *Post a PR review*) with an inline
   comment on each finding's line (what's wrong, and the fix), and a short body summarising
-  them. Start the review body with `review-loop @ <head SHA>`, the marker Step 2 reads
-  earlier threads by. Use the **comment** event: GitHub won't let a PR's author request changes on their
+  them, followed by any notes from Step 2's severity check under a *Notes* heading. Start the
+  review body with `review-loop @ <head SHA>`, the marker Step 2 reads earlier threads by. Use the **comment** event: GitHub won't let a PR's author request changes on their
   own PR, and the routines often act as that account. `rework-loop` reads these threads.
 - **Block:** post one PR review whose body says why the approach is wrong, or that the
   reviewers couldn't be spawned (Step 2), and what a person should decide. Inline comments only where a line shows it.

@@ -82,7 +82,9 @@ They catch what most reviews send back for:
    read **every** hit, not only those near your edit: fix it, or confirm it's still true. For a
    phrase, grep its most distinctive word (a name or a step label, not a common word).
    Leftovers far from the diff are what reviews keep finding.
-2. **Tests that can fail.** For code with a test suite (not prose or skill text), break each
+2. **Tests that can fail.** For any changed code that has a test suite, including hook and
+   shell scripts with their own test runner (e.g. a `test/run.sh`), but not prose or skill
+   text: break each
    new guard, branch or condition locally (delete or invert it) and run its tests: one must
    fail. If none does, add the test. Restore the code and check `git diff` shows no leftover.
 3. **Failure paths.** Where a call can throw (a GitHub call, a write, a fire), state recorded
