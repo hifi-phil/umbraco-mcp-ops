@@ -31,6 +31,8 @@
 #   SELF_LEARNING_LOG            override the log file path
 #   SELF_LEARNING_CANVAS_ID      Slack canvas to append to (default: the shared
 #                                "MCP Loop Learnings" canvas in #mcp-ops-learning)
+#   SELF_LEARNING_MAX_ATTEMPTS   failed analyzer runs allowed per session+scope
+#                                before the marker stays claimed (default 2)
 #   SELF_LEARNING_CAPTURE=1      re-entry guard (set internally; do not set by hand)
 set -uo pipefail
 
@@ -85,6 +87,22 @@ fi
 SID="$(printf '%s' "$EVENT" | jq -r '.session_id // empty' 2>/dev/null)"
 MARKER=""
 release_marker() { [ -n "$MARKER" ] && rm -f "$MARKER" 2>/dev/null; return 0; }
+# Release the marker after a failed analyzer run (e.g. a transient auth error)
+# so a later hook fire can retry — but only up to a cap. Without one, every
+# failure re-opened the door and a flaky session re-fired the analyzer dozens
+# of times, the retries' own transcript growth making each pass worse. Past the
+# cap the marker stays claimed, so the session is simply not analysed.
+release_marker_after_failure() {
+  [ -n "$MARKER" ] || return 0
+  local max="${SELF_LEARNING_MAX_ATTEMPTS:-2}" n
+  n=$(( $(cat "$MARKER.fails" 2>/dev/null || echo 0) + 1 )) 2>/dev/null || n=1
+  printf '%s' "$n" >"$MARKER.fails" 2>/dev/null || true
+  if [ "$n" -ge "$max" ]; then
+    log "analyzer failed $n time(s) for session $SID ($SCOPE) — giving up, marker stays claimed"
+    return 0
+  fi
+  release_marker
+}
 if [ -n "$SID" ]; then
   MARKER="$(dirname "$LOG")/analyzed-$SCOPE-$SID"
   if ! ( set -C; : >"$MARKER" ) 2>/dev/null; then
@@ -184,7 +202,7 @@ if command -v setsid >/dev/null 2>&1; then ISOLATE=(setsid "${ISOLATE[@]}"); fi
   esac
   OUT="$("${ISOLATE[@]}" claude -p "$PROMPT" --model sonnet \
     --allowedTools "Read,Grep,mcp__Slack__slack_read_canvas,mcp__Slack__slack_update_canvas" \
-    2>>"$LOG")" || { log "analyzer invocation failed"; release_marker; exit 0; }
+    2>>"$LOG")" || { log "analyzer invocation failed"; release_marker_after_failure; exit 0; }
   record "$OUT"
 ) </dev/null >/dev/null 2>&1 &
 disown 2>/dev/null || true

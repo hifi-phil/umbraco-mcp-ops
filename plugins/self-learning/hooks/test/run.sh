@@ -136,6 +136,24 @@ else
   echo "FAIL [analyzer_isolation]: $iso_fail"; fail=$((fail+1))
 fi
 
+# 10. Retry cap: a failing analyzer (transient auth error) may be retried, but
+#     only up to SELF_LEARNING_MAX_ATTEMPTS — after that the marker stays claimed
+#     and further hook fires skip instead of re-firing the analyzer forever.
+cap_dir="$WORK/cap"; mkdir -p "$cap_dir/bin"; cap_log="$cap_dir/capture.log"
+printf '#!/usr/bin/env bash\necho "Authentication error" >&2\nexit 1\n' >"$cap_dir/bin/claude"
+chmod +x "$cap_dir/bin/claude"
+for _ in 1 2 3 4; do
+  env PATH="$cap_dir/bin:$PATH" SELF_LEARNING_LOG="$cap_log" SELF_LEARNING_MAX_ATTEMPTS=2 \
+    bash "$SCRIPT" orchestrator < <(event_for "$FIX/loop-build.jsonl" SessionEnd) >/dev/null 2>&1
+  for _ in $(seq 1 40); do sleep 0.1; done
+done
+runs="$(grep -c 'analyzer invocation failed' "$cap_log" 2>/dev/null || true)"
+if [ "$runs" = "2" ] && grep -qF "giving up" "$cap_log" && grep -qF "already analysed — skipping" "$cap_log"; then
+  echo "PASS [retry_cap]"; pass=$((pass+1))
+else
+  echo "FAIL [retry_cap]: analyzer ran $runs time(s), expected 2"; sed 's/^/  /' "$cap_log" 2>/dev/null; fail=$((fail+1))
+fi
+
 echo "-----"
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]

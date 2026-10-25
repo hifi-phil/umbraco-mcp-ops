@@ -1,6 +1,6 @@
 {
   "name": "agent-outcomes",
-  "version": "2.2.11",
+  "version": "2.2.12",
   "description": "Shared skill for writing the structured outcome artifact a loop appends to a comment it already posts, so the agent-orchestration Worker can read what happened and apply the labels itself. One marker format, one growing catalog of outcome shapes; loop plugins point here instead of each inventing their own. Loops report through post-outcome.sh, which signals the agent-orchestration Worker and prints the exact comment body to post. Bundles hooks that signal it too: heartbeats naming the step while a loop works, blocked on a permission prompt, and ended when a session stops without reporting (AGENT_OUTCOMES_ENDPOINT + AGENT_OUTCOMES_TOKEN; without the endpoint they send nothing). Also bundles the work-log skill: how a loop records its decisions and what it verified in the Worker's decision log and build log, with log-entry.sh to add and read entries.",
   "author": {
     "name": "Phil W",

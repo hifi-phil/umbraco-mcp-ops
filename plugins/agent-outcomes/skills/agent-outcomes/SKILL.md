@@ -55,8 +55,8 @@ record the run); without `AGENT_OUTCOMES_TOKEN` the Worker refuses what they sen
 - `PostToolUse` (`report-completion.sh`): a **heartbeat** naming the current step, at most
   once a minute. It keeps the watchdog's deadline moving, and an expiry quotes the last step.
   It never reports an outcome and infers nothing from a tool call's text.
-- `Notification` for a permission prompt (`report-early-end.sh`): **blocked**, naming the tool
-  and the start of the command. The Worker comments at once.
+- `Notification` for a permission prompt (`report-early-end.sh`): **blocked**, naming the tool,
+  plus the command's first word when the event carries one and it is a plain command name. The Worker comments at once.
 - `SessionEnd` (`report-early-end.sh`): **ended**, unless it delivered an outcome
   for this run (`post-outcome.sh`). The Worker then treats the run as the watchdog would on expiry.
 

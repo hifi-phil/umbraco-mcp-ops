@@ -57,6 +57,10 @@ export type WebhookPayload = {
   action: string;
   sender?: { login: string; type: "Bot" | "User" };
   label?: { name: string };
+  // The labels on the item as of this event (GitHub's own snapshot), so a
+  // person's quick remove-then-add is read as each event saw it, not as the
+  // live labels that already hold both changes.
+  labels?: string[];
   comment?: { body: string; author_association?: string; user_type?: "Bot" | "User" };
   issue?: { state?: "open" | "closed"; is_pr?: boolean };
   review?: { state: "approved" | "changes_requested" | "commented" };
