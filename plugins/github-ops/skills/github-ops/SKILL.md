@@ -58,7 +58,7 @@ instead).
 | Comment on an issue | all loops |
 | Rewrite an issue's body | issue-discuss-loop |
 | Close an issue | triage |
-| List PRs (by label / state) | merge-flow |
+| List PRs (by label / state) | dependabot-rollup |
 | List a repo's open Dependabot PRs (security PRs target the default branch) | dependabot-rollup |
 | List Dependabot security alerts | dependabot-rollup |
 | Get a PR (review decision, mergeable, base) | merge-flow, all loops |

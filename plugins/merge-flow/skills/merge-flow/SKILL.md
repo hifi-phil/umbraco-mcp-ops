@@ -3,7 +3,8 @@ name: merge-flow
 description: >-
   Guardrail loop for merging one pull request safely. Takes the PR its fire names
   (labelled `auto-merging`) and merges it only once every safety gate holds; on any unmet
-  gate it comments the blocker and stops rather than merging. Replaces error-prone manual
+  gate it comments the blocker and stops rather than merging (a release PR into `main`
+  is left alone without comment). Replaces error-prone manual
   merges. Repo-agnostic; fired by the Worker through `loop-dispatch`; requires the
   `github-ops` and `agent-outcomes` skills. Trigger: a PR labelled `auto-merging`.
 ---
@@ -17,7 +18,8 @@ every gate holds**, and never otherwise.
 
 One fire is one PR: the one the fire names, and only that one. `/goal` makes "done"
 unambiguous: the loop keeps working until that PR is either **merged** (branch deleted
-where the environment can — see Step 3) or **flagged with the reason it couldn't be**.
+where the environment can — see Step 3), **flagged with the reason it couldn't be**, or,
+for a release PR into `main`, left alone without comment.
 No half-done merges.
 
 ## Runtime & auth
@@ -44,7 +46,7 @@ at any other `auto-merging` PR. If it is no longer open or no longer carries
 
 ## Step 2 — verify EVERY gate (this is the whole point)
 
-All of these must hold for the PR — if any fails, **do not merge** (go to Step 4):
+All of these must hold for the PR — if any fails, **do not merge** (go to Step 4, except gate 4, which stops quietly):
 
 1. **Human approval = the `auto-merging` label.** The merge stays human-gated: a
    maintainer must deliberately apply the `auto-merging` label after reviewing the PR,
