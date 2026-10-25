@@ -101,8 +101,10 @@ export async function act(gh: Gh, fire: Fire, hint: string | null, signal?: Sign
   // without an outcome: report-early-end.sh's two signals, and nothing else.
   if (hint === "blocked_signal" && signal) {
     const blocked = { routine: fire.route, issue: fire.number, kind: "blocked", detail: BLOCKED_DETAIL };
-    // A refused signal still answers 200, so read the outcome of each.
-    const answers = [await signal(blocked), await signal(blocked)];
+    // A refused signal still answers 200, so read the outcome of each. A call
+    // that throws counts as that call's answer, so the marker still posts.
+    const ask = () => signal(blocked).catch((e) => `error: ${e instanceof Error ? e.message : e}`);
+    const answers = [await ask(), await ask()];
     const expected = ["blocked_noted", "blocked_already_noted"];
     if (answers.some((a, i) => !a.includes(`"${expected[i]}"`))) {
       await comment(gh, fire, `${BLOCKED_MISMATCH}: ${answers.join(" then ")}`);

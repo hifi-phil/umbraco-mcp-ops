@@ -337,6 +337,19 @@ describe("act — heartbeat and completion signals", () => {
     );
   });
 
+  it("blocked_signal -> a marker comment when the second signal call throws", async () => {
+    const gh = fakeGh();
+    const signal = vi.fn()
+      .mockResolvedValueOnce('{"outcome":"blocked_noted"}')
+      .mockRejectedValueOnce(new Error("HTTP 500"));
+    expect(await act(gh, fireFor("issue-build-loop"), "blocked_signal", signal)).toBe("blocked");
+    expect(gh).toHaveBeenCalledWith(
+      "POST",
+      `${R}/issues/7/comments`,
+      expect.objectContaining({ body: expect.stringContaining("error: HTTP 500") }),
+    );
+  });
+
   it("ended_signal -> one ended signal, no outcome, no GitHub writes", async () => {
     const gh = fakeGh();
     const signal = vi.fn(async () => '{"outcome":"ended_expired"}');
