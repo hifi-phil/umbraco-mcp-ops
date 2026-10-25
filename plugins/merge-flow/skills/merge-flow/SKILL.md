@@ -47,7 +47,7 @@ at any other `auto-merging` PR. If it is no longer open or no longer carries
 
 ## Step 2 — verify EVERY gate (this is the whole point)
 
-All of these must hold for the PR — if any fails, **do not merge** (go to Step 4, except a gitflow release PR into `main` under gate 4, which stops quietly):
+**Check gate 4 (right base) first**: a gitflow release PR into `main` stops quietly there, before any other gate comments, waits or pushes. Then all of these must hold for the PR — if any fails, **do not merge** (go to Step 4):
 
 1. **Human approval = the `auto-merging` label.** The merge stays human-gated: a
    maintainer must deliberately apply the `auto-merging` label after reviewing the PR,
