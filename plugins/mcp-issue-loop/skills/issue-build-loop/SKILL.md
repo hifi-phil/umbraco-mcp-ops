@@ -91,14 +91,14 @@ They catch what most reviews send back for:
 4. **Skill text** (when `plugins/` changed): every stop path reports its outcome through the
    `agent-outcomes` script (or is a documented no-outcome stop), every operation it names is
    in `github-ops`, and no step points at one that's gone. Then give the changed skill files,
-   whole, to **one fresh subagent** (`model: sonnet`; its prompt is the files plus this
-   request, with no issue, diff or build context) and ask it to walk through them as a session
-   would, **without running any command, tool call, GitHub operation or edit**, and list
-   contradictions, dangling references and steps it couldn't carry out unambiguously. It may
-   Read any file they reference; a reference is dangling only if its target doesn't exist.
+   whole, to **one fresh subagent** (`model: sonnet`). Its prompt is the files plus exactly this
+   request, with no issue, diff or build context: "Walk through these skill files as a session
+   would, without running any command, GitHub operation or edit (Read is the only tool you may
+   use; Read any file they reference). List contradictions, dangling references (a reference is
+   dangling only if its target doesn't exist) and steps you couldn't carry out unambiguously."
    Agents follow skill text literally, so this is where review findings on skill PRs come from.
-   Judge each of its findings against the text, fix the real ones, don't re-run the fresh
-   read, and note any you reject, with why, in the build entry.
+   You judge its findings, not the subagent: fix the real ones, don't re-run the fresh read, and
+   note any you reject, with why, in the build entry (no `log_token`: in the issue comment).
 
 Fix what they find, re-run the local tests, push, then report. A check you can't satisfy
 (say, no test harness for the code) doesn't block the build: say which and why in the issue
