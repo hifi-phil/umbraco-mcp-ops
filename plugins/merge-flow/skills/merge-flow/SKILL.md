@@ -22,7 +22,7 @@ No half-done merges.
 
 ## Runtime & auth
 
-For every GitHub action — listing PRs, reading reviews, checking CI, merging,
+For every GitHub action — getting the PR, reading reviews, checking CI, merging,
 deleting the branch — **use the `github-ops` skill**, which owns the local-vs-web
 mechanism (this skill names the operation; `github-ops` has the command/tool).
 Scheduled-routine wiring is set up separately (see
@@ -66,7 +66,7 @@ All of these must hold for the PR — if any fails, **do not merge** (go to Step
    then re-check CI (that restarts checks).
 4. **Right base.** The PR targets the expected integration branch for its repo's merge
    strategy (see Config). A PR into `main` on a gitflow repo is a **release** merge —
-   the Worker makes it after `release_approved`, not this loop; skip it here.
+   the Worker makes it after `release_approved`, not this loop; don't merge it, and stop without commenting a blocker.
 
 ## Step 3 — merge
 
@@ -88,9 +88,9 @@ flags any repo where the setting is off.
 ## Step 4 — when a gate fails
 
 Comment the **specific** blocker on the PR ("CI check `x` failing", "awaiting
-approval", "conflicts with base — rebase needed"), and stop. For a hard,
+approval", "conflicts with base — rebase needed"). For a hard,
 human-needed block the orchestrator's gate missed (say a conflict appeared with no CI run
-since), report `merge_blocked` through the `agent-outcomes` script and put the body it printed in that comment, with the reason.
+since), first report `merge_blocked` through the `agent-outcomes` script and put the body it printed in that comment, with the reason. Then stop.
 The orchestrator checks for conflicts and requested changes itself, and sends failing CI to
 `rework-loop`, so on red CI comment the failing checks and stop.
 
