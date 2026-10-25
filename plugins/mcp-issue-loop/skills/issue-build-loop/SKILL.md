@@ -91,14 +91,19 @@ They catch what most reviews send back for:
 4. **Skill text** (when `plugins/` changed): every stop path reports its outcome through the
    `agent-outcomes` script (or is a documented no-outcome stop), every operation it names is
    in `github-ops`, and no step points at one that's gone. Then give the changed skill files,
-   whole, to **one fresh subagent** (`model: sonnet`). Its prompt is the files plus exactly this
-   request, with no issue, diff or build context: "Walk through these skill files as a session
-   would, without running any command, GitHub operation or edit (Read is the only tool you may
-   use; Read any file they reference). List contradictions, dangling references (a reference is
-   dangling only if its target doesn't exist) and steps you couldn't carry out unambiguously."
+   whole, to **one fresh subagent** (`model: sonnet`): the changed Markdown files under
+   `plugins/*/skills/` and `plugins/*/agents/` (skip the fresh read if none changed). Its prompt
+   is each file's repo-relative path with its text, plus exactly this request, with no issue,
+   diff or build context: "Walk through these skill files as a session would, without running
+   any command, GitHub operation or edit (Read is the only tool you may use; Read any file they
+   reference, resolving a relative link from the referring file's folder and a skill named by
+   name at `plugins/*/skills/<name>/SKILL.md`). List contradictions, dangling references (a
+   reference is dangling only if its target doesn't exist) and steps you couldn't carry out
+   unambiguously."
    Agents follow skill text literally, so this is where review findings on skill PRs come from.
    You judge its findings, not the subagent: fix the real ones, don't re-run the fresh read, and
-   note any you reject, with why, in the build entry (no `log_token`: in the issue comment).
+   note any you reject, with why, in the run's work-log entry (no `log_token`: in the comment
+   this run posts).
 
 Fix what they find, re-run the local tests, push, then report. A check you can't satisfy
 (say, no test harness for the code) doesn't block the build: say which and why in the issue
