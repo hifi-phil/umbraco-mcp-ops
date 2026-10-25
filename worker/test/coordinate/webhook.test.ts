@@ -401,6 +401,8 @@ describe("coordinateWebhook — manual_override (a person editing a tracked labe
     const added = fakeDeps({ botLogin: async () => bot, getLabels: live });
     await coordinateWebhook(added, withLabels("issues.labeled", LABELS.AI_READY, [LABELS.AI_READY]));
     expect(row(added).event).toBe(EVENTS.LABELLED_AI_READY);
+    expect(row(added).fromState).toBe("none");
+    expect(row(added).droppedReason).toBeNull();
   });
 
   it("the Worker's own bot changing a label -> not an override, nothing logged", async () => {
