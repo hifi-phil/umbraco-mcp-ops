@@ -166,14 +166,14 @@ s.serve_forever()
     sleep 0.3
   }
 
-  # 13. A permission prompt -> blocked, naming the tool and the start of its command
+  # 13. A permission prompt -> blocked, naming the tool and the command's first word only
   : >"$SERVER_LOG"
   LONG_CMD="git reset --hard $(printf 'x%.0s' $(seq 1 200))"
   PROMPT="$(jq -n --arg c "$LONG_CMD" '{hook_event_name:"Notification", notification_type:"permission_prompt", message:"Claude needs your permission to use Bash", tool_name:"Bash", tool_input:{command:$c}}')"
   esignal blocked "$(with_transcript "$PROMPT" "$TRANSCRIPT" b1)" "$WORK/s13"
   expect_last permission_blocked '.auth == "Bearer tok" and .body.signal.kind == "blocked"
     and .body.signal.routine == "issue-build-loop" and .body.signal.issue == 412
-    and (.body.signal.detail | startswith("Bash git reset --hard")) and (.body.signal.detail | length <= 140)'
+    and .body.signal.detail == "Bash: git"'
 
   # 13b. A session with no route line -> an end sends nothing either
   : >"$SERVER_LOG"
@@ -197,11 +197,37 @@ s.serve_forever()
   esignal quoting_block "$(with_transcript "$PROMPT" "$QUOTING" q2)" "$WORK/s13e"
   expect_requests quoted_route_not_a_run 0
 
-  # 13c. A credential in the command never goes out
+  # 13c. Arguments never go out: not a short credential (`-u user:pass`), nor any other argument
   : >"$SERVER_LOG"
-  SECRET="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:"curl -H \"Authorization: Bearer s3cretvalue\" https://u:pw0rd@x.io/ log_token=eyJabc.def GH=ghp_0123456789abcdef0123456789abcdef0123"}}')"
-  esignal secret "$(with_transcript "$SECRET" "$TRANSCRIPT" b3)" "$WORK/s13c"
-  expect_last secrets_redacted '.body.signal.kind == "blocked" and (.body.signal.detail | test("s3cretvalue|pw0rd|eyJabc|ghp_0123") | not)'
+  ARGS="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:"curl -u admin:hunter2 --password hunter2 https://x.io/"}}')"
+  esignal args "$(with_transcript "$ARGS" "$TRANSCRIPT" b3)" "$WORK/s13h"
+  expect_last args_not_sent '.body.signal.detail == "Bash: curl"'
+  # ...nor an inline VAR=secret standing as the first word
+  : >"$SERVER_LOG"
+  ENVW="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:"TOKEN=hunter2 make deploy"}}')"
+  esignal envword "$(with_transcript "$ENVW" "$TRANSCRIPT" b6)" "$WORK/s13i"
+  expect_last env_word_dropped '.body.signal.detail == "Bash"'
+
+  # ...nor a token as the first word, glued operators, or a non-string command
+  for CASE in 'tok:ghp_0123456789abcdef0123456789abcdef0123 x' 'glue:cat<<<ghp_0123456789abcdef0123456789abcdef0123|gh auth login --with-token'; do
+    : >"$SERVER_LOG"
+    GLUED="$(jq -n --arg c "${CASE#*:}" '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:$c}}')"
+    esignal "first_word_${CASE%%:*}" "$(with_transcript "$GLUED" "$TRANSCRIPT" "b7${CASE%%:*}")" "$WORK/s13${CASE%%:*}"
+    expect_last "first_word_${CASE%%:*}_dropped" '.body.signal.detail == "Bash"'
+  done
+  : >"$SERVER_LOG"
+  ARRC="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:["hunter2;ls"]}}')"
+  esignal arraycmd "$(with_transcript "$ARRC" "$TRANSCRIPT" b8)" "$WORK/s13arr"
+  expect_last array_command_dropped '.body.signal.detail == "Bash"'
+  : >"$SERVER_LOG"
+  NUMC="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"Bash", tool_input:{command:4242}}')"
+  esignal numcmd "$(with_transcript "$NUMC" "$TRANSCRIPT" b9)" "$WORK/s13num"
+  expect_last scalar_command_dropped '.body.signal.detail == "Bash"'
+  # ...and a non-Bash tool's url / file_path stay out
+  : >"$SERVER_LOG"
+  WEBF="$(jq -n '{hook_event_name:"Notification", notification_type:"permission_prompt", tool_name:"WebFetch", tool_input:{url:"https://u:pw0rd@x.io/", file_path:"/home/u/secret.txt"}}')"
+  esignal webfetch "$(with_transcript "$WEBF" "$TRANSCRIPT" b10)" "$WORK/s13web"
+  expect_last non_bash_input_not_sent '.body.signal.detail == "WebFetch"'
 
   # 13f. The production Notification shape: no tool_name/tool_input, only message + notification_type
   : >"$SERVER_LOG"
