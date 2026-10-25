@@ -90,7 +90,11 @@ They catch what most reviews send back for:
    logs a line naming the owner/repo and item.
 4. **Skill text** (when `plugins/` changed): every stop path reports its outcome through the
    `agent-outcomes` script (or is a documented no-outcome stop), every operation it names is
-   in `github-ops`, and no step points at one that's gone.
+   in `github-ops`, and no step points at one that's gone. Then give the changed skill files,
+   whole, to **one fresh subagent** (Sonnet tier, nothing else in its prompt) and ask it to
+   follow them as a session would and list contradictions, dangling references and steps
+   it couldn't carry out unambiguously. Agents follow skill text literally, so this is where
+   review findings on skill PRs come from.
 
 Fix what they find, re-run the local tests, push, then report. A check you can't satisfy
 (say, no test harness for the code) doesn't block the build: say which and why in the issue
