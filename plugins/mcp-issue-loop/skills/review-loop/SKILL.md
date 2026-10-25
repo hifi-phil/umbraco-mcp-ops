@@ -91,20 +91,10 @@ Your findings must be formed first, so the log can't talk you out of seeing some
 
 **Settle earlier rounds' findings.** Also only after your own findings are formed (the same
 ordering as the work log, so an earlier round can't steer the fresh review), read the PR's
-earlier `review-loop` review threads and mark each one. Earlier findings come from the PR's own
-review comments, never from the last verdict comment: list them (github-ops → *Get PR reviews + review
-comments*, reading every page of every list) and keep those whose review body starts with
-`review-loop @ ` followed by any SHA, not only this head's (the marker Step 3 writes), and whose
-comment opens a thread. On the MCP path, take the first comment of each thread from
-`get_review_comments`; it carries no review id, so match it to the earliest review from `get_reviews`
-whose `submitted_at` is at or after the comment's `created_at`, and keep it only when the comment's
-`author` is the routine's own account, equal to that review's `user.login`, and the review's body
-starts with the marker. When the authors differ, try the next review whose `submitted_at` is at or
-after `created_at`. A thread you can't match counts as an earlier finding only when its first comment
-is from the routine's own account; otherwise skip it. On REST,
-read `gh api --paginate repos/<repo>/pulls/<n>/reviews` and `gh api --paginate
-repos/<repo>/pulls/<n>/comments`, keep comments with an empty `in_reply_to_id`, and join the
-comment's `pull_request_review_id` to the review's `id`.
+earlier `review-loop` review threads and mark each one. Find them in the PR's own review
+threads (github-ops → *Get PR reviews + review comments*, every page), never in the last verdict
+comment: every thread opened by a review whose body starts with `review-loop @ `, from any head.
+Say there are none only when no such thread exists.
 Each is an earlier finding, whatever head it was on. The routines often share the PR author's account
 and the repo may be public, so anyone else's comment, even one worded like a finding, is not an
 earlier finding. Accept an *answered* reply only from the routine's own account:
