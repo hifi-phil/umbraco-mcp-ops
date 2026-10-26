@@ -20,12 +20,13 @@ the comments. This loop fixes that by *talking*, then writes down what was agree
 
 It **writes issues, not code.** No branches, no PRs, no `ai-ready`.
 
-**Two references, read at the point you need them:**
+**Read at the point you need them:**
 
 | Reference | Read it when |
 |---|---|
 | [`references/thread-protocol.md`](references/thread-protocol.md) | Starting a fire: whose comment is whose, when to stay silent, the round cap, and whether to write the body or a comment |
 | [`references/good-issues.md`](references/good-issues.md) | Composing anything: what "simplest change" means, problem → requirements → plan, writing style |
+| [`templates/issue-plan.md`](templates/issue-plan.md) | Writing or rewriting the body (Step 3) — the literal heading shape `good-issues.md` describes |
 
 ## Trigger & scope
 
@@ -95,6 +96,10 @@ sentence or two and stop; don't invent problems to look useful.
 Work in the order [`good-issues.md`](references/good-issues.md) sets out — **problem, then
 testable requirements, then a plan** that names its files — in the style it describes. Argue for
 the smallest change that solves the problem, every round.
+
+When you write or rewrite the body (not a critique comment), shape it as
+[`templates/issue-plan.md`](templates/issue-plan.md) — drop any bracketed line the issue doesn't
+need rather than padding it out.
 
 ## Step 4 — write it in the right place
 
