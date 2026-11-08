@@ -149,6 +149,26 @@
       ]
     },
     {
+      "name": "plain-writing",
+      "source": "./plugins/plain-writing",
+      "description": "Shared writing discipline for anything a loop posts for a human to read — issue comments, PR bodies and review comments, Slack messages. Lead with the point, plain words, concise without losing the names/numbers/conditions a reader needs. Bundles two starting-point templates (pr-body, loop-comment). Other loop plugins point here by name instead of each inventing their own prose rules.",
+      "version": "1.0.0",
+      "category": "workflow",
+      "author": {
+        "name": "Phil W",
+        "email": "pjw@umbraco.com",
+        "url": "https://github.com/hifi-phil"
+      },
+      "homepage": "https://github.com/hifi-phil/umbraco-mcp-ops/tree/main/plugins/plain-writing",
+      "keywords": [
+        "writing",
+        "plain-language",
+        "pr-body",
+        "comments",
+        "reference"
+      ]
+    },
+    {
       "name": "dependabot-rollup",
       "source": "./plugins/dependabot-rollup",
       "description": "Roll every open Dependabot security PR (excluding semver-major bumps) into one branch + PR, drive it to green CI, and close the superseded individual PRs. Repo-agnostic and safe to run unattended LOCALLY (e.g. a Desktop scheduled task). Not runnable as a cloud routine — the Claude GitHub App can't read Dependabot alerts. Requires github-ops.",
